@@ -1,0 +1,45 @@
+CREATE DATABASE IF NOT EXISTS mneme DEFAULT CHARACTER SET utf8mb4;
+
+USE mneme;
+
+CREATE TABLE IF NOT EXISTS `user` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `username` VARCHAR(50) NOT NULL UNIQUE,
+    `password_hash` VARCHAR(255) NOT NULL,
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS `knowledge_base` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
+    `name` VARCHAR(100) NOT NULL,
+    `description` TEXT,
+    `chroma_collection_id` VARCHAR(100),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`user_id`) REFERENCES `user`(`id`),
+    INDEX `idx_user_id` (`user_id`)
+);
+
+CREATE TABLE IF NOT EXISTS `knowledge_document` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `kb_id` BIGINT NOT NULL,
+    `file_name` VARCHAR(255) NOT NULL,
+    `file_path` VARCHAR(500) NOT NULL,
+    `status` VARCHAR(20) DEFAULT 'parsing',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`kb_id`) REFERENCES `knowledge_base`(`id`),
+    INDEX `idx_kb_id` (`kb_id`)
+);
+
+CREATE TABLE IF NOT EXISTS `chat_session` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
+    `title` VARCHAR(200),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`user_id`) REFERENCES `user`(`id`),
+    INDEX `idx_user_id` (`user_id`)
+);
