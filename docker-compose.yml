@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mneme
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./java-gateway/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/chroma:/chroma/data
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+
+  python-agent:
+    build: ./python-agent
+    ports:
+      - "8001:8000"
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - CHROMA_HOST=http://chroma:8000
+      - CHROMA_PORT=8000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - WORKING_MEMORY_WINDOW_SIZE=${WORKING_MEMORY_WINDOW_SIZE:-10}
+      - WORKING_MEMORY_MAX_TOKENS=${WORKING_MEMORY_MAX_TOKENS:-4000}
+      - RETRIEVER_TOP_K=${RETRIEVER_TOP_K:-5}
+      - DISTILLATION_IDLE_MINUTES=${DISTILLATION_IDLE_MINUTES:-15}
+    volumes:
+      - ./data:/data
+      - ./python-agent:/app
+    depends_on:
+      - chroma
+
+  java-gateway:
+    build: ./java-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/mneme
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+      - REDIS_HOST=redis
+      - PYTHON_AGENT_URL=http://python-agent:8000
+      - FILE_STORAGE_PATH=/data/files
+    volumes:
+      - ./data:/data
+    depends_on:
+      - mysql
+      - redis
+      - python-agent
