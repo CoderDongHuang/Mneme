@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+langchain
+langchain-community
+langchain-experimental
+langgraph
+langchain-deepseek
+dashscope
+chromadb
+pydantic
+pypdf
+docx2txt
+unstructured
+python-dotenv
