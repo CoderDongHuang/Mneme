@@ -24,8 +24,20 @@ def ingest_document(user_id: str, kb_id: str, file_path: str) -> str:
     chunks = chunk_documents(documents)
 
     collection = vector_store.get_or_create_collection(user_id, kb_id)
-    texts = [chunk.page_content for chunk in chunks]
-    metadatas = [{"source": os.path.basename(file_path), "page": chunk.metadata.get("page", 0)} for chunk in chunks]
+    texts = []
+    metadatas = []
+    for chunk in chunks:
+        content = chunk.page_content
+        if content and isinstance(content, str) and content.strip():
+            texts.append(str(content).strip())
+            metadatas.append({"source": os.path.basename(file_path), "page": chunk.metadata.get("page", 0)})
+
+    if not texts:
+        raise ValueError("文档解析后没有有效的文本内容")
+
+    logger.info(f"有效文本块数量: {len(texts)}")
+    for i, t in enumerate(texts):
+        logger.info(f"文本块 {i} 类型: {type(t)}, 长度: {len(t)}, 内容预览: {t[:50]}")
     import uuid
     doc_id = str(uuid.uuid4())[:8]
     ids = [f"{kb_id}_{doc_id}_{i}" for i in range(len(texts))]

@@ -18,10 +18,13 @@ async def chat(request: ChatRequest):
 
     sources = []
     for chunk in result.get("retrieved_chunks", []):
+        content = chunk.get("content")
+        if not content:
+            continue
         metadata = chunk.get("metadata", {})
         sources.append(Source(
             document_name=metadata.get("source", "unknown"),
-            chunk_content=chunk.get("content", ""),
+            chunk_content=content,
             page=metadata.get("page"),
             score=chunk.get("score", 0.0)
         ))

@@ -15,7 +15,11 @@ def intent_classification_node(state: dict) -> dict:
     except:
         intent_data = {"intent": "qa", "confidence": 0.5, "extracted_entities": []}
     logger.info(f"意图识别结果: {intent_data}")
-    return {"intent": intent_data.get("intent", "qa"), "confidence": intent_data.get("confidence", 0.5)}
+    valid_intents = {"qa", "review", "suggest"}
+    intent = intent_data.get("intent", "qa")
+    if intent not in valid_intents:
+        intent = "qa"
+    return {"intent": intent, "confidence": intent_data.get("confidence", 0.5)}
 
 def knowledge_retrieval_node(state: dict) -> dict:
     all_chunks = []

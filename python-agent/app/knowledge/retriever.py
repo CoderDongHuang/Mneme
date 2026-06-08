@@ -13,7 +13,7 @@ def retrieve(user_id: str, kb_id: str, query: str, top_k: int = None) -> list:
     for i in range(len(results["ids"][0])):
         chunks.append({
             "content": results["documents"][0][i],
-            "metadata": results["metadatas"][0][i],
+            "metadata": results["metadatas"][0][i] if results["metadatas"][0][i] else {},
             "score": results["distances"][0][i] if "distances" in results else 0.0
         })
     return chunks
