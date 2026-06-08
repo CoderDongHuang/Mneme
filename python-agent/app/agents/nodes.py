@@ -58,10 +58,21 @@ def weak_point_retrieval_node(state: dict) -> dict:
     return {"memory_context": context}
 
 def suggestion_generation_node(state: dict) -> dict:
-    """生成学习建议"""
+    """生成学习建议（阶段三：加入反思结果）"""
+    weak_points = long_term_memory.get_weak_points(state["user_id"])
+
+    # 尝试获取反思结果
+    from app.memory.reflection import run_reflection
+    reflection_result = run_reflection(state["user_id"]) if weak_points else {}
+    priority_points = reflection_result.get("priority_weak_points", [])
+
+    context = "薄弱点:\n" + "\n".join([f"- {wp.topic}" for wp in weak_points]) + "\n\n"
+    if priority_points:
+        context += f"优先处理: {', '.join(priority_points)}\n\n"
+
     prompt = f"""基于以下用户信息，生成 3 条个性化学习建议：
 
-{state.get('memory_context', '')}
+{context}
 
 用户问题：{state['message']}
 
@@ -78,9 +89,28 @@ def format_response_node(state: dict) -> dict:
         answer = state.get("answer", "")
     return {"answer": answer}
 
+from app.memory.distillation import distill_conversation, apply_distilled_entries
+from app.memory.short_term_memory import short_term_memory
+from app.core.config import settings
+from datetime import datetime
+
 def memory_write_node(state: dict) -> dict:
-    """记忆写入（阶段二最简版：不自动提取，仅保留接口）"""
-    # 阶段三实现蒸馏逻辑
+    """记忆写入（阶段三：蒸馏 + 触发）"""
+    user_id = state["user_id"]
+    session_id = state["session_id"]
+
+    # 获取完整会话历史
+    history = short_term_memory.get_history(session_id)
+    history_dicts = [{"role": m.role, "content": m.content} for m in history]
+
+    # 蒸馏触发：检查上次消息时间，超过 15 分钟则蒸馏
+    if history:
+        last_msg = history[-1]
+        last_time = datetime.fromisoformat(last_msg.timestamp)
+        if (datetime.now() - last_time).total_seconds() > settings.DISTILLATION_IDLE_MINUTES * 60:
+            distilled = distill_conversation(session_id, history_dicts[:-1])  # 蒸馏旧对话
+            apply_distilled_entries(user_id, distilled)
+
     return {"memory_entries_to_write": []}
 
 def llm_reasoning_node(state: dict) -> dict:
@@ -107,4 +137,9 @@ def llm_reasoning_node(state: dict) -> dict:
 用户问题：{state['message']}"""
 
     response = llm.invoke([HumanMessage(content=prompt)])
+
+    # 检查是否需要摘要压缩
+    if short_term_memory.should_summarize(state["session_id"]):
+        short_term_memory.summarize(state["session_id"])
+
     return {"answer": response.content}

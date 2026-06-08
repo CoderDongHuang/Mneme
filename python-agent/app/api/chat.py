@@ -3,6 +3,7 @@ from app.models.chat import ChatRequest, ChatResponse, Source
 from app.agents.graph import agent_graph
 from app.memory.working_memory import working_memory
 from app.memory.short_term_memory import short_term_memory
+from app.memory.reflection_scheduler import reflection_scheduler
 from app.models.chat import Message
 from datetime import datetime
 from app.core.logging import setup_logger
@@ -31,6 +32,10 @@ async def chat(request: ChatRequest):
         assistant_msg = Message(role="assistant", content=result["answer"], timestamp=datetime.now().isoformat(), token_count=len(result["answer"]) // 4)
         working_memory.add_message(request.session_id, assistant_msg)
         short_term_memory.add_message(request.session_id, assistant_msg)
+
+    # 记录会话并检查是否需要触发反思
+    reflection_scheduler.record_session(request.user_id)
+    reflection_scheduler.check_and_trigger(request.user_id)
 
     sources = []
     for chunk in result.get("retrieved_chunks", []):
