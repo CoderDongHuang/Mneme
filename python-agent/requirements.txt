@@ -1,14 +1,27 @@
-fastapi
-uvicorn
-langchain
-langchain-community
-langchain-experimental
-langgraph
-langchain-deepseek
-dashscope
-chromadb
-pydantic
-pypdf
-docx2txt
-unstructured
-python-dotenv
+# Web 框架
+fastapi==0.112.0
+uvicorn==0.30.6
+
+# LangChain 生态
+langchain==1.3.2
+langchain-community==0.4.2
+langchain-experimental==0.4.2
+langgraph==1.2.2
+langchain-deepseek==1.1.0
+
+# LLM 集成
+dashscope==1.25.21
+
+# 向量数据库
+chromadb==0.5.3
+
+# 数据验证
+pydantic==2.8.2
+
+# 文档处理
+pypdf==6.13.0
+docx2txt==0.9
+unstructured==0.18.32
+
+# 环境变量
+python-dotenv==1.0.1
