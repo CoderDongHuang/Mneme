@@ -15,11 +15,11 @@ REFLECTION_PROMPT = """请分析以下用户记忆数据，挖掘隐性偏好和
 3. 下一步学习建议是什么？
 
 输出 JSON 格式：
-{
+{{
   "implicit_preferences": ["..."],
   "priority_weak_points": ["..."],
   "next_step_suggestion": "..."
-}"""
+}}"""
 
 def run_reflection(user_id: str) -> dict:
     """执行记忆反思"""
