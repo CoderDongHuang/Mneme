@@ -13,9 +13,6 @@ logger = setup_logger("knowledge_api")
 
 executor = ThreadPoolExecutor(max_workers=4)
 
-# 存储知识库信息
-knowledge_bases = {}
-
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...), user_id: str = "default", kb_id: str = "default_kb"):
     """浏览器文件上传"""
@@ -28,17 +25,20 @@ async def upload_file(file: UploadFile = File(...), user_id: str = "default", kb
         tmp_path = tmp.name
 
     async def process():
+        loop = asyncio.get_event_loop()
         try:
-            doc_id = await asyncio.get_event_loop().run_in_executor(
+            doc_id = await loop.run_in_executor(
                 executor, ingest_document, user_id, kb_id, tmp_path
             )
             logger.info(f"文档解析成功: doc_id={doc_id}")
-            if kb_id not in knowledge_bases:
-                knowledge_bases[kb_id] = {"name": kb_id, "document_count": 0}
-            knowledge_bases[kb_id]["document_count"] += 1
-            os.unlink(tmp_path)
         except Exception as e:
             logger.error(f"文档解析失败: {e}")
+        finally:
+            # 确保无论成功还是失败都删除临时文件
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
     asyncio.create_task(process())
     return {"status": "parsing", "message": "文档正在解析中"}
@@ -58,10 +58,6 @@ async def ingest(request: DocumentIngestRequest):
 
     asyncio.create_task(process())
     return {"status": "parsing", "message": "文档正在解析中"}
-
-@router.get("/list")
-async def list_knowledge_bases():
-    return {"knowledge_bases": list(knowledge_bases.values())}
 
 @router.get("/search", response_model=RetrieverResult)
 async def search(query: str, user_id: str, kb_id: str, top_k: int = 5):

@@ -11,6 +11,18 @@ from app.core.logging import setup_logger
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = setup_logger("chat_api")
 
+@router.get("/sessions")
+async def list_sessions(user_id: str = "default"):
+    """获取用户的历史对话列表"""
+    sessions = working_memory.get_all_sessions(user_id)
+    return {"sessions": sessions}
+
+@router.get("/session/{session_id}")
+async def get_session(session_id: str):
+    """获取单个对话的完整历史"""
+    messages = working_memory.get_messages(session_id)
+    return {"session_id": session_id, "messages": messages}
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     logger.info(f"收到对话请求: user_id={request.user_id}, message={request.message}")

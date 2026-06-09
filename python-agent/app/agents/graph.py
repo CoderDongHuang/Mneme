@@ -33,7 +33,9 @@ def route_by_intent(state: AgentState) -> str:
         return "memory_retrieval"
     elif intent == "suggest":
         return "weak_point_retrieval"
-    return "knowledge_retrieval"
+    elif intent == "general":
+        return "llm_reasoning"
+    return "llm_reasoning"
 
 def build_graph():
     graph = StateGraph(AgentState)

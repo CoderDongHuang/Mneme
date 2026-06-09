@@ -18,19 +18,36 @@ def intent_classification_node(state: dict) -> dict:
     try:
         intent_data = json.loads(response.content)
     except:
-        intent_data = {"intent": "qa", "confidence": 0.5, "extracted_entities": []}
+        intent_data = {"intent": "general", "confidence": 0.5, "extracted_entities": []}
     logger.info(f"意图识别结果: {intent_data}")
-    valid_intents = {"qa", "review", "suggest"}
-    intent = intent_data.get("intent", "qa")
+    valid_intents = {"qa", "review", "suggest", "general"}
+    intent = intent_data.get("intent", "general")
     if intent not in valid_intents:
-        intent = "qa"
+        intent = "general"
     return {"intent": intent, "confidence": intent_data.get("confidence", 0.5)}
 
 def knowledge_retrieval_node(state: dict) -> dict:
     all_chunks = []
-    for kb_id in state.get("knowledge_base_ids", []):
-        chunks = retrieve(state["user_id"], kb_id, state["message"])
-        all_chunks.extend(chunks)
+    kb_ids = state.get("knowledge_base_ids", [])
+    
+    # 如果没有指定知识库ID，自动检索该用户所有知识库
+    if not kb_ids:
+        from app.knowledge.vector_store import vector_store
+        try:
+            collections = vector_store.client.list_collections()
+            for collection in collections:
+                name = collection.name
+                if name.startswith(f"user_{state['user_id']}_kb_"):
+                    kb_id = name.split("_kb_")[1]
+                    chunks = retrieve(state["user_id"], kb_id, state["message"])
+                    all_chunks.extend(chunks)
+        except Exception as e:
+            logger.error(f"自动检索知识库失败: {e}")
+    else:
+        for kb_id in kb_ids:
+            chunks = retrieve(state["user_id"], kb_id, state["message"])
+            all_chunks.extend(chunks)
+    
     context = "\n\n".join([f"[来源: {c['metadata'].get('source', 'unknown')}] {c['content']}" for c in all_chunks if c.get("content")])
     return {"context": context, "retrieved_chunks": all_chunks}
 
@@ -129,12 +146,19 @@ def llm_reasoning_node(state: dict) -> dict:
 用户问题：{state['message']}
 
 请结合历史记忆和偏好回答。"""
-    else:
+    elif intent == "suggest":
         prompt = f"""你是一个学习助手，基于以下信息回答问题。
 
 {state.get('memory_context', '')}
 
 用户问题：{state['message']}"""
+    else:
+        # general 意图：直接回答，不需要参考资料
+        prompt = f"""你是一个学习助手，请回答用户的问题。
+
+用户问题：{state['message']}
+
+请用简洁清晰的语言回答。"""
 
     response = llm.invoke([HumanMessage(content=prompt)])
 
