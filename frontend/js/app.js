@@ -99,7 +99,7 @@ async function uploadFile(file) {
         const formData = new FormData();
         formData.append('file', file);
 
-        const res = await fetch(`${PYTHON_AGENT_URL}/knowledge/ingest`, {
+        const res = await fetch(`${PYTHON_AGENT_URL}/knowledge/upload?user_id=${userId}&kb_id=default_kb`, {
             method: 'POST',
             body: formData
         });
