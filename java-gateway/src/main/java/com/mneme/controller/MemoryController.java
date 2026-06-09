@@ -17,16 +17,16 @@ public class MemoryController {
     }
 
     @PostMapping("/read")
-    public Result<Map<String, Object>> readMemory(@RequestHeader("userId") Long userId,
+    public Result<Map<String, Object>> readMemory(@RequestParam String userId,
                                                   @RequestParam String[] memoryTypes) {
-        return Result.success(memoryService.readMemory(userId.toString(), memoryTypes));
+        return Result.success(memoryService.readMemory(userId, memoryTypes));
     }
 
     @PostMapping("/write")
-    public Result<Map<String, Object>> writeMemory(@RequestHeader("userId") Long userId,
+    public Result<Map<String, Object>> writeMemory(@RequestParam String userId,
                                                    @RequestBody Map<String, String> request) {
         return Result.success(memoryService.writeMemory(
-            userId.toString(),
+            userId,
             request.get("category"),
             request.get("content")
         ));
