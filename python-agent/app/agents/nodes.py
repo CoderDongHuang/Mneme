@@ -1,13 +1,17 @@
 import json
+from datetime import datetime
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.utils.llm import llm
 from app.agents.prompts import INTENT_CLASSIFICATION_PROMPT, QA_PROMPT
 from app.knowledge.retriever import retrieve
+from app.knowledge.vector_store import vector_store
 from app.memory.working_memory import working_memory
 from app.memory.short_term_memory import short_term_memory
 from app.memory.long_term_memory import long_term_memory
+from app.memory.distillation import distill_conversation, apply_distilled_entries
+from app.memory.reflection import run_reflection
 from app.models.chat import Message
-from datetime import datetime
+from app.core.config import settings
 from app.core.logging import setup_logger
 
 logger = setup_logger("nodes")
@@ -17,8 +21,9 @@ def intent_classification_node(state: dict) -> dict:
     response = llm.invoke([SystemMessage(content="你是一个意图分类器，只输出JSON。"), HumanMessage(content=prompt)])
     try:
         intent_data = json.loads(response.content)
-    except:
-        intent_data = {"intent": "general", "confidence": 0.5, "extracted_entities": []}
+    except json.JSONDecodeError:
+        logger.warning(f"意图识别JSON解析失败，原始响应: {str(response.content)[:200]}")
+        intent_data = {"intent": "general", "confidence": 0.0, "extracted_entities": []}
     logger.info(f"意图识别结果: {intent_data}")
     valid_intents = {"qa", "review", "suggest", "general"}
     intent = intent_data.get("intent", "general")
@@ -32,7 +37,6 @@ def knowledge_retrieval_node(state: dict) -> dict:
     
     # 如果没有指定知识库ID，自动检索该用户所有知识库
     if not kb_ids:
-        from app.knowledge.vector_store import vector_store
         try:
             collections = vector_store.client.list_collections()
             for collection in collections:
@@ -79,7 +83,6 @@ def suggestion_generation_node(state: dict) -> dict:
     weak_points = long_term_memory.get_weak_points(state["user_id"])
 
     # 尝试获取反思结果
-    from app.memory.reflection import run_reflection
     reflection_result = run_reflection(state["user_id"]) if weak_points else {}
     priority_points = reflection_result.get("priority_weak_points", [])
 
@@ -106,27 +109,36 @@ def format_response_node(state: dict) -> dict:
         answer = state.get("answer", "")
     return {"answer": answer}
 
-from app.memory.distillation import distill_conversation, apply_distilled_entries
-from app.memory.short_term_memory import short_term_memory
-from app.core.config import settings
-from datetime import datetime
-
 def memory_write_node(state: dict) -> dict:
-    """记忆写入（阶段三：蒸馏 + 触发）"""
+    """记忆写入（阶段三：蒸馏 + 触发）
+
+    蒸馏触发逻辑：
+    - memory_write_node 执行时，当前轮的用户消息已经写入 short_term_memory
+    - 因此 history[-1] 是当前消息（时间戳 ≈ 现在），不能用来判断空闲
+    - 检查 history[-2]（上一轮的助手回复时间）来判断用户是否空闲超过阈值
+    - 至少需要 2 条消息才有"上一轮"的概念
+    """
     user_id = state["user_id"]
     session_id = state["session_id"]
 
-    # 获取完整会话历史
     history = short_term_memory.get_history(session_id)
-    history_dicts = [{"role": m.role, "content": m.content} for m in history]
+    if len(history) < 2:
+        return {"memory_entries_to_write": []}
 
-    # 蒸馏触发：检查上次消息时间，超过 15 分钟则蒸馏
-    if history:
-        last_msg = history[-1]
-        last_time = datetime.fromisoformat(last_msg.timestamp)
-        if (datetime.now() - last_time).total_seconds() > settings.DISTILLATION_IDLE_MINUTES * 60:
-            distilled = distill_conversation(session_id, history_dicts[:-1])  # 蒸馏旧对话
-            apply_distilled_entries(user_id, distilled)
+    # 检查倒数第二条消息的时间（上一轮对话的最后一条消息）
+    # 如果距今超过 DISTILLATION_IDLE_MINUTES，说明用户空闲了一段时间
+    previous_round_last_msg = history[-2]
+    previous_time = datetime.fromisoformat(previous_round_last_msg.timestamp)
+    idle_seconds = (datetime.now() - previous_time).total_seconds()
+
+    if idle_seconds > settings.DISTILLATION_IDLE_MINUTES * 60:
+        # 蒸馏旧对话：排除当前轮次的用户消息（history[-1]）
+        history_dicts = [
+            {"role": m.role, "content": m.content}
+            for m in history[:-1]
+        ]
+        distilled = distill_conversation(session_id, history_dicts)
+        apply_distilled_entries(user_id, distilled)
 
     return {"memory_entries_to_write": []}
 
