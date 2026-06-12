@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime
 from app.utils.llm import llm
@@ -38,9 +39,8 @@ def distill_conversation(session_id: str, conversation: list) -> list:
     ])
 
     try:
-        import json
         entries = json.loads(response.content)
-    except:
+    except json.JSONDecodeError:
         logger.warning("蒸馏输出解析失败")
         return []
 

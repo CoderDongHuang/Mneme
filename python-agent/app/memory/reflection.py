@@ -1,3 +1,6 @@
+import json
+from app.utils.llm import llm
+from langchain_core.messages import HumanMessage, SystemMessage
 from app.memory.long_term_memory import long_term_memory
 from app.core.logging import setup_logger
 
@@ -31,10 +34,6 @@ def run_reflection(user_id: str) -> dict:
         logger.info(f"用户 {user_id} 记忆数据不足，跳过反思")
         return {}
 
-    from app.utils.llm import llm
-    from langchain_core.messages import HumanMessage, SystemMessage
-    import json
-
     prompt = REFLECTION_PROMPT.format(
         preferences="\n".join([p.content for p in prefs]),
         weak_points="\n".join([f"{wp.topic}({wp.count}次)" for wp in weak_points]),
@@ -50,6 +49,6 @@ def run_reflection(user_id: str) -> dict:
         result = json.loads(response.content)
         logger.info(f"用户 {user_id} 反思完成")
         return result
-    except:
+    except json.JSONDecodeError:
         logger.warning("反思结果解析失败")
         return {}
