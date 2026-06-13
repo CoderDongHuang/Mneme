@@ -5,12 +5,10 @@ from app.utils.llm import llm
 from app.agents.prompts import INTENT_CLASSIFICATION_PROMPT, QA_PROMPT
 from app.knowledge.retriever import retrieve
 from app.knowledge.vector_store import vector_store
-from app.memory.working_memory import working_memory
 from app.memory.short_term_memory import short_term_memory
 from app.memory.long_term_memory import long_term_memory
 from app.memory.distillation import distill_conversation, apply_distilled_entries
 from app.memory.reflection import run_reflection
-from app.models.chat import Message
 from app.core.config import settings
 from app.core.logging import setup_logger
 
@@ -61,8 +59,8 @@ def memory_retrieval_node(state: dict) -> dict:
     weak_points = long_term_memory.get_weak_points(state["user_id"])
     history = short_term_memory.get_history(state["session_id"])
 
-    memory_context = "用户偏好:\n" + "\n".join([p.content for p in prefs]) + "\n\n"
-    memory_context += "薄弱点:\n" + "\n".join([f"- {wp.topic} (提及{wp.count}次)" for wp in weak_points]) + "\n\n"
+    memory_context = "用户偏好:\n" + "\n".join([p.get("content", "") for p in prefs]) + "\n\n"
+    memory_context += "薄弱点:\n" + "\n".join([f"- {wp.get('topic', '')} (重要性{wp.get('importance', 0.5):.1f})" for wp in weak_points]) + "\n\n"
     memory_context += "历史对话:\n" + "\n".join([f"{m.role}: {m.content}" for m in history[-5:]])
 
     return {"memory_context": memory_context}
@@ -72,9 +70,10 @@ def weak_point_retrieval_node(state: dict) -> dict:
     weak_points = long_term_memory.get_weak_points(state["user_id"])
     progress = long_term_memory.get_progress(state["user_id"])
 
-    context = "薄弱点:\n" + "\n".join([f"- {wp.topic}: {wp.content}" for wp in weak_points]) + "\n\n"
+    context = "薄弱点:\n" + "\n".join([f"- {wp.get('topic', '')}: {wp.get('content', '')}" for wp in weak_points]) + "\n\n"
     if progress:
-        context += f"当前进度: {progress.current_chapter}/{progress.current_section}\n\n"
+        topic = progress.get("topic", "")
+        context += f"当前进度: {topic}\n\n"
 
     return {"memory_context": context}
 
@@ -86,7 +85,7 @@ def suggestion_generation_node(state: dict) -> dict:
     reflection_result = run_reflection(state["user_id"]) if weak_points else {}
     priority_points = reflection_result.get("priority_weak_points", [])
 
-    context = "薄弱点:\n" + "\n".join([f"- {wp.topic}" for wp in weak_points]) + "\n\n"
+    context = "薄弱点:\n" + "\n".join([f"- {wp.get('topic', '')}" for wp in weak_points]) + "\n\n"
     if priority_points:
         context += f"优先处理: {', '.join(priority_points)}\n\n"
 

@@ -35,9 +35,9 @@ def run_reflection(user_id: str) -> dict:
         return {}
 
     prompt = REFLECTION_PROMPT.format(
-        preferences="\n".join([p.content for p in prefs]),
-        weak_points="\n".join([f"{wp.topic}({wp.count}次)" for wp in weak_points]),
-        progress=f"{progress.current_chapter}/{progress.current_section}" if progress else "无"
+        preferences="\n".join([p.get("content", "") for p in prefs]),
+        weak_points="\n".join([f"{wp.get('topic', '')}(重要性{wp.get('importance', 0.5):.1f})" for wp in weak_points]),
+        progress=progress.get("topic", "无") if progress else "无"
     )
 
     response = llm.invoke([

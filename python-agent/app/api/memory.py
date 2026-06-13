@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.models.memory import MemoryReadRequest, MemoryWriteRequest, LongTermMemory
+from app.models.memory import MemoryReadRequest, MemoryWriteRequest
 from app.memory.long_term_memory import long_term_memory
 from app.core.logging import setup_logger
 
