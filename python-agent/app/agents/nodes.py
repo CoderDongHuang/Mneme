@@ -136,7 +136,7 @@ def memory_write_node(state: dict) -> dict:
             {"role": m.role, "content": m.content}
             for m in history[:-1]
         ]
-        distilled = distill_conversation(session_id, history_dicts)
+        distilled = distill_conversation(user_id, session_id, history_dicts)
         apply_distilled_entries(user_id, distilled)
 
     return {"memory_entries_to_write": []}
