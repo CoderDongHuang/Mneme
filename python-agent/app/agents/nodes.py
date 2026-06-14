@@ -33,18 +33,23 @@ def knowledge_retrieval_node(state: dict) -> dict:
     all_chunks = []
     kb_ids = state.get("knowledge_base_ids", [])
     
-    # 如果没有指定知识库ID，自动检索该用户所有知识库
+    # 如果没有指定知识库ID：
+    # - qa 意图：自动检索该用户所有知识库（用户想提问但没指定范围）
+    # - 其他意图：不检索知识库，走纯对话/记忆链路（与架构文档一致）
     if not kb_ids:
-        try:
-            collections = vector_store.client.list_collections()
-            for collection in collections:
-                name = collection.name
-                if name.startswith(f"user_{state['user_id']}_kb_"):
-                    kb_id = name.split("_kb_")[1]
-                    chunks = retrieve(state["user_id"], kb_id, state["message"])
-                    all_chunks.extend(chunks)
-        except Exception as e:
-            logger.error(f"自动检索知识库失败: {e}")
+        if state.get("intent") == "qa":
+            try:
+                collections = vector_store.client.list_collections()
+                for collection in collections:
+                    name = collection.name
+                    if name.startswith(f"user_{state['user_id']}_kb_"):
+                        kb_id = name.split("_kb_")[1]
+                        chunks = retrieve(state["user_id"], kb_id, state["message"])
+                        all_chunks.extend(chunks)
+                logger.info(f"qa 意图无指定知识库，自动检索到 {len(all_chunks)} 条相关片段")
+            except Exception as e:
+                logger.error(f"自动检索知识库失败: {e}")
+        # 非 qa 意图 + 空 kb_ids → 跳过检索
     else:
         for kb_id in kb_ids:
             chunks = retrieve(state["user_id"], kb_id, state["message"])
@@ -137,7 +142,8 @@ def memory_write_node(state: dict) -> dict:
             for m in history[:-1]
         ]
         distilled = distill_conversation(user_id, session_id, history_dicts)
-        apply_distilled_entries(user_id, distilled)
+        pending = apply_distilled_entries(user_id, distilled)
+        return {"memory_entries_to_write": distilled, "pending_memories": pending}
 
     return {"memory_entries_to_write": []}
 
