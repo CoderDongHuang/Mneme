@@ -29,6 +29,12 @@
             </div>
             <div id="messages"></div>
             <div id="input-area">
+                <input type="file" id="file-input" style="display: none;" accept=".pdf,.docx,.doc,.md,.txt">
+                <button id="upload-btn" class="upload-btn" title="上传文件">
+                    <svg viewBox="0 0 24 24" width="20" height="20">
+                        <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                    </svg>
+                </button>
                 <textarea id="user-input" placeholder="输入问题..." rows="1"></textarea>
                 <button id="send-btn">
                     <svg viewBox="0 0 24 24" width="20" height="20">
@@ -38,6 +44,7 @@
             </div>
         </div>
     </div>
+    <script src="js/config.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const PYTHON_AGENT_URL = 'http://localhost:8000/api/v1';
+const API_BASE = MnemeConfig.baseUrl;
 const userId = 'test_user';
 let sessionId = null;
 
@@ -6,6 +6,7 @@ let sessionId = null;
 document.addEventListener('DOMContentLoaded', () => {
     loadSessions();
     setupNewChat();
+    setupUpload();
 });
 
 document.getElementById('send-btn').addEventListener('click', sendMessage);
@@ -26,7 +27,7 @@ document.getElementById('user-input').addEventListener('input', () => {
 // 加载历史对话列表
 async function loadSessions() {
     try {
-        const res = await fetch(`${PYTHON_AGENT_URL}/sessions?user_id=${userId}`);
+        const res = await fetch(`${API_BASE}/sessions?user_id=${userId}`);
         const data = await res.json();
         const sessionList = document.getElementById('session-list');
         
@@ -65,7 +66,7 @@ async function switchSession(id) {
     document.getElementById('messages').innerHTML = '';
     
     try {
-        const res = await fetch(`${PYTHON_AGENT_URL}/session/${id}`);
+        const res = await fetch(`${API_BASE}/session/${id}`);
         const data = await res.json();
         
         if (data.messages) {
@@ -100,7 +101,7 @@ async function sendMessage() {
     const assistantDiv = appendMessage('assistant', '');
 
     try {
-        const response = await fetch(`${PYTHON_AGENT_URL}/chat/stream`, {
+        const response = await fetch(`${API_BASE}/chat/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -126,12 +127,23 @@ async function sendMessage() {
                 if (line.startsWith('data: ')) {
                     const data = line.slice(6);
                     if (data === '[DONE]') continue;
+                    if (data.startsWith('[PENDING] ')) {
+                        // 待确认记忆 — 展示确认卡片
+                        const pendingJson = data.slice(10);
+                        try {
+                            const pendingMemories = JSON.parse(pendingJson);
+                            showMemoryConfirmations(pendingMemories);
+                        } catch (e) {
+                            console.error('解析待确认记忆失败:', e);
+                        }
+                        continue;
+                    }
                     content += data;
                     assistantDiv.textContent = content;
                 }
             }
         }
-        
+
         // 刷新历史列表
         loadSessions();
     } catch (e) {
@@ -160,4 +172,138 @@ function appendMessage(role, content) {
     messages.appendChild(wrapper);
     messages.scrollTop = messages.scrollHeight;
     return bubble;
+}
+
+// 文件上传
+function setupUpload() {
+    const uploadBtn = document.getElementById('upload-btn');
+    const fileInput = document.getElementById('file-input');
+    
+    uploadBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('user_id', userId);
+        formData.append('kb_id', 'default_kb');
+        
+        appendMessage('user', `📎 上传文件: ${file.name}`);
+        
+        try {
+            const response = await fetch(`${API_BASE}/knowledge/upload`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            appendMessage('assistant', `文件 "${file.name}" 上传成功，正在解析中...`);
+        } catch (err) {
+            appendMessage('assistant', `文件上传失败: ${err.message}`);
+        }
+        
+        // 重置 input，允许重复上传同一文件
+        fileInput.value = '';
+    });
+}
+
+// ── 记忆确认 ──────────────────────────────────────────
+
+function showMemoryConfirmations(pendingMemories) {
+    if (!pendingMemories || pendingMemories.length === 0) return;
+
+    const messages = document.getElementById('messages');
+    const cardWrapper = document.createElement('div');
+    cardWrapper.className = 'memory-confirm-card';
+
+    const title = document.createElement('div');
+    title.className = 'memory-confirm-title';
+    title.textContent = `💡 我注意到了 ${pendingMemories.length} 条关于你的信息，要记住吗？`;
+
+    cardWrapper.appendChild(title);
+
+    for (const mem of pendingMemories) {
+        const row = document.createElement('div');
+        row.className = 'memory-confirm-row';
+
+        const categoryLabel = {
+            'preference': '偏好',
+            'weak_point': '薄弱点',
+            'progress': '进度'
+        }[mem.category] || mem.category;
+
+        const confidencePercent = Math.round((mem.confidence || 0.7) * 100);
+
+        row.innerHTML = `
+            <span class="memory-confirm-tag">${categoryLabel}</span>
+            <span class="memory-confirm-content">${escapeHtml(mem.content)}</span>
+            <span class="memory-confirm-confidence">${confidencePercent}%</span>
+            <button class="memory-confirm-btn confirm" data-temp-id="${escapeHtml(mem.temp_id)}"
+                data-category="${escapeHtml(mem.category)}"
+                data-content="${escapeHtml(mem.content)}"
+                data-topic="${escapeHtml(mem.topic || '')}">✓</button>
+            <button class="memory-confirm-btn dismiss" data-temp-id="${escapeHtml(mem.temp_id)}">✗</button>
+        `;
+        cardWrapper.appendChild(row);
+    }
+
+    messages.appendChild(cardWrapper);
+    messages.scrollTop = messages.scrollHeight;
+
+    // 绑定确认/拒绝按钮事件
+    cardWrapper.querySelectorAll('.memory-confirm-btn.confirm').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const { tempId, category, content, topic } = btn.dataset;
+            try {
+                await fetch(`${API_BASE}/memory/confirm`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        temp_id: tempId,
+                        action: 'confirm',
+                        category, content, topic
+                    })
+                });
+            } catch (e) { console.error('记忆确认失败:', e); }
+            btn.closest('.memory-confirm-row').remove();
+            checkAllConfirmed(cardWrapper);
+        });
+    });
+
+    cardWrapper.querySelectorAll('.memory-confirm-btn.dismiss').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const { tempId } = btn.dataset;
+            try {
+                await fetch(`${API_BASE}/memory/confirm`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        temp_id: tempId,
+                        action: 'dismiss'
+                    })
+                });
+            } catch (e) { console.error('记忆拒绝失败:', e); }
+            btn.closest('.memory-confirm-row').remove();
+            checkAllConfirmed(cardWrapper);
+        });
+    });
+}
+
+function checkAllConfirmed(cardWrapper) {
+    // 所有条目处理完毕后移除卡片
+    if (cardWrapper.querySelectorAll('.memory-confirm-row').length === 0) {
+        cardWrapper.remove();
+    }
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
