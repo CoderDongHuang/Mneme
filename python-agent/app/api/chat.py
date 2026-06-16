@@ -1,8 +1,9 @@
 from fastapi import APIRouter
-from app.models.chat import ChatRequest, ChatResponse, Source
+from app.models.chat import ChatRequest, ChatResponse, Source, PendingMemory
 from app.agents.graph import agent_graph
 from app.memory.working_memory import working_memory
 from app.memory.short_term_memory import short_term_memory
+from app.memory.session_store import session_store
 from app.memory.reflection_scheduler import reflection_scheduler
 from app.models.chat import Message
 from datetime import datetime
@@ -13,15 +14,24 @@ logger = setup_logger("chat_api")
 
 @router.get("/sessions")
 async def list_sessions(user_id: str = "default"):
-    """获取用户的历史对话列表"""
-    sessions = working_memory.get_all_sessions(user_id)
+    """获取用户的历史对话列表（从 JSON 文件持久化存储读取）"""
+    sessions = session_store.get_sessions(user_id)
     return {"sessions": sessions}
 
 @router.get("/session/{session_id}")
 async def get_session(session_id: str):
-    """获取单个对话的完整历史"""
-    messages = working_memory.get_messages(session_id)
-    return {"session_id": session_id, "messages": messages}
+    """获取单个对话的完整历史（优先从短期记忆，降级到工作记忆）"""
+    messages = short_term_memory.get_history(session_id)
+    if not messages:
+        messages = working_memory.get_messages(session_id)
+    # 转换为可序列化格式
+    return {
+        "session_id": session_id,
+        "messages": [
+            {"role": m.role, "content": m.content, "timestamp": m.timestamp}
+            for m in messages
+        ]
+    }
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -31,6 +41,12 @@ async def chat(request: ChatRequest):
     user_msg = Message(role="user", content=request.message, timestamp=datetime.now().isoformat(), token_count=len(request.message) // 4)
     working_memory.add_message(request.session_id, user_msg)
     short_term_memory.add_message(request.session_id, user_msg)
+
+    # 持久化会话元数据（标题用第一条用户消息）
+    session_store.register_session(
+        request.user_id, request.session_id,
+        title=request.message[:30] + ("..." if len(request.message) > 30 else "")
+    )
 
     result = agent_graph.invoke({
         "user_id": request.user_id,
@@ -44,6 +60,9 @@ async def chat(request: ChatRequest):
         assistant_msg = Message(role="assistant", content=result["answer"], timestamp=datetime.now().isoformat(), token_count=len(result["answer"]) // 4)
         working_memory.add_message(request.session_id, assistant_msg)
         short_term_memory.add_message(request.session_id, assistant_msg)
+
+    # 更新会话消息计数
+    session_store.increment_message_count(request.user_id, request.session_id)
 
     # 记录会话并检查是否需要触发反思
     reflection_scheduler.record_session(request.user_id)
@@ -63,7 +82,6 @@ async def chat(request: ChatRequest):
         ))
 
     # 待确认记忆（蒸馏产物中置信度条目）
-    from app.models.chat import PendingMemory
     pending_memories = [
         PendingMemory(**pm) for pm in result.get("pending_memories", [])
     ]

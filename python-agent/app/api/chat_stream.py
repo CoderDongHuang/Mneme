@@ -25,6 +25,7 @@ from app.agents.nodes import (
 from app.agents.prompts import QA_PROMPT
 from app.memory.working_memory import working_memory
 from app.memory.short_term_memory import short_term_memory
+from app.memory.session_store import session_store
 from app.memory.reflection_scheduler import reflection_scheduler
 from app.utils.llm import llm
 from app.core.logging import setup_logger
@@ -111,6 +112,9 @@ def _run_post_llm_nodes(state: dict, answer: str) -> list:
     working_memory.add_message(state["session_id"], assistant_msg)
     short_term_memory.add_message(state["session_id"], assistant_msg)
 
+    # 更新会话消息计数
+    session_store.increment_message_count(state["user_id"], state["session_id"])
+
     # 摘要压缩检查
     if short_term_memory.should_summarize(state["session_id"]):
         short_term_memory.summarize(state["session_id"])
@@ -134,6 +138,12 @@ async def chat_stream(request: ChatRequest):
     )
     working_memory.add_message(request.session_id, user_msg)
     short_term_memory.add_message(request.session_id, user_msg)
+
+    # 持久化会话元数据
+    session_store.register_session(
+        request.user_id, request.session_id,
+        title=request.message[:30] + ("..." if len(request.message) > 30 else "")
+    )
 
     # 初始化状态
     state = {
