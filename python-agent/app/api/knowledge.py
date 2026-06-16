@@ -63,3 +63,32 @@ async def ingest(request: DocumentIngestRequest):
 async def search(query: str, user_id: str, kb_id: str, top_k: int = 5):
     chunks = retrieve(user_id, kb_id, query, top_k)
     return RetrieverResult(chunks=chunks, query=query)
+
+
+# ── 运维管理接口 ──────────────────────────────────────────
+
+@router.get("/admin/collections")
+async def list_collections(user_id: str):
+    """列出某用户的所有知识库 collection"""
+    from app.knowledge.vector_store import vector_store
+    return vector_store.get_collection_stats(user_id)
+
+
+@router.get("/admin/stats")
+async def global_stats():
+    """获取全局 Chroma 统计信息"""
+    from app.knowledge.vector_store import vector_store
+    return vector_store.get_total_stats()
+
+
+@router.post("/admin/cleanup")
+async def cleanup_orphans(valid_kb_pairs: list[tuple[str, str]]):
+    """清理孤儿 collection。
+
+    Args:
+        valid_kb_pairs: [(user_id, kb_id), ...] 合法的知识库对列表
+    """
+    from app.knowledge.vector_store import vector_store
+    result = vector_store.cleanup_orphan_collections(set(valid_kb_pairs))
+    logger.info(f"孤儿 collection 清理完成: 删除 {len(result['removed'])} 个")
+    return result
