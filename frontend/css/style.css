@@ -196,6 +196,27 @@ body {
     align-items: flex-end;
 }
 
+.upload-btn {
+    width: 44px;
+    height: 44px;
+    background: #f5f5f5;
+    color: #666;
+    border: 1px solid #d9d9d9;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+    flex-shrink: 0;
+}
+
+.upload-btn:hover {
+    background: #e6f7ff;
+    border-color: #1890ff;
+    color: #1890ff;
+}
+
 #user-input {
     flex: 1;
     padding: 12px 15px;
@@ -254,4 +275,86 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #bfbfbf;
+}
+
+/* ── 记忆确认卡片 ─────────────────────────────── */
+
+.memory-confirm-card {
+    background: #fff7e6;
+    border: 1px solid #ffd591;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin: 12px 0;
+    max-width: 85%;
+    align-self: center;
+}
+
+.memory-confirm-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #ad6800;
+    margin-bottom: 10px;
+}
+
+.memory-confirm-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid #ffe7ba;
+    font-size: 13px;
+}
+
+.memory-confirm-row:last-child {
+    border-bottom: none;
+}
+
+.memory-confirm-tag {
+    background: #fa8c16;
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.memory-confirm-content {
+    flex: 1;
+    color: #595959;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.memory-confirm-confidence {
+    color: #8c8c8c;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.memory-confirm-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s;
+}
+
+.memory-confirm-btn:hover {
+    transform: scale(1.1);
+}
+
+.memory-confirm-btn.confirm {
+    background: #52c41a;
+    color: #fff;
+}
+
+.memory-confirm-btn.dismiss {
+    background: #ff4d4f;
+    color: #fff;
 }
