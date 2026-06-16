@@ -180,6 +180,20 @@ class MemoryVectorStore:
         except Exception:
             return 0
 
+    def list_users(self) -> List[str]:
+        """列出所有拥有记忆的用户 ID（用于批量维护任务）"""
+        try:
+            result = self._collection.get(include=["metadatas"])
+            metadatas = result.get("metadatas", [])
+            user_ids = set()
+            for meta in metadatas:
+                uid = meta.get("user_id", "")
+                if uid:
+                    user_ids.add(uid)
+            return list(user_ids)
+        except Exception:
+            return []
+
     # ── 语义去重 ────────────────────────────────────────────
 
     def find_duplicates(
