@@ -95,8 +95,12 @@ def _run_pre_llm_nodes(state: dict) -> dict:
     return state
 
 
-def _run_post_llm_nodes(state: dict, answer: str):
-    """LLM 推理完成后：写入记忆、调度反思"""
+def _run_post_llm_nodes(state: dict, answer: str) -> list:
+    """LLM 推理完成后：写入记忆、调度反思。
+
+    Returns:
+        待确认记忆列表（用于推送确认卡片给用户）
+    """
     state["answer"] = answer
 
     # 写入助手消息到工作记忆和短期记忆
@@ -115,6 +119,8 @@ def _run_post_llm_nodes(state: dict, answer: str):
     state.update(memory_write_node(state))
     reflection_scheduler.record_session(state["user_id"])
     reflection_scheduler.check_and_trigger(state["user_id"])
+
+    return state.get("pending_memories", [])
 
 
 @router.post("/chat/stream")
@@ -154,13 +160,17 @@ async def chat_stream(request: ChatRequest):
                     yield f"data: {chunk.content}\n\n"
 
             # ── 收尾阶段 ──
-            _run_post_llm_nodes(state, full_answer)
+            pending = _run_post_llm_nodes(state, full_answer)
 
         except Exception as e:
             logger.error(f"流式输出异常: {e}", exc_info=True)
             yield f"data: [ERROR] {str(e)}\n\n"
 
         finally:
+            # 待确认记忆以 JSON 形式推送（前端据此展示确认卡片）
+            if pending:
+                import json as _json
+                yield f"data: [PENDING] {_json.dumps(pending, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(

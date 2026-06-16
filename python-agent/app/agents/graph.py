@@ -24,6 +24,7 @@ class AgentState(TypedDict):
     answer: str
     suggestions: List[str]
     memory_entries_to_write: List[dict]
+    pending_memories: List[dict]
 
 def route_by_intent(state: AgentState) -> str:
     intent = state["intent"]

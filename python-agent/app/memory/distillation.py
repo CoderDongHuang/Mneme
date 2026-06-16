@@ -86,7 +86,7 @@ def distill_conversation(user_id: str, session_id: str, conversation: list) -> l
         logger.warning(f"蒸馏输出 JSON 解析失败，原始响应前200字符: {str(response.content)[:200]}")
         return []
 
-    # 过滤低置信度和标记为不新的条目
+    # 过滤：只保留置信度 >= 0.6 且 LLM 认为不重复的
     filtered = [
         e for e in entries
         if e.get("confidence", 0) >= 0.6 and e.get("is_new", True)
@@ -99,26 +99,50 @@ def distill_conversation(user_id: str, session_id: str, conversation: list) -> l
     return filtered
 
 
-def apply_distilled_entries(user_id: str, entries: list):
+# 高置信度阈值：>= 此值直接写入长期记忆，< 此值待用户确认
+HIGH_CONFIDENCE_THRESHOLD = 0.8
+
+
+def apply_distilled_entries(user_id: str, entries: list) -> list:
     """应用蒸馏结果到长期记忆。
 
-    长记忆层（LongTermMemoryManager）内部已做向量级语义去重，
-    此处只做分类路由。
+    决策逻辑：
+    - confidence >= 0.8 → 直接写入长期记忆
+    - 0.6 <= confidence < 0.8 → 返回为待确认条目（由调用方返回给用户）
+
+    Returns:
+        待确认的记忆条目列表 (List[PendingMemory-like dict])
     """
     written = 0
     skipped = 0
+    pending = []
+
     for entry in entries:
         category = entry.get("category")
         content = entry.get("content", "")
+        confidence = entry.get("confidence", 0.5)
+        topic = entry.get("topic", content)
 
+        # 中等置信度 → 待用户确认
+        if confidence < HIGH_CONFIDENCE_THRESHOLD:
+            import uuid
+            pending.append({
+                "temp_id": f"pending_{uuid.uuid4().hex[:8]}",
+                "category": category,
+                "content": content,
+                "topic": topic,
+                "confidence": confidence
+            })
+            continue
+
+        # 高置信度 → 直接写入
         if category == "preference":
             result = long_term_memory.add_preference(user_id, content)
             if result:
                 written += 1
             else:
-                skipped += 1  # 语义去重命中
+                skipped += 1
         elif category == "weak_point":
-            topic = entry.get("topic", content)
             result = long_term_memory.add_weak_point(user_id, content, topic)
             if result:
                 written += 1
@@ -131,5 +155,9 @@ def apply_distilled_entries(user_id: str, entries: list):
             long_term_memory.update_progress(user_id, chapter, section)
             written += 1
 
-    if written or skipped:
-        logger.info(f"蒸馏入库: 写入 {written} 条, 去重跳过 {skipped} 条")
+    if written or skipped or pending:
+        logger.info(
+            f"蒸馏入库: 写入 {written} 条, 去重跳过 {skipped} 条, "
+            f"待确认 {len(pending)} 条"
+        )
+    return pending

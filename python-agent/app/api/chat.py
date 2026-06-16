@@ -62,4 +62,14 @@ async def chat(request: ChatRequest):
             score=chunk.get("score", 0.0)
         ))
 
-    return ChatResponse(answer=result.get("answer", ""), sources=sources)
+    # 待确认记忆（蒸馏产物中置信度条目）
+    from app.models.chat import PendingMemory
+    pending_memories = [
+        PendingMemory(**pm) for pm in result.get("pending_memories", [])
+    ]
+
+    return ChatResponse(
+        answer=result.get("answer", ""),
+        sources=sources,
+        pending_memories=pending_memories
+    )
