@@ -23,5 +23,8 @@ pypdf==6.13.0
 docx2txt==0.9
 unstructured==0.18.32
 
+# 定时任务
+apscheduler==3.10.4
+
 # 环境变量
 python-dotenv==1.0.1
