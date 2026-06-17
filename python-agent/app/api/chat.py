@@ -24,7 +24,6 @@ async def get_session(session_id: str):
     messages = short_term_memory.get_history(session_id)
     if not messages:
         messages = working_memory.get_messages(session_id)
-    # 转换为可序列化格式
     return {
         "session_id": session_id,
         "messages": [
@@ -42,7 +41,7 @@ async def chat(request: ChatRequest):
     working_memory.add_message(request.session_id, user_msg)
     short_term_memory.add_message(request.session_id, user_msg)
 
-    # 持久化会话元数据（标题用第一条用户消息）
+    # 持久化会话元数据
     session_store.register_session(
         request.user_id, request.session_id,
         title=request.message[:30] + ("..." if len(request.message) > 30 else "")
@@ -64,7 +63,17 @@ async def chat(request: ChatRequest):
     # 更新会话消息计数
     session_store.increment_message_count(request.user_id, request.session_id)
 
-    # 记录会话并检查是否需要触发反思
+    # 检查摘要压缩 —— 产生 session_summary
+    session_summary = None
+    if short_term_memory.should_summarize(request.session_id):
+        short_term_memory.summarize(request.session_id)
+        history = short_term_memory.get_history(request.session_id)
+        for m in history:
+            if m.role == "system" and m.content.startswith("[历史摘要]"):
+                session_summary = m.content
+                break
+
+    # 记录会话并异步触发反思
     reflection_scheduler.record_session(request.user_id)
     reflection_scheduler.check_and_trigger(request.user_id)
 
@@ -81,13 +90,27 @@ async def chat(request: ChatRequest):
             score=chunk.get("score", 0.0)
         ))
 
-    # 待确认记忆（蒸馏产物中置信度条目）
+    # 待确认记忆
     pending_memories = [
         PendingMemory(**pm) for pm in result.get("pending_memories", [])
     ]
 
+    # 从蒸馏产物中提取 memory_insights
+    memory_insights = []
+    for entry in result.get("memory_entries_to_write", []):
+        cat = entry.get("category", "")
+        content = entry.get("content", "")
+        if cat == "preference":
+            memory_insights.append(f"偏好：{content}")
+        elif cat == "weak_point":
+            memory_insights.append(f"薄弱点：{content}")
+        elif cat == "progress":
+            memory_insights.append(f"进度：{content}")
+
     return ChatResponse(
         answer=result.get("answer", ""),
         sources=sources,
-        pending_memories=pending_memories
+        session_summary=session_summary,
+        memory_insights=memory_insights,
+        pending_memories=pending_memories,
     )
