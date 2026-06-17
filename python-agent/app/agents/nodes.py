@@ -14,6 +14,60 @@ from app.core.logging import setup_logger
 
 logger = setup_logger("nodes")
 
+
+def build_llm_prompt(state: dict) -> str:
+    """根据意图构建 LLM 推理 prompt。供 graph 节点和流式路径共用。"""
+    intent = state["intent"]
+
+    if intent == "qa":
+        return QA_PROMPT.format(
+            context=state.get("context", "无参考资料"),
+            question=state["message"]
+        )
+    elif intent == "review":
+        return f"""你是一个学习助手，基于用户的历史记忆回答问题。
+
+{state.get('memory_context', '')}
+
+用户问题：{state['message']}
+
+请结合历史记忆和偏好回答。"""
+    elif intent == "suggest":
+        return f"""你是一个学习助手。请分析用户的薄弱点并生成个性化学习建议。
+
+用户学习数据：
+{state.get('memory_context', '无数据')}
+
+用户问题：{state['message']}
+
+请按以下结构输出：
+1. 薄弱点分析：哪些知识点需要优先加强
+2. 学习建议（3 条）：具体可执行的下一步学习计划"""
+    else:  # general
+        return f"""你是一个学习助手，请回答用户的问题。
+
+用户问题：{state['message']}
+
+请用简洁清晰的语言回答。"""
+
+
+def run_pre_llm_nodes(state: dict) -> dict:
+    """执行 LLM 推理之前的所有节点：意图识别 → 检索。
+    供 graph 和流式路径共用，不包含 LLM 调用。
+    """
+    state.update(intent_classification_node(state))
+    intent = state["intent"]
+    logger.info(f"意图识别: intent={intent}, confidence={state.get('confidence', 0)}")
+
+    if intent == "qa":
+        state.update(knowledge_retrieval_node(state))
+    elif intent == "review":
+        state.update(memory_retrieval_node(state))
+    elif intent == "suggest":
+        state.update(weak_point_retrieval_node(state))
+
+    return state
+
 def intent_classification_node(state: dict) -> dict:
     prompt = INTENT_CLASSIFICATION_PROMPT.format(question=state["message"])
     response = llm.invoke([SystemMessage(content="你是一个意图分类器，只输出JSON。"), HumanMessage(content=prompt)])
