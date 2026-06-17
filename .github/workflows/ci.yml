@@ -27,8 +27,8 @@ jobs:
       - run: pip install pytest
       - run: cd python-agent && SKIP_AUTH=true python -m pytest tests/ -v --tb=short
         env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || 'ci-dummy-key' }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY || 'ci-dummy-key' }}
 
   integration-test:
     runs-on: ubuntu-latest
@@ -44,8 +44,8 @@ jobs:
       - run: pip install pytest
       - run: cd python-agent && python -m pytest tests/ -v -m "integration" --tb=short
         env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || 'ci-dummy-key' }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY || 'ci-dummy-key' }}
       - name: Cleanup
         if: always()
         run: docker compose down
