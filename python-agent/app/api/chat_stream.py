@@ -17,7 +17,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
-from app.models.chat import ChatRequest, Message, PendingMemory
+from app.models.chat import ChatRequest, Message
 from app.agents.nodes import (
     build_llm_prompt,
     run_pre_llm_nodes,

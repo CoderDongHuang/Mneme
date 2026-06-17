@@ -10,7 +10,7 @@
 - 薄弱点衰减
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from app.memory.long_term_memory import LongTermMemoryManager
 
 

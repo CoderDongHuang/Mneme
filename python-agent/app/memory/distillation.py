@@ -7,7 +7,6 @@
 - 写入前进行语义去重（双层：LLM 判断 + 向量相似度）
 """
 import json
-from datetime import datetime
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.utils.llm import llm
 from app.memory.long_term_memory import long_term_memory

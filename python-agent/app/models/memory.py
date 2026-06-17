@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List
 from app.models.chat import Message
 
 class Preference(BaseModel):

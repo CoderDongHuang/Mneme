@@ -23,10 +23,7 @@ SUMMARY_PROMPT = """请对以下对话历史进行摘要压缩，保留核心信
 
 请用简洁的语言输出摘要。"""
 
-# 两次摘要之间的最小间隔（秒）
 SUMMARY_COOLDOWN_SECONDS = 300  # 5 分钟
-
-# 摘要后保留的最近消息条数
 KEEP_RECENT_COUNT = 3
 
 
@@ -56,13 +53,7 @@ class ShortTermMemoryManager:
         self._last_summary_time.pop(session_id, None)
 
     def should_summarize(self, session_id: str) -> bool:
-        """判断是否需要摘要压缩。
-
-        条件：
-        1. 历史 token 总量超过阈值
-        2. 距上次摘要超过冷却期
-        3. 有足够多的消息值得压缩
-        """
+        """判断是否需要摘要压缩。"""
         history = self._store.get(session_id, [])
         if len(history) <= KEEP_RECENT_COUNT:
             return False
@@ -71,7 +62,6 @@ class ShortTermMemoryManager:
         if total_tokens <= settings.WORKING_MEMORY_MAX_TOKENS:
             return False
 
-        # 冷却期检查
         last_time = self._last_summary_time.get(session_id)
         if last_time and (datetime.now() - last_time).total_seconds() < SUMMARY_COOLDOWN_SECONDS:
             remaining = SUMMARY_COOLDOWN_SECONDS - (datetime.now() - last_time).total_seconds()
@@ -81,10 +71,7 @@ class ShortTermMemoryManager:
         return True
 
     def summarize(self, session_id: str):
-        """执行增量摘要压缩。
-
-        只压缩早期消息（超出阈值的部分），保留最近 KEEP_RECENT_COUNT 条完整消息。
-        """
+        """执行增量摘要压缩。"""
         history = self._store.get(session_id, [])
         if not history or len(history) <= KEEP_RECENT_COUNT:
             return
@@ -93,8 +80,6 @@ class ShortTermMemoryManager:
         if total_tokens <= settings.WORKING_MEMORY_MAX_TOKENS:
             return
 
-        # 增量压缩：从旧到新计算，找到需要压缩的消息范围
-        # 保留最近 KEEP_RECENT_COUNT 条 + 差不多一半 token 阈值的近期消息
         keep_tokens = 0
         cut_index = len(history)
         half_threshold = settings.WORKING_MEMORY_MAX_TOKENS // 2
@@ -106,11 +91,10 @@ class ShortTermMemoryManager:
                 break
 
         if cut_index <= 0:
-            # 所有消息都需要保留
             return
 
-        to_summarize = history[:cut_index]   # 需要压缩的早期消息
-        to_keep = history[cut_index:]         # 保留的近期消息
+        to_summarize = history[:cut_index]
+        to_keep = history[cut_index:]
 
         logger.info(
             f"会话 {session_id} 摘要压缩: 压缩 {len(to_summarize)} 条早期消息 "
@@ -118,7 +102,6 @@ class ShortTermMemoryManager:
             f"保留 {len(to_keep)} 条近期消息 (tokens={sum(m.token_count for m in to_keep)})"
         )
 
-        # 构建摘要 prompt
         history_text = "\n".join([f"{m.role}: {m.content}" for m in to_summarize])
         prompt = SUMMARY_PROMPT.format(history=history_text)
 
@@ -131,7 +114,6 @@ class ShortTermMemoryManager:
             logger.error(f"摘要压缩 LLM 调用失败: {e}")
             return
 
-        # 创建摘要消息（放在最前面）
         summary_msg = Message(
             role="system",
             content=f"[历史摘要] {response.content}",
@@ -139,7 +121,6 @@ class ShortTermMemoryManager:
             token_count=len(response.content) // 4
         )
 
-        # 更新存储：摘要 + 近期消息
         self._store[session_id] = [summary_msg] + to_keep
         self._last_summary_time[session_id] = datetime.now()
 
@@ -147,5 +128,4 @@ class ShortTermMemoryManager:
         logger.info(f"会话 {session_id} 摘要完成: 压缩后总 token 数 {new_total}")
 
 
-# 全局单例
 short_term_memory = ShortTermMemoryManager()

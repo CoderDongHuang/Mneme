@@ -42,7 +42,6 @@ async def readiness():
         logger.warning(f"LLM 就绪检测失败: {e}")
 
     ready = chroma_ok and llm_ok
-    status_code = 200 if ready else 503
 
     return {
         "status": "ready" if ready else "not_ready",

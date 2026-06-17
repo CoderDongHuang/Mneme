@@ -13,7 +13,7 @@ import json
 import os
 import threading
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict
+from typing import List, Dict
 
 from app.core.logging import setup_logger
 

@@ -1,5 +1,5 @@
 from langgraph.graph import StateGraph, END
-from typing import TypedDict, List, Optional
+from typing import TypedDict, List
 from .nodes import (
     intent_classification_node,
     knowledge_retrieval_node,

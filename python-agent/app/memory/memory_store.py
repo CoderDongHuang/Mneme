@@ -7,7 +7,6 @@
 - 语义检索：用 embedding 相似度匹配语义相近的记忆
 - 支持 CRUD + 语义去重 + 重要性更新
 """
-import json
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict

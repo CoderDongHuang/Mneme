@@ -16,7 +16,6 @@ from app.memory.short_term_memory import (
     SUMMARY_COOLDOWN_SECONDS,
     KEEP_RECENT_COUNT,
 )
-from app.core.config import settings
 from datetime import datetime, timedelta
 
 

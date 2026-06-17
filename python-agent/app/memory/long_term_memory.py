@@ -10,7 +10,6 @@
 from datetime import datetime
 from typing import List, Optional
 
-from app.models.memory import Preference, WeakPoint, Progress
 from app.memory.memory_store import memory_store
 from app.core.logging import setup_logger
 

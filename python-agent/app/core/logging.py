@@ -8,7 +8,7 @@ class JSONFormatter(logging.Formatter):
         try:
             from main import trace_id_var
             trace_id = trace_id_var.get()
-        except:
+        except (ImportError, LookupError):
             trace_id = ""
 
         log_entry = {

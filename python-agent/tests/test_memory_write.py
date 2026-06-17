@@ -8,7 +8,7 @@
 - 蒸馏时排除当前轮消息
 """
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from app.models.chat import Message
 from app.agents.nodes import memory_write_node
 
@@ -42,7 +42,7 @@ class TestMemoryWriteNode:
         """空历史直接跳过"""
         with patch("app.agents.nodes.short_term_memory.get_history", return_value=[]):
             with patch("app.agents.nodes.distill_conversation") as mock_distill:
-                result = memory_write_node({
+                memory_write_node({
                     "user_id": "u1", "session_id": "s1", "message": ""
                 })
         mock_distill.assert_not_called()
@@ -58,7 +58,7 @@ class TestMemoryWriteNode:
         ]
         with patch("app.agents.nodes.short_term_memory.get_history", return_value=history):
             with patch("app.agents.nodes.distill_conversation") as mock_distill:
-                result = memory_write_node({
+                memory_write_node({
                     "user_id": "u1", "session_id": "s1", "message": "新问题"
                 })
         mock_distill.assert_not_called()  # 5min < 15min 默认阈值
@@ -73,7 +73,7 @@ class TestMemoryWriteNode:
             with patch("app.agents.nodes.distill_conversation",
                        return_value=[]) as mock_distill:
                 with patch("app.agents.nodes.apply_distilled_entries") as mock_apply:
-                    result = memory_write_node({
+                    memory_write_node({
                         "user_id": "u1", "session_id": "s1", "message": "新问题"
                     })
         mock_distill.assert_called_once()
