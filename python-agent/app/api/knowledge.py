@@ -1,21 +1,39 @@
 import asyncio
+import os
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, UploadFile, File
 from app.models.knowledge import DocumentIngestRequest, RetrieverResult
 from app.knowledge.ingestion import ingest_document
 from app.knowledge.retriever import retrieve
+from app.knowledge.task_tracker import create_task, update_task, get_task
 from app.core.logging import setup_logger
-import os
-import tempfile
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
 logger = setup_logger("knowledge_api")
 
 executor = ThreadPoolExecutor(max_workers=4)
 
+
+def _run_ingestion(user_id: str, kb_id: str, tmp_path: str, task_id: str):
+    """在线程池中执行文档解析并更新任务状态"""
+    try:
+        doc_id = ingest_document(user_id, kb_id, tmp_path)
+        logger.info(f"文档解析成功: doc_id={doc_id}")
+        update_task(task_id, "done", chunks=1)
+    except Exception as e:
+        logger.error(f"文档解析失败: {e}")
+        update_task(task_id, "failed", error=str(e))
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...), user_id: str = "default", kb_id: str = "default_kb"):
-    """浏览器文件上传"""
+    """浏览器文件上传 — 返回 task_id 供前端轮询进度"""
     logger.info(f"收到文件上传: user_id={user_id}, kb_id={kb_id}, filename={file.filename}")
 
     suffix = os.path.splitext(file.filename)[1] if file.filename else ".tmp"
@@ -24,40 +42,34 @@ async def upload_file(file: UploadFile = File(...), user_id: str = "default", kb
         tmp.write(content)
         tmp_path = tmp.name
 
-    async def process():
-        loop = asyncio.get_event_loop()
-        try:
-            doc_id = await loop.run_in_executor(
-                executor, ingest_document, user_id, kb_id, tmp_path
-            )
-            logger.info(f"文档解析成功: doc_id={doc_id}")
-        except Exception as e:
-            logger.error(f"文档解析失败: {e}")
-        finally:
-            # 确保无论成功还是失败都删除临时文件
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
+    task_id = create_task()
+    asyncio.get_event_loop().run_in_executor(
+        executor, _run_ingestion, user_id, kb_id, tmp_path, task_id
+    )
 
-    asyncio.create_task(process())
-    return {"status": "parsing", "message": "文档正在解析中"}
+    return {"status": "processing", "task_id": task_id, "message": "文档正在解析中"}
+
 
 @router.post("/ingest")
 async def ingest(request: DocumentIngestRequest):
     logger.info(f"收到文档上传请求: user_id={request.user_id}, kb_id={request.kb_id}")
 
-    async def process():
-        try:
-            doc_id = await asyncio.get_event_loop().run_in_executor(
-                executor, ingest_document, request.user_id, request.kb_id, request.file_path
-            )
-            logger.info(f"文档解析成功: doc_id={doc_id}")
-        except Exception as e:
-            logger.error(f"文档解析失败: {e}")
+    task_id = create_task()
+    asyncio.get_event_loop().run_in_executor(
+        executor, _run_ingestion, request.user_id, request.kb_id, request.file_path, task_id
+    )
 
-    asyncio.create_task(process())
-    return {"status": "parsing", "message": "文档正在解析中"}
+    return {"status": "processing", "task_id": task_id, "message": "文档正在解析中"}
+
+
+@router.get("/task/{task_id}")
+async def task_status(task_id: str):
+    """查询文档解析任务进度"""
+    task = get_task(task_id)
+    if task is None:
+        return {"status": "not_found", "message": "任务不存在或已过期"}
+    return task
+
 
 @router.get("/search", response_model=RetrieverResult)
 async def search(query: str, user_id: str, kb_id: str, top_k: int = 5):
@@ -83,11 +95,7 @@ async def global_stats():
 
 @router.post("/admin/cleanup")
 async def cleanup_orphans(valid_kb_pairs: list[tuple[str, str]]):
-    """清理孤儿 collection。
-
-    Args:
-        valid_kb_pairs: [(user_id, kb_id), ...] 合法的知识库对列表
-    """
+    """清理孤儿 collection"""
     from app.knowledge.vector_store import vector_store
     result = vector_store.cleanup_orphan_collections(set(valid_kb_pairs))
     logger.info(f"孤儿 collection 清理完成: 删除 {len(result['removed'])} 个")
