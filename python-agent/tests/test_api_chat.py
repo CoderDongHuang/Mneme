@@ -53,15 +53,23 @@ class TestMemoryEndpoints:
         assert "weak_points" in data
 
     def test_write_and_confirm_preference(self):
-        # 写入
+        import uuid
+        from datetime import datetime
+        now = datetime.now().isoformat()
+
+        # 写入 — 完整 MemoryEntry 字段
+        entry = {
+            "id": f"mem_test_{uuid.uuid4().hex[:8]}",
+            "content": "喜欢图表讲解",
+            "category": "preference",
+            "topic": "图表",
+            "importance_score": 0.9,
+            "created_at": now,
+            "updated_at": now,
+        }
         write_res = client.post("/api/v1/memory/write", json={
             "user_id": "test_integration",
-            "entry": {
-                "category": "preference",
-                "content": "喜欢图表讲解",
-                "topic": "",
-                "confidence": 0.9
-            }
+            "entry": entry
         })
         assert write_res.status_code == 200
         assert write_res.json()["status"] == "success"
