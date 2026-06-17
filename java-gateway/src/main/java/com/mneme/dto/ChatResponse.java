@@ -5,6 +5,12 @@ import java.util.List;
 public class ChatResponse {
     private String answer;
     private List<Source> sources;
+    @com.fasterxml.jackson.annotation.JsonProperty("session_summary")
+    private String sessionSummary;
+    @com.fasterxml.jackson.annotation.JsonProperty("memory_insights")
+    private List<String> memoryInsights;
+    @com.fasterxml.jackson.annotation.JsonProperty("pending_memories")
+    private List<PendingMemory> pendingMemories;
 
     public static class Source {
         @com.fasterxml.jackson.annotation.JsonProperty("document_name")
@@ -14,7 +20,6 @@ public class ChatResponse {
         private Integer page;
         private Double score;
 
-        // getters and setters
         public String getDocumentName() { return documentName; }
         public void setDocumentName(String documentName) { this.documentName = documentName; }
         public String getChunkContent() { return chunkContent; }
@@ -25,9 +30,34 @@ public class ChatResponse {
         public void setScore(Double score) { this.score = score; }
     }
 
-    // getters and setters
+    public static class PendingMemory {
+        @com.fasterxml.jackson.annotation.JsonProperty("temp_id")
+        private String tempId;
+        private String category;
+        private String content;
+        private String topic;
+        private Double confidence;
+
+        public String getTempId() { return tempId; }
+        public void setTempId(String tempId) { this.tempId = tempId; }
+        public String getCategory() { return category; }
+        public void setCategory(String category) { this.category = category; }
+        public String getContent() { return content; }
+        public void setContent(String content) { this.content = content; }
+        public String getTopic() { return topic; }
+        public void setTopic(String topic) { this.topic = topic; }
+        public Double getConfidence() { return confidence; }
+        public void setConfidence(Double confidence) { this.confidence = confidence; }
+    }
+
     public String getAnswer() { return answer; }
     public void setAnswer(String answer) { this.answer = answer; }
     public List<Source> getSources() { return sources; }
     public void setSources(List<Source> sources) { this.sources = sources; }
+    public String getSessionSummary() { return sessionSummary; }
+    public void setSessionSummary(String sessionSummary) { this.sessionSummary = sessionSummary; }
+    public List<String> getMemoryInsights() { return memoryInsights; }
+    public void setMemoryInsights(List<String> memoryInsights) { this.memoryInsights = memoryInsights; }
+    public List<PendingMemory> getPendingMemories() { return pendingMemories; }
+    public void setPendingMemories(List<PendingMemory> pendingMemories) { this.pendingMemories = pendingMemories; }
 }
