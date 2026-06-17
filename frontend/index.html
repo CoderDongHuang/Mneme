@@ -1,12 +1,29 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mneme 学习助手</title>
     <link rel="stylesheet" href="css/style.css">
+    <!-- Markdown 渲染 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github.min.css" id="hljs-theme">
 </head>
 <body>
+    <!-- 登录遮罩 -->
+    <div id="login-overlay">
+        <div class="login-card">
+            <h2>Mneme</h2>
+            <p class="login-subtitle">记住你 · 了解你 · 主动帮你</p>
+            <input id="login-username" placeholder="用户名" autocomplete="username">
+            <input id="login-password" type="password" placeholder="密码（开发模式可跳过）" autocomplete="current-password">
+            <button id="login-btn">进入</button>
+            <button id="login-skip" class="link-btn">跳过登录（开发模式）</button>
+            <div id="login-error" class="login-error"></div>
+        </div>
+    </div>
+
     <div id="app">
         <!-- 侧边栏 -->
         <div id="sidebar">
@@ -14,18 +31,66 @@
                 <h2>Mneme</h2>
                 <button id="new-chat-btn" class="new-chat-btn">+ 新对话</button>
             </div>
+
+            <!-- 会话搜索 -->
+            <div class="sidebar-search">
+                <input id="session-search" placeholder="搜索历史对话..." type="search">
+            </div>
+
             <div class="sidebar-content">
+                <!-- 知识库选择器 -->
+                <div class="section" id="kb-section">
+                    <h3>知识库</h3>
+                    <div id="kb-selector">
+                        <label class="kb-chip active" data-kb-id="">
+                            <input type="checkbox" checked> 全部知识库
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 历史对话 -->
                 <div class="section">
                     <h3>历史对话</h3>
                     <div id="session-list">加载中...</div>
                 </div>
+
+                <!-- 我的记忆 -->
+                <div class="section" id="memory-section">
+                    <h3>
+                        我的记忆
+                        <button id="refresh-memory-btn" class="icon-btn" title="刷新">↻</button>
+                    </h3>
+                    <div id="memory-panel">
+                        <div class="memory-sub">偏好</div>
+                        <div id="memory-preferences">—</div>
+                        <div class="memory-sub">薄弱点</div>
+                        <div id="memory-weakpoints">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 底部控制 -->
+            <div class="sidebar-footer">
+                <div class="footer-row">
+                    <span id="connection-status" class="status-dot offline" title="连接状态"></span>
+                    <span id="connection-text">检测中...</span>
+                </div>
+                <div class="footer-row">
+                    <button id="theme-toggle" class="icon-btn" title="切换主题">🌓</button>
+                    <button id="mode-toggle" class="icon-btn" title="切换模式">⚙</button>
+                    <span id="mode-label">dev</span>
+                </div>
             </div>
         </div>
+
+        <!-- 汉堡菜单按钮（移动端） -->
+        <button id="hamburger-btn" class="hamburger" title="菜单">☰</button>
 
         <!-- 主聊天区域 -->
         <div id="main">
             <div id="chat-header">
-                <h3>学习助手</h3>
+                <h3 id="session-title" title="双击编辑标题">学习助手</h3>
+                <button id="stop-btn" class="stop-btn hidden" title="停止生成">■ 停止</button>
             </div>
             <div id="messages"></div>
             <div id="input-area">
@@ -35,15 +100,21 @@
                         <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
                     </svg>
                 </button>
-                <textarea id="user-input" placeholder="输入问题..." rows="1"></textarea>
+                <textarea id="user-input" placeholder="输入问题... (Enter 发送, Shift+Enter 换行, Esc 清空)" rows="1"></textarea>
                 <button id="send-btn">
                     <svg viewBox="0 0 24 24" width="20" height="20">
                         <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
                     </svg>
                 </button>
             </div>
+            <!-- 上传进度条 -->
+            <div id="upload-progress" class="upload-progress hidden">
+                <div class="progress-bar"><div class="progress-fill"></div></div>
+                <span id="upload-progress-text"></span>
+            </div>
         </div>
     </div>
+
     <script src="js/config.js"></script>
     <script src="js/app.js"></script>
 </body>
