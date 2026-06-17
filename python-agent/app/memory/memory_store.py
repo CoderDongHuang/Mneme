@@ -129,9 +129,11 @@ class MemoryVectorStore:
             category: 记忆类别过滤，None 表示不过滤
             top_k: 返回条数
         """
-        where_filter: Dict = {"user_id": user_id}
+        # Chroma 多条件过滤需 $and 语法，兼容各版本
         if category:
-            where_filter["category"] = category
+            where_filter = {"$and": [{"user_id": user_id}, {"category": category}]}
+        else:
+            where_filter = {"user_id": user_id}
 
         try:
             results = self._collection.query(
