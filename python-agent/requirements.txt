@@ -15,6 +15,9 @@ dashscope==1.25.21
 # 向量数据库
 chromadb==0.5.3
 
+# 文件上传
+python-multipart==0.0.9
+
 # 数据验证
 pydantic==2.8.2
 
