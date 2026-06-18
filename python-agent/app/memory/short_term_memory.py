@@ -14,6 +14,7 @@ from app.models.chat import Message
 from app.utils.llm import llm
 from app.core.config import settings
 from app.core.logging import setup_logger
+from app.memory.session_persistence import session_persistence
 
 logger = setup_logger("short_term_memory")
 
@@ -36,21 +37,41 @@ class ShortTermMemoryManager:
     """
 
     def __init__(self):
-        self._store: dict = {}              # session_id → List[Message]
-        self._last_summary_time: dict = {}  # session_id → datetime
+        self._store: dict = {}
+        self._last_summary_time: dict = {}
+
+    def _persist(self, session_id: str):
+        msgs = self._store.get(session_id)
+        if msgs:
+            session_persistence.save_messages(session_id, msgs)
 
     def add_message(self, session_id: str, message: Message) -> List[Message]:
         if session_id not in self._store:
-            self._store[session_id] = []
+            restored = session_persistence.load_messages(session_id)
+            if restored:
+                self._store[session_id] = restored
+                logger.debug(f"会话 {session_id} 从 Redis 恢复 {len(restored)} 条消息")
+            else:
+                self._store[session_id] = []
         self._store[session_id].append(message)
+        self._persist(session_id)
         return self._store[session_id]
 
     def get_history(self, session_id: str) -> List[Message]:
-        return self._store.get(session_id, [])
+        msgs = self._store.get(session_id)
+        if msgs:
+            return msgs
+        restored = session_persistence.load_messages(session_id)
+        if restored:
+            self._store[session_id] = restored
+            logger.info(f"会话 {session_id} 从 Redis 恢复 {len(restored)} 条消息")
+            return restored
+        return []
 
     def clear(self, session_id: str):
         self._store.pop(session_id, None)
         self._last_summary_time.pop(session_id, None)
+        session_persistence.delete_session(session_id)
 
     def should_summarize(self, session_id: str) -> bool:
         """判断是否需要摘要压缩。"""
@@ -123,6 +144,7 @@ class ShortTermMemoryManager:
 
         self._store[session_id] = [summary_msg] + to_keep
         self._last_summary_time[session_id] = datetime.now()
+        self._persist(session_id)
 
         new_total = sum(m.token_count for m in self._store[session_id])
         logger.info(f"会话 {session_id} 摘要完成: 压缩后总 token 数 {new_total}")
