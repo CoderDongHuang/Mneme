@@ -1,5 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
+
+MAX_MESSAGE_LENGTH = 4000
 
 class Message(BaseModel):
     role: str
@@ -11,7 +13,24 @@ class ChatRequest(BaseModel):
     user_id: str
     session_id: str
     message: str
-    knowledge_base_ids: List[str] = []  # 空列表 = 纯对话模式
+    knowledge_base_ids: List[str] = []
+
+    @field_validator("message")
+    @classmethod
+    def message_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("消息不能为空")
+        if len(v) > MAX_MESSAGE_LENGTH:
+            raise ValueError(f"消息长度不能超过 {MAX_MESSAGE_LENGTH} 字符")
+        return v
+
+    @field_validator("user_id")
+    @classmethod
+    def user_id_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("user_id 不能为空")
+        return v.strip()
 
 class Source(BaseModel):
     document_name: str
