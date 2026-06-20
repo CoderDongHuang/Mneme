@@ -11,6 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api import chat, knowledge, health, memory, chat_stream
 from app.memory.reflection_scheduler import reflection_scheduler
+from app.models.error import ErrorResponse
 from app.core.logging import setup_logger
 
 trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
@@ -76,10 +77,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         if bucket["tokens"] >= 1:
             bucket["tokens"] -= 1
-            return await call_next(request)
+            response = await call_next(request)
+            response.headers["X-RateLimit-Remaining"] = str(int(bucket["tokens"]))
+            return response
 
         return JSONResponse(
             status_code=429,
+            headers={"X-RateLimit-Remaining": "0", "Retry-After": "60"},
             content={"error": {"code": "RATE_LIMITED", "message": "请求过于频繁，请稍后再试"}},
         )
 
@@ -89,15 +93,12 @@ app.add_middleware(RateLimitMiddleware)
 # ── 全局异常处理 ──────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"未捕获异常: {exc}", exc_info=True)
+    logger.error(f"未捕获异常: {exc}", exc_info=True, extra={"path": str(request.url)})
     return JSONResponse(
         status_code=500,
-        content={
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "message": "服务器内部错误",
-            }
-        },
+        content=ErrorResponse(
+            error={"code": "INTERNAL_ERROR", "message": "服务器内部错误"}
+        ).model_dump(),
     )
 
 
