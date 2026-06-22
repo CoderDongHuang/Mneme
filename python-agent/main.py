@@ -44,6 +44,21 @@ class TraceIdMiddleware(BaseHTTPMiddleware):
 app.add_middleware(TraceIdMiddleware)
 
 
+# ── 请求日志 ──────────────────────────────────────────────
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start = time.time()
+        response = await call_next(request)
+        duration_ms = (time.time() - start) * 1000
+        logger.info(
+            f"{request.method} {request.url.path} → {response.status_code} "
+            f"({duration_ms:.0f}ms)"
+        )
+        return response
+
+app.add_middleware(RequestLoggingMiddleware)
+
+
 # ── 安全头 ────────────────────────────────────────────────
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -93,7 +108,7 @@ app.add_middleware(RateLimitMiddleware)
 # ── 全局异常处理 ──────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"未捕获异常: {exc}", exc_info=True, extra={"path": str(request.url)})
+    logger.error(f"未捕获异常 [{request.method} {request.url.path}]: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content=ErrorResponse(
