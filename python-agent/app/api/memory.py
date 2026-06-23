@@ -7,7 +7,7 @@ from app.core.logging import setup_logger
 router = APIRouter(prefix="/api/v1/memory", tags=["memory"])
 logger = setup_logger("memory_api")
 
-@router.post("/read")
+@router.post("/read", summary="读取用户记忆", description="读取指定用户的偏好、薄弱点和学习进度")
 async def read_memory(request: MemoryReadRequest):
     result = {"user_id": request.user_id}
     if "preference" in request.memory_types:
@@ -18,7 +18,7 @@ async def read_memory(request: MemoryReadRequest):
         result["progress"] = long_term_memory.get_progress(request.user_id)
     return result
 
-@router.post("/write")
+@router.post("/write", summary="写入记忆", description="手动写入一条长期记忆（偏好/薄弱点/进度）")
 async def write_memory(request: MemoryWriteRequest):
     entry = request.entry
     if entry.category == "preference":
@@ -34,7 +34,7 @@ async def write_memory(request: MemoryWriteRequest):
     return {"status": "success"}
 
 
-@router.post("/confirm")
+@router.post("/confirm", summary="确认/拒绝记忆", description="用户对蒸馏产出的中等置信度记忆进行确认或拒绝")
 async def confirm_memory(request: MemoryConfirmRequest):
     """用户确认或拒绝待确认的记忆条目。
 
