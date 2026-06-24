@@ -1,0 +1,17 @@
+# 本地开发覆盖配置
+# 复制此文件为 docker-compose.override.yml 后按需调整
+# docker compose 会自动合并 override 文件
+
+services:
+  python-agent:
+    # 开发模式：挂载源码，热重载
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      LOG_LEVEL: DEBUG
+      SKIP_AUTH: "true"
+    ports:
+      - "8000:8000"
+
+  java-gateway:
+    environment:
+      PYTHON_AGENT_URL: http://python-agent:8000
