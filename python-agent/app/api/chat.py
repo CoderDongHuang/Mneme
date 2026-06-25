@@ -12,15 +12,13 @@ from app.core.logging import setup_logger
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = setup_logger("chat_api")
 
-@router.get("/sessions")
+@router.get("/sessions", summary="历史会话列表", description="获取用户的所有历史会话，按时间倒序排列，自动清理 30 天以上无活动的会话")
 async def list_sessions(user_id: str = "default"):
-    """获取用户的历史对话列表（从 JSON 文件持久化存储读取）"""
     sessions = session_store.get_sessions(user_id)
     return {"sessions": sessions}
 
-@router.get("/session/{session_id}")
+@router.get("/session/{session_id}", summary="会话详情", description="获取指定会话的完整消息历史，优先从短期记忆读取，降级到工作记忆")
 async def get_session(session_id: str):
-    """获取单个对话的完整历史（优先从短期记忆，降级到工作记忆）"""
     messages = short_term_memory.get_history(session_id)
     if not messages:
         messages = working_memory.get_messages(session_id)
@@ -32,7 +30,7 @@ async def get_session(session_id: str):
         ]
     }
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=ChatResponse, summary="同步对话", description="发送消息并等待完整回复后返回 JSON，含答案、参考来源、待确认记忆和记忆洞察")
 async def chat(request: ChatRequest):
     logger.info(f"收到对话请求: user_id={request.user_id}, message={request.message}")
 

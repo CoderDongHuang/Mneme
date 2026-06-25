@@ -31,9 +31,8 @@ def _run_ingestion(user_id: str, kb_id: str, tmp_path: str, task_id: str):
             pass
 
 
-@router.post("/upload")
+@router.post("/upload", summary="上传文档", description="上传 PDF/DOCX/MD/TXT 文件，异步解析后入库到知识库。返回 task_id 供轮询进度")
 async def upload_file(file: UploadFile = File(...), user_id: str = "default", kb_id: str = "default_kb"):
-    """浏览器文件上传 — 返回 task_id 供前端轮询进度"""
     logger.info(f"收到文件上传: user_id={user_id}, kb_id={kb_id}, filename={file.filename}")
 
     suffix = os.path.splitext(file.filename)[1] if file.filename else ".tmp"
@@ -71,7 +70,7 @@ async def task_status(task_id: str):
     return task
 
 
-@router.get("/search", response_model=RetrieverResult)
+@router.get("/search", response_model=RetrieverResult, summary="知识检索", description="在指定知识库中语义检索相关内容，返回 top_k 条匹配片段")
 async def search(query: str, user_id: str, kb_id: str, top_k: int = 5):
     chunks = retrieve(user_id, kb_id, query, top_k)
     return RetrieverResult(chunks=chunks, query=query)

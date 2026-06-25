@@ -92,7 +92,7 @@ def _run_post_llm_nodes(state: dict, answer: str) -> dict:
     }
 
 
-@router.post("/chat/stream")
+@router.post("/chat/stream", summary="流式对话 (SSE)", description="发送消息后通过 Server-Sent Events 逐 token 推送 LLM 回复，末尾推送待确认记忆卡片。支持 AbortController 取消")
 async def chat_stream(request: ChatRequest):
     """流式对话接口：SSE 协议，逐 token 推送 LLM 推理结果"""
 
