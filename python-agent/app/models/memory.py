@@ -52,3 +52,27 @@ class MemoryReadRequest(BaseModel):
 class MemoryWriteRequest(BaseModel):
     user_id: str
     entry: MemoryEntry
+
+
+# ── 响应模型 ──────────────────────────────────────────────
+
+class MemoryReadResponse(BaseModel):
+    user_id: str
+    preferences: list = []
+    weak_points: list = []
+    progress: dict | None = None
+
+
+class MemoryWriteResponse(BaseModel):
+    status: str
+
+
+class SessionInfo(BaseModel):
+    id: str
+    title: str
+    message_count: int
+    last_updated: str
+
+
+class SessionListResponse(BaseModel):
+    sessions: List[SessionInfo]
