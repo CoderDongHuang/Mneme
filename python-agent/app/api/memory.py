@@ -1,5 +1,8 @@
 from fastapi import APIRouter
-from app.models.memory import MemoryReadRequest, MemoryWriteRequest
+from app.models.memory import (
+    MemoryReadRequest, MemoryWriteRequest,
+    MemoryReadResponse, MemoryWriteResponse,
+)
 from app.models.chat import MemoryConfirmRequest
 from app.memory.long_term_memory import long_term_memory
 from app.core.logging import setup_logger
@@ -7,7 +10,8 @@ from app.core.logging import setup_logger
 router = APIRouter(prefix="/api/v1/memory", tags=["memory"])
 logger = setup_logger("memory_api")
 
-@router.post("/read", summary="读取用户记忆", description="读取指定用户的偏好、薄弱点和学习进度")
+@router.post("/read", summary="读取用户记忆", description="读取指定用户的偏好、薄弱点和学习进度",
+            response_model=MemoryReadResponse)
 async def read_memory(request: MemoryReadRequest):
     result = {"user_id": request.user_id}
     if "preference" in request.memory_types:
@@ -18,7 +22,8 @@ async def read_memory(request: MemoryReadRequest):
         result["progress"] = long_term_memory.get_progress(request.user_id)
     return result
 
-@router.post("/write", summary="写入记忆", description="手动写入一条长期记忆（偏好/薄弱点/进度）")
+@router.post("/write", summary="写入记忆", description="手动写入一条长期记忆（偏好/薄弱点/进度）",
+            response_model=MemoryWriteResponse)
 async def write_memory(request: MemoryWriteRequest):
     entry = request.entry
     if entry.category == "preference":
