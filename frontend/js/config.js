@@ -1,16 +1,13 @@
 /**
  * Mneme 前端配置
  *
- * 两种模式：
- * - dev: 直连 Python Agent（无需鉴权，开发调试用）
- * - prod: 通过 Java Gateway（JWT 鉴权 + 多租户隔离）
+ * dev:  直连 Python Agent (localhost:8000)，无需鉴权
+ * prod: 通过 Java Gateway (localhost:8080)，JWT 鉴权
  *
- * 切换方式：修改 mode 字段或设置 localStorage.mneme_mode
+ * 切换方式：浏览器控制台输入 localStorage.setItem("mneme_mode", "prod") 后刷新
  */
 const MnemeConfig = (() => {
-    // 从 localStorage 读取模式偏好，默认 dev
-    const savedMode = localStorage.getItem("mneme_mode");
-    const mode = savedMode || "dev";
+    const mode = localStorage.getItem("mneme_mode") || "dev";
 
     const endpoints = {
         dev: {
@@ -33,13 +30,11 @@ const MnemeConfig = (() => {
         authRequired: current.authRequired,
         label: current.label,
 
-        /** 切换模式 */
         setMode(newMode) {
             localStorage.setItem("mneme_mode", newMode);
             location.reload();
         },
 
-        /** 获取带认证头的 fetch options */
         getFetchOptions(extraOptions = {}) {
             const options = {
                 headers: { "Content-Type": "application/json", ...(extraOptions.headers || {}) },
@@ -47,7 +42,7 @@ const MnemeConfig = (() => {
             };
             if (this.authRequired) {
                 const token = localStorage.getItem("mneme_token") || "";
-                options.headers["Authorization"] = `Bearer ${token}`;
+                options.headers["Authorization"] = "Bearer " + token;
             }
             return options;
         }
