@@ -1,21 +1,26 @@
-# 生产部署基线
+# 公网生产部署
 
-生产环境使用 `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`。上线前必须配置公网域名、HTTPS、SMTP、管理员令牌、模型额度以及独立随机密钥。
+本文件只适用于需要让其他人通过互联网访问的场景。个人电脑或内网使用请直接参考 README 的 Docker 快速开始，不需要域名和 HTTPS。
 
-## 数据与扩展
+## 必需配置
 
-- MySQL、Redis 和 Chroma 应使用独立托管实例或持久化卷，定期做快照。
-- 多主机部署时，`FILE_STORAGE_PATH` 必须指向所有 Java 和 Python 实例都可访问的共享卷，例如 NFS、云文件系统或挂载后的对象存储网关。
-- Java 限流状态存储在 Redis，可以水平扩展；Python 会话存储使用 Redis，向量服务使用独立 Chroma HTTP 服务。
-- 文件处理任务具有幂等键，可启动多个任务消费者，但同一文档只允许一个任务成功提交。
+使用 `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` 前，必须配置：
 
-## 安全
+- `PUBLIC_DOMAIN`：实际域名
+- `PUBLIC_ORIGIN`、`CORS_ORIGINS`：只填写正式 HTTPS 来源
+- `SECURE_COOKIES=true`
+- 独立且随机的 `JWT_SECRET`、`INTERNAL_SERVICE_TOKEN`、`ADMIN_API_TOKEN`
+- SMTP 主机、账号和密码，用于密码重置验证码
+- DeepSeek 或 DashScope 模型 Key
 
-- `SECURE_COOKIES=true`，`CORS_ORIGINS` 只能填写正式站点域名。
-- 配置 SMTP 后密码重置验证码才可发送，令牌有效期 15 分钟且只能使用一次。
-- `ADMIN_API_TOKEN` 至少 32 字节，仅通过密钥管理服务注入。
-- 建议在 Caddy 前增加云防火墙和上传文件恶意软件扫描服务。当前内置校验负责大小、扩展名、文件头和可执行文件拦截。
+## 数据与备份
 
-## 备份恢复
+单机生产仍使用本地卷，必须定期执行 `scripts/backup-data.ps1`，并将备份复制到异地对象存储或其他主机。每月至少在隔离环境执行一次 `scripts/restore-data.ps1` 恢复演练。多实例部署前，需要先替换为共享文件存储、托管 MySQL、Redis 和 Chroma 服务。
 
-每天运行 `scripts/backup-data.ps1`，将结果同步到异地对象存储。每月至少在隔离环境运行一次 `scripts/restore-data.ps1`，验证数据库和文件快照可以恢复。
+## 安全边界
+
+当前内置上传校验包含大小、扩展名、文件头和可执行文件拦截。公网环境仍建议在网关或独立服务接入恶意文件扫描、WAF、监控告警和模型调用额度控制。
+
+## 部署限制
+
+当前默认架构是单机自部署，不提供多实例横向扩展、自动故障转移或生产级 SLA。上线前请自行完成压力测试、备份恢复验证、日志留存和隐私/服务条款准备。

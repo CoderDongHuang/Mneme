@@ -1,40 +1,36 @@
 # 开发与启动
 
-## 环境要求
+## 本地工具链
 
 - Python 3.11
 - Java 17、Maven 3.9+
 - Node.js 22、npm 10+
-- Docker Desktop（推荐用于 MySQL、Redis、Chroma）
+- Docker Desktop（用于 MySQL、Redis、Chroma）
 
-## 首次安装
+## Docker 启动
+
+从仓库根目录复制 `.env.example` 为 `.env`，填写模型 Key、数据库密码、JWT_SECRET 和 INTERNAL_SERVICE_TOKEN，然后执行：
 
 ```powershell
-cd python-agent
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
-cd ..\java-gateway
-mvn dependency:go-offline
-
-cd ..\frontend
-npm install
+docker compose up -d --build
 ```
 
-## 启动顺序
+查看状态：`docker compose ps`；查看日志：`docker compose logs -f java-gateway python-agent`。
 
-1. `docker compose up -d mysql redis chroma`
-2. `cd python-agent && python main.py`
-3. `cd java-gateway && mvn clean spring-boot:run`
-4. `cd frontend && npm run dev`
+## 源码开发启动
 
-也可以运行根目录 `start.bat` 打开三个独立终端。
+```powershell
+docker compose up -d mysql redis chroma
+cd python-agent; python main.py
+cd ..\java-gateway; mvn clean spring-boot:run
+cd ..\frontend; npm install; npm run dev
+```
+
+Windows 下也可运行根目录 `start.bat`。停止基础设施：`docker compose down`。
 
 ## 常见问题
 
-- `localhost:8000/health` 返回 404：8000 是 Chroma，Python 健康检查在 8001。
-- Java 启动失败：先确认 MySQL 已创建 `mneme` 数据库，密码与 `.env`/环境变量一致。
-- Redis 认证失败：配置 `REDIS_PASSWORD`；Redis 是可选依赖，失败不会阻止 Python 启动。
-- PDF 无内容：扫描件需要系统安装 Tesseract，并设置 `OCR_ENABLED=true`。
-- 依赖冲突：必须在独立虚拟环境安装 `python-agent/requirements.txt`，不要复用装有其他 AI 项目的全局 Python。
+- Python 健康检查在 `http://localhost:8001/health`，`8000` 是 Chroma 端口。
+- Java 无法启动时，检查 MySQL 健康状态以及 `.env` 中的数据库密码是否一致。
+- 没有模型 Key 时只能验证基础接口，无法完成真实模型问答。
+- OCR 需要额外安装 Tesseract；关闭 OCR 可设置 `OCR_ENABLED=false`。
