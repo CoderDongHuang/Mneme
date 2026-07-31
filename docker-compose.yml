@@ -1,28 +1,30 @@
-version: '3.8'
-
 services:
   mysql:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
       MYSQL_DATABASE: mneme
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
       - ./data/mysql:/var/lib/mysql
-      - ./java-gateway/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - ./data/redis:/data
 
   chroma:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:0.5.3
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data/chroma:/chroma/data
     environment:
@@ -32,13 +34,16 @@ services:
   python-agent:
     build: ./python-agent
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8001"
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
-      - CHROMA_HOST=http://chroma:8000
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
+      - CHROMA_MODE=http
+      - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - SKIP_INTERNAL_AUTH=false
       - WORKING_MEMORY_WINDOW_SIZE=${WORKING_MEMORY_WINDOW_SIZE:-10}
       - WORKING_MEMORY_MAX_TOKENS=${WORKING_MEMORY_MAX_TOKENS:-4000}
       - RETRIEVER_TOP_K=${RETRIEVER_TOP_K:-5}
@@ -47,7 +52,8 @@ services:
       - ./data:/data
       - ./python-agent:/app
     depends_on:
-      - chroma
+      chroma:
+        condition: service_started
 
   java-gateway:
     build: ./java-gateway
@@ -56,13 +62,18 @@ services:
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/mneme
       - SPRING_DATASOURCE_USERNAME=root
-      - SPRING_DATASOURCE_PASSWORD=root
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
       - REDIS_HOST=redis
-      - PYTHON_AGENT_URL=http://python-agent:8000
+      - PYTHON_AGENT_URL=http://python-agent:8001
       - FILE_STORAGE_PATH=/data/files
+      - JWT_SECRET=${JWT_SECRET}
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
     volumes:
       - ./data:/data
     depends_on:
-      - mysql
-      - redis
-      - python-agent
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      python-agent:
+        condition: service_started

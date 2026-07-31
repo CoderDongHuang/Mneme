@@ -30,6 +30,9 @@ Thumbs.db
 
 # Data (local development, not committed)
 data/
+frontend/node_modules/
+frontend/.env.local
+.e2e-state.json
 
 # Logs
 *.log
