@@ -2,100 +2,167 @@ import asyncio
 import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import APIRouter, UploadFile, File
-from app.models.knowledge import DocumentIngestRequest, RetrieverResult
-from app.knowledge.ingestion import ingest_document
-from app.knowledge.retriever import retrieve
-from app.knowledge.task_tracker import create_task, update_task, get_task
+from pathlib import Path
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
+
+from app.core.config import settings
 from app.core.logging import setup_logger
+from app.knowledge.ingestion import SUPPORTED_EXTENSIONS, ingest_document
+from app.knowledge.retriever import retrieve
+from app.knowledge.task_tracker import create_task, get_task, update_task
+from app.knowledge.vector_store import vector_store
+from app.models.knowledge import (
+    DocumentIngestRequest,
+    IngestionResult,
+    IngestionTaskResponse,
+    RetrieverResult,
+)
+
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
 logger = setup_logger("knowledge_api")
+executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ingestion")
 
-executor = ThreadPoolExecutor(max_workers=4)
 
-
-def _run_ingestion(user_id: str, kb_id: str, tmp_path: str, task_id: str):
-    """在线程池中执行文档解析并更新任务状态"""
+def _run_ingestion(
+    user_id: str,
+    kb_id: str,
+    file_path: str,
+    task_id: str,
+    source_name: str,
+    document_id: str | None = None,
+    remove_after: bool = True,
+) -> None:
     try:
-        doc_id = ingest_document(user_id, kb_id, tmp_path)
-        logger.info(f"文档解析成功: doc_id={doc_id}")
-        update_task(task_id, "done", chunks=1)
-    except Exception as e:
-        logger.error(f"文档解析失败: {e}")
-        update_task(task_id, "failed", error=str(e))
+        resolved_document_id = ingest_document(
+            user_id, kb_id, file_path, source_name=source_name, document_id=document_id
+        )
+        collection = vector_store.get_collection(user_id, kb_id)
+        chunk_count = 0
+        if collection is not None:
+            result = collection.get(where={"document_id": resolved_document_id})
+            chunk_count = len(result.get("ids", []))
+        update_task(
+            task_id, "done", chunks=chunk_count, document_id=resolved_document_id
+        )
+    except Exception as error:
+        logger.exception("文档解析失败: %s", error)
+        update_task(task_id, "failed", error=str(error))
     finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
+        if remove_after:
+            try:
+                os.unlink(file_path)
+            except OSError:
+                pass
 
 
-@router.post("/upload", summary="上传文档", description="上传 PDF/DOCX/MD/TXT 文件，异步解析后入库到知识库。返回 task_id 供轮询进度")
-async def upload_file(file: UploadFile = File(...), user_id: str = "default", kb_id: str = "default_kb"):
-    logger.info(f"收到文件上传: user_id={user_id}, kb_id={kb_id}, filename={file.filename}")
+@router.post("/upload", response_model=IngestionTaskResponse)
+async def upload_file(
+    file: UploadFile = File(...),
+    user_id: str = "default",
+    kb_id: str = "default_kb",
+) -> IngestionTaskResponse:
+    filename = Path(file.filename or "upload.tmp").name
+    extension = Path(filename).suffix.lower()
+    if extension not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(status_code=415, detail=f"不支持的文件格式: {extension}")
+    content = await file.read(settings.upload_max_mb * 1024 * 1024 + 1)
+    if len(content) > settings.upload_max_mb * 1024 * 1024:
+        raise HTTPException(
+            status_code=413, detail=f"文件不能超过 {settings.upload_max_mb} MB"
+        )
+    if not content:
+        raise HTTPException(status_code=400, detail="上传文件为空")
 
-    suffix = os.path.splitext(file.filename)[1] if file.filename else ".tmp"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as temporary:
+        temporary.write(content)
+        temporary_path = temporary.name
 
     task_id = create_task()
-    asyncio.get_event_loop().run_in_executor(
-        executor, _run_ingestion, user_id, kb_id, tmp_path, task_id
+    asyncio.get_running_loop().run_in_executor(
+        executor,
+        _run_ingestion,
+        user_id,
+        kb_id,
+        temporary_path,
+        task_id,
+        filename,
+    )
+    return IngestionTaskResponse(
+        status="processing", task_id=task_id, message="文档正在解析"
     )
 
-    return {"status": "processing", "task_id": task_id, "message": "文档正在解析中"}
 
-
-@router.post("/ingest")
-async def ingest(request: DocumentIngestRequest):
-    logger.info(f"收到文档上传请求: user_id={request.user_id}, kb_id={request.kb_id}")
-
+@router.post("/ingest", response_model=IngestionTaskResponse)
+async def ingest(request: DocumentIngestRequest) -> IngestionTaskResponse:
+    path = Path(request.file_path).resolve()
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="待解析文件不存在")
     task_id = create_task()
-    asyncio.get_event_loop().run_in_executor(
-        executor, _run_ingestion, request.user_id, request.kb_id, request.file_path, task_id
+    asyncio.get_running_loop().run_in_executor(
+        executor,
+        _run_ingestion,
+        request.user_id,
+        request.kb_id,
+        str(path),
+        task_id,
+        path.name,
+        request.document_id,
+        False,
+    )
+    return IngestionTaskResponse(
+        status="processing", task_id=task_id, message="文档正在解析"
     )
 
-    return {"status": "processing", "task_id": task_id, "message": "文档正在解析中"}
+
+@router.post("/internal/ingest", response_model=IngestionResult)
+async def ingest_durable(request: DocumentIngestRequest) -> IngestionResult:
+    path = Path(request.file_path).resolve()
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="待解析文件不存在")
+    document_id = await asyncio.get_running_loop().run_in_executor(
+        executor,
+        ingest_document,
+        request.user_id,
+        request.kb_id,
+        str(path),
+        path.name,
+        request.document_id,
+    )
+    collection = vector_store.get_collection(request.user_id, request.kb_id)
+    chunks = 0
+    if collection is not None:
+        chunks = len(collection.get(where={"document_id": document_id}).get("ids", []))
+    return IngestionResult(status="done", document_id=document_id, chunks=chunks)
 
 
 @router.get("/task/{task_id}")
-async def task_status(task_id: str):
-    """查询文档解析任务进度"""
+async def task_status(task_id: str) -> dict:
     task = get_task(task_id)
     if task is None:
-        return {"status": "not_found", "message": "任务不存在或已过期"}
+        raise HTTPException(status_code=404, detail="任务不存在或已过期")
     return task
 
 
-@router.get("/search", response_model=RetrieverResult, summary="知识检索", description="在指定知识库中语义检索相关内容，返回 top_k 条匹配片段")
-async def search(query: str, user_id: str, kb_id: str, top_k: int = 5):
-    chunks = retrieve(user_id, kb_id, query, top_k)
-    return RetrieverResult(chunks=chunks, query=query)
+@router.get("/search", response_model=RetrieverResult)
+async def search(
+    query: str, user_id: str, kb_id: str, top_k: int = 5
+) -> RetrieverResult:
+    return RetrieverResult(chunks=retrieve(user_id, kb_id, query, top_k), query=query)
 
-
-# ── 运维管理接口 ──────────────────────────────────────────
 
 @router.get("/admin/collections")
-async def list_collections(user_id: str):
-    """列出某用户的所有知识库 collection"""
-    from app.knowledge.vector_store import vector_store
+async def list_collections(user_id: str) -> list[dict]:
     return vector_store.get_collection_stats(user_id)
 
 
 @router.get("/admin/stats")
-async def global_stats():
-    """获取全局 Chroma 统计信息"""
-    from app.knowledge.vector_store import vector_store
+async def global_stats() -> dict:
     return vector_store.get_total_stats()
 
 
-@router.post("/admin/cleanup")
-async def cleanup_orphans(valid_kb_pairs: list[tuple[str, str]]):
-    """清理孤儿 collection"""
-    from app.knowledge.vector_store import vector_store
-    result = vector_store.cleanup_orphan_collections(set(valid_kb_pairs))
-    logger.info(f"孤儿 collection 清理完成: 删除 {len(result['removed'])} 个")
-    return result
+@router.delete("/admin/collections/{kb_id}")
+async def delete_collection(kb_id: str, user_id: str) -> dict:
+    deleted = vector_store.delete_collection(user_id, kb_id)
+    return {"deleted": deleted, "kb_id": kb_id}

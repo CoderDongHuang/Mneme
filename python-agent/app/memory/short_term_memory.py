@@ -7,6 +7,7 @@
 - 频率保护：两次摘要间隔不少于冷却期，避免反复触发
 - 增量压缩：只压缩早期消息，保留最近的完整上下文
 """
+
 from typing import List
 from datetime import datetime
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -84,8 +85,13 @@ class ShortTermMemoryManager:
             return False
 
         last_time = self._last_summary_time.get(session_id)
-        if last_time and (datetime.now() - last_time).total_seconds() < SUMMARY_COOLDOWN_SECONDS:
-            remaining = SUMMARY_COOLDOWN_SECONDS - (datetime.now() - last_time).total_seconds()
+        if (
+            last_time
+            and (datetime.now() - last_time).total_seconds() < SUMMARY_COOLDOWN_SECONDS
+        ):
+            remaining = (
+                SUMMARY_COOLDOWN_SECONDS - (datetime.now() - last_time).total_seconds()
+            )
             logger.debug(f"会话 {session_id} 摘要冷却中，剩余 {remaining:.0f}s")
             return False
 
@@ -127,10 +133,12 @@ class ShortTermMemoryManager:
         prompt = SUMMARY_PROMPT.format(history=history_text)
 
         try:
-            response = llm.invoke([
-                SystemMessage(content="你是一个对话摘要压缩器，只输出摘要内容。"),
-                HumanMessage(content=prompt)
-            ])
+            response = llm.invoke(
+                [
+                    SystemMessage(content="你是一个对话摘要压缩器，只输出摘要内容。"),
+                    HumanMessage(content=prompt),
+                ]
+            )
         except Exception as e:
             logger.error(f"摘要压缩 LLM 调用失败: {e}")
             return
@@ -139,7 +147,7 @@ class ShortTermMemoryManager:
             role="system",
             content=f"[历史摘要] {response.content}",
             timestamp=datetime.now().isoformat(),
-            token_count=len(response.content) // 4
+            token_count=len(response.content) // 4,
         )
 
         self._store[session_id] = [summary_msg] + to_keep

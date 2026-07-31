@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="忆知标志">
+  <rect width="64" height="64" rx="12" fill="#242520"/>
+  <path d="M13 18c7-2 14 0 19 5v26c-5-5-12-7-19-5V18Zm38 0c-7-2-14 0-19 5v26c5-5 12-7 19-5V18Z" fill="#f4f1e8"/>
+  <path d="M18 25c5 0 9 1 14 5m14-5c-5 0-9 1-14 5M20 33c4 0 8 1 12 4m12-4c-4 0-8 1-12 4" fill="none" stroke="#73756d" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="32" cy="17" r="4" fill="#d8d4c7"/>
+</svg>

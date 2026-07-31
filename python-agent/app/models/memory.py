@@ -1,11 +1,15 @@
-from pydantic import BaseModel
-from typing import List
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
 from app.models.chat import Message
+
 
 class Preference(BaseModel):
     id: str
     content: str
     created_at: str
+
 
 class WeakPoint(BaseModel):
     id: str
@@ -14,52 +18,59 @@ class WeakPoint(BaseModel):
     count: int = 1
     created_at: str
 
+
 class Progress(BaseModel):
     current_chapter: str = ""
     current_section: str = ""
     last_updated: str = ""
 
+
 class MemoryEntry(BaseModel):
-    id: str
+    id: str = ""
     content: str
-    category: str  # preference / weak_point / progress
+    category: Literal["preference", "weak_point", "progress"]
     topic: str = ""
-    importance_score: float = 0.5
-    created_at: str
-    updated_at: str
+    importance_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    created_at: str = ""
+    updated_at: str = ""
+
 
 class LongTermMemory(BaseModel):
     user_id: str
-    preferences: List[Preference] = []
-    weak_points: List[WeakPoint] = []
-    learning_progress: Progress = Progress()
-    memory_entries: List[MemoryEntry] = []
+    preferences: list[Preference] = Field(default_factory=list)
+    weak_points: list[WeakPoint] = Field(default_factory=list)
+    learning_progress: Progress = Field(default_factory=Progress)
+    memory_entries: list[MemoryEntry] = Field(default_factory=list)
+
 
 class WorkingMemory(BaseModel):
-    messages: List[Message] = []
+    messages: list[Message] = Field(default_factory=list)
     window_size: int = 10
+
 
 class ShortTermMemory(BaseModel):
     session_id: str
-    full_history: List[Message] = []
+    full_history: list[Message] = Field(default_factory=list)
     summary: str = ""
     token_count: int = 0
 
+
 class MemoryReadRequest(BaseModel):
     user_id: str
-    memory_types: List[str] = ["preference", "weak_point", "progress"]
+    memory_types: list[str] = Field(
+        default_factory=lambda: ["preference", "weak_point", "progress"]
+    )
+
 
 class MemoryWriteRequest(BaseModel):
     user_id: str
     entry: MemoryEntry
 
 
-# ── 响应模型 ──────────────────────────────────────────────
-
 class MemoryReadResponse(BaseModel):
     user_id: str
-    preferences: list = []
-    weak_points: list = []
+    preferences: list = Field(default_factory=list)
+    weak_points: list = Field(default_factory=list)
     progress: dict | None = None
 
 
@@ -75,4 +86,4 @@ class SessionInfo(BaseModel):
 
 
 class SessionListResponse(BaseModel):
-    sessions: List[SessionInfo]
+    sessions: list[SessionInfo]

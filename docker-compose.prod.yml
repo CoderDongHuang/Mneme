@@ -1,0 +1,24 @@
+services:
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - java-gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
+  mysql:
+    restart: unless-stopped
+  redis:
+    restart: unless-stopped
+  chroma:
+    restart: unless-stopped
+  python-agent:
+    restart: unless-stopped
+  java-gateway:
+    restart: unless-stopped
+    environment:
+      SECURE_COOKIES: "true"
+      CORS_ORIGINS: ${PUBLIC_ORIGIN}

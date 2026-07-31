@@ -9,6 +9,7 @@
 - 线程安全：使用 threading.Lock 保护写操作
 - 自动清理：删除过期会话（默认 30 天无活动）
 """
+
 import json
 import os
 import threading
@@ -60,11 +61,7 @@ class SessionStore:
                 logger.error(f"会话数据写入失败: {file_path}, error={e}")
 
     def register_session(
-        self,
-        user_id: str,
-        session_id: str,
-        title: str = "",
-        message_count: int = 0
+        self, user_id: str, session_id: str, title: str = "", message_count: int = 0
     ):
         """注册或更新会话。首次注册时自动生成标题。"""
         data = self._load(user_id)
@@ -73,7 +70,9 @@ class SessionStore:
         if session_id in data:
             # 更新已有会话
             existing = data[session_id]
-            existing["message_count"] = message_count or existing.get("message_count", 0) + 1
+            existing["message_count"] = (
+                message_count or existing.get("message_count", 0) + 1
+            )
             existing["last_updated"] = now
             if title and existing.get("title", "").startswith("新对话"):
                 existing["title"] = title
@@ -101,7 +100,9 @@ class SessionStore:
         """消息计数 +1"""
         data = self._load(user_id)
         if session_id in data:
-            data[session_id]["message_count"] = data[session_id].get("message_count", 0) + 1
+            data[session_id]["message_count"] = (
+                data[session_id].get("message_count", 0) + 1
+            )
             data[session_id]["last_updated"] = datetime.now().isoformat()
             self._save(user_id, data)
 

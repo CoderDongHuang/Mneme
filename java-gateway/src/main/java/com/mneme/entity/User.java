@@ -10,6 +10,9 @@ public class User {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String username;
+    private String nickname;
+    private String email;
+    private String avatarPath;
     private String passwordHash;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -19,6 +22,12 @@ public class User {
     public void setId(Long id) { this.id = id; }
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
+    public String getNickname() { return nickname; }
+    public void setNickname(String nickname) { this.nickname = nickname; }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    public String getAvatarPath() { return avatarPath; }
+    public void setAvatarPath(String avatarPath) { this.avatarPath = avatarPath; }
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public LocalDateTime getCreatedAt() { return createdAt; }

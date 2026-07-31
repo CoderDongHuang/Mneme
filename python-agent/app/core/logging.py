@@ -1,31 +1,33 @@
-import logging
 import json
-from .config import settings
+import logging
+from contextvars import ContextVar
 
-class JSONFormatter(logging.Formatter):
-    def format(self, record):
-        # 尝试从 contextvars 获取 trace_id
-        try:
-            from main import trace_id_var
-            trace_id = trace_id_var.get()
-        except (ImportError, LookupError):
-            trace_id = ""
+from app.core.config import settings
 
-        log_entry = {
+
+trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
             "level": record.levelname,
-            "module": record.module,
+            "logger": record.name,
             "message": record.getMessage(),
             "timestamp": self.formatTime(record),
-            "trace_id": trace_id,
+            "trace_id": trace_id_var.get(),
         }
         if record.exc_info:
-            log_entry["exception"] = self.formatException(record.exc_info)
-        return json.dumps(log_entry, ensure_ascii=False)
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
 
 def setup_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
-    logger.setLevel(getattr(logging, settings.LOG_LEVEL))
-    handler = logging.StreamHandler()
-    handler.setFormatter(JSONFormatter())
-    logger.addHandler(handler)
+    logger.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
+    logger.propagate = False
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(JsonFormatter())
+        logger.addHandler(handler)
     return logger

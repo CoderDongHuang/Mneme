@@ -1,0 +1,5 @@
+{
+  "high": true,
+  "allowlist": ["GHSA-qwww-vcr4-c8h2"],
+  "report-type": "summary"
+}

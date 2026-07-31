@@ -6,6 +6,7 @@ JWT 鉴权中间件
 
 JWT secret 与 Java Gateway 共享，确保 token 由 Gateway 签发后 Python 端可验证。
 """
+
 import os
 import jwt
 from fastapi import Request, HTTPException
@@ -13,16 +14,18 @@ from app.core.logging import setup_logger
 
 logger = setup_logger("auth")
 
-JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
-SKIP_AUTH = os.getenv("SKIP_AUTH", "true").lower() == "true"
+SKIP_AUTH = os.getenv("SKIP_AUTH", "false").lower() == "true"
 
 
 def get_user_id_from_token(token: str) -> str:
     """从 JWT token 中提取 user_id。验证失败抛出 HTTPException。"""
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get("userId") or payload.get("user_id") or payload.get("sub", "")
+        user_id = (
+            payload.get("userId") or payload.get("user_id") or payload.get("sub", "")
+        )
         if not user_id:
             raise HTTPException(status_code=401, detail="Token 中缺少用户标识")
         return str(user_id)

@@ -2,6 +2,7 @@ from typing import List
 from app.models.chat import Message
 from app.core.config import settings
 
+
 class WorkingMemoryManager:
     def __init__(self):
         self._store: dict = {}  # session_id -> messages
@@ -31,17 +32,22 @@ class WorkingMemoryManager:
             if messages:
                 # 取第一条消息作为标题
                 first_msg = messages[0]
-                title = first_msg.content[:30] + ("..." if len(first_msg.content) > 30 else "")
+                title = first_msg.content[:30] + (
+                    "..." if len(first_msg.content) > 30 else ""
+                )
                 # 取最后一条消息的时间
                 last_msg = messages[-1]
-                sessions.append({
-                    "id": session_id,
-                    "title": title,
-                    "message_count": len(messages),
-                    "last_updated": last_msg.timestamp
-                })
+                sessions.append(
+                    {
+                        "id": session_id,
+                        "title": title,
+                        "message_count": len(messages),
+                        "last_updated": last_msg.timestamp,
+                    }
+                )
         # 按时间倒序
         sessions.sort(key=lambda x: x["last_updated"], reverse=True)
         return sessions
+
 
 working_memory = WorkingMemoryManager()

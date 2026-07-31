@@ -28,9 +28,12 @@ CREATE TABLE IF NOT EXISTS `knowledge_document` (
     `file_name` VARCHAR(255) NOT NULL,
     `file_path` VARCHAR(500) NOT NULL,
     `status` VARCHAR(20) DEFAULT 'parsing',
+    `parse_task_id` VARCHAR(64),
+    `chunk_count` INT DEFAULT 0,
+    `error_message` TEXT,
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (`kb_id`) REFERENCES `knowledge_base`(`id`),
+    FOREIGN KEY (`kb_id`) REFERENCES `knowledge_base`(`id`) ON DELETE CASCADE,
     INDEX `idx_kb_id` (`kb_id`)
 );
 
@@ -40,6 +43,16 @@ CREATE TABLE IF NOT EXISTS `chat_session` (
     `title` VARCHAR(200),
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (`user_id`) REFERENCES `user`(`id`),
+    FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
     INDEX `idx_user_id` (`user_id`)
+);
+
+CREATE TABLE IF NOT EXISTS `chat_message` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `session_id` BIGINT NOT NULL,
+    `role` VARCHAR(20) NOT NULL,
+    `content` LONGTEXT NOT NULL,
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`session_id`) REFERENCES `chat_session`(`id`) ON DELETE CASCADE,
+    INDEX `idx_session_created` (`session_id`, `created_at`)
 );

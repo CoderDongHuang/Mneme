@@ -1,240 +1,230 @@
 import json
+import re
 from datetime import datetime
+
 from langchain_core.messages import HumanMessage, SystemMessage
-from app.utils.llm import llm
-from app.agents.prompts import INTENT_CLASSIFICATION_PROMPT, QA_PROMPT
-from app.knowledge.retriever import retrieve
-from app.knowledge.vector_store import vector_store
-from app.memory.short_term_memory import short_term_memory
-from app.memory.long_term_memory import long_term_memory
-from app.memory.distillation import distill_conversation, apply_distilled_entries
-from app.memory.reflection import run_reflection
+
+from app.agents.prompts import (
+    GENERAL_PROMPT,
+    INTENT_CLASSIFICATION_PROMPT,
+    QA_PROMPT,
+    REVIEW_PROMPT,
+    SUGGEST_PROMPT,
+)
 from app.core.config import settings
 from app.core.logging import setup_logger
+from app.knowledge.retriever import retrieve
+from app.knowledge.vector_store import vector_store
+from app.memory.distillation import apply_distilled_entries, distill_conversation
+from app.memory.long_term_memory import long_term_memory
+from app.memory.reflection import run_reflection
+from app.memory.short_term_memory import short_term_memory
+from app.utils.llm import llm
+
 
 logger = setup_logger("nodes")
+VALID_INTENTS = {"qa", "review", "suggest", "general"}
+
+
+def _extract_json(content: str) -> dict:
+    text = str(content).strip()
+    fenced = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if fenced:
+        text = fenced.group(0)
+    return json.loads(text)
+
+
+def _memory_context(user_id: str, session_id: str, include_history: bool = True) -> str:
+    preferences = long_term_memory.get_preferences(user_id)
+    weak_points = long_term_memory.get_weak_points(user_id)
+    progress = long_term_memory.get_progress(user_id)
+    sections = []
+    if preferences:
+        sections.append(
+            "偏好：" + "；".join(item.get("content", "") for item in preferences[:8])
+        )
+    if weak_points:
+        sections.append(
+            "薄弱点："
+            + "；".join(
+                item.get("topic") or item.get("content", "") for item in weak_points[:8]
+            )
+        )
+    if progress:
+        sections.append(
+            "进度：" + (progress.get("topic") or progress.get("content", ""))
+        )
+    if include_history:
+        history = short_term_memory.get_history(session_id)[-6:]
+        if history:
+            sections.append(
+                "近期对话：\n"
+                + "\n".join(f"{message.role}: {message.content}" for message in history)
+            )
+    return "\n".join(sections) or "暂无明确记录"
+
+
+def intent_classification_node(state: dict) -> dict:
+    message = state.get("message", "").strip()
+    if state.get("knowledge_base_ids"):
+        return {"intent": "qa", "confidence": 1.0}
+    if any(
+        word in message for word in ("建议", "计划", "怎么学", "下一步", "如何复习")
+    ):
+        return {"intent": "suggest", "confidence": 0.9}
+    if any(
+        word in message for word in ("上次", "之前", "回顾", "复习一下", "我的偏好")
+    ):
+        return {"intent": "review", "confidence": 0.9}
+    if message.lower() in {"你好", "您好", "hi", "hello", "谢谢", "再见"}:
+        return {"intent": "general", "confidence": 0.95}
+    prompt = INTENT_CLASSIFICATION_PROMPT.format(question=state.get("message", ""))
+    try:
+        response = llm.invoke(
+            [
+                SystemMessage(content="你是意图分类器，只输出合法 JSON。"),
+                HumanMessage(content=prompt),
+            ]
+        )
+        intent_data = _extract_json(response.content)
+    except json.JSONDecodeError:
+        return {"intent": "general", "confidence": 0.0}
+    except Exception as error:
+        logger.warning("意图识别调用失败，使用规则降级: %s", error)
+        message = state.get("message", "")
+        if any(word in message for word in ("建议", "计划", "怎么学", "下一步")):
+            return {"intent": "suggest", "confidence": 0.55}
+        if any(word in message for word in ("上次", "之前", "回顾", "复习")):
+            return {"intent": "review", "confidence": 0.55}
+        if state.get("knowledge_base_ids") or len(message) > 8:
+            return {"intent": "qa", "confidence": 0.5}
+        return {"intent": "general", "confidence": 0.4}
+
+    intent = intent_data.get("intent", "general")
+    if intent not in VALID_INTENTS:
+        intent = "general"
+    if state.get("knowledge_base_ids") and intent == "general":
+        intent = "qa"
+    confidence = intent_data.get("confidence", 0.5)
+    try:
+        confidence = max(0.0, min(float(confidence), 1.0))
+    except (TypeError, ValueError):
+        confidence = 0.5
+    return {"intent": intent, "confidence": confidence}
+
+
+def knowledge_retrieval_node(state: dict) -> dict:
+    kb_ids = list(dict.fromkeys(state.get("knowledge_base_ids") or []))
+    if not kb_ids:
+        kb_ids = [
+            str((collection.metadata or {}).get("kb_id", ""))
+            for collection in vector_store.list_user_collections(state["user_id"])
+        ]
+        kb_ids = [kb_id for kb_id in kb_ids if kb_id]
+
+    chunks = []
+    for kb_id in kb_ids:
+        chunks.extend(retrieve(state["user_id"], kb_id, state["message"]))
+    chunks.sort(key=lambda item: item.get("distance", 1.0))
+    chunks = chunks[: settings.retriever_top_k]
+
+    context_parts = []
+    for index, chunk in enumerate(chunks, start=1):
+        metadata = chunk.get("metadata", {})
+        location = metadata.get("source", "未知文档")
+        if metadata.get("page"):
+            location += f"，第 {metadata['page']} 页"
+        if metadata.get("section"):
+            location += f"，{metadata['section']}"
+        context_parts.append(f"[{index}] {location}\n{chunk.get('content', '')}")
+    return {
+        "context": "\n\n".join(context_parts) or "本次未检索到匹配片段",
+        "retrieved_chunks": chunks,
+        "knowledge_base_ids": kb_ids,
+        "memory_context": _memory_context(state["user_id"], state["session_id"], False),
+    }
+
+
+def memory_retrieval_node(state: dict) -> dict:
+    return {"memory_context": _memory_context(state["user_id"], state["session_id"])}
+
+
+def weak_point_retrieval_node(state: dict) -> dict:
+    return {"memory_context": _memory_context(state["user_id"], state["session_id"])}
+
+
+def suggestion_generation_node(state: dict) -> dict:
+    try:
+        reflection = run_reflection(state["user_id"])
+    except Exception as error:
+        logger.warning("实时反思失败，使用已有记忆生成建议: %s", error)
+        reflection = {}
+    if reflection:
+        extra = json.dumps(reflection, ensure_ascii=False)
+        current = state.get("memory_context", "")
+        return {"memory_context": f"{current}\n反思结果：{extra}"}
+    return {}
 
 
 def build_llm_prompt(state: dict) -> str:
-    """根据意图构建 LLM 推理 prompt。供 graph 节点和流式路径共用。"""
-    intent = state["intent"]
-
-    if intent == "qa":
-        return QA_PROMPT.format(
-            context=state.get("context", "无参考资料"),
-            question=state["message"]
-        )
-    elif intent == "review":
-        return f"""你是一个学习助手，基于用户的历史记忆回答问题。
-
-{state.get('memory_context', '')}
-
-用户问题：{state['message']}
-
-请结合历史记忆和偏好回答。"""
-    elif intent == "suggest":
-        return f"""你是一个学习助手。请分析用户的薄弱点并生成个性化学习建议。
-
-用户学习数据：
-{state.get('memory_context', '无数据')}
-
-用户问题：{state['message']}
-
-请按以下结构输出：
-1. 薄弱点分析：哪些知识点需要优先加强
-2. 学习建议（3 条）：具体可执行的下一步学习计划"""
-    else:  # general
-        return f"""你是一个学习助手，请回答用户的问题。
-
-用户问题：{state['message']}
-
-请用简洁清晰的语言回答。"""
+    values = {
+        "question": state["message"],
+        "context": state.get("context", "本次未检索到匹配片段"),
+        "memory_context": state.get("memory_context") or "暂无明确记录",
+    }
+    intent = state.get("intent", "general")
+    template = {
+        "qa": QA_PROMPT,
+        "review": REVIEW_PROMPT,
+        "suggest": SUGGEST_PROMPT,
+        "general": GENERAL_PROMPT,
+    }.get(intent, GENERAL_PROMPT)
+    return template.format(**values)
 
 
-def run_pre_llm_nodes(state: dict) -> dict:
-    """执行 LLM 推理之前的所有节点：意图识别 → 检索。
-    供 graph 和流式路径共用，不包含 LLM 调用。
-    """
-    state.update(intent_classification_node(state))
-    intent = state["intent"]
-    logger.info(f"意图识别: intent={intent}, confidence={state.get('confidence', 0)}")
+def llm_reasoning_node(state: dict) -> dict:
+    response = llm.invoke([HumanMessage(content=build_llm_prompt(state))])
+    if short_term_memory.should_summarize(state["session_id"]):
+        short_term_memory.summarize(state["session_id"])
+    return {"answer": str(response.content)}
 
-    if intent == "qa":
-        state.update(knowledge_retrieval_node(state))
-    elif intent == "review":
-        state.update(memory_retrieval_node(state))
-    elif intent == "suggest":
-        state.update(weak_point_retrieval_node(state))
-
-    return state
-
-def intent_classification_node(state: dict) -> dict:
-    prompt = INTENT_CLASSIFICATION_PROMPT.format(question=state["message"])
-    response = llm.invoke([SystemMessage(content="你是一个意图分类器，只输出JSON。"), HumanMessage(content=prompt)])
-    try:
-        intent_data = json.loads(response.content)
-    except json.JSONDecodeError:
-        logger.warning(f"意图识别JSON解析失败，原始响应: {str(response.content)[:200]}")
-        intent_data = {"intent": "general", "confidence": 0.0, "extracted_entities": []}
-    logger.info(f"意图识别结果: {intent_data}")
-    valid_intents = {"qa", "review", "suggest", "general"}
-    intent = intent_data.get("intent", "general")
-    if intent not in valid_intents:
-        intent = "general"
-    return {"intent": intent, "confidence": intent_data.get("confidence", 0.5)}
-
-def knowledge_retrieval_node(state: dict) -> dict:
-    all_chunks = []
-    kb_ids = state.get("knowledge_base_ids", [])
-    
-    # 如果没有指定知识库ID：
-    # - qa 意图：自动检索该用户所有知识库（用户想提问但没指定范围）
-    # - 其他意图：不检索知识库，走纯对话/记忆链路（与架构文档一致）
-    if not kb_ids:
-        if state.get("intent") == "qa":
-            try:
-                collections = vector_store.client.list_collections()
-                for collection in collections:
-                    name = collection.name
-                    if name.startswith(f"user_{state['user_id']}_kb_"):
-                        kb_id = name.split("_kb_")[1]
-                        chunks = retrieve(state["user_id"], kb_id, state["message"])
-                        all_chunks.extend(chunks)
-                logger.info(f"qa 意图无指定知识库，自动检索到 {len(all_chunks)} 条相关片段")
-            except Exception as e:
-                logger.error(f"自动检索知识库失败: {e}")
-        # 非 qa 意图 + 空 kb_ids → 跳过检索
-    else:
-        for kb_id in kb_ids:
-            chunks = retrieve(state["user_id"], kb_id, state["message"])
-            all_chunks.extend(chunks)
-    
-    context = "\n\n".join([f"[来源: {c['metadata'].get('source', 'unknown')}] {c['content']}" for c in all_chunks if c.get("content")])
-    return {"context": context, "retrieved_chunks": all_chunks}
-
-def memory_retrieval_node(state: dict) -> dict:
-    """review 意图：检索记忆"""
-    prefs = long_term_memory.get_preferences(state["user_id"])
-    weak_points = long_term_memory.get_weak_points(state["user_id"])
-    history = short_term_memory.get_history(state["session_id"])
-
-    memory_context = "用户偏好:\n" + "\n".join([p.get("content", "") for p in prefs]) + "\n\n"
-    memory_context += "薄弱点:\n" + "\n".join([f"- {wp.get('topic', '')} (重要性{wp.get('importance', 0.5):.1f})" for wp in weak_points]) + "\n\n"
-    memory_context += "历史对话:\n" + "\n".join([f"{m.role}: {m.content}" for m in history[-5:]])
-
-    return {"memory_context": memory_context}
-
-def weak_point_retrieval_node(state: dict) -> dict:
-    """suggest 意图：检索薄弱点"""
-    weak_points = long_term_memory.get_weak_points(state["user_id"])
-    progress = long_term_memory.get_progress(state["user_id"])
-
-    context = "薄弱点:\n" + "\n".join([f"- {wp.get('topic', '')}: {wp.get('content', '')}" for wp in weak_points]) + "\n\n"
-    if progress:
-        topic = progress.get("topic", "")
-        context += f"当前进度: {topic}\n\n"
-
-    return {"memory_context": context}
-
-def suggestion_generation_node(state: dict) -> dict:
-    """生成学习建议（阶段三：加入反思结果）"""
-    weak_points = long_term_memory.get_weak_points(state["user_id"])
-
-    # 尝试获取反思结果
-    reflection_result = run_reflection(state["user_id"]) if weak_points else {}
-    priority_points = reflection_result.get("priority_weak_points", [])
-
-    context = "薄弱点:\n" + "\n".join([f"- {wp.get('topic', '')}" for wp in weak_points]) + "\n\n"
-    if priority_points:
-        context += f"优先处理: {', '.join(priority_points)}\n\n"
-
-    prompt = f"""基于以下用户信息，生成 3 条个性化学习建议：
-
-{context}
-
-用户问题：{state['message']}
-
-请用简洁的列表格式输出建议。"""
-    response = llm.invoke([HumanMessage(content=prompt)])
-    return {"suggestions": [response.content]}
 
 def format_response_node(state: dict) -> dict:
-    """格式化响应"""
-    intent = state["intent"]
-    if intent == "suggest":
-        answer = state.get("suggestions", [""])[0]
-    else:
-        answer = state.get("answer", "")
-    return {"answer": answer}
+    return {"answer": state.get("answer", "").strip()}
+
 
 def memory_write_node(state: dict) -> dict:
-    """记忆写入（阶段三：蒸馏 + 触发）
-
-    蒸馏触发逻辑：
-    - memory_write_node 执行时，当前轮的用户消息已经写入 short_term_memory
-    - 因此 history[-1] 是当前消息（时间戳 ≈ 现在），不能用来判断空闲
-    - 检查 history[-2]（上一轮的助手回复时间）来判断用户是否空闲超过阈值
-    - 至少需要 2 条消息才有"上一轮"的概念
-    """
     user_id = state["user_id"]
     session_id = state["session_id"]
-
     history = short_term_memory.get_history(session_id)
     if len(history) < 2:
         return {"memory_entries_to_write": []}
+    try:
+        previous_time = datetime.fromisoformat(history[-2].timestamp)
+    except (TypeError, ValueError):
+        return {"memory_entries_to_write": []}
+    idle_seconds = (datetime.now(previous_time.tzinfo) - previous_time).total_seconds()
+    if idle_seconds <= settings.distillation_idle_minutes * 60:
+        return {"memory_entries_to_write": []}
+    conversation = [
+        {"role": message.role, "content": message.content} for message in history[:-1]
+    ]
+    distilled = distill_conversation(user_id, session_id, conversation)
+    pending = apply_distilled_entries(user_id, distilled)
+    return {"memory_entries_to_write": distilled, "pending_memories": pending}
 
-    # 检查倒数第二条消息的时间（上一轮对话的最后一条消息）
-    # 如果距今超过 DISTILLATION_IDLE_MINUTES，说明用户空闲了一段时间
-    previous_round_last_msg = history[-2]
-    previous_time = datetime.fromisoformat(previous_round_last_msg.timestamp)
-    idle_seconds = (datetime.now() - previous_time).total_seconds()
 
-    if idle_seconds > settings.DISTILLATION_IDLE_MINUTES * 60:
-        # 蒸馏旧对话：排除当前轮次的用户消息（history[-1]）
-        history_dicts = [
-            {"role": m.role, "content": m.content}
-            for m in history[:-1]
-        ]
-        distilled = distill_conversation(user_id, session_id, history_dicts)
-        pending = apply_distilled_entries(user_id, distilled)
-        return {"memory_entries_to_write": distilled, "pending_memories": pending}
-
-    return {"memory_entries_to_write": []}
-
-def llm_reasoning_node(state: dict) -> dict:
-    intent = state["intent"]
-
-    if intent == "qa":
-        prompt = QA_PROMPT.format(
-            context=state.get("context", "无参考资料"),
-            question=state["message"]
-        )
-    elif intent == "review":
-        prompt = f"""你是一个学习助手，基于用户的历史记忆回答问题。
-
-{state.get('memory_context', '')}
-
-用户问题：{state['message']}
-
-请结合历史记忆和偏好回答。"""
-    elif intent == "suggest":
-        prompt = f"""你是一个学习助手，基于以下信息回答问题。
-
-{state.get('memory_context', '')}
-
-用户问题：{state['message']}"""
+def run_pre_llm_nodes(state: dict) -> dict:
+    state.update(intent_classification_node(state))
+    if state["intent"] == "qa":
+        state.update(knowledge_retrieval_node(state))
+    elif state["intent"] == "review":
+        state.update(memory_retrieval_node(state))
+    elif state["intent"] == "suggest":
+        state.update(weak_point_retrieval_node(state))
+        state.update(suggestion_generation_node(state))
     else:
-        # general 意图：直接回答，不需要参考资料
-        prompt = f"""你是一个学习助手，请回答用户的问题。
-
-用户问题：{state['message']}
-
-请用简洁清晰的语言回答。"""
-
-    response = llm.invoke([HumanMessage(content=prompt)])
-
-    # 检查是否需要摘要压缩
-    if short_term_memory.should_summarize(state["session_id"]):
-        short_term_memory.summarize(state["session_id"])
-
-    return {"answer": response.content}
+        state["memory_context"] = _memory_context(
+            state["user_id"], state["session_id"], include_history=True
+        )
+    return state

@@ -2,22 +2,50 @@ server:
   port: 8080
 
 spring:
+  sql:
+    init:
+      mode: never
   datasource:
-    url: jdbc:mysql://localhost:3306/mneme?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
-    username: root
-    password: 123456
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/mneme?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  servlet:
+    multipart:
+      max-file-size: 30MB
+      max-request-size: 32MB
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
 
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
   configuration:
     map-underscore-to-camel-case: true
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
 mneme:
-  python-agent-url: ${PYTHON_AGENT_URL:http://localhost:8000}
-  jwt-secret: ${JWT_SECRET:your-secret-key-change-in-production}
+  python-agent-url: ${PYTHON_AGENT_URL:http://localhost:8001}
+  jwt-secret: ${JWT_SECRET}
   jwt-expiration: ${JWT_EXPIRATION:86400000}
+  file-storage-path: ${FILE_STORAGE_PATH:../data/files}
+  internal-service-token: ${INTERNAL_SERVICE_TOKEN}
+  cors-origins: ${CORS_ORIGINS:http://localhost:5173}
+  secure-cookies: ${SECURE_COOKIES:true}
+  password-reset-from: ${PASSWORD_RESET_FROM:}
+  admin-api-token: ${ADMIN_API_TOKEN:}

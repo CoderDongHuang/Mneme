@@ -13,6 +13,7 @@ public class KnowledgeBase {
     private String name;
     private String description;
     private String chromaCollectionId;
+    private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -27,6 +28,8 @@ public class KnowledgeBase {
     public void setDescription(String description) { this.description = description; }
     public String getChromaCollectionId() { return chromaCollectionId; }
     public void setChromaCollectionId(String chromaCollectionId) { this.chromaCollectionId = chromaCollectionId; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

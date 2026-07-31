@@ -1,63 +1,60 @@
-from pydantic import BaseModel, field_validator
-from typing import List, Optional
+from typing import Literal
 
-MAX_MESSAGE_LENGTH = 4000
+from pydantic import BaseModel, Field, field_validator
+
 
 class Message(BaseModel):
-    role: str
+    role: Literal["user", "assistant", "system"]
     content: str
     timestamp: str
-    token_count: int
+    token_count: int = 0
+
 
 class ChatRequest(BaseModel):
-    user_id: str
-    session_id: str
-    message: str
-    knowledge_base_ids: List[str] = []
+    request_id: str = Field(default="", max_length=64)
+    user_id: str = Field(min_length=1, max_length=64)
+    session_id: str = Field(min_length=1, max_length=128)
+    message: str = Field(min_length=1, max_length=8000)
+    knowledge_base_ids: list[str] = Field(default_factory=list)
 
-    @field_validator("message")
+    @field_validator("user_id", "session_id", "message")
     @classmethod
-    def message_not_empty(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("消息不能为空")
-        if len(v) > MAX_MESSAGE_LENGTH:
-            raise ValueError(f"消息长度不能超过 {MAX_MESSAGE_LENGTH} 字符")
-        return v
+    def strip_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value cannot be blank")
+        return value
 
-    @field_validator("user_id")
-    @classmethod
-    def user_id_not_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("user_id 不能为空")
-        return v.strip()
 
 class Source(BaseModel):
     document_name: str
     chunk_content: str
-    page: Optional[int]
-    score: float
+    page: int | None = None
+    score: float = 0.0
+    chunk_type: str = "text"
+
 
 class PendingMemory(BaseModel):
-    """待用户确认的记忆条目"""
-    temp_id: str          # 临时 ID，用于确认/拒绝
-    category: str         # preference / weak_point / progress
+    temp_id: str
+    category: Literal["preference", "weak_point", "progress"]
     content: str
-    topic: str = ""       # 薄弱点主题
-    confidence: float     # LLM 给出的置信度 (0.6-0.8)
+    topic: str = ""
+    confidence: float = Field(ge=0.0, le=1.0)
+
 
 class MemoryConfirmRequest(BaseModel):
-    """记忆确认请求"""
     user_id: str
-    temp_id: str          # 临时 ID
-    action: str           # "confirm" | "dismiss"
-    category: str = ""    # 记忆类别（confirm 时需要）
-    content: str = ""     # 记忆内容（confirm 时需要）
-    topic: str = ""       # 薄弱点主题
+    temp_id: str
+    action: Literal["confirm", "dismiss"]
+    category: str = ""
+    content: str = ""
+    topic: str = ""
+
 
 class ChatResponse(BaseModel):
     answer: str
-    sources: List[Source]
-    session_summary: Optional[str] = None
-    memory_insights: List[str] = []
-    pending_memories: List[PendingMemory] = []  # 待用户确认的记忆
+    intent: str = "qa"
+    sources: list[Source] = Field(default_factory=list)
+    session_summary: str | None = None
+    memory_insights: list[str] = Field(default_factory=list)
+    pending_memories: list[PendingMemory] = Field(default_factory=list)
