@@ -4,6 +4,7 @@ import java.util.List;
 
 public class ChatResponse {
     private String answer;
+    private String intent;
     private List<Source> sources;
     @com.fasterxml.jackson.annotation.JsonProperty("session_summary")
     private String sessionSummary;
@@ -19,6 +20,9 @@ public class ChatResponse {
         private String chunkContent;
         private Integer page;
         private Double score;
+        private String section;
+        @com.fasterxml.jackson.annotation.JsonProperty("chunk_type")
+        private String chunkType;
 
         public String getDocumentName() { return documentName; }
         public void setDocumentName(String documentName) { this.documentName = documentName; }
@@ -28,6 +32,10 @@ public class ChatResponse {
         public void setPage(Integer page) { this.page = page; }
         public Double getScore() { return score; }
         public void setScore(Double score) { this.score = score; }
+        public String getSection() { return section; }
+        public void setSection(String section) { this.section = section; }
+        public String getChunkType() { return chunkType; }
+        public void setChunkType(String chunkType) { this.chunkType = chunkType; }
     }
 
     public static class PendingMemory {
@@ -52,6 +60,8 @@ public class ChatResponse {
 
     public String getAnswer() { return answer; }
     public void setAnswer(String answer) { this.answer = answer; }
+    public String getIntent() { return intent; }
+    public void setIntent(String intent) { this.intent = intent; }
     public List<Source> getSources() { return sources; }
     public void setSources(List<Source> sources) { this.sources = sources; }
     public String getSessionSummary() { return sessionSummary; }

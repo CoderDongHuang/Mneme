@@ -13,6 +13,9 @@ public class KnowledgeDocument {
     private String fileName;
     private String filePath;
     private String status;
+    private String parseTaskId;
+    private Integer chunkCount;
+    private String errorMessage;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -27,6 +30,12 @@ public class KnowledgeDocument {
     public void setFilePath(String filePath) { this.filePath = filePath; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public String getParseTaskId() { return parseTaskId; }
+    public void setParseTaskId(String parseTaskId) { this.parseTaskId = parseTaskId; }
+    public Integer getChunkCount() { return chunkCount; }
+    public void setChunkCount(Integer chunkCount) { this.chunkCount = chunkCount; }
+    public String getErrorMessage() { return errorMessage; }
+    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
