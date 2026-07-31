@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # 测试前禁用 Chroma 遥测，避免日志噪音
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["SKIP_INTERNAL_AUTH"] = "true"
 
 # 使用本地持久化 Chroma（避免依赖外部服务）
 os.environ.setdefault("CHROMA_HOST", "localhost")  # 触发 PersistentClient

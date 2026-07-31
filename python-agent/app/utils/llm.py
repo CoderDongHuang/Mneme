@@ -1,126 +1,196 @@
-"""
-LLM 客户端 — 支持主备切换与熔断降级
-
-- 主模型: DeepSeek-V3 (deepseek-chat)
-- 备选模型: 通义千问 (qwen-plus) 或其他 OpenAI 兼容模型
-- 熔断: 连续失败 N 次后自动切备选，探测恢复后切回主模型
-"""
-import time
 import threading
-from langchain_deepseek import ChatDeepSeek
-from langchain_core.language_models import BaseChatModel
+import time
+from collections import deque
+from typing import Any, AsyncIterator
+
 from app.core.config import settings
 from app.core.logging import setup_logger
+from app.core.metrics import LLM_ACTIVE, LLM_FALLBACKS, LLM_REQUESTS
+
 
 logger = setup_logger("llm")
 
 
 class FallbackLLM:
-    """带熔断降级的 LLM 客户端"""
+    """Lazy LLM client with immediate fallback and circuit breaking."""
 
-    def __init__(self):
-        self._primary = ChatDeepSeek(
-            model="deepseek-chat",
-            api_key=settings.DEEPSEEK_API_KEY,
-            temperature=0.7,
-        )
-        self._fallback = self._build_fallback()
-        self._lock = threading.Lock()
+    def __init__(self) -> None:
+        self._primary: Any | None = None
+        self._fallback: Any | None = None
+        self._lock = threading.RLock()
         self._failure_count = 0
-        self._circuit_open = False
-        self._last_failure_time = 0.0
-        self._recovery_probe_interval = 60
-
-    def _build_fallback(self) -> BaseChatModel:
-        try:
-            from langchain_openai import ChatOpenAI
-            return ChatOpenAI(
-                model=settings.LLM_FALLBACK_MODEL,
-                api_key=settings.DASHSCOPE_API_KEY,
-                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-                temperature=0.7,
-            )
-        except ImportError:
-            logger.warning("langchain_openai 不可用，备选模型降级为 DeepSeek")
-            return self._primary
+        self._circuit_opened_at = 0.0
+        self._request_times = deque()
 
     @property
-    def _active_model(self) -> BaseChatModel:
-        if not settings.LLM_FALLBACK_ENABLED:
-            return self._primary
+    def configured(self) -> bool:
+        return bool(settings.deepseek_api_key or settings.dashscope_api_key)
+
+    @property
+    def status(self) -> dict[str, Any]:
+        return {
+            "configured": self.configured,
+            "primary": settings.deepseek_model,
+            "fallback": settings.fallback_model if settings.fallback_enabled else None,
+            "circuit_open": self._is_circuit_open(),
+            "failure_count": self._failure_count,
+        }
+
+    def _build_primary(self) -> Any:
+        if not settings.deepseek_api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY 未配置")
+        from langchain_deepseek import ChatDeepSeek
+
+        return ChatDeepSeek(
+            model=settings.deepseek_model,
+            api_key=settings.deepseek_api_key,
+            temperature=0.4,
+            timeout=35,
+            max_retries=1,
+        )
+
+    def _build_fallback(self) -> Any:
+        if not settings.fallback_enabled or not settings.dashscope_api_key:
+            return None
+        try:
+            from langchain_openai import ChatOpenAI
+        except ImportError:
+            logger.warning("未安装 langchain-openai，Qwen 备用模型不可用")
+            return None
+        return ChatOpenAI(
+            model=settings.fallback_model,
+            api_key=settings.dashscope_api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            temperature=0.4,
+            timeout=35,
+            max_retries=1,
+        )
+
+    def _get_primary(self) -> Any:
         with self._lock:
-            if self._circuit_open:
-                elapsed = time.time() - self._last_failure_time
-                if elapsed > self._recovery_probe_interval:
-                    logger.info("探测主模型恢复...")
-                    self._circuit_open = False
-                    self._failure_count = 0
-                    return self._primary
-                return self._fallback
+            if self._primary is None:
+                self._primary = self._build_primary()
             return self._primary
 
-    def _on_success(self):
+    def _get_fallback(self) -> Any | None:
+        with self._lock:
+            if self._fallback is None:
+                self._fallback = self._build_fallback()
+            return self._fallback
+
+    def _is_circuit_open(self) -> bool:
+        if not self._circuit_opened_at:
+            return False
+        if time.monotonic() - self._circuit_opened_at >= settings.circuit_recovery_seconds:
+            with self._lock:
+                self._circuit_opened_at = 0.0
+                self._failure_count = 0
+            logger.info("LLM 主模型熔断恢复，下一次请求将探测主模型")
+            return False
+        return True
+
+    def _record_success(self) -> None:
         with self._lock:
             self._failure_count = 0
-            if self._circuit_open:
-                logger.info("主模型已恢复，切回 DeepSeek")
-                self._circuit_open = False
+            self._circuit_opened_at = 0.0
 
-    def _on_failure(self, error: Exception):
+    def _record_failure(self, error: Exception) -> None:
         with self._lock:
             self._failure_count += 1
-            self._last_failure_time = time.time()
-            if (
-                self._failure_count >= settings.LLM_CIRCUIT_BREAKER_THRESHOLD
-                and not self._circuit_open
-            ):
-                self._circuit_open = True
-                logger.warning(
-                    f"主模型连续失败 {self._failure_count} 次，切换到备选模型"
-                )
+            if self._failure_count >= settings.circuit_breaker_threshold:
+                self._circuit_opened_at = time.monotonic()
+        logger.warning("LLM 主模型调用失败: %s", error)
 
-    # ── LangChain 兼容接口 ──
+    def _selected(self) -> tuple[Any, bool]:
+        if self._is_circuit_open():
+            fallback = self._get_fallback()
+            if fallback is not None:
+                return fallback, True
+        return self._get_primary(), False
 
-    def invoke(self, messages, **kwargs):
+    def _acquire_quota(self) -> None:
+        limit = settings.llm_hourly_limit
+        if not limit:
+            return
+        now = time.monotonic()
+        with self._lock:
+            while self._request_times and now - self._request_times[0] >= 3600:
+                self._request_times.popleft()
+            if len(self._request_times) >= limit:
+                raise RuntimeError("模型调用额度已用尽，请稍后再试")
+            self._request_times.append(now)
+
+    def invoke(self, messages: Any, **kwargs: Any) -> Any:
+        model, using_fallback = self._selected()
         try:
-            result = self._active_model.invoke(messages, **kwargs)
-            self._on_success()
+            result = model.invoke(messages, **kwargs)
+            if not using_fallback:
+                self._record_success()
+            LLM_REQUESTS.labels("sync", "fallback" if using_fallback else "primary", "success").inc()
             return result
-        except Exception as e:
-            self._on_failure(e)
-            if self._circuit_open and self._active_model is self._fallback:
-                logger.info(f"主模型不可用，使用备选: {settings.LLM_FALLBACK_MODEL}")
-                return self._fallback.invoke(messages, **kwargs)
-            raise
-
-    async def ainvoke(self, messages, **kwargs):
-        try:
-            result = await self._active_model.ainvoke(messages, **kwargs)
-            self._on_success()
-            return result
-        except Exception as e:
-            self._on_failure(e)
-            if self._circuit_open and self._active_model is self._fallback:
-                logger.info("主模型不可用（异步），使用备选模型")
-                return await self._fallback.ainvoke(messages, **kwargs)
-            raise
-
-    async def astream(self, messages, **kwargs):
-        try:
-            async for chunk in self._active_model.astream(messages, **kwargs):
-                yield chunk
-            self._on_success()
-        except Exception as e:
-            self._on_failure(e)
-            if self._circuit_open and self._active_model is self._fallback:
-                logger.info(f"主模型流式不可用，切换备选 {settings.LLM_FALLBACK_MODEL}")
-                async for chunk in self._fallback.astream(messages, **kwargs):
-                    yield chunk
-            else:
+        except Exception as error:
+            LLM_REQUESTS.labels("sync", "fallback" if using_fallback else "primary", "failure").inc()
+            if using_fallback:
                 raise
+            self._record_failure(error)
+            fallback = self._get_fallback()
+            if fallback is None:
+                raise
+            logger.info("当前请求切换至备用模型 %s", settings.fallback_model)
+            LLM_FALLBACKS.labels("sync").inc()
+            result = fallback.invoke(messages, **kwargs)
+            LLM_REQUESTS.labels("sync", "fallback", "success").inc()
+            return result
 
-    def __getattr__(self, name):
-        return getattr(self._primary, name)
+    async def ainvoke(self, messages: Any, **kwargs: Any) -> Any:
+        model, using_fallback = self._selected()
+        try:
+            result = await model.ainvoke(messages, **kwargs)
+            if not using_fallback:
+                self._record_success()
+            LLM_REQUESTS.labels("async", "fallback" if using_fallback else "primary", "success").inc()
+            return result
+        except Exception as error:
+            LLM_REQUESTS.labels("async", "fallback" if using_fallback else "primary", "failure").inc()
+            if using_fallback:
+                raise
+            self._record_failure(error)
+            fallback = self._get_fallback()
+            if fallback is None:
+                raise
+            logger.info("当前异步请求切换至备用模型 %s", settings.fallback_model)
+            LLM_FALLBACKS.labels("async").inc()
+            result = await fallback.ainvoke(messages, **kwargs)
+            LLM_REQUESTS.labels("async", "fallback", "success").inc()
+            return result
+
+    async def astream(self, messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
+        self._acquire_quota()
+        LLM_ACTIVE.inc()
+        model, using_fallback = self._selected()
+        emitted = False
+        try:
+            async for chunk in model.astream(messages, **kwargs):
+                emitted = True
+                yield chunk
+            if not using_fallback:
+                self._record_success()
+            LLM_REQUESTS.labels("stream", "fallback" if using_fallback else "primary", "success").inc()
+        except Exception as error:
+            LLM_REQUESTS.labels("stream", "fallback" if using_fallback else "primary", "failure").inc()
+            if using_fallback or emitted:
+                raise
+            self._record_failure(error)
+            fallback = self._get_fallback()
+            if fallback is None:
+                raise
+            logger.info("流式请求切换至备用模型 %s", settings.fallback_model)
+            LLM_FALLBACKS.labels("stream").inc()
+            async for chunk in fallback.astream(messages, **kwargs):
+                yield chunk
+            LLM_REQUESTS.labels("stream", "fallback", "success").inc()
+        finally:
+            LLM_ACTIVE.dec()
 
 
 llm = FallbackLLM()

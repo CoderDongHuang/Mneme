@@ -101,3 +101,22 @@ class TestKnowledgeEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert "chunks" in data
+
+
+class TestChatStreamFallback:
+    def test_retrieval_fallback_contains_retrieved_content(self):
+        from app.api.chat_stream import _retrieval_fallback
+
+        answer = _retrieval_fallback({
+            "retrieved_chunks": [{"content": "星桥计划的识别码是 QZ-7294。"}]
+        })
+
+        assert "在线模型响应超时" in answer
+        assert "QZ-7294" in answer
+
+    def test_retrieval_fallback_explains_empty_results(self):
+        from app.api.chat_stream import _retrieval_fallback
+
+        answer = _retrieval_fallback({"retrieved_chunks": []})
+
+        assert "没有检索到" in answer

@@ -5,6 +5,7 @@ from app.memory.reflection import run_reflection
 from app.memory.long_term_memory import long_term_memory
 from app.memory.memory_store import memory_store
 from app.core.logging import setup_logger
+from app.core.config import settings
 
 logger = setup_logger("reflection_scheduler")
 
@@ -25,7 +26,7 @@ class ReflectionScheduler:
 
     def check_and_trigger(self, user_id: str):
         """检查是否需要触发反思（每 5 次会话），异步执行不阻塞请求"""
-        if self._session_counts.get(user_id, 0) >= 5:
+        if self._session_counts.get(user_id, 0) >= settings.memory_reflection_every_sessions:
             logger.info(f"触发用户 {user_id} 的记忆反思（异步）")
             self._session_counts[user_id] = 0
             _reflection_executor.submit(self._run_reflection_safe, user_id)
@@ -76,8 +77,9 @@ class ReflectionScheduler:
         self._started = True
 
     def shutdown(self):
-        self.scheduler.shutdown()
-        _reflection_executor.shutdown(wait=False)
+        if not self._started:
+            return
+        self.scheduler.shutdown(wait=False)
         self._started = False
 
 

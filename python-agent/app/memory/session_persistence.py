@@ -8,6 +8,7 @@
 """
 import json
 import redis
+import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -26,16 +27,19 @@ class SessionPersistence:
     def __init__(self):
         self._redis = None
         self._available = False
+        self._last_attempt = 0.0
         self._init_redis()
 
     def _init_redis(self):
+        self._last_attempt = time.monotonic()
         try:
             self._redis = redis.Redis(
                 host=settings.REDIS_HOST,
                 port=settings.REDIS_PORT,
                 db=settings.REDIS_DB,
-                socket_connect_timeout=2,
-                socket_timeout=2,
+                password=settings.REDIS_PASSWORD or None,
+                socket_connect_timeout=0.35,
+                socket_timeout=0.5,
                 decode_responses=True,
             )
             self._redis.ping()
@@ -45,11 +49,18 @@ class SessionPersistence:
             self._available = False
             logger.warning(f"Redis 不可用 ({e})，会话消息仅存在内存中")
 
+    def _ensure_connection(self) -> bool:
+        if self._available:
+            return True
+        if time.monotonic() - self._last_attempt >= 60:
+            self._init_redis()
+        return self._available
+
     def _session_key(self, session_id: str) -> str:
         return f"{SESSION_KEY_PREFIX}{session_id}"
 
     def save_messages(self, session_id: str, messages: List[Message]):
-        if not self._available:
+        if not self._ensure_connection():
             return
         try:
             data = json.dumps([
@@ -70,7 +81,7 @@ class SessionPersistence:
             logger.warning(f"Redis 会话保存失败: {e}")
 
     def load_messages(self, session_id: str) -> Optional[List[Message]]:
-        if not self._available:
+        if not self._ensure_connection():
             return None
         try:
             data = self._redis.get(self._session_key(session_id))
@@ -91,7 +102,7 @@ class SessionPersistence:
             return None
 
     def delete_session(self, session_id: str):
-        if not self._available:
+        if not self._ensure_connection():
             return
         try:
             self._redis.delete(self._session_key(session_id))

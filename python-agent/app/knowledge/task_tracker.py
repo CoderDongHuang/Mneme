@@ -35,7 +35,13 @@ def create_task() -> str:
     return task_id
 
 
-def update_task(task_id: str, status: str, chunks: int = 0, error: str = None):
+def update_task(
+    task_id: str,
+    status: str,
+    chunks: int = 0,
+    error: str | None = None,
+    document_id: str | None = None,
+):
     """更新任务状态"""
     with _lock:
         if task_id in _task_store:
@@ -44,6 +50,8 @@ def update_task(task_id: str, status: str, chunks: int = 0, error: str = None):
                 _task_store[task_id]["chunks"] = chunks
             if error:
                 _task_store[task_id]["error"] = error
+            if document_id:
+                _task_store[task_id]["document_id"] = document_id
 
 
 def get_task(task_id: str) -> Optional[dict]:

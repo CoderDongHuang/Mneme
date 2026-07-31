@@ -9,6 +9,7 @@
 - 空历史/消息不足时安全跳过
 """
 from unittest.mock import patch, MagicMock
+import pytest
 from app.models.chat import Message
 import app.memory.short_term_memory as stm_module
 from app.memory.short_term_memory import (
@@ -17,6 +18,14 @@ from app.memory.short_term_memory import (
     KEEP_RECENT_COUNT,
 )
 from datetime import datetime, timedelta
+
+
+@pytest.fixture(autouse=True)
+def isolate_session_persistence(monkeypatch):
+    """Keep unit tests independent from any running development Redis."""
+    monkeypatch.setattr(stm_module.session_persistence, "load_messages", lambda _session_id: [])
+    monkeypatch.setattr(stm_module.session_persistence, "save_messages", lambda _session_id, _messages: None)
+    monkeypatch.setattr(stm_module.session_persistence, "delete_session", lambda _session_id: None)
 
 
 def _mock_llm(return_content: str):
