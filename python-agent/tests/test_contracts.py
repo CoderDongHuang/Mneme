@@ -24,14 +24,20 @@ def test_internal_routes_reject_missing_service_token():
     object.__setattr__(settings, "internal_service_token", "test-internal-token")
     try:
         client = TestClient(app)
-        assert client.post("/api/v1/memory/read", json={
-            "user_id": "1", "memory_types": []
-        }).status_code == 401
-        assert client.post(
-            "/api/v1/memory/read",
-            headers={"X-Internal-Service-Token": "test-internal-token"},
-            json={"user_id": "1", "memory_types": []},
-        ).status_code == 200
+        assert (
+            client.post(
+                "/api/v1/memory/read", json={"user_id": "1", "memory_types": []}
+            ).status_code
+            == 401
+        )
+        assert (
+            client.post(
+                "/api/v1/memory/read",
+                headers={"X-Internal-Service-Token": "test-internal-token"},
+                json={"user_id": "1", "memory_types": []},
+            ).status_code
+            == 200
+        )
     finally:
         object.__setattr__(settings, "skip_internal_auth", old_skip)
         object.__setattr__(settings, "internal_service_token", old_token)

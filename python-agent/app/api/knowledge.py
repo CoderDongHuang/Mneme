@@ -12,7 +12,12 @@ from app.knowledge.ingestion import SUPPORTED_EXTENSIONS, ingest_document
 from app.knowledge.retriever import retrieve
 from app.knowledge.task_tracker import create_task, get_task, update_task
 from app.knowledge.vector_store import vector_store
-from app.models.knowledge import DocumentIngestRequest, IngestionResult, IngestionTaskResponse, RetrieverResult
+from app.models.knowledge import (
+    DocumentIngestRequest,
+    IngestionResult,
+    IngestionTaskResponse,
+    RetrieverResult,
+)
 
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
@@ -64,7 +69,9 @@ async def upload_file(
         raise HTTPException(status_code=415, detail=f"不支持的文件格式: {extension}")
     content = await file.read(settings.upload_max_mb * 1024 * 1024 + 1)
     if len(content) > settings.upload_max_mb * 1024 * 1024:
-        raise HTTPException(status_code=413, detail=f"文件不能超过 {settings.upload_max_mb} MB")
+        raise HTTPException(
+            status_code=413, detail=f"文件不能超过 {settings.upload_max_mb} MB"
+        )
     if not content:
         raise HTTPException(status_code=400, detail="上传文件为空")
 
@@ -82,7 +89,9 @@ async def upload_file(
         task_id,
         filename,
     )
-    return IngestionTaskResponse(status="processing", task_id=task_id, message="文档正在解析")
+    return IngestionTaskResponse(
+        status="processing", task_id=task_id, message="文档正在解析"
+    )
 
 
 @router.post("/ingest", response_model=IngestionTaskResponse)
@@ -102,7 +111,9 @@ async def ingest(request: DocumentIngestRequest) -> IngestionTaskResponse:
         request.document_id,
         False,
     )
-    return IngestionTaskResponse(status="processing", task_id=task_id, message="文档正在解析")
+    return IngestionTaskResponse(
+        status="processing", task_id=task_id, message="文档正在解析"
+    )
 
 
 @router.post("/internal/ingest", response_model=IngestionResult)
@@ -135,7 +146,9 @@ async def task_status(task_id: str) -> dict:
 
 
 @router.get("/search", response_model=RetrieverResult)
-async def search(query: str, user_id: str, kb_id: str, top_k: int = 5) -> RetrieverResult:
+async def search(
+    query: str, user_id: str, kb_id: str, top_k: int = 5
+) -> RetrieverResult:
     return RetrieverResult(chunks=retrieve(user_id, kb_id, query, top_k), query=query)
 
 

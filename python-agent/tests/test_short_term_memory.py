@@ -8,6 +8,7 @@
 - 增量压缩保留最近消息
 - 空历史/消息不足时安全跳过
 """
+
 from unittest.mock import patch, MagicMock
 import pytest
 from app.models.chat import Message
@@ -23,9 +24,17 @@ from datetime import datetime, timedelta
 @pytest.fixture(autouse=True)
 def isolate_session_persistence(monkeypatch):
     """Keep unit tests independent from any running development Redis."""
-    monkeypatch.setattr(stm_module.session_persistence, "load_messages", lambda _session_id: [])
-    monkeypatch.setattr(stm_module.session_persistence, "save_messages", lambda _session_id, _messages: None)
-    monkeypatch.setattr(stm_module.session_persistence, "delete_session", lambda _session_id: None)
+    monkeypatch.setattr(
+        stm_module.session_persistence, "load_messages", lambda _session_id: []
+    )
+    monkeypatch.setattr(
+        stm_module.session_persistence,
+        "save_messages",
+        lambda _session_id, _messages: None,
+    )
+    monkeypatch.setattr(
+        stm_module.session_persistence, "delete_session", lambda _session_id: None
+    )
 
 
 def _mock_llm(return_content: str):
@@ -39,14 +48,14 @@ def _mock_llm(return_content: str):
 
 def make_msg(role: str, content: str, token_count: int = 100) -> Message:
     return Message(
-        role=role, content=content,
+        role=role,
+        content=content,
         timestamp=datetime.now().isoformat(),
-        token_count=token_count
+        token_count=token_count,
     )
 
 
 class TestShortTermMemoryBasics:
-
     def test_add_and_get_messages(self):
         """添加消息后能正确获取"""
         store = ShortTermMemoryManager()
@@ -74,7 +83,6 @@ class TestShortTermMemoryBasics:
 
 
 class TestShouldSummarize:
-
     def test_below_threshold_no_summarize(self):
         """token 未超阈值时不触发摘要"""
         store = ShortTermMemoryManager()
@@ -118,14 +126,13 @@ class TestShouldSummarize:
             store.add_message("s1", make_msg("user", f"msg{i}", token_count=200))
 
         # 冷却期已过
-        store._last_summary_time["s1"] = (
-            datetime.now() - timedelta(seconds=SUMMARY_COOLDOWN_SECONDS + 10)
+        store._last_summary_time["s1"] = datetime.now() - timedelta(
+            seconds=SUMMARY_COOLDOWN_SECONDS + 10
         )
         assert store.should_summarize("s1")
 
 
 class TestSummarize:
-
     def test_empty_history_no_error(self):
         """空历史 safely no-op"""
         store = ShortTermMemoryManager()

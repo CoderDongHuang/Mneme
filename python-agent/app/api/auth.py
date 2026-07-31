@@ -4,6 +4,7 @@
 开发模式 (SKIP_AUTH=true): 接受任意用户名，返回简易 token
 生产模式: JWT 签发，密码哈希存储
 """
+
 import os
 import hashlib
 import json
@@ -42,7 +43,9 @@ def _load_users() -> dict:
 
 def _save_users(users: dict):
     USER_FILE.parent.mkdir(parents=True, exist_ok=True)
-    USER_FILE.write_text(json.dumps(users, ensure_ascii=False, indent=2), encoding="utf-8")
+    USER_FILE.write_text(
+        json.dumps(users, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def _hash_password(password: str) -> str:
@@ -85,7 +88,11 @@ async def login(req: AuthRequest):
     if SKIP_AUTH:
         # 开发模式：直接签发 token
         logger.debug(f"开发模式登录: {req.username}")
-        return {"code": 200, "token": _make_token(req.username), "user_id": req.username}
+        return {
+            "code": 200,
+            "token": _make_token(req.username),
+            "user_id": req.username,
+        }
 
     users = _load_users()
     user = users.get(req.username)

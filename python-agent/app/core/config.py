@@ -24,7 +24,9 @@ class Settings:
     deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
     fallback_model: str = os.getenv("LLM_FALLBACK_MODEL", "qwen-plus")
     fallback_enabled: bool = _bool("LLM_FALLBACK_ENABLED", True)
-    circuit_breaker_threshold: int = int(os.getenv("LLM_CIRCUIT_BREAKER_THRESHOLD", "3"))
+    circuit_breaker_threshold: int = int(
+        os.getenv("LLM_CIRCUIT_BREAKER_THRESHOLD", "3")
+    )
     circuit_recovery_seconds: int = int(os.getenv("LLM_CIRCUIT_RECOVERY_SECONDS", "60"))
     stream_timeout_seconds: int = int(os.getenv("LLM_STREAM_TIMEOUT_SECONDS", "20"))
     llm_hourly_limit: int = int(os.getenv("LLM_HOURLY_LIMIT", "0"))
@@ -52,10 +54,14 @@ class Settings:
     )
 
     upload_max_mb: int = int(os.getenv("UPLOAD_MAX_MB", "30"))
-    upload_dir: str = os.getenv("UPLOAD_DIR", str(PYTHON_AGENT_DIR / "data" / "uploads"))
+    upload_dir: str = os.getenv(
+        "UPLOAD_DIR", str(PYTHON_AGENT_DIR / "data" / "uploads")
+    )
     ocr_enabled: bool = _bool("OCR_ENABLED", True)
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
-    cors_origins: str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+    cors_origins: str = os.getenv(
+        "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
+    )
     internal_service_token: str = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
     skip_internal_auth: bool = _bool("SKIP_INTERNAL_AUTH", False)
 
@@ -69,7 +75,9 @@ class Settings:
     DEEPSEEK_MODEL = property(lambda self: self.deepseek_model)
     LLM_FALLBACK_MODEL = property(lambda self: self.fallback_model)
     LLM_FALLBACK_ENABLED = property(lambda self: self.fallback_enabled)
-    LLM_CIRCUIT_BREAKER_THRESHOLD = property(lambda self: self.circuit_breaker_threshold)
+    LLM_CIRCUIT_BREAKER_THRESHOLD = property(
+        lambda self: self.circuit_breaker_threshold
+    )
     CHROMA_HOST = property(lambda self: self.chroma_host)
     CHROMA_PORT = property(lambda self: self.chroma_port)
     REDIS_HOST = property(lambda self: self.redis_host)

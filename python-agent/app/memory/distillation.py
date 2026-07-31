@@ -6,6 +6,7 @@
 - 将提取的信息写入长期记忆
 - 写入前进行语义去重（双层：LLM 判断 + 向量相似度）
 """
+
 import json
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.utils.llm import llm
@@ -61,34 +62,44 @@ def distill_conversation(user_id: str, session_id: str, conversation: list) -> l
     for pref in existing.get("preferences", []):
         existing_text_parts.append(f"- [偏好] {pref.get('content', '')}")
     for wp in existing.get("weak_points", []):
-        existing_text_parts.append(f"- [薄弱点({wp.get('topic', '')})] {wp.get('content', '')}")
+        existing_text_parts.append(
+            f"- [薄弱点({wp.get('topic', '')})] {wp.get('content', '')}"
+        )
     if existing.get("progress"):
         p = existing["progress"]
-        existing_text_parts.append(f"- [进度] {p.get('topic', '')}: {p.get('content', '')}")
+        existing_text_parts.append(
+            f"- [进度] {p.get('topic', '')}: {p.get('content', '')}"
+        )
 
-    existing_text = "\n".join(existing_text_parts) if existing_text_parts else "（暂无已有记忆）"
-
-    conversation_text = "\n".join([f"{m['role']}: {m['content']}" for m in conversation])
-    prompt = DISTILLATION_PROMPT.format(
-        conversation=conversation_text,
-        existing_memories=existing_text
+    existing_text = (
+        "\n".join(existing_text_parts) if existing_text_parts else "（暂无已有记忆）"
     )
 
-    response = llm.invoke([
-        SystemMessage(content="你是一个记忆蒸馏器，只输出JSON数组。"),
-        HumanMessage(content=prompt)
-    ])
+    conversation_text = "\n".join(
+        [f"{m['role']}: {m['content']}" for m in conversation]
+    )
+    prompt = DISTILLATION_PROMPT.format(
+        conversation=conversation_text, existing_memories=existing_text
+    )
+
+    response = llm.invoke(
+        [
+            SystemMessage(content="你是一个记忆蒸馏器，只输出JSON数组。"),
+            HumanMessage(content=prompt),
+        ]
+    )
 
     try:
         entries = json.loads(response.content)
     except json.JSONDecodeError:
-        logger.warning(f"蒸馏输出 JSON 解析失败，原始响应前200字符: {str(response.content)[:200]}")
+        logger.warning(
+            f"蒸馏输出 JSON 解析失败，原始响应前200字符: {str(response.content)[:200]}"
+        )
         return []
 
     # 过滤：只保留置信度 >= 0.6 且 LLM 认为不重复的
     filtered = [
-        e for e in entries
-        if e.get("confidence", 0) >= 0.6 and e.get("is_new", True)
+        e for e in entries if e.get("confidence", 0) >= 0.6 and e.get("is_new", True)
     ]
     logger.info(
         f"蒸馏完成: 原始提取 {len(entries)} 条, "
@@ -125,13 +136,16 @@ def apply_distilled_entries(user_id: str, entries: list) -> list:
         # 中等置信度 → 待用户确认
         if confidence < HIGH_CONFIDENCE_THRESHOLD:
             import uuid
-            pending.append({
-                "temp_id": f"pending_{uuid.uuid4().hex[:8]}",
-                "category": category,
-                "content": content,
-                "topic": topic,
-                "confidence": confidence
-            })
+
+            pending.append(
+                {
+                    "temp_id": f"pending_{uuid.uuid4().hex[:8]}",
+                    "category": category,
+                    "content": content,
+                    "topic": topic,
+                    "confidence": confidence,
+                }
+            )
             continue
 
         # 高置信度 → 直接写入

@@ -24,29 +24,37 @@ def _source_payload(chunks: list[dict]) -> list[dict]:
     sources = []
     for chunk in chunks:
         metadata = chunk.get("metadata", {})
-        sources.append({
-            "document_name": metadata.get("source", "未知文档"),
-            "page": metadata.get("page") or None,
-            "section": metadata.get("section", ""),
-            "chunk_type": metadata.get("chunk_type", "text"),
-            "chunk_content": chunk.get("content", ""),
-            "score": chunk.get("score", 0.0),
-        })
+        sources.append(
+            {
+                "document_name": metadata.get("source", "未知文档"),
+                "page": metadata.get("page") or None,
+                "section": metadata.get("section", ""),
+                "chunk_type": metadata.get("chunk_type", "text"),
+                "chunk_content": chunk.get("content", ""),
+                "score": chunk.get("score", 0.0),
+            }
+        )
     return sources
 
 
 def _retrieval_fallback(state: dict) -> str:
     chunks = state.get("retrieved_chunks", [])
     if not chunks:
-        return "当前模型服务暂时不可用，本次也没有检索到可直接作答的资料片段，请稍后重试。"
+        return (
+            "当前模型服务暂时不可用，本次也没有检索到可直接作答的资料片段，请稍后重试。"
+        )
     excerpts = []
     for index, chunk in enumerate(chunks[:3], start=1):
         content = str(chunk.get("content", "")).strip()
         if content:
             excerpts.append(f"{index}. {content}")
     if not excerpts:
-        return "当前模型服务暂时不可用，本次也没有检索到可直接作答的资料片段，请稍后重试。"
-    return "在线模型响应超时，以下是从资料库直接检索到的相关原文：\n\n" + "\n\n".join(excerpts)
+        return (
+            "当前模型服务暂时不可用，本次也没有检索到可直接作答的资料片段，请稍后重试。"
+        )
+    return "在线模型响应超时，以下是从资料库直接检索到的相关原文：\n\n" + "\n\n".join(
+        excerpts
+    )
 
 
 @router.post("/chat/stream")
@@ -56,10 +64,13 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 
     async def generate():
         answer = ""
-        yield _event("meta", {
-            "intent": state.get("intent", "general"),
-            "sources": _source_payload(state.get("retrieved_chunks", [])),
-        })
+        yield _event(
+            "meta",
+            {
+                "intent": state.get("intent", "general"),
+                "sources": _source_payload(state.get("retrieved_chunks", [])),
+            },
+        )
         try:
             try:
                 stream = llm.astream([HumanMessage(content=prompt)]).__aiter__()
@@ -75,7 +86,10 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                         answer += content
                         yield _event("token", {"content": content})
             except asyncio.TimeoutError:
-                logger.warning("流式模型调用超过 %s 秒，启用检索降级", settings.stream_timeout_seconds)
+                logger.warning(
+                    "流式模型调用超过 %s 秒，启用检索降级",
+                    settings.stream_timeout_seconds,
+                )
                 if not answer:
                     answer = _retrieval_fallback(state)
                     yield _event("token", {"content": answer})

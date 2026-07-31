@@ -40,19 +40,27 @@ def _memory_context(user_id: str, session_id: str, include_history: bool = True)
     progress = long_term_memory.get_progress(user_id)
     sections = []
     if preferences:
-        sections.append("偏好：" + "；".join(item.get("content", "") for item in preferences[:8]))
+        sections.append(
+            "偏好：" + "；".join(item.get("content", "") for item in preferences[:8])
+        )
     if weak_points:
-        sections.append("薄弱点：" + "；".join(
-            item.get("topic") or item.get("content", "") for item in weak_points[:8]
-        ))
+        sections.append(
+            "薄弱点："
+            + "；".join(
+                item.get("topic") or item.get("content", "") for item in weak_points[:8]
+            )
+        )
     if progress:
-        sections.append("进度：" + (progress.get("topic") or progress.get("content", "")))
+        sections.append(
+            "进度：" + (progress.get("topic") or progress.get("content", ""))
+        )
     if include_history:
         history = short_term_memory.get_history(session_id)[-6:]
         if history:
-            sections.append("近期对话：\n" + "\n".join(
-                f"{message.role}: {message.content}" for message in history
-            ))
+            sections.append(
+                "近期对话：\n"
+                + "\n".join(f"{message.role}: {message.content}" for message in history)
+            )
     return "\n".join(sections) or "暂无明确记录"
 
 
@@ -60,18 +68,24 @@ def intent_classification_node(state: dict) -> dict:
     message = state.get("message", "").strip()
     if state.get("knowledge_base_ids"):
         return {"intent": "qa", "confidence": 1.0}
-    if any(word in message for word in ("建议", "计划", "怎么学", "下一步", "如何复习")):
+    if any(
+        word in message for word in ("建议", "计划", "怎么学", "下一步", "如何复习")
+    ):
         return {"intent": "suggest", "confidence": 0.9}
-    if any(word in message for word in ("上次", "之前", "回顾", "复习一下", "我的偏好")):
+    if any(
+        word in message for word in ("上次", "之前", "回顾", "复习一下", "我的偏好")
+    ):
         return {"intent": "review", "confidence": 0.9}
     if message.lower() in {"你好", "您好", "hi", "hello", "谢谢", "再见"}:
         return {"intent": "general", "confidence": 0.95}
     prompt = INTENT_CLASSIFICATION_PROMPT.format(question=state.get("message", ""))
     try:
-        response = llm.invoke([
-            SystemMessage(content="你是意图分类器，只输出合法 JSON。"),
-            HumanMessage(content=prompt),
-        ])
+        response = llm.invoke(
+            [
+                SystemMessage(content="你是意图分类器，只输出合法 JSON。"),
+                HumanMessage(content=prompt),
+            ]
+        )
         intent_data = _extract_json(response.content)
     except json.JSONDecodeError:
         return {"intent": "general", "confidence": 0.0}

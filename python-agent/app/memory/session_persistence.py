@@ -6,6 +6,7 @@
 - get_history 时优先从内存取，内存缺失时从 Redis 恢复
 - Redis 不可用时自动降级为纯内存模式，不影响核心功能
 """
+
 import json
 import redis
 import time
@@ -44,7 +45,9 @@ class SessionPersistence:
             )
             self._redis.ping()
             self._available = True
-            logger.info(f"Redis 会话持久化已启用: {settings.REDIS_HOST}:{settings.REDIS_PORT}")
+            logger.info(
+                f"Redis 会话持久化已启用: {settings.REDIS_HOST}:{settings.REDIS_PORT}"
+            )
         except Exception as e:
             self._available = False
             logger.warning(f"Redis 不可用 ({e})，会话消息仅存在内存中")
@@ -63,15 +66,18 @@ class SessionPersistence:
         if not self._ensure_connection():
             return
         try:
-            data = json.dumps([
-                {
-                    "role": m.role,
-                    "content": m.content,
-                    "timestamp": m.timestamp,
-                    "token_count": m.token_count,
-                }
-                for m in messages
-            ], ensure_ascii=False)
+            data = json.dumps(
+                [
+                    {
+                        "role": m.role,
+                        "content": m.content,
+                        "timestamp": m.timestamp,
+                        "token_count": m.token_count,
+                    }
+                    for m in messages
+                ],
+                ensure_ascii=False,
+            )
             self._redis.setex(
                 self._session_key(session_id),
                 timedelta(hours=settings.SESSION_TTL_HOURS),

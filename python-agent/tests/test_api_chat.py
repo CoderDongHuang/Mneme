@@ -6,12 +6,14 @@
 运行方式：
     pytest tests/test_api_chat.py -v -m integration
 """
+
 import pytest
 
 # 安全导入：缺任何依赖都跳过，不让 CI 中断
 try:
     from fastapi.testclient import TestClient
     from main import app
+
     client = TestClient(app)
 except ImportError as e:
     pytest.skip(f"缺少依赖，跳过集成测试: {e}", allow_module_level=True)
@@ -43,10 +45,13 @@ class TestSessionEndpoints:
 @pytest.mark.integration
 class TestMemoryEndpoints:
     def test_read_memory_empty(self):
-        response = client.post("/api/v1/memory/read", json={
-            "user_id": "test_integration",
-            "memory_types": ["preference", "weak_point"]
-        })
+        response = client.post(
+            "/api/v1/memory/read",
+            json={
+                "user_id": "test_integration",
+                "memory_types": ["preference", "weak_point"],
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         assert "preferences" in data
@@ -55,6 +60,7 @@ class TestMemoryEndpoints:
     def test_write_and_confirm_preference(self):
         import uuid
         from datetime import datetime
+
         now = datetime.now().isoformat()
 
         # 写入 — 完整 MemoryEntry 字段
@@ -67,18 +73,17 @@ class TestMemoryEndpoints:
             "created_at": now,
             "updated_at": now,
         }
-        write_res = client.post("/api/v1/memory/write", json={
-            "user_id": "test_integration",
-            "entry": entry
-        })
+        write_res = client.post(
+            "/api/v1/memory/write", json={"user_id": "test_integration", "entry": entry}
+        )
         assert write_res.status_code == 200
         assert write_res.json()["status"] == "success"
 
         # 确认已写入
-        read_res = client.post("/api/v1/memory/read", json={
-            "user_id": "test_integration",
-            "memory_types": ["preference"]
-        })
+        read_res = client.post(
+            "/api/v1/memory/read",
+            json={"user_id": "test_integration", "memory_types": ["preference"]},
+        )
         prefs = read_res.json().get("preferences", [])
         assert any("图表" in p.get("content", "") for p in prefs)
 
@@ -86,7 +91,9 @@ class TestMemoryEndpoints:
 @pytest.mark.integration
 class TestKnowledgeEndpoints:
     def test_admin_collections(self):
-        response = client.get("/api/v1/knowledge/admin/collections?user_id=test_integration")
+        response = client.get(
+            "/api/v1/knowledge/admin/collections?user_id=test_integration"
+        )
         assert response.status_code == 200
 
     def test_admin_stats(self):
@@ -107,9 +114,9 @@ class TestChatStreamFallback:
     def test_retrieval_fallback_contains_retrieved_content(self):
         from app.api.chat_stream import _retrieval_fallback
 
-        answer = _retrieval_fallback({
-            "retrieved_chunks": [{"content": "星桥计划的识别码是 QZ-7294。"}]
-        })
+        answer = _retrieval_fallback(
+            {"retrieved_chunks": [{"content": "星桥计划的识别码是 QZ-7294。"}]}
+        )
 
         assert "在线模型响应超时" in answer
         assert "QZ-7294" in answer

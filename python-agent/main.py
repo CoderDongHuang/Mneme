@@ -25,7 +25,9 @@ REQUEST_COUNT = Counter(
     "mneme_python_http_requests_total", "HTTP requests", ["method", "path", "status"]
 )
 REQUEST_DURATION = Histogram(
-    "mneme_python_http_request_duration_seconds", "HTTP request latency", ["method", "path"]
+    "mneme_python_http_request_duration_seconds",
+    "HTTP request latency",
+    ["method", "path"],
 )
 
 
@@ -69,8 +71,12 @@ class TraceAndLoggingMiddleware(BaseHTTPMiddleware):
             duration_ms = (time.perf_counter() - started) * 1000
             logger.info("%s %s (%.0fms)", request.method, request.url.path, duration_ms)
             trace_id_var.reset(token)
-        REQUEST_COUNT.labels(request.method, request.url.path, response.status_code).inc()
-        REQUEST_DURATION.labels(request.method, request.url.path).observe(duration_ms / 1000)
+        REQUEST_COUNT.labels(
+            request.method, request.url.path, response.status_code
+        ).inc()
+        REQUEST_DURATION.labels(request.method, request.url.path).observe(
+            duration_ms / 1000
+        )
         response.headers["X-Trace-Id"] = trace_id
         return response
 
@@ -101,7 +107,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if bucket["tokens"] < 1:
             return JSONResponse(
                 status_code=429,
-                content={"error": {"code": "RATE_LIMITED", "message": "请求过于频繁，请稍后再试"}},
+                content={
+                    "error": {
+                        "code": "RATE_LIMITED",
+                        "message": "请求过于频繁，请稍后再试",
+                    }
+                },
                 headers={"Retry-After": "1"},
             )
         bucket["tokens"] -= 1
@@ -117,10 +128,17 @@ class InternalServiceAuthMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
         supplied = request.headers.get("X-Internal-Service-Token", "")
-        if not supplied or not hmac.compare_digest(supplied, settings.internal_service_token):
+        if not supplied or not hmac.compare_digest(
+            supplied, settings.internal_service_token
+        ):
             return JSONResponse(
                 status_code=401,
-                content={"error": {"code": "UNAUTHORIZED_SERVICE", "message": "未经授权的内部调用"}},
+                content={
+                    "error": {
+                        "code": "UNAUTHORIZED_SERVICE",
+                        "message": "未经授权的内部调用",
+                    }
+                },
             )
         return await call_next(request)
 
@@ -136,7 +154,9 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.exception("未处理异常 [%s %s]: %s", request.method, request.url.path, exc)
     return JSONResponse(
         status_code=500,
-        content={"error": {"code": "INTERNAL_ERROR", "message": "服务暂时无法处理该请求"}},
+        content={
+            "error": {"code": "INTERNAL_ERROR", "message": "服务暂时无法处理该请求"}
+        },
     )
 
 

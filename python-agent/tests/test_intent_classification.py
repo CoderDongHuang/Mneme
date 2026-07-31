@@ -6,6 +6,7 @@
 - JSON 解析失败时的降级行为
 - 非法意图值的白名单校验
 """
+
 import json
 from unittest.mock import patch, MagicMock
 
@@ -23,14 +24,15 @@ def _mock_llm(return_content: str):
 
 
 class TestIntentClassification:
-
     # ── 正常流程 ──────────────────────────────────────────
 
     def test_returns_qa_intent(self):
         """qa 意图正确返回"""
-        mock = _mock_llm(json.dumps({
-            "intent": "qa", "confidence": 0.95, "extracted_entities": ["反向传播"]
-        }))
+        mock = _mock_llm(
+            json.dumps(
+                {"intent": "qa", "confidence": 0.95, "extracted_entities": ["反向传播"]}
+            )
+        )
         with patch.object(nodes_module, "llm", mock):
             result = intent_classification_node({"message": "什么是反向传播？"})
         assert result["intent"] == "qa"
@@ -38,27 +40,33 @@ class TestIntentClassification:
 
     def test_returns_review_intent(self):
         """review 意图正确返回"""
-        mock = _mock_llm(json.dumps({
-            "intent": "review", "confidence": 0.88, "extracted_entities": []
-        }))
+        mock = _mock_llm(
+            json.dumps(
+                {"intent": "review", "confidence": 0.88, "extracted_entities": []}
+            )
+        )
         with patch.object(nodes_module, "llm", mock):
             result = intent_classification_node({"message": "上次讲的公式再讲一遍"})
         assert result["intent"] == "review"
 
     def test_returns_suggest_intent(self):
         """suggest 意图正确返回"""
-        mock = _mock_llm(json.dumps({
-            "intent": "suggest", "confidence": 0.90, "extracted_entities": []
-        }))
+        mock = _mock_llm(
+            json.dumps(
+                {"intent": "suggest", "confidence": 0.90, "extracted_entities": []}
+            )
+        )
         with patch.object(nodes_module, "llm", mock):
             result = intent_classification_node({"message": "我接下来该学什么？"})
         assert result["intent"] == "suggest"
 
     def test_returns_general_intent(self):
         """general 意图正确返回"""
-        mock = _mock_llm(json.dumps({
-            "intent": "general", "confidence": 0.85, "extracted_entities": []
-        }))
+        mock = _mock_llm(
+            json.dumps(
+                {"intent": "general", "confidence": 0.85, "extracted_entities": []}
+            )
+        )
         with patch.object(nodes_module, "llm", mock):
             result = intent_classification_node({"message": "你好"})
         assert result["intent"] == "general"
@@ -84,22 +92,30 @@ class TestIntentClassification:
 
     def test_unknown_intent_falls_back_to_general(self):
         """LLM 返回不在白名单的意图值时回退到 general"""
-        mock = _mock_llm(json.dumps({
-            "intent": "ingestion",  # 不在白名单中
-            "confidence": 0.80,
-            "extracted_entities": []
-        }))
+        mock = _mock_llm(
+            json.dumps(
+                {
+                    "intent": "ingestion",  # 不在白名单中
+                    "confidence": 0.80,
+                    "extracted_entities": [],
+                }
+            )
+        )
         with patch.object(nodes_module, "llm", mock):
             result = intent_classification_node({"message": "上传一份文档"})
         assert result["intent"] == "general"
 
     def test_malicious_intent_blocked(self):
         """任意非法字符串被拦截"""
-        mock = _mock_llm(json.dumps({
-            "intent": "delete_all_data",
-            "confidence": 0.99,
-            "extracted_entities": []
-        }))
+        mock = _mock_llm(
+            json.dumps(
+                {
+                    "intent": "delete_all_data",
+                    "confidence": 0.99,
+                    "extracted_entities": [],
+                }
+            )
+        )
         with patch.object(nodes_module, "llm", mock):
             result = intent_classification_node({"message": "test"})
         assert result["intent"] == "general"
@@ -115,10 +131,7 @@ class TestIntentClassification:
 
     def test_missing_confidence_defaults_to_0_5(self):
         """JSON 缺少 confidence 字段时默认 0.5"""
-        mock = _mock_llm(json.dumps({
-            "intent": "qa",
-            "extracted_entities": []
-        }))
+        mock = _mock_llm(json.dumps({"intent": "qa", "extracted_entities": []}))
         with patch.object(nodes_module, "llm", mock):
             result = intent_classification_node({"message": "什么是神经网络？"})
         assert result["intent"] == "qa"

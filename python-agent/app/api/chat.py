@@ -12,12 +12,22 @@ from app.core.logging import setup_logger
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = setup_logger("chat_api")
 
-@router.get("/sessions", summary="历史会话列表", description="获取用户的所有历史会话，按时间倒序排列，自动清理 30 天以上无活动的会话")
+
+@router.get(
+    "/sessions",
+    summary="历史会话列表",
+    description="获取用户的所有历史会话，按时间倒序排列，自动清理 30 天以上无活动的会话",
+)
 async def list_sessions(user_id: str = "default"):
     sessions = session_store.get_sessions(user_id)
     return {"sessions": sessions}
 
-@router.get("/session/{session_id}", summary="会话详情", description="获取指定会话的完整消息历史，优先从短期记忆读取，降级到工作记忆")
+
+@router.get(
+    "/session/{session_id}",
+    summary="会话详情",
+    description="获取指定会话的完整消息历史，优先从短期记忆读取，降级到工作记忆",
+)
 async def get_session(session_id: str):
     messages = short_term_memory.get_history(session_id)
     if not messages:
@@ -27,7 +37,7 @@ async def get_session(session_id: str):
         "messages": [
             {"role": m.role, "content": m.content, "timestamp": m.timestamp}
             for m in messages
-        ]
+        ],
     }
 
 
@@ -38,7 +48,13 @@ async def delete_session(session_id: str, user_id: str = "default"):
     working_memory.clear(session_id)
     return {"deleted": True, "session_id": session_id}
 
-@router.post("/chat", response_model=ChatResponse, summary="同步对话", description="发送消息并等待完整回复后返回 JSON，含答案、参考来源、待确认记忆和记忆洞察")
+
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    summary="同步对话",
+    description="发送消息并等待完整回复后返回 JSON，含答案、参考来源、待确认记忆和记忆洞察",
+)
 async def chat(request: ChatRequest):
     logger.info(f"收到对话请求: user_id={request.user_id}, message={request.message}")
 
@@ -54,13 +70,15 @@ async def chat(request: ChatRequest):
         if not content:
             continue
         metadata = chunk.get("metadata", {})
-        sources.append(Source(
-            document_name=metadata.get("source", "unknown"),
-            chunk_content=content,
-            page=metadata.get("page"),
-            score=chunk.get("score", 0.0)
-            ,chunk_type=metadata.get("chunk_type", "text")
-        ))
+        sources.append(
+            Source(
+                document_name=metadata.get("source", "unknown"),
+                chunk_content=content,
+                page=metadata.get("page"),
+                score=chunk.get("score", 0.0),
+                chunk_type=metadata.get("chunk_type", "text"),
+            )
+        )
 
     # 待确认记忆
     pending_memories = [

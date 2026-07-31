@@ -7,6 +7,7 @@
 - 内存缓存层加速热数据读取
 - 写入时进行语义去重检查
 """
+
 from datetime import datetime
 from typing import List, Optional
 
@@ -71,9 +72,13 @@ class LongTermMemoryManager:
 
     def _is_duplicate(self, user_id: str, category: str, content: str) -> bool:
         """检查是否与已有记忆语义重复"""
-        duplicates = self._store.find_duplicates(user_id, category, content, threshold=DEDUP_THRESHOLD)
+        duplicates = self._store.find_duplicates(
+            user_id, category, content, threshold=DEDUP_THRESHOLD
+        )
         if duplicates:
-            logger.info(f"语义去重命中: [{category}] '{content[:40]}...' 与已有记忆 '{duplicates[0]['content'][:40]}...' 重复 (dist={duplicates[0]['score']:.3f})")
+            logger.info(
+                f"语义去重命中: [{category}] '{content[:40]}...' 与已有记忆 '{duplicates[0]['content'][:40]}...' 重复 (dist={duplicates[0]['score']:.3f})"
+            )
             return True
         return False
 
@@ -86,12 +91,16 @@ class LongTermMemoryManager:
             return None
 
         # 数量检查
-        existing = self._store.search(user_id, category="preference", top_k=MAX_PREFERENCES)
+        existing = self._store.search(
+            user_id, category="preference", top_k=MAX_PREFERENCES
+        )
         if len(existing) >= MAX_PREFERENCES:
             # 淘汰 importance 最低的旧记忆
             oldest = min(existing, key=lambda e: e.get("importance", 0.5))
             self._store.delete_memory(oldest["id"])
-            logger.info(f"偏好数量达上限({MAX_PREFERENCES})，淘汰最旧记忆: {oldest['content'][:40]}")
+            logger.info(
+                f"偏好数量达上限({MAX_PREFERENCES})，淘汰最旧记忆: {oldest['content'][:40]}"
+            )
 
         mem_id = self._store.add_memory(user_id, "preference", content)
         self._invalidate_cache(user_id, "preferences")
@@ -103,7 +112,9 @@ class LongTermMemoryManager:
         cached = self._get_cached(user_id, "preferences")
         if cached is not None:
             return cached
-        results = self._store.get_by_category(user_id, "preference", limit=MAX_PREFERENCES)
+        results = self._store.get_by_category(
+            user_id, "preference", limit=MAX_PREFERENCES
+        )
         self._set_cache(user_id, "preferences", results)
         return results
 
@@ -117,12 +128,16 @@ class LongTermMemoryManager:
     def add_weak_point(self, user_id: str, content: str, topic: str) -> Optional[str]:
         """添加用户薄弱点。同 topic 会合并（增加计数），语义相似会去重。"""
         # 检查是否已有相同 topic 的薄弱点（精确匹配 → 累加计数）
-        existing = self._store.get_by_category(user_id, "weak_point", limit=MAX_WEAK_POINTS)
+        existing = self._store.get_by_category(
+            user_id, "weak_point", limit=MAX_WEAK_POINTS
+        )
         for entry in existing:
             if entry.get("topic") == topic:
                 new_importance = min(1.0, entry.get("importance", 0.5) + 0.1)
                 self._store.update_importance(entry["id"], new_importance)
-                logger.info(f"薄弱点 '{topic}' 计数增加 (importance={new_importance:.1f})")
+                logger.info(
+                    f"薄弱点 '{topic}' 计数增加 (importance={new_importance:.1f})"
+                )
                 self._invalidate_cache(user_id, "weak_points")
                 return entry["id"]
 
@@ -148,13 +163,17 @@ class LongTermMemoryManager:
         cached = self._get_cached(user_id, "weak_points")
         if cached is not None:
             return cached
-        results = self._store.get_by_category(user_id, "weak_point", limit=MAX_WEAK_POINTS)
+        results = self._store.get_by_category(
+            user_id, "weak_point", limit=MAX_WEAK_POINTS
+        )
         self._set_cache(user_id, "weak_points", results)
         return results
 
     def decay_weak_points(self, user_id: str):
         """薄弱点衰减：降低长时间未更新的薄弱点重要性"""
-        weak_points = self._store.get_by_category(user_id, "weak_point", limit=MAX_WEAK_POINTS)
+        weak_points = self._store.get_by_category(
+            user_id, "weak_point", limit=MAX_WEAK_POINTS
+        )
         now = datetime.now()
         for wp in weak_points:
             created_at = wp.get("created_at", "")
@@ -184,7 +203,9 @@ class LongTermMemoryManager:
             self._store.delete_memory(entry["id"])
 
         content = f"学习进度: {chapter}/{section}"
-        self._store.add_memory(user_id, "progress", content, topic=f"{chapter}/{section}")
+        self._store.add_memory(
+            user_id, "progress", content, topic=f"{chapter}/{section}"
+        )
         self._invalidate_cache(user_id, "progress")
         logger.info(f"用户 {user_id} 学习进度更新: {chapter}/{section}")
 

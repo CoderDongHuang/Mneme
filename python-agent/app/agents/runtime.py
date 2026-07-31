@@ -22,12 +22,14 @@ def prepare_conversation(request: ChatRequest) -> dict:
         request.session_id,
         title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
     )
-    return run_pre_llm_nodes({
-        "user_id": request.user_id,
-        "session_id": request.session_id,
-        "message": request.message,
-        "knowledge_base_ids": request.knowledge_base_ids,
-    })
+    return run_pre_llm_nodes(
+        {
+            "user_id": request.user_id,
+            "session_id": request.session_id,
+            "message": request.message,
+            "knowledge_base_ids": request.knowledge_base_ids,
+        }
+    )
 
 
 def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dict:

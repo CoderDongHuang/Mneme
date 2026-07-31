@@ -1,6 +1,7 @@
 """
 pytest 共享 fixtures 和配置
 """
+
 import os
 import sys
 import pytest
@@ -23,7 +24,10 @@ def sample_conversation():
         {"role": "user", "content": "帮我解释一下什么是反向传播"},
         {"role": "assistant", "content": "反向传播是神经网络中计算梯度的核心算法..."},
         {"role": "user", "content": "能不能用图表来说明？文字太多我看不懂"},
-        {"role": "assistant", "content": "好的，我换一种方式...先画出网络结构，再标注梯度流向..."},
+        {
+            "role": "assistant",
+            "content": "好的，我换一种方式...先画出网络结构，再标注梯度流向...",
+        },
         {"role": "user", "content": "谢谢，这样清楚多了"},
     ]
 
@@ -49,7 +53,9 @@ def empty_conversation():
 @pytest.fixture
 def mock_llm_response():
     """创建一个模拟的 LLM 响应对象"""
+
     class MockResponse:
         def __init__(self, content: str):
             self.content = content
+
     return MockResponse

@@ -24,6 +24,7 @@ REFLECTION_PROMPT = """请分析以下用户记忆数据，挖掘隐性偏好和
   "next_step_suggestion": "..."
 }}"""
 
+
 def run_reflection(user_id: str) -> dict:
     """执行记忆反思"""
     prefs = long_term_memory.get_preferences(user_id)
@@ -36,14 +37,21 @@ def run_reflection(user_id: str) -> dict:
 
     prompt = REFLECTION_PROMPT.format(
         preferences="\n".join([p.get("content", "") for p in prefs]),
-        weak_points="\n".join([f"{wp.get('topic', '')}(重要性{wp.get('importance', 0.5):.1f})" for wp in weak_points]),
-        progress=progress.get("topic", "无") if progress else "无"
+        weak_points="\n".join(
+            [
+                f"{wp.get('topic', '')}(重要性{wp.get('importance', 0.5):.1f})"
+                for wp in weak_points
+            ]
+        ),
+        progress=progress.get("topic", "无") if progress else "无",
     )
 
-    response = llm.invoke([
-        SystemMessage(content="你是一个记忆反思器，只输出JSON。"),
-        HumanMessage(content=prompt)
-    ])
+    response = llm.invoke(
+        [
+            SystemMessage(content="你是一个记忆反思器，只输出JSON。"),
+            HumanMessage(content=prompt),
+        ]
+    )
 
     try:
         result = json.loads(response.content)

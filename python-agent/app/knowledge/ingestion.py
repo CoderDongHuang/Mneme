@@ -13,8 +13,17 @@ from app.knowledge.vector_store import vector_store
 
 logger = setup_logger("ingestion")
 SUPPORTED_EXTENSIONS = {
-    ".pdf", ".docx", ".pptx", ".xlsx", ".xlsm", ".csv",
-    ".md", ".markdown", ".txt", ".html", ".htm",
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".xlsm",
+    ".csv",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".html",
+    ".htm",
 }
 
 
@@ -41,21 +50,33 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
     for page_index, page in enumerate(reader.pages, start=1):
         text = (page.extract_text() or "").strip()
         if text:
-            documents.append(_document(text, source, page=page_index, chunk_type="text"))
+            documents.append(
+                _document(text, source, page=page_index, chunk_type="text")
+            )
 
     try:
         import pdfplumber
 
         with pdfplumber.open(str(path)) as pdf:
             for page_index, page in enumerate(pdf.pages, start=1):
-                for table_index, table in enumerate(page.extract_tables() or [], start=1):
-                    rows = [" | ".join("" if cell is None else str(cell) for cell in row) for row in table]
+                for table_index, table in enumerate(
+                    page.extract_tables() or [], start=1
+                ):
+                    rows = [
+                        " | ".join("" if cell is None else str(cell) for cell in row)
+                        for row in table
+                    ]
                     content = "\n".join(rows).strip()
                     if content:
-                        documents.append(_document(
-                            content, source, page=page_index, chunk_type="table",
-                            section=f"第 {page_index} 页表格 {table_index}",
-                        ))
+                        documents.append(
+                            _document(
+                                content,
+                                source,
+                                page=page_index,
+                                chunk_type="table",
+                                section=f"第 {page_index} 页表格 {table_index}",
+                            )
+                        )
     except ImportError:
         logger.info("未安装 pdfplumber，PDF 表格将按普通文本处理")
     except Exception as error:
@@ -71,10 +92,14 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
         pdf = fitz.open(str(path))
         for page_index, page in enumerate(pdf, start=1):
             pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-            image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
+            image = Image.frombytes(
+                "RGB", [pixmap.width, pixmap.height], pixmap.samples
+            )
             text = pytesseract.image_to_string(image, lang="chi_sim+eng").strip()
             if text:
-                documents.append(_document(text, source, page=page_index, chunk_type="image_ocr"))
+                documents.append(
+                    _document(text, source, page=page_index, chunk_type="image_ocr")
+                )
     except ImportError as error:
         raise ValueError("扫描型 PDF 需要安装 OCR 可选依赖并配置 Tesseract") from error
     return documents
@@ -96,8 +121,14 @@ def _parse_docx(path: Path, source: str) -> list[Document]:
             section = text
         output.append(_document(text, source, section=section, chunk_type=chunk_type))
     for index, table in enumerate(docx.tables, start=1):
-        rows = [" | ".join(cell.text.strip() for cell in row.cells) for row in table.rows]
-        output.append(_document("\n".join(rows), source, section=f"表格 {index}", chunk_type="table"))
+        rows = [
+            " | ".join(cell.text.strip() for cell in row.cells) for row in table.rows
+        ]
+        output.append(
+            _document(
+                "\n".join(rows), source, section=f"表格 {index}", chunk_type="table"
+            )
+        )
     return output
 
 
@@ -107,19 +138,48 @@ def _parse_pptx(path: Path, source: str) -> list[Document]:
     presentation = Presentation(str(path))
     output: list[Document] = []
     for slide_index, slide in enumerate(presentation.slides, start=1):
-        title = slide.shapes.title.text.strip() if slide.shapes.title else f"第 {slide_index} 页"
+        title = (
+            slide.shapes.title.text.strip()
+            if slide.shapes.title
+            else f"第 {slide_index} 页"
+        )
         body: list[str] = []
         for shape in slide.shapes:
             if getattr(shape, "has_table", False):
-                rows = [" | ".join(cell.text.strip() for cell in row.cells) for row in shape.table.rows]
-                output.append(_document(
-                    "\n".join(rows), source, page=slide_index, section=title, chunk_type="table"
-                ))
-            elif hasattr(shape, "text") and shape.text.strip() and shape is not slide.shapes.title:
+                rows = [
+                    " | ".join(cell.text.strip() for cell in row.cells)
+                    for row in shape.table.rows
+                ]
+                output.append(
+                    _document(
+                        "\n".join(rows),
+                        source,
+                        page=slide_index,
+                        section=title,
+                        chunk_type="table",
+                    )
+                )
+            elif (
+                hasattr(shape, "text")
+                and shape.text.strip()
+                and shape is not slide.shapes.title
+            ):
                 body.append(shape.text.strip())
-        output.append(_document(title, source, page=slide_index, section=title, chunk_type="title"))
+        output.append(
+            _document(
+                title, source, page=slide_index, section=title, chunk_type="title"
+            )
+        )
         if body:
-            output.append(_document("\n".join(body), source, page=slide_index, section=title, chunk_type="text"))
+            output.append(
+                _document(
+                    "\n".join(body),
+                    source,
+                    page=slide_index,
+                    section=title,
+                    chunk_type="text",
+                )
+            )
     return output
 
 
@@ -135,7 +195,11 @@ def _parse_workbook(path: Path, source: str) -> list[Document]:
             if any(values):
                 rows.append(" | ".join(values))
         if rows:
-            output.append(_document("\n".join(rows), source, section=sheet.title, chunk_type="table"))
+            output.append(
+                _document(
+                    "\n".join(rows), source, section=sheet.title, chunk_type="table"
+                )
+            )
     return output
 
 
@@ -214,6 +278,10 @@ def ingest_document(
     )
     logger.info(
         "文档入库完成: user=%s kb=%s document=%s source=%s chunks=%s",
-        user_id, kb_id, document_id, source, len(valid_chunks),
+        user_id,
+        kb_id,
+        document_id,
+        source,
+        len(valid_chunks),
     )
     return document_id

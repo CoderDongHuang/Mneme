@@ -17,7 +17,9 @@ def _offline_embedding(text: str) -> list[float]:
     """Deterministic fallback used for tests and unconfigured local startup."""
     vector = [0.0] * EMBEDDING_DIMENSION
     normalized = " ".join(text.lower().split())
-    tokens = [normalized[index : index + 3] for index in range(max(1, len(normalized) - 2))]
+    tokens = [
+        normalized[index : index + 3] for index in range(max(1, len(normalized) - 2))
+    ]
     for token in tokens:
         digest = hashlib.sha256(token.encode("utf-8")).digest()
         index = int.from_bytes(digest[:4], "big") % EMBEDDING_DIMENSION
@@ -63,7 +65,9 @@ class DashScopeEmbeddingFunction(EmbeddingFunction):
         texts = [str(item) for item in input]
         if self._should_use_offline():
             if not self._warned_offline:
-                logger.warning("Embedding API 未配置，使用本地确定性向量；仅适合开发和测试")
+                logger.warning(
+                    "Embedding API 未配置，使用本地确定性向量；仅适合开发和测试"
+                )
                 self._warned_offline = True
             return [_offline_embedding(text) for text in texts]
         try:

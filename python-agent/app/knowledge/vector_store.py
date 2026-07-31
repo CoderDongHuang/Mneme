@@ -38,7 +38,9 @@ class VectorStore:
                 settings=chroma_settings,
             )
         Path(settings.chroma_path).mkdir(parents=True, exist_ok=True)
-        return chromadb.PersistentClient(path=settings.chroma_path, settings=chroma_settings)
+        return chromadb.PersistentClient(
+            path=settings.chroma_path, settings=chroma_settings
+        )
 
     def heartbeat(self) -> bool:
         self.client.heartbeat()
@@ -71,7 +73,8 @@ class VectorStore:
     def list_user_collections(self, user_id: str) -> list[Any]:
         collections = self.client.list_collections()
         return [
-            collection for collection in collections
+            collection
+            for collection in collections
             if (collection.metadata or {}).get("user_id") == user_id
             or collection.name.startswith(f"user_{_safe(user_id)}_kb_")
         ]
@@ -80,12 +83,14 @@ class VectorStore:
         stats = []
         for collection in self.list_user_collections(user_id):
             metadata = collection.metadata or {}
-            stats.append({
-                "name": collection.name,
-                "kb_id": metadata.get("kb_id", collection.name.split("_kb_")[-1]),
-                "chunk_count": collection.count(),
-                "metadata": metadata,
-            })
+            stats.append(
+                {
+                    "name": collection.name,
+                    "kb_id": metadata.get("kb_id", collection.name.split("_kb_")[-1]),
+                    "chunk_count": collection.count(),
+                    "metadata": metadata,
+                }
+            )
         return stats
 
     def get_total_stats(self) -> dict[str, Any]:
@@ -96,7 +101,9 @@ class VectorStore:
             "collection_names": [collection.name for collection in collections],
         }
 
-    def cleanup_orphan_collections(self, valid_kb_pairs: set[tuple[str, str]]) -> dict[str, Any]:
+    def cleanup_orphan_collections(
+        self, valid_kb_pairs: set[tuple[str, str]]
+    ) -> dict[str, Any]:
         removed: list[str] = []
         kept: list[str] = []
         errors: list[dict[str, str]] = []

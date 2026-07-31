@@ -6,7 +6,9 @@ from langchain_core.documents import Document
 
 DEFAULT_CHUNK_SIZE = 1200
 DEFAULT_OVERLAP = 160
-_HEADING_PATTERN = re.compile(r"^(#{1,6}\s+.+|第[一二三四五六七八九十百0-9]+[章节部分].*|\d+(?:\.\d+)*[、.\s].+)$")
+_HEADING_PATTERN = re.compile(
+    r"^(#{1,6}\s+.+|第[一二三四五六七八九十百0-9]+[章节部分].*|\d+(?:\.\d+)*[、.\s].+)$"
+)
 
 
 def _split_text(text: str, chunk_size: int, overlap: int) -> list[str]:
@@ -61,8 +63,10 @@ def chunk_documents(
         elif current_section and not metadata.get("section"):
             metadata["section"] = current_section
 
-        pieces = [content] if chunk_type in {"table", "title", "image_ocr"} else _split_text(
-            content, chunk_size, overlap
+        pieces = (
+            [content]
+            if chunk_type in {"table", "title", "image_ocr"}
+            else _split_text(content, chunk_size, overlap)
         )
         for index, piece in enumerate(pieces):
             chunk_metadata = dict(metadata)

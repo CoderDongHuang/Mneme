@@ -81,7 +81,10 @@ class FallbackLLM:
     def _is_circuit_open(self) -> bool:
         if not self._circuit_opened_at:
             return False
-        if time.monotonic() - self._circuit_opened_at >= settings.circuit_recovery_seconds:
+        if (
+            time.monotonic() - self._circuit_opened_at
+            >= settings.circuit_recovery_seconds
+        ):
             with self._lock:
                 self._circuit_opened_at = 0.0
                 self._failure_count = 0
@@ -126,10 +129,14 @@ class FallbackLLM:
             result = model.invoke(messages, **kwargs)
             if not using_fallback:
                 self._record_success()
-            LLM_REQUESTS.labels("sync", "fallback" if using_fallback else "primary", "success").inc()
+            LLM_REQUESTS.labels(
+                "sync", "fallback" if using_fallback else "primary", "success"
+            ).inc()
             return result
         except Exception as error:
-            LLM_REQUESTS.labels("sync", "fallback" if using_fallback else "primary", "failure").inc()
+            LLM_REQUESTS.labels(
+                "sync", "fallback" if using_fallback else "primary", "failure"
+            ).inc()
             if using_fallback:
                 raise
             self._record_failure(error)
@@ -148,10 +155,14 @@ class FallbackLLM:
             result = await model.ainvoke(messages, **kwargs)
             if not using_fallback:
                 self._record_success()
-            LLM_REQUESTS.labels("async", "fallback" if using_fallback else "primary", "success").inc()
+            LLM_REQUESTS.labels(
+                "async", "fallback" if using_fallback else "primary", "success"
+            ).inc()
             return result
         except Exception as error:
-            LLM_REQUESTS.labels("async", "fallback" if using_fallback else "primary", "failure").inc()
+            LLM_REQUESTS.labels(
+                "async", "fallback" if using_fallback else "primary", "failure"
+            ).inc()
             if using_fallback:
                 raise
             self._record_failure(error)
@@ -175,9 +186,13 @@ class FallbackLLM:
                 yield chunk
             if not using_fallback:
                 self._record_success()
-            LLM_REQUESTS.labels("stream", "fallback" if using_fallback else "primary", "success").inc()
+            LLM_REQUESTS.labels(
+                "stream", "fallback" if using_fallback else "primary", "success"
+            ).inc()
         except Exception as error:
-            LLM_REQUESTS.labels("stream", "fallback" if using_fallback else "primary", "failure").inc()
+            LLM_REQUESTS.labels(
+                "stream", "fallback" if using_fallback else "primary", "failure"
+            ).inc()
             if using_fallback or emitted:
                 raise
             self._record_failure(error)

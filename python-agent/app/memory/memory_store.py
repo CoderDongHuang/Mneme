@@ -7,6 +7,7 @@
 - 语义检索：用 embedding 相似度匹配语义相近的记忆
 - 支持 CRUD + 语义去重 + 重要性更新
 """
+
 import os
 import uuid
 from pathlib import Path
@@ -34,12 +35,11 @@ def _build_client():
         return chromadb.HttpClient(
             host=settings.CHROMA_HOST,
             port=settings.CHROMA_PORT,
-            settings=ChromaSettings(anonymized_telemetry=False)
+            settings=ChromaSettings(anonymized_telemetry=False),
         )
     Path(settings.chroma_path).mkdir(parents=True, exist_ok=True)
     return chromadb.PersistentClient(
-        path=settings.chroma_path,
-        settings=ChromaSettings(anonymized_telemetry=False)
+        path=settings.chroma_path, settings=ChromaSettings(anonymized_telemetry=False)
     )
 
 
@@ -53,9 +53,11 @@ class MemoryVectorStore:
         self._collection = self._client.get_or_create_collection(
             name=self.COLLECTION_NAME,
             metadata={"description": "用户长期记忆：偏好、薄弱点、学习进度"},
-            embedding_function=embeddings
+            embedding_function=embeddings,
         )
-        logger.info(f"MemoryVectorStore 初始化完成，collection='{self.COLLECTION_NAME}'")
+        logger.info(
+            f"MemoryVectorStore 初始化完成，collection='{self.COLLECTION_NAME}'"
+        )
 
     # ── 写操作 ──────────────────────────────────────────────
 
@@ -65,7 +67,7 @@ class MemoryVectorStore:
         category: str,
         content: str,
         topic: str = "",
-        importance: float = 0.5
+        importance: float = 0.5,
     ) -> str:
         """添加一条长期记忆，返回记忆 ID。
 
@@ -84,17 +86,21 @@ class MemoryVectorStore:
 
         self._collection.add(
             documents=[content],
-            metadatas=[{
-                "user_id": user_id,
-                "category": category,
-                "topic": topic or "",
-                "importance": importance,
-                "created_at": now,
-                "updated_at": now,
-            }],
-            ids=[mem_id]
+            metadatas=[
+                {
+                    "user_id": user_id,
+                    "category": category,
+                    "topic": topic or "",
+                    "importance": importance,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            ],
+            ids=[mem_id],
         )
-        logger.debug(f"记忆已写入: id={mem_id}, category={category}, content={content[:50]}...")
+        logger.debug(
+            f"记忆已写入: id={mem_id}, category={category}, content={content[:50]}..."
+        )
         return mem_id
 
     def update_importance(self, mem_id: str, new_importance: float):
@@ -117,7 +123,9 @@ class MemoryVectorStore:
         metadata["updated_at"] = datetime.now().isoformat()
         self._collection.update(ids=[mem_id], metadatas=[metadata])
 
-    def update_memory(self, mem_id: str, content: str | None = None, topic: str | None = None):
+    def update_memory(
+        self, mem_id: str, content: str | None = None, topic: str | None = None
+    ):
         """Update editable memory fields while preserving ownership metadata."""
         current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
         if not current.get("ids"):
@@ -126,8 +134,12 @@ class MemoryVectorStore:
         if topic is not None:
             metadata["topic"] = topic
         metadata["updated_at"] = datetime.now().isoformat()
-        document = content if content is not None else (current.get("documents") or [""])[0]
-        self._collection.update(ids=[mem_id], documents=[document], metadatas=[metadata])
+        document = (
+            content if content is not None else (current.get("documents") or [""])[0]
+        )
+        self._collection.update(
+            ids=[mem_id], documents=[document], metadatas=[metadata]
+        )
         return True
 
     def set_frozen(self, mem_id: str, frozen: bool):
@@ -145,15 +157,30 @@ class MemoryVectorStore:
         if not result.get("ids"):
             return None
         metadata = (result.get("metadatas") or [{}])[0] or {}
-        return {"id": mem_id, "content": (result.get("documents") or [""])[0], **metadata}
+        return {
+            "id": mem_id,
+            "content": (result.get("documents") or [""])[0],
+            **metadata,
+        }
 
     def list_all(self, user_id: str):
-        result = self._collection.get(where={"user_id": user_id}, include=["documents", "metadatas"])
+        result = self._collection.get(
+            where={"user_id": user_id}, include=["documents", "metadatas"]
+        )
         entries = []
         for index, mem_id in enumerate(result.get("ids", [])):
             metadata = (result.get("metadatas") or [{}])[index] or {}
-            entries.append({"id": mem_id, "content": (result.get("documents") or [""])[index], **metadata})
-        entries.sort(key=lambda item: item.get("updated_at") or item.get("created_at", ""), reverse=True)
+            entries.append(
+                {
+                    "id": mem_id,
+                    "content": (result.get("documents") or [""])[index],
+                    **metadata,
+                }
+            )
+        entries.sort(
+            key=lambda item: item.get("updated_at") or item.get("created_at", ""),
+            reverse=True,
+        )
         return entries
 
     def delete_memory(self, mem_id: str):
@@ -173,7 +200,7 @@ class MemoryVectorStore:
         user_id: str,
         query: str = "",
         category: Optional[str] = None,
-        top_k: int = 10
+        top_k: int = 10,
     ) -> List[Dict]:
         """语义检索记忆，可按 category 过滤。
 
@@ -191,38 +218,41 @@ class MemoryVectorStore:
 
         try:
             results = self._collection.query(
-                query_texts=[query or " "],
-                n_results=top_k,
-                where=where_filter
+                query_texts=[query or " "], n_results=top_k, where=where_filter
             )
         except Exception as e:
-            logger.error(f"记忆检索失败: user_id={user_id}, query={query[:50]}, error={e}")
+            logger.error(
+                f"记忆检索失败: user_id={user_id}, query={query[:50]}, error={e}"
+            )
             return []
 
         entries = []
         ids_list = results.get("ids", [[]])[0]
         docs_list = results.get("documents", [[]])[0]
         metas_list = results.get("metadatas", [[]])[0]
-        dists_list = results.get("distances", [[]])[0] if "distances" in results else [0.0] * len(ids_list)
+        dists_list = (
+            results.get("distances", [[]])[0]
+            if "distances" in results
+            else [0.0] * len(ids_list)
+        )
 
         for i in range(len(ids_list)):
             meta = metas_list[i] if metas_list[i] else {}
-            entries.append({
-                "id": ids_list[i],
-                "content": docs_list[i],
-                "category": meta.get("category", ""),
-                "topic": meta.get("topic", ""),
-                "importance": meta.get("importance", 0.5),
-                "score": dists_list[i] if i < len(dists_list) else 0.0,
-                "created_at": meta.get("created_at", ""),
-            })
+            entries.append(
+                {
+                    "id": ids_list[i],
+                    "content": docs_list[i],
+                    "category": meta.get("category", ""),
+                    "topic": meta.get("topic", ""),
+                    "importance": meta.get("importance", 0.5),
+                    "score": dists_list[i] if i < len(dists_list) else 0.0,
+                    "created_at": meta.get("created_at", ""),
+                }
+            )
         return entries
 
     def get_by_category(
-        self,
-        user_id: str,
-        category: str,
-        limit: int = 50
+        self, user_id: str, category: str, limit: int = 50
     ) -> List[Dict]:
         """获取某用户某类别的所有记忆"""
         where_filter = {"$and": [{"user_id": user_id}, {"category": category}]}
@@ -235,7 +265,9 @@ class MemoryVectorStore:
         except Exception as error:
             logger.error(
                 "记忆分类读取失败: user_id=%s category=%s error=%s",
-                user_id, category, error,
+                user_id,
+                category,
+                error,
             )
             return []
         entries = []
@@ -246,17 +278,22 @@ class MemoryVectorStore:
             metadata = metadatas[index] or {}
             if metadata.get("frozen", False):
                 continue
-            entries.append({
-                "id": mem_id,
-                "content": documents[index],
-                "category": metadata.get("category", ""),
-                "topic": metadata.get("topic", ""),
-                "importance": metadata.get("importance", 0.5),
-                "score": 0.0,
-                "created_at": metadata.get("created_at", ""),
-                "updated_at": metadata.get("updated_at", ""),
-            })
-        entries.sort(key=lambda item: item.get("updated_at") or item.get("created_at"), reverse=True)
+            entries.append(
+                {
+                    "id": mem_id,
+                    "content": documents[index],
+                    "category": metadata.get("category", ""),
+                    "topic": metadata.get("topic", ""),
+                    "importance": metadata.get("importance", 0.5),
+                    "score": 0.0,
+                    "created_at": metadata.get("created_at", ""),
+                    "updated_at": metadata.get("updated_at", ""),
+                }
+            )
+        entries.sort(
+            key=lambda item: item.get("updated_at") or item.get("created_at"),
+            reverse=True,
+        )
         return entries
 
     def count_user_memories(self, user_id: str) -> int:
@@ -284,11 +321,7 @@ class MemoryVectorStore:
     # ── 语义去重 ────────────────────────────────────────────
 
     def find_duplicates(
-        self,
-        user_id: str,
-        category: str,
-        content: str,
-        threshold: float = 0.15
+        self, user_id: str, category: str, content: str, threshold: float = 0.15
     ) -> List[Dict]:
         """查找与给定内容语义高度相似的已有记忆。
 
