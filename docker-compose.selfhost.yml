@@ -1,0 +1,18 @@
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    environment:
+      PUBLIC_DOMAIN: ":80"
+    depends_on:
+      - java-gateway
+
+  java-gateway:
+    environment:
+      SECURE_COOKIES: "false"
+      CORS_ORIGINS: "http://localhost:3000"
+
+  python-agent:
+    volumes:
+      - ./test-fixtures:/test-fixtures:ro

@@ -32,6 +32,8 @@ Thumbs.db
 data/
 frontend/node_modules/
 frontend/.env.local
+frontend/test-results/
+frontend/playwright-report/
 .e2e-state.json
 
 # Logs
