@@ -1,0 +1,8 @@
+:443 {
+    encode gzip
+    reverse_proxy /api/* java-gateway:8080
+    reverse_proxy /ws/* java-gateway:8080
+    root * /srv/frontend
+    try_files {path} /index.html
+    file_server
+}
