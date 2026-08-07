@@ -1,5 +1,7 @@
 import csv
 import hashlib
+import zipfile
+from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -43,15 +45,70 @@ def _document(content: str, source: str, **metadata: object) -> Document:
 
 
 def _parse_pdf(path: Path, source: str) -> list[Document]:
-    from pypdf import PdfReader
+    import fitz
 
-    reader = PdfReader(str(path))
+    pdf = fitz.open(str(path))
     documents: list[Document] = []
-    for page_index, page in enumerate(reader.pages, start=1):
-        text = (page.extract_text() or "").strip()
+    page_lines: list[list[str]] = []
+    page_images: list[tuple[int, bytes]] = []
+
+    for page_index, page in enumerate(pdf, start=1):
+        blocks = sorted(
+            page.get_text("blocks"),
+            key=lambda block: (round(float(block[1]) / 12), float(block[0])),
+        )
+        lines = [
+            line.strip()
+            for block in blocks
+            for line in str(block[4]).splitlines()
+            if line.strip()
+        ]
+        text = "\n".join(lines).strip()
+
+        if len(text) < settings.pdf_min_text_chars and settings.ocr_enabled:
+            import pytesseract
+            from PIL import Image
+
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            image = Image.frombytes(
+                "RGB", [pixmap.width, pixmap.height], pixmap.samples
+            )
+            text = pytesseract.image_to_string(
+                image, lang=settings.ocr_languages
+            ).strip()
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+        page_lines.append(lines)
+
+        if (
+            settings.multimodal_enabled
+            and len(page_images) < settings.multimodal_max_images
+            and (page.get_images(full=True) or page.get_drawings())
+        ):
+            rendered = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+            page_images.append((page_index, rendered.tobytes("png")))
+
+    edge_lines: Counter[str] = Counter()
+    for lines in page_lines:
+        for line in lines[:2] + lines[-2:]:
+            if 2 <= len(line) <= 160:
+                edge_lines[line] += 1
+    repeated = {
+        line
+        for line, count in edge_lines.items()
+        if len(page_lines) >= 3 and count >= max(3, len(page_lines) // 2)
+    }
+
+    for page_index, lines in enumerate(page_lines, start=1):
+        text = "\n".join(line for line in lines if line not in repeated).strip()
         if text:
             documents.append(
-                _document(text, source, page=page_index, chunk_type="text")
+                _document(
+                    text,
+                    source,
+                    page=page_index,
+                    chunk_type="text",
+                    parser="pymupdf_layout",
+                )
             )
 
     try:
@@ -82,26 +139,26 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
     except Exception as error:
         logger.warning("PDF 表格解析失败，继续使用文本结果: %s", error)
 
-    if documents or not settings.ocr_enabled:
-        return documents
-    try:
-        import fitz
-        import pytesseract
-        from PIL import Image
+    if page_images:
+        from app.knowledge.vision import describe_image
 
-        pdf = fitz.open(str(path))
-        for page_index, page in enumerate(pdf, start=1):
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-            image = Image.frombytes(
-                "RGB", [pixmap.width, pixmap.height], pixmap.samples
-            )
-            text = pytesseract.image_to_string(image, lang="chi_sim+eng").strip()
-            if text:
-                documents.append(
-                    _document(text, source, page=page_index, chunk_type="image_ocr")
+        for image_index, (page_index, image_bytes) in enumerate(page_images, start=1):
+            try:
+                description = describe_image(
+                    image_bytes, f"{source} 第 {page_index} 页图片 {image_index}"
                 )
-    except ImportError as error:
-        raise ValueError("扫描型 PDF 需要安装 OCR 可选依赖并配置 Tesseract") from error
+                if description:
+                    documents.append(
+                        _document(
+                            description,
+                            source,
+                            page=page_index,
+                            section=f"第 {page_index} 页图片 {image_index}",
+                            chunk_type="image_vision",
+                        )
+                    )
+            except Exception as error:
+                logger.warning("多模态图片解析失败，保留其他解析结果: %s", error)
     return documents
 
 
@@ -218,6 +275,39 @@ def _parse_plain(path: Path, source: str) -> list[Document]:
     return [_document(content, source, section=path.stem, chunk_type="text")]
 
 
+def _parse_office_images(path: Path, source: str) -> list[Document]:
+    if not settings.multimodal_enabled:
+        return []
+    from app.knowledge.vision import describe_image
+
+    output: list[Document] = []
+    try:
+        with zipfile.ZipFile(path) as archive:
+            media = [
+                name
+                for name in archive.namelist()
+                if "/media/" in name
+                and Path(name).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+            ]
+            for index, name in enumerate(media[: settings.multimodal_max_images], start=1):
+                image_bytes = archive.read(name)
+                if len(image_bytes) < 10_000:
+                    continue
+                description = describe_image(image_bytes, f"{source} 内嵌图片 {index}")
+                if description:
+                    output.append(
+                        _document(
+                            description,
+                            source,
+                            section=f"内嵌图片 {index}",
+                            chunk_type="image_vision",
+                        )
+                    )
+    except (zipfile.BadZipFile, KeyError) as error:
+        logger.warning("Office 内嵌图片读取失败: %s", error)
+    return output
+
+
 def parse_document(file_path: str, source_name: str | None = None) -> list[Document]:
     path = Path(file_path)
     extension = path.suffix.lower()
@@ -233,7 +323,10 @@ def parse_document(file_path: str, source_name: str | None = None) -> list[Docum
         ".xlsm": _parse_workbook,
         ".csv": _parse_csv,
     }.get(extension, _parse_plain)
-    return parser(path, source)
+    documents = parser(path, source)
+    if extension in {".docx", ".pptx", ".xlsx", ".xlsm"}:
+        documents.extend(_parse_office_images(path, source))
+    return documents
 
 
 def ingest_document(
@@ -269,6 +362,7 @@ def ingest_document(
             "page": int(chunk.metadata.get("page", 0) or 0),
             "section": str(chunk.metadata.get("section", "")),
             "chunk_type": str(chunk.metadata.get("chunk_type", "text")),
+            "parser": str(chunk.metadata.get("parser", "")),
         }
         metadatas.append(metadata)
     collection.upsert(

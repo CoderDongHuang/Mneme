@@ -65,7 +65,7 @@ def chunk_documents(
 
         pieces = (
             [content]
-            if chunk_type in {"table", "title", "image_ocr"}
+            if chunk_type in {"table", "title", "image_ocr", "image_vision"}
             else _split_text(content, chunk_size, overlap)
         )
         for index, piece in enumerate(pieces):

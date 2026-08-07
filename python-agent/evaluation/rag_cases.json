@@ -1,0 +1,17 @@
+[
+  {
+    "question": "星桥计划的核心识别码是什么？",
+    "expected_source": "rag-fixture.txt",
+    "expected_terms": ["QZ-7294"]
+  },
+  {
+    "question": "星桥计划的负责人是谁？",
+    "expected_source": "rag-fixture.txt",
+    "expected_terms": ["林舟"]
+  },
+  {
+    "question": "星桥计划计划在哪一年完成？",
+    "expected_source": "rag-fixture.txt",
+    "expected_terms": ["2032"]
+  }
+]

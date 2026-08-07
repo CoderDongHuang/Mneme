@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:real": "playwright test e2e/real-stack.spec.js --project=桌面端",
     "audit": "audit-ci --config ./audit-ci.jsonc"
   },
   "dependencies": {
@@ -17,7 +18,7 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-markdown": "10.1.0",
-    "react-router-dom": "7.18.2",
+    "react-router-dom": "^7.18.2",
     "remark-gfm": "4.0.1"
   },
   "devDependencies": {
@@ -25,10 +26,12 @@
     "@playwright/test": "^1.62.0",
     "@vitejs/plugin-react": "6.0.3",
     "audit-ci": "7.1.0",
+    "brace-expansion": "^5.0.9",
     "eslint": "10.8.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.3",
     "globals": "17.8.0",
+    "postcss": "^8.5.23",
     "vite": "8.1.5",
     "vitest": "4.1.10"
   }

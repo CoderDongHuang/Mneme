@@ -26,6 +26,11 @@ jobs:
           DASHSCOPE_API_KEY: ci-dummy-key
           MNEME_OFFLINE_EMBEDDINGS: "true"
         run: python -m pytest tests/ -q
+      - name: Run offline RAG baseline
+        working-directory: python-agent
+        env:
+          MNEME_OFFLINE_EMBEDDINGS: "true"
+        run: python scripts/evaluate_rag.py
 
   java:
     name: Java Gateway

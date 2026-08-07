@@ -21,6 +21,14 @@ services:
     volumes:
       - ./data/redis:/data
 
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
   chroma:
     image: chromadb/chroma:0.5.3
     ports:
@@ -42,12 +50,23 @@ services:
       - CHROMA_MODE=http
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-24}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - SKIP_INTERNAL_AUTH=false
       - WORKING_MEMORY_WINDOW_SIZE=${WORKING_MEMORY_WINDOW_SIZE:-10}
       - WORKING_MEMORY_MAX_TOKENS=${WORKING_MEMORY_MAX_TOKENS:-4000}
       - RETRIEVER_TOP_K=${RETRIEVER_TOP_K:-5}
       - DISTILLATION_IDLE_MINUTES=${DISTILLATION_IDLE_MINUTES:-15}
+      - OCR_ENABLED=${OCR_ENABLED:-true}
+      - OCR_LANGUAGES=${OCR_LANGUAGES:-chi_sim+eng}
+      - PDF_MIN_TEXT_CHARS=${PDF_MIN_TEXT_CHARS:-80}
+      - MULTIMODAL_ENABLED=${MULTIMODAL_ENABLED:-false}
+      - MULTIMODAL_MODEL=${MULTIMODAL_MODEL:-qwen-vl-plus}
+      - MULTIMODAL_MAX_IMAGES=${MULTIMODAL_MAX_IMAGES:-8}
     volumes:
       - ./data:/data
       - ./python-agent:/app
@@ -68,12 +87,19 @@ services:
       - FILE_STORAGE_PATH=/data/files
       - JWT_SECRET=${JWT_SECRET}
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
+      - PASSWORD_RESET_FROM=${PASSWORD_RESET_FROM:-mneme@local.test}
+      - SPRING_MAIL_HOST=mailpit
+      - SPRING_MAIL_PORT=1025
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=false
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=false
     volumes:
       - ./data:/data
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_started
+      mailpit:
         condition: service_started
       python-agent:
         condition: service_started

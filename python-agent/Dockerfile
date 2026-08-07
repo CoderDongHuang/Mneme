@@ -2,9 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 系统依赖（Unstructured PDF 解析需要）
+# PDF layout extraction and Chinese/English OCR runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libmagic1 poppler-utils \
+    libmagic1 poppler-utils tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -15,7 +16,7 @@ COPY . .
 EXPOSE 8001
 
 # 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "from urllib.request import urlopen; urlopen('http://localhost:8001/health')" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD python -c "from urllib.request import urlopen; urlopen('http://localhost:8001/health/ready')" || exit 1
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
