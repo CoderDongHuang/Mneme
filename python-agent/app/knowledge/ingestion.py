@@ -66,17 +66,28 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
         text = "\n".join(lines).strip()
 
         if len(text) < settings.pdf_min_text_chars and settings.ocr_enabled:
-            import pytesseract
-            from PIL import Image
+            try:
+                import pytesseract
+                from PIL import Image
 
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-            image = Image.frombytes(
-                "RGB", [pixmap.width, pixmap.height], pixmap.samples
-            )
-            text = pytesseract.image_to_string(
-                image, lang=settings.ocr_languages
-            ).strip()
-            lines = [line.strip() for line in text.splitlines() if line.strip()]
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                image = Image.frombytes(
+                    "RGB", [pixmap.width, pixmap.height], pixmap.samples
+                )
+                ocr_text = pytesseract.image_to_string(
+                    image, lang=settings.ocr_languages
+                ).strip()
+                if ocr_text:
+                    text = ocr_text
+                    lines = [
+                        line.strip() for line in text.splitlines() if line.strip()
+                    ]
+            except (ImportError, OSError, RuntimeError) as error:
+                logger.warning(
+                    "PDF 第 %s 页 OCR 不可用，保留已提取文本: %s",
+                    page_index,
+                    error,
+                )
         page_lines.append(lines)
 
         if (

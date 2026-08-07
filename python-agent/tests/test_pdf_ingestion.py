@@ -36,6 +36,25 @@ def test_pdf_layout_removes_repeated_headers_and_footers(tmp_path):
     assert text_documents[1].metadata["parser"] == "pymupdf_layout"
 
 
+def test_pdf_keeps_extracted_text_when_ocr_is_unavailable(tmp_path, monkeypatch):
+    import pytesseract
+
+    path = tmp_path / "ocr-fallback.pdf"
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((72, 90), "Extracted text must survive OCR failure")
+    document.save(path)
+
+    def unavailable(*args, **kwargs):
+        raise pytesseract.TesseractNotFoundError()
+
+    monkeypatch.setattr(pytesseract, "image_to_string", unavailable)
+
+    parsed = parse_document(str(path))
+
+    assert "Extracted text must survive" in parsed[0].page_content
+
+
 @pytest.mark.integration
 @pytest.mark.skipif(shutil.which("tesseract") is None, reason="需要 Tesseract")
 def test_scanned_pdf_uses_ocr(tmp_path):
