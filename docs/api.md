@@ -13,7 +13,7 @@ Java 普通响应采用 `{ "code": 200, "message": "success", "data": ... }`。
 - `POST /auth/register`：`{ "username", "password" }`
 - `POST /auth/login`：`{ "username", "password" }`
 
-返回 `token`、`userId`、`username`。
+通过 HttpOnly Cookie 建立会话，响应体只返回 `userId` 和 `username`；JWT 不返回给 JavaScript。
 
 ## 会话
 
@@ -45,8 +45,10 @@ SSE 事件：
 - `POST /knowledge/document/upload`：multipart，字段 `kbId`、`file`。
 - `GET /knowledge/base/{id}/documents`
 - `GET /knowledge/document/{id}/status`
+- `DELETE /knowledge/document/{id}`：异步删除原文件和该文档的全部向量片段。
+- `POST /knowledge/document/{id}/reparse`：复用原文件重新解析，保留文档 ID，完成后替换旧片段。
 
-文档状态：`parsing -> ready | failed`。
+文档状态：`parsing -> ready | failed`；删除时为 `deleting`，删除任务失败时为 `delete_failed`。
 
 ## 记忆
 

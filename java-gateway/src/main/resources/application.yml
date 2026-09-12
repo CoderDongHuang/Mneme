@@ -44,6 +44,7 @@ mneme:
   jwt-secret: ${JWT_SECRET}
   jwt-expiration: ${JWT_EXPIRATION:86400000}
   file-storage-path: ${FILE_STORAGE_PATH:../data/files}
+  avatar-storage-path: ${AVATAR_STORAGE_PATH:../data/avatars}
   internal-service-token: ${INTERNAL_SERVICE_TOKEN}
   cors-origins: ${CORS_ORIGINS:http://localhost:5173}
   secure-cookies: ${SECURE_COOKIES:true}

@@ -148,6 +148,15 @@ class SessionStore:
             self._save(user_id, data)
             logger.info(f"会话已删除: {session_id}")
 
+    def delete_user(self, user_id: str):
+        file_path = self._get_file_path(user_id)
+        with self._lock:
+            try:
+                if os.path.exists(file_path):
+                    os.unlink(file_path)
+            except OSError as error:
+                logger.error("用户会话文件删除失败: %s", error)
+
     def get_session_count(self, user_id: str) -> int:
         """获取用户会话数量"""
         return len(self._load(user_id))

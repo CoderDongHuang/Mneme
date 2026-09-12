@@ -340,7 +340,7 @@ npm run test:e2e:real
 
 GitHub Actions 运行 `31106946732` 对应 `codex/production-hardening` 分支。该次运行中 ESLint 和 Vitest 均通过，失败步骤是 `npm run audit`：间接依赖 `brace-expansion` 命中高危公告 `GHSA-rgw5-rvv9-x895`，`audit-ci` 按策略返回退出码 1。
 
-本次将 `brace-expansion` 更新到 `5.0.9`，并将 `postcss` 更新到 `8.5.23`。React Router 对应公告仍按仓库已有安全策略显式 allowlist；这不是“没有漏洞”，而是维护者接受当前本地自托管场景的已知风险，后续升级路由栈时应删除例外。依赖审计必须结合调用路径和升级影响，不应简单把全部公告永久加入忽略列表。
+本次将 `brace-expansion` 更新到 `5.0.9`、`postcss` 更新到 `8.5.23`，并将间接依赖 `nanoid` 固定到 `3.3.19`。此前的 React Router allowlist 已移除；当前 CI 不允许 high/critical 公告，审计报告只剩需要常规升级跟踪的 moderate 项。依赖审计必须结合调用路径和升级影响，不应简单把公告永久加入忽略列表。
 
 ## 十三、当前边界与不足
 

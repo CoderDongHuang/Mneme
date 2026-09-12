@@ -24,7 +24,7 @@ import java.util.Set;
 @Service
 public class KnowledgeService {
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
-        ".pdf", ".docx", ".pptx", ".xlsx", ".xlsm", ".csv", ".md", ".txt", ".html", ".htm"
+        ".pdf", ".docx", ".pptx", ".xlsx", ".xlsm", ".csv", ".md", ".markdown", ".txt", ".html", ".htm"
     );
     private final KnowledgeBaseMapper kbMapper;
     private final KnowledgeDocumentMapper docMapper;
@@ -159,6 +159,60 @@ public class KnowledgeService {
         }
         getOwnedKb(userId, document.getKbId());
         return document;
+    }
+
+    @Transactional
+    public void deleteDocument(Long userId, Long documentId) {
+        KnowledgeDocument document = ownedDocument(userId, documentId);
+        if ("deleting".equals(document.getStatus())) return;
+        document.setStatus("deleting");
+        document.setErrorMessage(null);
+        docMapper.updateById(document);
+        createDocumentTask(userId, document, "document_delete");
+    }
+
+    @Transactional
+    public void reparseDocument(Long userId, Long documentId) {
+        KnowledgeDocument document = ownedDocument(userId, documentId);
+        if (!Files.isRegularFile(Path.of(document.getFilePath()))) {
+            throw new IllegalArgumentException("原文件不存在，无法重新解析");
+        }
+        document.setStatus("parsing");
+        document.setChunkCount(0);
+        document.setErrorMessage(null);
+        docMapper.updateById(document);
+        createDocumentTask(userId, document, "document_ingest");
+    }
+
+    private KnowledgeDocument ownedDocument(Long userId, Long documentId) {
+        KnowledgeDocument document = docMapper.selectById(documentId);
+        if (document == null) throw new IllegalArgumentException("文档不存在");
+        getOwnedKb(userId, document.getKbId());
+        return document;
+    }
+
+    private void createDocumentTask(Long userId, KnowledgeDocument document, String type) {
+        try {
+            ProcessingTask task = new ProcessingTask();
+            String taskId = "task_" + UUID.randomUUID().toString().replace("-", "");
+            task.setTaskId(taskId);
+            task.setTaskType(type);
+            task.setUserId(userId);
+            task.setAggregateId(document.getId());
+            task.setIdempotencyKey(type + ":" + document.getId() + ":" + UUID.randomUUID());
+            task.setStatus("pending");
+            task.setPayload(objectMapper.writeValueAsString(Map.of(
+                "user_id", userId.toString(), "kb_id", document.getKbId().toString(),
+                "file_path", document.getFilePath(), "document_id", "doc_" + document.getId()
+            )));
+            task.setAttemptCount(0); task.setMaxAttempts(3);
+            task.setNextAttemptAt(java.time.LocalDateTime.now());
+            taskMapper.insert(task);
+            document.setParseTaskId(taskId);
+            docMapper.updateById(document);
+        } catch (Exception error) {
+            throw new IllegalStateException("文档任务创建失败", error);
+        }
     }
 
     @Transactional

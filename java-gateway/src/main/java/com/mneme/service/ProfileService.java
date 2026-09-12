@@ -6,8 +6,11 @@ import com.mneme.dto.ProfileUpdateRequest;
 import com.mneme.entity.User;
 import com.mneme.mapper.UserMapper;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,10 +24,25 @@ import java.util.UUID;
 public class ProfileService {
     private static final Set<String> IMAGE_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private final UserMapper users;
+    private final RestTemplate restTemplate;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
-    private final Path avatarRoot = Path.of("uploads", "avatars").toAbsolutePath().normalize();
+    private final Path avatarRoot;
+    private final String pythonAgentUrl;
+    private final Path fileRoot;
 
-    public ProfileService(UserMapper users) { this.users = users; }
+    public ProfileService(
+        UserMapper users,
+        RestTemplate restTemplate,
+        @Value("${mneme.avatar-storage-path:${mneme.file-storage-path:../data/files}/avatars}") String avatarStoragePath,
+        @Value("${mneme.python-agent-url}") String pythonAgentUrl,
+        @Value("${mneme.file-storage-path:../data/files}") String fileStoragePath
+    ) {
+        this.users = users;
+        this.restTemplate = restTemplate;
+        this.avatarRoot = Path.of(avatarStoragePath).toAbsolutePath().normalize();
+        this.pythonAgentUrl = pythonAgentUrl;
+        this.fileRoot = Path.of(fileStoragePath).toAbsolutePath().normalize();
+    }
 
     public Map<String, Object> profile(Long userId) {
         User user = requireUser(userId);
@@ -92,9 +110,25 @@ public class ProfileService {
         users.updateById(user);
     }
 
-    public void deleteAccount(Long userId) {
+    public void deleteAccount(Long userId) throws IOException {
         User user = requireUser(userId);
+        String id = userId.toString();
+        restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/user/" + id);
+        restTemplate.delete(pythonAgentUrl + "/api/v1/memory/admin/user/" + id);
+        restTemplate.delete(pythonAgentUrl + "/api/v1/admin/user/" + id);
+        deleteDirectory(fileRoot.resolve(id).normalize(), fileRoot);
+        if (user.getAvatarPath() != null) Files.deleteIfExists(Path.of(user.getAvatarPath()));
         users.deleteById(user.getId());
+    }
+
+    private void deleteDirectory(Path directory, Path root) throws IOException {
+        if (!directory.startsWith(root) || !Files.exists(directory)) return;
+        try (var paths = Files.walk(directory)) {
+            paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                try { Files.deleteIfExists(path); }
+                catch (IOException error) { throw new IllegalStateException(error); }
+            });
+        }
     }
 
     private User requireUser(Long id) {
