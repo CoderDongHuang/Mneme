@@ -11,7 +11,7 @@
 
 ## 数据原则
 
-- JWT 保存在 `localStorage` 的 `mneme_auth` 中。
+- JWT 只保存在 Java 设置的 HttpOnly Cookie 中；`localStorage` 的 `mneme_auth` 仅保存非敏感的用户展示信息和登录状态。
 - API 收到 401 时统一清除会话并回到认证页。
 - SSE 使用 `fetch + ReadableStream`，因此支持 POST 请求和 `AbortController`。
 - 上传后轮询 Java 文档状态，不直接访问 Python task 接口。

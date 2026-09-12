@@ -74,7 +74,8 @@ public class WorkspaceService {
         if (updated == 0) throw new IllegalArgumentException("任务不存在或当前状态不可重试");
         jdbc.update("""
             UPDATE knowledge_document d JOIN processing_task t ON t.aggregate_id=d.id
-            SET d.status='parsing',d.error_message=NULL WHERE t.user_id=? AND t.task_id=?
+            SET d.status=CASE WHEN t.task_type='document_delete' THEN 'deleting' ELSE 'parsing' END,
+                d.error_message=NULL WHERE t.user_id=? AND t.task_id=?
             """, userId, taskId);
         return Map.of("task_id", taskId, "status", "retry");
     }

@@ -17,7 +17,7 @@ Mneme 面向需要长期学习和资料管理的用户。它不仅回答单次�
 ## 功能概览
 
 - **账号与工作区**：注册、登录、资料库、对话历史、个人资料和学习工作台。
-- **结构化 RAG**：支持 PDF、DOCX、PPTX、XLSX/XLSM、CSV、Markdown、TXT 和 HTML。
+- **结构化 RAG**：支持 PDF、DOCX、PPTX、XLSX/XLSM、CSV、Markdown（`.md`/`.markdown`）、TXT 和 HTML。
 - **复杂文档解析**：PDF 版面块排序、重复页眉页脚过滤、逐页中英文 OCR、表格独立提取，可选 Qwen-VL 图表与图片理解。
 - **可追溯回答**：保留文档名、页码、章节、内容类型和原文片段，并在回答中展示引用。
 - **Agent 决策链**：LangGraph 编排意图识别、条件检索、个性化推理和记忆回写。
@@ -134,7 +134,7 @@ npm test
 npm run build
 ```
 
-CI 会分别执行 Python、Java 和前端检查。当前浏览器 E2E 主要验证 mock API 下的关键交互与响应式布局，真实模型、OCR 和跨服务全链路仍建议在本地按 [测试说明](docs/testing.md) 验收。
+CI 会分别执行 Python、Java 和前端检查，并使用 mock API 验证关键交互与响应式布局。仓库另有需要显式启用的真实模型 E2E，覆盖注册、上传、解析、检索、流式回答与引用，运行方式见 [测试说明](docs/testing.md)。
 
 ## 文档索引
 
@@ -147,6 +147,7 @@ CI 会分别执行 Python、Java 和前端检查。当前浏览器 E2E 主要验
 - [测试说明](docs/testing.md)
 - [配置获取与参数说明](docs/SELF_HOSTING.md#2-配置与获取方式)
 - [ADR：服务与数据边界](docs/adr/0001-service-and-data-boundaries.md)
+- [项目审计与迭代路线图](docs/PROJECT_AUDIT_AND_ROADMAP.md)
 
 `全阶段开发步骤.md` 和 `调试问题记录.md` 是历史过程记录，不代表当前实现状态。
 

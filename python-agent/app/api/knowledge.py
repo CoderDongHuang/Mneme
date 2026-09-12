@@ -166,3 +166,18 @@ async def global_stats() -> dict:
 async def delete_collection(kb_id: str, user_id: str) -> dict:
     deleted = vector_store.delete_collection(user_id, kb_id)
     return {"deleted": deleted, "kb_id": kb_id}
+
+
+@router.delete("/admin/documents/{document_id}")
+async def delete_document(document_id: str, user_id: str, kb_id: str) -> dict:
+    deleted = vector_store.delete_document(user_id, kb_id, document_id)
+    return {"deleted_chunks": deleted, "document_id": document_id}
+
+
+@router.delete("/admin/user/{user_id}")
+async def delete_user_collections(user_id: str) -> dict:
+    deleted = 0
+    for collection in vector_store.list_user_collections(user_id):
+        deleted += collection.count()
+        vector_store.client.delete_collection(collection.name)
+    return {"status": "deleted", "user_id": user_id, "chunks": deleted}

@@ -70,6 +70,16 @@ class VectorStore:
         except Exception:
             return False
 
+    def delete_document(self, user_id: str, kb_id: str, document_id: str) -> int:
+        collection = self.get_collection(user_id, kb_id)
+        if collection is None:
+            return 0
+        result = collection.get(where={"document_id": document_id})
+        ids = result.get("ids", [])
+        if ids:
+            collection.delete(ids=ids)
+        return len(ids)
+
     def list_user_collections(self, user_id: str) -> list[Any]:
         collections = self.client.list_collections()
         return [

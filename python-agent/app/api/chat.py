@@ -49,6 +49,17 @@ async def delete_session(session_id: str, user_id: str = "default"):
     return {"deleted": True, "session_id": session_id}
 
 
+@router.delete("/admin/user/{user_id}")
+async def delete_user_sessions(user_id: str):
+    for session in session_store.get_sessions(user_id):
+        session_id = str(session.get("id", ""))
+        if session_id:
+            short_term_memory.clear(session_id)
+            working_memory.clear(session_id)
+    session_store.delete_user(user_id)
+    return {"status": "deleted", "user_id": user_id}
+
+
 @router.post(
     "/chat",
     response_model=ChatResponse,

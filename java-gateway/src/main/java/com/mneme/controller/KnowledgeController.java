@@ -67,4 +67,16 @@ public class KnowledgeController {
     ) {
         return Result.success(knowledgeService.refreshDocumentStatus(userId, documentId));
     }
+
+    @DeleteMapping("/document/{documentId}")
+    public Result<Map<String, Boolean>> deleteDocument(@RequestAttribute("userId") Long userId, @PathVariable Long documentId) {
+        knowledgeService.deleteDocument(userId, documentId);
+        return Result.success(Map.of("accepted", true));
+    }
+
+    @PostMapping("/document/{documentId}/reparse")
+    public Result<Map<String, Boolean>> reparseDocument(@RequestAttribute("userId") Long userId, @PathVariable Long documentId) {
+        knowledgeService.reparseDocument(userId, documentId);
+        return Result.success(Map.of("accepted", true));
+    }
 }

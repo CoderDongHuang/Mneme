@@ -102,6 +102,8 @@ export const endpoints = {
   deleteKnowledgeBase: (id) => api(`/knowledge/base/${id}`, { method: 'DELETE' }),
   documents: (kbId) => api(`/knowledge/base/${kbId}/documents`),
   documentStatus: (id) => api(`/knowledge/document/${id}/status`),
+  deleteDocument: (id) => api(`/knowledge/document/${id}`, { method: 'DELETE' }),
+  reparseDocument: (id) => api(`/knowledge/document/${id}/reparse`, { method: 'POST' }),
   uploadDocument: (kbId, file) => {
     const form = new FormData()
     form.append('kbId', kbId)

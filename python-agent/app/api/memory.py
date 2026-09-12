@@ -51,6 +51,12 @@ async def delete_memory(memory_id: str, user_id: str):
     return {"status": "deleted", "id": memory_id}
 
 
+@router.delete("/admin/user/{user_id}")
+async def delete_user_memories(user_id: str):
+    memory_store.delete_user_memories(user_id)
+    return {"status": "deleted", "user_id": user_id}
+
+
 @router.post(
     "/read",
     summary="读取用户记忆",

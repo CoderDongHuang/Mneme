@@ -24,5 +24,5 @@ public class ProfileController {
     @PostMapping("/avatar") public Result<Map<String, Object>> avatar(@RequestAttribute("userId") Long userId, @RequestParam("file") MultipartFile file) throws IOException { return Result.success(profiles.uploadAvatar(userId, file)); }
     @GetMapping("/avatar") public ResponseEntity<byte[]> avatar(@RequestAttribute("userId") Long userId) throws IOException { return ResponseEntity.ok().contentType(MediaType.parseMediaType(profiles.avatarType(userId))).body(profiles.avatar(userId)); }
     @PostMapping("/password") public Result<Void> password(@RequestAttribute("userId") Long userId, @Valid @RequestBody PasswordChangeRequest request) { profiles.changePassword(userId, request); return Result.success(null); }
-    @DeleteMapping("/account") public Result<Void> delete(@RequestAttribute("userId") Long userId) { profiles.deleteAccount(userId); return Result.success(null); }
+    @DeleteMapping("/account") public Result<Void> delete(@RequestAttribute("userId") Long userId) throws IOException { profiles.deleteAccount(userId); return Result.success(null); }
 }

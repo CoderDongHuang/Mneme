@@ -140,6 +140,7 @@ data/mysql
 data/redis
 data/chroma
 data/files
+data/avatars
 ```
 
 升级前先执行备份脚本，再拉取代码并重建：

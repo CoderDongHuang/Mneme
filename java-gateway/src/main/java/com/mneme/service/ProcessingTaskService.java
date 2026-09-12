@@ -88,6 +88,8 @@ public class ProcessingTaskService {
         try {
             if ("document_ingest".equals(task.getTaskType())) {
                 ingest(task);
+            } else if ("document_delete".equals(task.getTaskType())) {
+                deleteDocument(task);
             } else if ("knowledge_base_delete".equals(task.getTaskType())) {
                 deleteKnowledgeBase(task);
             } else {
@@ -121,6 +123,19 @@ public class ProcessingTaskService {
             document.setErrorMessage(null);
             documentMapper.updateById(document);
         }
+    }
+
+    private void deleteDocument(ProcessingTask task) throws Exception {
+        JsonNode payload = objectMapper.readTree(task.getPayload());
+        String userId = payload.path("user_id").asText();
+        String kbId = payload.path("kb_id").asText();
+        String documentId = payload.path("document_id").asText();
+        restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId
+            + "?user_id=" + userId + "&kb_id=" + kbId);
+        Path file = Path.of(payload.path("file_path").asText()).normalize();
+        Path root = Path.of(fileStoragePath).normalize();
+        if (file.startsWith(root)) Files.deleteIfExists(file);
+        documentMapper.deleteById(task.getAggregateId());
     }
 
     @Transactional
@@ -171,6 +186,14 @@ public class ProcessingTaskService {
             KnowledgeDocument document = documentMapper.selectById(task.getAggregateId());
             if (document != null) {
                 document.setStatus(exhausted ? "failed" : "parsing");
+                document.setErrorMessage(error.getMessage());
+                documentMapper.updateById(document);
+            }
+        }
+        if ("document_delete".equals(task.getTaskType())) {
+            KnowledgeDocument document = documentMapper.selectById(task.getAggregateId());
+            if (document != null) {
+                document.setStatus("delete_failed");
                 document.setErrorMessage(error.getMessage());
                 documentMapper.updateById(document);
             }

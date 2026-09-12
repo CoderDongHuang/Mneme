@@ -1,9 +1,5 @@
-# Temporary security exceptions
+# Security exceptions
 
-## GHSA-qwww-vcr4-c8h2
+当前没有允许忽略的 high 或 critical 依赖安全公告。
 
-- Dependency: `react-router` through `react-router-dom` 7.18.1.
-- Scope of advisory: React Server Components Action processing.
-- Project exposure: none. Mneme is a Vite client-only SPA and does not enable React Server Components, SSR, server actions, or React Router framework mode.
-- Control: `audit-ci` allowlists only this advisory; every other high or critical advisory fails CI.
-- Removal condition: remove the allowlist entry as soon as React Router publishes a fixed release that remains compatible with the client router.
+前端 CI 使用 `audit-ci` 阻断 high/critical。审计报告中的 moderate 仍需在常规依赖升级中处理；新增例外必须在本文记录公告编号、实际暴露面、补偿控制、负责人和移除条件，不能只修改 allowlist。

@@ -8,7 +8,6 @@ import {
   FileSpreadsheet,
   FileText,
   FolderPlus,
-  MoreHorizontal,
   Plus,
   Search,
   Trash2,
@@ -26,7 +25,7 @@ function fileIcon(name = "") {
   if (["xlsx", "xlsm", "csv"].includes(extension)) return FileSpreadsheet;
   if (extension === "pptx") return FileChartColumn;
   if (extension === "pdf") return FileArchive;
-  if (["md", "txt", "html"].includes(extension)) return FileText;
+  if (["md", "markdown", "txt", "html", "htm"].includes(extension)) return FileText;
   return File;
 }
 
@@ -123,6 +122,24 @@ export default function KnowledgePage() {
     const remaining = knowledgeBases.filter((item) => item.id !== activeKbId);
     setKnowledgeBases(remaining);
     setActiveKbId(remaining[0]?.id || null);
+  }
+
+  async function deleteDocument(document) {
+    if (!window.confirm(`删除“${document.fileName}”及其检索片段？`)) return;
+    try {
+      setError("");
+      await endpoints.deleteDocument(document.id);
+      setDocuments((current) => current.map((item) => item.id === document.id ? { ...item, status: "deleting" } : item));
+      window.setTimeout(() => setDocuments((current) => current.filter((item) => item.id !== document.id)), 2200);
+    } catch (requestError) { setError(requestError.message); }
+  }
+
+  async function reparseDocument(document) {
+    try {
+      setError("");
+      await endpoints.reparseDocument(document.id);
+      setDocuments((current) => current.map((item) => item.id === document.id ? { ...item, status: "parsing", errorMessage: null, chunkCount: 0 } : item));
+    } catch (requestError) { setError(requestError.message); }
   }
 
   const visibleDocuments = useMemo(
@@ -297,9 +314,14 @@ export default function KnowledgePage() {
                           : "刚刚"}
                       </span>
                       <span>
-                        <button title="更多">
-                          <MoreHorizontal size={17} />
-                        </button>
+                        {!["deleting", "parsing"].includes(document.status) && <>
+                          <button title="重新解析" onClick={() => reparseDocument(document)}>
+                            <ArrowUpRight size={16} />
+                          </button>
+                          <button title="删除文档" onClick={() => deleteDocument(document)}>
+                            <Trash2 size={16} />
+                          </button>
+                        </>}
                       </span>
                     </div>
                   );
