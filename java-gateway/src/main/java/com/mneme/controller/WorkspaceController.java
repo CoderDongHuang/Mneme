@@ -60,5 +60,5 @@ public class WorkspaceController {
     @GetMapping(value="/export", produces=MediaType.APPLICATION_JSON_VALUE) public ResponseEntity<Map<String, Object>> exportData(@RequestAttribute("userId") Long userId) {
         return ResponseEntity.ok().header("Content-Disposition", "attachment; filename=mneme-export.json").body(workspace.exportData(userId));
     }
-    @PostMapping("/import") public Result<Map<String, Object>> importData(@RequestAttribute("userId") Long userId, @RequestBody Map<String, Object> body) { return Result.success(workspace.importData(userId, body)); }
+    @PostMapping("/import") public Result<Map<String, Object>> importData(@RequestAttribute("userId") Long userId, @RequestBody Map<String, Object> body) throws Exception { return Result.success(workspace.importData(userId, body)); }
 }

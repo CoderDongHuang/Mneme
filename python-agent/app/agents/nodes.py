@@ -125,10 +125,12 @@ def knowledge_retrieval_node(state: dict) -> dict:
     chunks = []
     for kb_id in kb_ids:
         chunks.extend(retrieve(state["user_id"], kb_id, state["message"]))
-    chunks.sort(key=lambda item: item.get("distance", 1.0))
+    chunks.sort(key=lambda item: item.get("score", 0.0), reverse=True)
     chunks = chunks[: settings.retriever_top_k]
 
     context_parts = []
+    context_chars = 0
+    max_context_chars = max(2000, settings.retriever_context_max_chars)
     for index, chunk in enumerate(chunks, start=1):
         metadata = chunk.get("metadata", {})
         location = metadata.get("source", "未知文档")
@@ -136,7 +138,12 @@ def knowledge_retrieval_node(state: dict) -> dict:
             location += f"，第 {metadata['page']} 页"
         if metadata.get("section"):
             location += f"，{metadata['section']}"
-        context_parts.append(f"[{index}] {location}\n{chunk.get('content', '')}")
+        remaining = max_context_chars - context_chars
+        if remaining <= 0:
+            break
+        content = chunk.get("content", "")[:remaining]
+        context_parts.append(f"[{index}] {location}\n{content}")
+        context_chars += len(content)
     return {
         "context": "\n\n".join(context_parts) or "本次未检索到匹配片段",
         "retrieved_chunks": chunks,
