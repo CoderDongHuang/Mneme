@@ -170,9 +170,10 @@ export default function WorkspacePage() {
     });
   }
   async function submitQuiz() {
-    await run(async () =>
-      setQuizResult(await endpoints.submitQuiz(quiz.id, answers)),
-    );
+    await run(async () => {
+      setQuizResult(await endpoints.submitQuiz(quiz.id, answers));
+      setReviews(await endpoints.reviews());
+    });
   }
   async function createBranch(event) {
     event.preventDefault();
@@ -418,6 +419,12 @@ export default function WorkspacePage() {
                             }
                           />
                         )}
+                      </article>
+                    ))}
+                    {quizResult?.feedback?.map((item) => (
+                      <article className="quiz-feedback" key={`feedback-${item.question_id}`}>
+                        <strong>{item.correct ? "回答正确" : "需要复习"}</strong>
+                        <p>{item.evidence}</p>
                       </article>
                     ))}
                     <button onClick={submitQuiz} disabled={busy}>
@@ -683,9 +690,9 @@ export default function WorkspacePage() {
               </article>
               <article>
                 <Upload size={30} />
-                <h2>导入学习计划</h2>
+                <h2>导入完整学习档案</h2>
                 <p>
-                  粘贴“忆知”导出的数据；当前导入采用追加策略，不覆盖已有数据。
+                  恢复资料库目录、会话、消息、计划、复习、测验和分支；采用追加策略且不包含原始文件与向量索引。
                 </p>
                 <textarea
                   value={importText}
@@ -696,7 +703,7 @@ export default function WorkspacePage() {
                   onClick={() =>
                     run(async () => {
                       await endpoints.importData(JSON.parse(importText));
-                      setPlans(await endpoints.plans());
+                      await loadAll();
                       setImportText("");
                     })
                   }

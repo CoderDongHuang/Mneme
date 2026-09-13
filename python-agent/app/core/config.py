@@ -48,6 +48,9 @@ class Settings:
     working_memory_window_size: int = int(os.getenv("WORKING_MEMORY_WINDOW_SIZE", "12"))
     working_memory_max_tokens: int = int(os.getenv("WORKING_MEMORY_MAX_TOKENS", "5000"))
     retriever_top_k: int = int(os.getenv("RETRIEVER_TOP_K", "6"))
+    retriever_context_max_chars: int = int(
+        os.getenv("RETRIEVER_CONTEXT_MAX_CHARS", "12000")
+    )
     distillation_idle_minutes: int = int(os.getenv("DISTILLATION_IDLE_MINUTES", "15"))
     memory_reflection_every_sessions: int = int(
         os.getenv("MEMORY_REFLECTION_EVERY_SESSIONS", "5")

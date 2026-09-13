@@ -17,12 +17,18 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class WorkspaceService {
+    private static final int IMPORT_MAX_ITEMS = 10_000;
+    private static final int IMPORT_MAX_TEXT_LENGTH = 1_000_000;
+    private static final Pattern KEY_POINT_SPLIT = Pattern.compile("[。！？!?；;\\n]");
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final RestTemplate restTemplate;
@@ -156,21 +162,7 @@ public class WorkspaceService {
                 "metadata", Map.of("source", document.get("file_name"), "page", 1, "section", "原文回退")
             ));
         }
-        List<Map<String, Object>> questions = new ArrayList<>();
-        int count = Math.max(1, Math.min(3, chunks.size()));
-        for (int index = 0; index < count; index++) {
-            Map<String, Object> chunk = chunks.get(index);
-            String content = String.valueOf(chunk.getOrDefault("content", topic));
-            String excerpt = content.length() > 120 ? content.substring(0, 120) + "…" : content;
-            questions.add(Map.of(
-                "id", index + 1,
-                "type", index == 2 ? "short" : "choice",
-                "prompt", index == 2 ? "请简述该主题的核心含义" : "以下哪项最符合检索资料中的内容？",
-                "options", index == 2 ? List.of() : List.of(excerpt, "与资料无关的陈述", "资料明确否定该内容"),
-                "answer", index == 2 ? excerpt : "0",
-                "source", chunk.getOrDefault("metadata", Map.of())
-            ));
-        }
+        List<Map<String, Object>> questions = generateQuestions(topic, chunks);
         String title = topic + " · 知识测验";
         jdbc.update("INSERT INTO knowledge_quiz(user_id,kb_id,title,topic,questions_json) VALUES(?,?,?,?,CAST(? AS JSON))",
             userId, kbId, title, topic, mapper.writeValueAsString(questions));
@@ -188,9 +180,23 @@ public class WorkspaceService {
         for (int index = 0; index < questions.size(); index++) {
             String expected = String.valueOf(questions.get(index).get("answer"));
             String actual = index < answers.size() ? answers.get(index).trim() : "";
-            boolean ok = "short".equals(questions.get(index).get("type")) ? actual.length() >= 8 : expected.equals(actual);
+            Map<String, Object> question = questions.get(index);
+            List<String> keyPoints = stringList(question.get("key_points"));
+            int covered = "short".equals(question.get("type")) ? countCoveredKeyPoints(actual, keyPoints) : 0;
+            boolean ok = "short".equals(question.get("type"))
+                ? !keyPoints.isEmpty() && covered >= Math.max(1, (keyPoints.size() + 1) / 2)
+                : expected.equals(actual);
             if (ok) correct++;
-            feedback.add(Map.of("question_id", index + 1, "correct", ok, "expected", expected));
+            Map<String, Object> itemFeedback = new LinkedHashMap<>();
+            itemFeedback.put("question_id", index + 1);
+            itemFeedback.put("correct", ok);
+            itemFeedback.put("expected", expected);
+            itemFeedback.put("covered_key_points", covered);
+            itemFeedback.put("key_point_count", keyPoints.size());
+            itemFeedback.put("evidence", question.getOrDefault("evidence", expected));
+            itemFeedback.put("source", question.getOrDefault("source", Map.of()));
+            feedback.add(itemFeedback);
+            if (!ok) createMistakeReview(userId, String.valueOf(question.get("prompt")), expected, String.valueOf(quiz.get("topic")));
         }
         int score = questions.isEmpty() ? 0 : correct * 100 / questions.size();
         jdbc.update("INSERT INTO quiz_attempt(quiz_id,user_id,answers_json,score,feedback_json) VALUES(?,?,CAST(? AS JSON),?,CAST(? AS JSON))",
@@ -238,7 +244,8 @@ public class WorkspaceService {
 
     public Map<String, Object> exportData(Long userId) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("version", 1);
+        data.put("schema", "mneme.workspace");
+        data.put("version", 2);
         data.put("exported_at", LocalDateTime.now().toString());
         data.put("knowledge_bases", rows("SELECT id,name,description,status,created_at FROM knowledge_base WHERE user_id=?", userId));
         data.put("sessions", rows("SELECT id,title,created_at,updated_at FROM chat_session WHERE user_id=?", userId));
@@ -246,21 +253,256 @@ public class WorkspaceService {
         data.put("plans", plans(userId));
         data.put("reviews", reviews(userId));
         data.put("quizzes", quizzes(userId));
+        data.put("quiz_attempts", rows("SELECT a.id,a.quiz_id,a.answers_json,a.score,a.feedback_json,a.created_at FROM quiz_attempt a WHERE a.user_id=? ORDER BY a.created_at", userId));
         data.put("branches", branches(userId));
+        data.put("scope", Map.of("relational_data", true, "original_files", false, "vector_index", false));
         return data;
     }
 
     @Transactional
-    public Map<String, Object> importData(Long userId, Map<String, Object> payload) {
-        List<Map<String, Object>> plans = mapper.convertValue(payload.getOrDefault("plans", List.of()), new TypeReference<>() {});
+    public Map<String, Object> importData(Long userId, Map<String, Object> payload) throws Exception {
+        int version = integer(payload.getOrDefault("version", 1), 1);
+        if (version < 1 || version > 2) throw new IllegalArgumentException("不支持的导出版本: " + version);
+        if (version == 2 && !"mneme.workspace".equals(payload.get("schema"))) {
+            throw new IllegalArgumentException("导入文件 schema 不正确");
+        }
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        Map<Long, Long> kbIds = importKnowledgeBases(userId, items(payload, "knowledge_bases"), counts);
+        Map<Long, Long> sessionIds = importSessions(userId, items(payload, "sessions"), counts);
+        Map<Long, Long> messageIds = importMessages(items(payload, "messages"), sessionIds, counts);
+        Map<Long, Long> planIds = importPlans(userId, items(payload, "plans"), counts);
+        importReviews(userId, items(payload, "reviews"), planIds, counts);
+        Map<Long, Long> quizIds = importQuizzes(userId, items(payload, "quizzes"), kbIds, counts);
+        importAttempts(userId, items(payload, "quiz_attempts"), quizIds, counts);
+        importBranches(userId, items(payload, "branches"), sessionIds, messageIds, counts);
+        return Map.of("status", "imported", "version", version, "counts", counts);
+    }
+
+    private void validateQuestion(Map<String, Object> question) {
+        String type = String.valueOf(question.get("type"));
+        if (!List.of("choice", "short").contains(type) || required(question, "prompt").length() > 500) {
+            throw new IllegalArgumentException("生成的题目结构不合法");
+        }
+        if ("choice".equals(type) && stringList(question.get("options")).size() < 2) {
+            throw new IllegalArgumentException("选择题至少需要两个选项");
+        }
+    }
+
+    private List<Map<String, Object>> generateQuestions(String topic, List<Map<String, Object>> chunks) {
+        try {
+            @SuppressWarnings("unchecked") Map<String, Object> response = restTemplate.postForObject(
+                pythonAgentUrl + "/api/v1/knowledge/quiz/generate", Map.of("topic", topic, "chunks", chunks), Map.class);
+            List<Map<String, Object>> generated = mapper.convertValue(
+                response == null ? List.of() : response.getOrDefault("questions", List.of()), new TypeReference<>() {});
+            if (generated.isEmpty() || generated.size() > 5) throw new IllegalArgumentException("模型返回题目数量不合法");
+            generated.forEach(this::validateQuestion);
+            return generated;
+        } catch (Exception ignored) {
+            List<Map<String, Object>> fallback = new ArrayList<>();
+            int count = Math.max(1, Math.min(3, chunks.size()));
+            for (int index = 0; index < count; index++) {
+                Map<String, Object> chunk = chunks.get(index);
+                String content = String.valueOf(chunk.getOrDefault("content", topic));
+                String excerpt = abbreviate(content, 240);
+                List<String> keyPoints = extractKeyPoints(content, 3);
+                Map<String, Object> question = new LinkedHashMap<>();
+                question.put("id", index + 1);
+                question.put("type", index == 2 ? "short" : "choice");
+                question.put("prompt", index == 2 ? "请根据资料说明“" + topic + "”的关键内容" : "以下哪项有资料证据支持？");
+                question.put("options", index == 2 ? List.of() : List.of(excerpt, "资料未提及该主题", "资料明确否定上述内容"));
+                question.put("answer", index == 2 ? String.join("；", keyPoints) : "0");
+                question.put("key_points", keyPoints);
+                question.put("evidence", excerpt);
+                question.put("source", chunk.getOrDefault("metadata", Map.of()));
+                validateQuestion(question);
+                fallback.add(question);
+            }
+            return fallback;
+        }
+    }
+
+    private List<String> extractKeyPoints(String content, int maximum) {
+        List<String> points = new ArrayList<>();
+        for (String part : KEY_POINT_SPLIT.split(content)) {
+            String point = part.replaceAll("\\s+", " ").trim();
+            if (point.length() >= 4 && points.stream().noneMatch(point::equals)) {
+                points.add(abbreviate(point, 80));
+                if (points.size() >= maximum) break;
+            }
+        }
+        if (points.isEmpty() && !content.isBlank()) points.add(abbreviate(content.trim(), 80));
+        return points;
+    }
+
+    private int countCoveredKeyPoints(String answer, List<String> keyPoints) {
+        String normalizedAnswer = normalizeText(answer);
+        int covered = 0;
+        for (String point : keyPoints) {
+            List<String> tokens = meaningfulTokens(point);
+            long matches = tokens.stream().filter(normalizedAnswer::contains).count();
+            if (!tokens.isEmpty() && matches * 2 >= tokens.size()) covered++;
+        }
+        return covered;
+    }
+
+    private List<String> meaningfulTokens(String text) {
+        String normalized = normalizeText(text);
+        List<String> tokens = new ArrayList<>();
+        for (String word : normalized.split(" ")) if (word.length() >= 2) tokens.add(word);
+        if (tokens.size() <= 1 && normalized.length() >= 2) {
+            tokens.clear();
+            for (int index = 0; index < normalized.length() - 1; index += 2) {
+                tokens.add(normalized.substring(index, Math.min(index + 2, normalized.length())));
+            }
+        }
+        return tokens;
+    }
+
+    private String normalizeText(String text) {
+        return text.toLowerCase().replaceAll("[^a-z0-9\\u4e00-\\u9fff]+", " ").trim();
+    }
+
+    private void createMistakeReview(Long userId, String prompt, String answer, String topic) {
+        jdbc.update("INSERT INTO review_card(user_id,prompt,answer,due_at) VALUES(?,?,?,NOW())",
+            userId, prompt, answer);
+        jdbc.update("""
+            INSERT INTO pending_memory(memory_id,user_id,category,content,topic,confidence,status)
+            VALUES(?,?, 'weak_point', ?, ?, 0.8500, 'pending')
+            """, UUID.randomUUID().toString(), userId, "测验错题：" + prompt, abbreviate(topic, 255));
+    }
+
+    private Map<Long, Long> importKnowledgeBases(Long userId, List<Map<String, Object>> source, Map<String, Integer> counts) {
+        Map<Long, Long> ids = new HashMap<>();
+        for (Map<String, Object> item : source) {
+            jdbc.update("INSERT INTO knowledge_base(user_id,name,description,status) VALUES(?,?,?,?)", userId,
+                limited(item, "name", "导入资料库", 100), limited(item, "description", "", 10_000), safeStatus(item, "status", "active"));
+            ids.put(longValue(item.get("id")), lastId());
+        }
+        counts.put("knowledge_bases", source.size());
+        return ids;
+    }
+
+    private Map<Long, Long> importSessions(Long userId, List<Map<String, Object>> source, Map<String, Integer> counts) {
+        Map<Long, Long> ids = new HashMap<>();
+        for (Map<String, Object> item : source) {
+            jdbc.update("INSERT INTO chat_session(user_id,title) VALUES(?,?)", userId, limited(item, "title", "导入会话", 200));
+            ids.put(longValue(item.get("id")), lastId());
+        }
+        counts.put("sessions", source.size());
+        return ids;
+    }
+
+    private Map<Long, Long> importMessages(List<Map<String, Object>> source, Map<Long, Long> sessions, Map<String, Integer> counts) {
+        Map<Long, Long> ids = new HashMap<>();
         int imported = 0;
-        for (Map<String, Object> plan : plans) {
-            jdbc.update("INSERT INTO learning_plan(user_id,title,goal,status) VALUES(?,?,?,?)", userId,
-                String.valueOf(plan.getOrDefault("title", "导入计划")), String.valueOf(plan.getOrDefault("goal", "")), "active");
+        for (Map<String, Object> item : source) {
+            Long sessionId = sessions.get(longValue(item.get("session_id")));
+            if (sessionId == null) continue;
+            String role = String.valueOf(item.getOrDefault("role", "user"));
+            if (!List.of("user", "assistant", "system").contains(role)) role = "user";
+            jdbc.update("INSERT INTO chat_message(session_id,role,content,status) VALUES(?,?,?,?)", sessionId, role,
+                limited(item, "content", "", IMPORT_MAX_TEXT_LENGTH), safeStatus(item, "status", "completed"));
+            ids.put(longValue(item.get("id")), lastId());
             imported++;
         }
-        return Map.of("status", "imported", "plans", imported);
+        counts.put("messages", imported);
+        return ids;
     }
+
+    private Map<Long, Long> importPlans(Long userId, List<Map<String, Object>> source, Map<String, Integer> counts) {
+        Map<Long, Long> ids = new HashMap<>();
+        for (Map<String, Object> item : source) {
+            Date target = parseDate(item.get("target_date"));
+            jdbc.update("INSERT INTO learning_plan(user_id,title,goal,target_date,status) VALUES(?,?,?,?,?)", userId,
+                limited(item, "title", "导入计划", 200), limited(item, "goal", "", IMPORT_MAX_TEXT_LENGTH), target,
+                safeStatus(item, "status", "active"));
+            ids.put(longValue(item.get("id")), lastId());
+        }
+        counts.put("plans", source.size());
+        return ids;
+    }
+
+    private void importReviews(Long userId, List<Map<String, Object>> source, Map<Long, Long> plans, Map<String, Integer> counts) {
+        for (Map<String, Object> item : source) {
+            jdbc.update("""
+                INSERT INTO review_card(user_id,plan_id,prompt,answer,interval_days,ease_factor,due_at,last_rating,review_count)
+                VALUES(?,?,?,?,?,?,COALESCE(?,NOW()),?,?)
+                """, userId, nullableMappedId(item.get("plan_id"), plans), limited(item, "prompt", "导入复习题", IMPORT_MAX_TEXT_LENGTH),
+                limited(item, "answer", "", IMPORT_MAX_TEXT_LENGTH), positiveInteger(item.get("interval_days"), 1),
+                decimal(item.get("ease_factor"), 2.5), parseTimestamp(item.get("due_at")), nullableInteger(item.get("last_rating")),
+                positiveInteger(item.get("review_count"), 0));
+        }
+        counts.put("reviews", source.size());
+    }
+
+    private Map<Long, Long> importQuizzes(Long userId, List<Map<String, Object>> source, Map<Long, Long> kbs, Map<String, Integer> counts) throws Exception {
+        Map<Long, Long> ids = new HashMap<>();
+        for (Map<String, Object> item : source) {
+            Object questions = item.getOrDefault("questions_json", List.of());
+            String questionsJson = questions instanceof String ? String.valueOf(questions) : mapper.writeValueAsString(questions);
+            mapper.readTree(questionsJson);
+            jdbc.update("INSERT INTO knowledge_quiz(user_id,kb_id,title,topic,questions_json) VALUES(?,?,?,?,CAST(? AS JSON))", userId,
+                nullableMappedId(item.get("kb_id"), kbs), limited(item, "title", "导入测验", 200), limited(item, "topic", "导入主题", 200), questionsJson);
+            ids.put(longValue(item.get("id")), lastId());
+        }
+        counts.put("quizzes", source.size());
+        return ids;
+    }
+
+    private void importAttempts(Long userId, List<Map<String, Object>> source, Map<Long, Long> quizzes, Map<String, Integer> counts) throws Exception {
+        int imported = 0;
+        for (Map<String, Object> item : source) {
+            Long quizId = quizzes.get(longValue(item.get("quiz_id")));
+            if (quizId == null) continue;
+            String answers = validJson(item.get("answers_json"), List.of());
+            String feedback = validJson(item.get("feedback_json"), List.of());
+            jdbc.update("INSERT INTO quiz_attempt(quiz_id,user_id,answers_json,score,feedback_json) VALUES(?,?,CAST(? AS JSON),?,CAST(? AS JSON))",
+                quizId, userId, answers, Math.max(0, Math.min(100, integer(item.get("score"), 0))), feedback);
+            imported++;
+        }
+        counts.put("quiz_attempts", imported);
+    }
+
+    private void importBranches(Long userId, List<Map<String, Object>> source, Map<Long, Long> sessions,
+                                Map<Long, Long> messages, Map<String, Integer> counts) {
+        int imported = 0;
+        for (Map<String, Object> item : source) {
+            Long sourceSession = sessions.get(longValue(item.get("source_session_id")));
+            Long branchSession = sessions.get(longValue(item.get("branch_session_id")));
+            if (sourceSession == null || branchSession == null) continue;
+            jdbc.update("INSERT INTO chat_branch(user_id,source_session_id,source_message_id,branch_session_id,label) VALUES(?,?,?,?,?)",
+                userId, sourceSession, nullableMappedId(item.get("source_message_id"), messages), branchSession,
+                limited(item, "label", "导入分支", 120));
+            imported++;
+        }
+        counts.put("branches", imported);
+    }
+
+    private List<Map<String, Object>> items(Map<String, Object> payload, String key) {
+        List<Map<String, Object>> result = mapper.convertValue(payload.getOrDefault(key, List.of()), new TypeReference<>() {});
+        if (result.size() > IMPORT_MAX_ITEMS) throw new IllegalArgumentException(key + " 超过单次导入上限 " + IMPORT_MAX_ITEMS);
+        return result;
+    }
+
+    private String validJson(Object value, Object fallback) throws Exception {
+        String json = value == null ? mapper.writeValueAsString(fallback) : value instanceof String ? String.valueOf(value) : mapper.writeValueAsString(value);
+        mapper.readTree(json);
+        return json;
+    }
+
+    private Long lastId() { return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class); }
+    private long longValue(Object value) { return value == null ? Long.MIN_VALUE : Long.parseLong(String.valueOf(value)); }
+    private Long nullableMappedId(Object value, Map<Long, Long> ids) { return value == null ? null : ids.get(longValue(value)); }
+    private int integer(Object value, int fallback) { try { return value == null ? fallback : Integer.parseInt(String.valueOf(value)); } catch (NumberFormatException ignored) { return fallback; } }
+    private Integer nullableInteger(Object value) { return value == null ? null : integer(value, 0); }
+    private int positiveInteger(Object value, int fallback) { return Math.max(0, integer(value, fallback)); }
+    private double decimal(Object value, double fallback) { try { return value == null ? fallback : Double.parseDouble(String.valueOf(value)); } catch (NumberFormatException ignored) { return fallback; } }
+    private String abbreviate(String value, int maximum) { return value.length() <= maximum ? value : value.substring(0, maximum); }
+    private String limited(Map<String, Object> item, String key, String fallback, int maximum) { return abbreviate(String.valueOf(item.getOrDefault(key, fallback)), maximum); }
+    private String safeStatus(Map<String, Object> item, String key, String fallback) { String value = limited(item, key, fallback, 20); return value.matches("[a-z_]{1,20}") ? value : fallback; }
+    private Date parseDate(Object value) { try { return value == null ? null : Date.valueOf(String.valueOf(value).substring(0, 10)); } catch (RuntimeException ignored) { return null; } }
+    private Timestamp parseTimestamp(Object value) { try { return value == null ? null : Timestamp.valueOf(String.valueOf(value).replace('T', ' ').substring(0, 19)); } catch (RuntimeException ignored) { return null; } }
+    private List<String> stringList(Object value) { return mapper.convertValue(value == null ? List.of() : value, new TypeReference<>() {}); }
 
     private void requireKb(Long userId, Long kbId) { one("SELECT id FROM knowledge_base WHERE id=? AND user_id=?", kbId, userId); }
     private String required(Map<String, Object> body, String key) {

@@ -1,10 +1,14 @@
 import asyncio
+import json
 import os
+import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import settings
 from app.core.logging import setup_logger
@@ -12,6 +16,7 @@ from app.knowledge.ingestion import SUPPORTED_EXTENSIONS, ingest_document
 from app.knowledge.retriever import retrieve
 from app.knowledge.task_tracker import create_task, get_task, update_task
 from app.knowledge.vector_store import vector_store
+from app.utils.llm import llm
 from app.models.knowledge import (
     DocumentIngestRequest,
     IngestionResult,
@@ -23,6 +28,44 @@ from app.models.knowledge import (
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
 logger = setup_logger("knowledge_api")
 executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ingestion")
+
+
+class QuizGenerationRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=200)
+    chunks: list[dict] = Field(min_length=1, max_length=8)
+
+
+class GeneratedQuestion(BaseModel):
+    id: int
+    type: str
+    prompt: str = Field(min_length=4, max_length=500)
+    options: list[str] = Field(default_factory=list, max_length=6)
+    answer: str
+    key_points: list[str] = Field(min_length=1, max_length=5)
+    evidence: str = Field(min_length=1, max_length=1000)
+    source: dict = Field(default_factory=dict)
+
+    @field_validator("type")
+    @classmethod
+    def valid_type(cls, value: str) -> str:
+        if value not in {"choice", "short"}:
+            raise ValueError("type must be choice or short")
+        return value
+
+    @field_validator("options")
+    @classmethod
+    def valid_options(cls, value: list[str], info) -> list[str]:
+        if info.data.get("type") == "choice" and len(value) < 2:
+            raise ValueError("choice question requires at least two options")
+        return value
+
+
+def _quiz_json(content: str) -> list[dict]:
+    match = re.search(r"\[.*\]", content, flags=re.DOTALL)
+    if not match:
+        raise ValueError("模型未返回 JSON 数组")
+    raw = json.loads(match.group(0))
+    return [GeneratedQuestion.model_validate(item).model_dump() for item in raw]
 
 
 def _run_ingestion(
@@ -150,6 +193,31 @@ async def search(
     query: str, user_id: str, kb_id: str, top_k: int = 5
 ) -> RetrieverResult:
     return RetrieverResult(chunks=retrieve(user_id, kb_id, query, top_k), query=query)
+
+
+@router.post("/quiz/generate")
+async def generate_quiz(request: QuizGenerationRequest) -> dict:
+    evidence = "\n\n".join(
+        f"片段 {index + 1}：{chunk.get('content', '')[:1600]}\n来源：{json.dumps(chunk.get('metadata', {}), ensure_ascii=False)}"
+        for index, chunk in enumerate(request.chunks)
+    )
+    prompt = f"""你是学习测验设计器。只能依据证据，为主题“{request.topic}”生成 3 道题。
+前两题为 choice，最后一题为 short。干扰项必须合理但不能被证据支持。
+每题必须包含 id、type、prompt、options、answer、key_points、evidence、source。
+choice 的 answer 是正确选项下标字符串；short 的 key_points 是评分要点。
+evidence 必须是证据原文，source 必须复制对应来源对象。只输出 JSON 数组。
+
+证据：
+{evidence}"""
+    try:
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        questions = _quiz_json(str(response.content))
+        if not 1 <= len(questions) <= 5:
+            raise ValueError("题目数量不合法")
+        return {"questions": questions}
+    except Exception as error:
+        logger.warning("LLM 结构化出题失败: %s", error)
+        raise HTTPException(status_code=503, detail="模型暂时无法生成有效测验") from error
 
 
 @router.get("/admin/collections")

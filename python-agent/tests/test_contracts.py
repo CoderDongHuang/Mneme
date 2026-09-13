@@ -11,6 +11,13 @@ def test_openapi_contains_durable_ingestion_contract():
     assert "200" in operation["responses"]
 
 
+def test_openapi_contains_structured_quiz_generation_contract():
+    schema = TestClient(app).get("/openapi.json").json()
+    operation = schema["paths"]["/api/v1/knowledge/quiz/generate"]["post"]
+    request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    assert request_schema["$ref"].endswith("QuizGenerationRequest")
+
+
 def test_chat_contract_exposes_request_id():
     schema = TestClient(app).get("/openapi.json").json()
     chat_schema = schema["components"]["schemas"]["ChatRequest"]

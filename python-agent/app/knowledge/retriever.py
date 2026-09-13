@@ -1,96 +1,155 @@
+import math
 import re
+from collections import Counter
 
 from app.core.config import settings
 from app.core.logging import setup_logger
 from app.knowledge.vector_store import vector_store
 
-
 logger = setup_logger("retriever")
+RRF_K = 60
+MAX_LEXICAL_DOCUMENTS = 1000
 
 
-def _terms(text: str) -> set[str]:
-    normalized = text.lower()
-    words = set(re.findall(r"[a-z0-9_+-]{2,}", normalized))
-    chinese = "".join(re.findall(r"[\u4e00-\u9fff]", normalized))
-    words.update(
-        chinese[index : index + 2] for index in range(max(0, len(chinese) - 1))
-    )
-    return {term for term in words if term}
+def _terms(text: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", text.lower()).strip()
+    terms = re.findall(r"[a-z0-9_+-]{2,}", normalized)
+    for run in re.findall(r"[\u4e00-\u9fff]+", normalized):
+        terms.extend(run[index : index + 2] for index in range(len(run) - 1))
+        if len(run) == 1:
+            terms.append(run)
+    return terms
 
 
-def _keyword_candidates(collection, query: str, limit: int) -> list[dict]:
+def rewrite_queries(query: str) -> list[str]:
+    """Create deterministic search variants without requiring another LLM call."""
+    normalized = re.sub(r"\s+", " ", query).strip()
+    stripped = re.sub(
+        r"^(请|麻烦|帮我|能否|可以)?(根据资料|结合文档|告诉我|解释一下|分析一下)",
+        "",
+        normalized,
+    ).strip(" ，。！？?")
+    variants = [normalized]
+    if stripped and stripped != normalized:
+        variants.append(stripped)
+    keywords = " ".join(dict.fromkeys(_terms(stripped or normalized)))
+    if keywords and keywords not in variants:
+        variants.append(keywords)
+    return variants[:3]
+
+
+def _bm25_candidates(collection, query: str, limit: int) -> list[dict]:
     try:
-        results = collection.get(limit=200, include=["documents", "metadatas"])
-    except Exception as error:
-        logger.warning("关键词降级检索失败: %s", error)
-        return []
-    query_terms = _terms(query)
-    candidates = []
-    for index, chunk_id in enumerate(results.get("ids", [])):
-        content = results.get("documents", [])[index]
-        metadata = results.get("metadatas", [])[index] or {}
-        content_terms = _terms(content)
-        lexical = len(query_terms & content_terms) / max(1, len(query_terms))
-        candidates.append(
-            {
-                "id": chunk_id,
-                "content": content,
-                "metadata": metadata,
-                "score": lexical,
-                "distance": 1.0 - lexical,
-            }
+        results = collection.get(
+            limit=MAX_LEXICAL_DOCUMENTS, include=["documents", "metadatas"]
         )
-    candidates.sort(key=lambda item: item["score"], reverse=True)
+    except Exception as error:
+        logger.warning("BM25 降级检索失败: %s", error)
+        return []
+    documents = results.get("documents", [])
+    tokenized = [_terms(content or "") for content in documents]
+    query_terms = list(dict.fromkeys(_terms(query)))
+    if not query_terms or not tokenized:
+        return []
+    average_length = sum(map(len, tokenized)) / max(1, len(tokenized))
+    document_frequency = Counter(
+        term for terms in tokenized for term in set(terms) if term in query_terms
+    )
+    candidates = []
+    for index, terms in enumerate(tokenized):
+        frequencies = Counter(terms)
+        score = 0.0
+        for term in query_terms:
+            frequency = frequencies[term]
+            if not frequency:
+                continue
+            frequency_docs = document_frequency[term]
+            inverse_frequency = math.log(
+                1 + (len(tokenized) - frequency_docs + 0.5) / (frequency_docs + 0.5)
+            )
+            denominator = frequency + 1.5 * (
+                0.25 + 0.75 * len(terms) / max(1.0, average_length)
+            )
+            score += inverse_frequency * frequency * 2.5 / denominator
+        if score > 0:
+            candidates.append(
+                {
+                    "id": results.get("ids", [])[index],
+                    "content": documents[index],
+                    "metadata": results.get("metadatas", [])[index] or {},
+                    "lexical_score": score,
+                }
+            )
+    candidates.sort(key=lambda item: item["lexical_score"], reverse=True)
     return candidates[:limit]
 
 
-def retrieve(
-    user_id: str, kb_id: str, query: str, top_k: int | None = None
-) -> list[dict]:
-    limit = max(1, min(top_k or settings.retriever_top_k, 20))
-    collection = vector_store.get_collection(user_id, kb_id)
-    if collection is None or collection.count() == 0:
-        return []
-
-    semantic: list[dict] = []
-    try:
+def _semantic_candidates(collection, queries: list[str], limit: int) -> list[dict]:
+    candidates = []
+    for query_index, query in enumerate(queries):
         results = collection.query(
-            query_texts=[query],
-            n_results=min(limit, collection.count()),
+            query_texts=[query], n_results=min(limit, collection.count()),
             include=["documents", "metadatas", "distances"],
         )
-        ids = results.get("ids", [[]])[0]
-        documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
-        distances = results.get("distances", [[]])[0]
-        for index, chunk_id in enumerate(ids):
-            distance = float(distances[index]) if index < len(distances) else 1.0
-            semantic.append(
+        for index, chunk_id in enumerate(results.get("ids", [[]])[0]):
+            candidates.append(
                 {
                     "id": chunk_id,
-                    "content": documents[index],
-                    "metadata": metadatas[index] or {},
-                    "score": 1.0 / (1.0 + max(distance, 0.0)),
-                    "distance": distance,
+                    "content": results.get("documents", [[]])[0][index],
+                    "metadata": results.get("metadatas", [[]])[0][index] or {},
+                    "distance": float(results.get("distances", [[]])[0][index]),
+                    "query_index": query_index,
                 }
             )
+    return candidates
+
+
+def _deduplicate(ranked: list[dict], limit: int) -> list[dict]:
+    selected = []
+    fingerprints: set[tuple[str, str]] = set()
+    for item in ranked:
+        metadata = item.get("metadata", {})
+        content_key = re.sub(r"\s+", "", item.get("content", ""))[:160]
+        location = f"{metadata.get('document_id', metadata.get('source', ''))}:{metadata.get('page', '')}"
+        fingerprint = (location, content_key)
+        if fingerprint in fingerprints:
+            continue
+        fingerprints.add(fingerprint)
+        selected.append(item)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> list[dict]:
+    limit = max(1, min(top_k or settings.retriever_top_k, 20))
+    collection = vector_store.get_collection(user_id, kb_id)
+    if collection is None or collection.count() == 0 or not query.strip():
+        return []
+    pool_size = min(max(limit * 4, 20), collection.count())
+    ranked_lists: list[list[dict]] = []
+    try:
+        semantic = _semantic_candidates(collection, rewrite_queries(query), pool_size)
+        by_query: dict[int, list[dict]] = {}
+        for item in semantic:
+            by_query.setdefault(item.pop("query_index"), []).append(item)
+        ranked_lists.extend(by_query.values())
     except Exception as error:
         logger.warning(
-            "语义检索失败，使用关键词降级: user=%s kb=%s error=%s",
-            user_id,
-            kb_id,
-            error,
+            "语义检索失败，使用 BM25 降级: user=%s kb=%s error=%s",
+            user_id, kb_id, error,
         )
-
-    keyword = _keyword_candidates(collection, query, limit)
-    merged = {item["id"]: item for item in semantic}
-    for item in keyword:
-        if item["id"] in merged:
-            merged[item["id"]]["score"] = min(
-                1.0, merged[item["id"]]["score"] * 0.75 + item["score"] * 0.25
-            )
-        else:
-            merged[item["id"]] = item
-    ranked = list(merged.values())
-    ranked.sort(key=lambda item: item.get("score", 0.0), reverse=True)
-    return ranked[:limit]
+    lexical = _bm25_candidates(collection, query, pool_size)
+    if lexical:
+        ranked_lists.append(lexical)
+    merged: dict[str, dict] = {}
+    for result_list in ranked_lists:
+        for rank, item in enumerate(result_list, start=1):
+            current = merged.setdefault(item["id"], {**item, "score": 0.0})
+            current["score"] += 1.0 / (RRF_K + rank)
+            if "distance" in item:
+                current["distance"] = min(item["distance"], current.get("distance", item["distance"]))
+            if "lexical_score" in item:
+                current["lexical_score"] = item["lexical_score"]
+    ranked = sorted(merged.values(), key=lambda item: item["score"], reverse=True)
+    return _deduplicate(ranked, limit)
