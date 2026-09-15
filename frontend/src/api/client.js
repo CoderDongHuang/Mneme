@@ -128,9 +128,25 @@ export const endpoints = {
   updateManagedMemory: (id, body) => api(`/workspace/memories/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteManagedMemory: (id) => api(`/workspace/memories/${id}`, { method: 'DELETE' }),
   branches: () => api('/workspace/branches'),
+  healthConfig: () => api('/health/config'),
+  notifications: () => api('/notifications'),
   createBranch: (body) => api('/workspace/branches', { method: 'POST', body: JSON.stringify(body) }),
   compareBranch: (id) => api(`/workspace/branches/${id}/compare`),
   importData: (body) => api('/workspace/import', { method: 'POST', body: JSON.stringify(body) }),
+  importArchive: (file) => {
+    const form = new FormData()
+    form.append('archive', file)
+    return api('/workspace/import/archive', { method: 'POST', body: form })
+  },
+}
+
+export function openNotificationStream(onEvent) {
+  const stream = new EventSource(`${API_BASE}/notifications/stream`, { withCredentials: true })
+  stream.addEventListener('task', (event) => {
+    try { onEvent(JSON.parse(event.data)) } catch { /* ignore malformed server events */ }
+  })
+  stream.onerror = () => onEvent(null)
+  return stream
 }
 
 export async function downloadWorkspaceExport() {
@@ -143,4 +159,21 @@ export async function downloadWorkspaceExport() {
   anchor.download = 'mneme-export.json'
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+export async function downloadWorkspaceArchive() {
+  const response = await fetch(`${API_BASE}/workspace/export/archive`, { credentials: 'include' })
+  if (!response.ok) throw new ApiError('归档导出失败', response.status)
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = 'mneme-workspace.zip'
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+export function documentFileUrl(id, page) {
+  const anchor = page ? `#page=${encodeURIComponent(page)}` : ''
+  return `${API_BASE}/workspace/documents/${encodeURIComponent(id)}/file${anchor}`
 }

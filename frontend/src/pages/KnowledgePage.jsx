@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { endpoints } from "../api/client";
+import { endpoints, openNotificationStream } from "../api/client";
 import LoadingState from "../components/LoadingState";
 import StatusBadge from "../components/StatusBadge";
 import "../styles/knowledge.css";
@@ -35,11 +35,26 @@ export default function KnowledgePage() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState([]);
   const [query, setQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ name: "", description: "" });
   const [error, setError] = useState("");
+  const [notifications, setNotifications] = useState([]);
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("mneme.uploadQueue") || "[]");
+      if (Array.isArray(saved)) setUploadQueue(saved.slice(0, 20));
+    } catch {
+      window.localStorage.removeItem("mneme.uploadQueue");
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("mneme.uploadQueue", JSON.stringify(uploadQueue.slice(0, 20)));
+  }, [uploadQueue]);
 
   const activeKb = knowledgeBases.find((item) => item.id === activeKbId);
 
@@ -54,6 +69,21 @@ export default function KnowledgePage() {
       .catch((requestError) => setError(requestError.message))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    endpoints.notifications().then((items) => {
+      if (active) setNotifications(items || []);
+    }).catch(() => {});
+    const stream = openNotificationStream((item) => {
+      if (!active || !item) return;
+      setNotifications((current) => [item, ...current.filter((entry) => entry.task_id !== item.task_id)].slice(0, 30));
+      if (activeKbId && ["completed", "failed"].includes(item.status)) {
+        endpoints.documents(activeKbId).then(setDocuments).catch(() => {});
+      }
+    });
+    return () => { active = false; stream.close(); };
+  }, [activeKbId]);
 
   useEffect(() => {
     if (!activeKbId) {
@@ -97,12 +127,29 @@ export default function KnowledgePage() {
 
   async function upload(files) {
     if (!activeKbId || !files?.length) return;
+    const queue = Array.from(files).map((file, index) => ({
+      id: `${file.name}-${file.size}-${index}`,
+      name: file.name,
+      status: "pending",
+      message: "等待上传",
+    }));
+    setUploadQueue(queue);
     setUploading(true);
     setError("");
     try {
-      for (const file of files) {
-        const document = await endpoints.uploadDocument(activeKbId, file);
-        setDocuments((current) => [document, ...current]);
+      for (const [index, file] of Array.from(files).entries()) {
+        setUploadQueue((current) => current.map((item, itemIndex) =>
+          itemIndex === index ? { ...item, status: "uploading", message: "正在提交解析任务" } : item));
+        try {
+          const document = await endpoints.uploadDocument(activeKbId, file);
+          setDocuments((current) => [document, ...current]);
+          setUploadQueue((current) => current.map((item, itemIndex) =>
+            itemIndex === index ? { ...item, status: "success", message: "已提交，等待解析" } : item));
+        } catch (requestError) {
+          setUploadQueue((current) => current.map((item, itemIndex) =>
+            itemIndex === index ? { ...item, status: "failed", message: requestError.message } : item));
+          throw requestError;
+        }
       }
     } catch (requestError) {
       setError(requestError.message);
@@ -273,6 +320,28 @@ export default function KnowledgePage() {
                 </div>
                 <span>{visibleDocuments.length} 份文档</span>
               </div>
+              {uploadQueue.length > 0 && (
+                <div className="upload-queue" aria-live="polite">
+                  {uploadQueue.map((item) => (
+                    <div className={`upload-queue-item ${item.status}`} key={item.id}>
+                      <strong>{item.name}</strong>
+                      <span>{item.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {notifications.length > 0 && (
+                <div className="task-notifications" aria-live="polite">
+                  <div><strong>处理通知</strong><span>服务端任务状态会在这里更新</span></div>
+                  {notifications.slice(0, 5).map((item) => (
+                    <div className={`task-notification ${item.status}`} key={item.task_id}>
+                      <strong>{item.task_type === "document_ingest" ? "文档解析" : item.task_type === "document_delete" ? "文档删除" : "资料库任务"}</strong>
+                      <StatusBadge status={item.status} />
+                      <span>{item.error_message || (item.status === "completed" ? "已完成" : item.status === "failed" ? "处理失败，可在工作台重试" : "处理中")}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="document-table">
                 <div className="document-row document-header">
                   <span>文件</span>

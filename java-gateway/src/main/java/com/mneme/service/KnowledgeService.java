@@ -174,6 +174,10 @@ public class KnowledgeService {
     @Transactional
     public void reparseDocument(Long userId, Long documentId) {
         KnowledgeDocument document = ownedDocument(userId, documentId);
+        if ("parsing".equals(document.getStatus())) return;
+        if ("deleting".equals(document.getStatus())) {
+            throw new IllegalArgumentException("文档正在删除，无法重新解析");
+        }
         if (!Files.isRegularFile(Path.of(document.getFilePath()))) {
             throw new IllegalArgumentException("原文件不存在，无法重新解析");
         }
@@ -217,9 +221,9 @@ public class KnowledgeService {
 
     @Transactional
     public void deleteKb(Long userId, Long kbId) {
-        getOwnedKb(userId, kbId);
+        KnowledgeBase kb = getOwnedKb(userId, kbId);
+        if ("deleting".equals(kb.getStatus())) return;
         try {
-            KnowledgeBase kb = getOwnedKb(userId, kbId);
             kb.setStatus("deleting");
             kbMapper.updateById(kb);
             ProcessingTask task = new ProcessingTask();

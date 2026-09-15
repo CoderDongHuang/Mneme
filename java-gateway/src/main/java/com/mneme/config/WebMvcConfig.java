@@ -30,7 +30,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(rateLimitInterceptor).addPathPatterns("/api/v1/**");
         registry.addInterceptor(jwtAuthInterceptor)
             .addPathPatterns("/api/v1/**")
-            .excludePathPatterns("/api/v1/auth/**", "/api/v1/health/**", "/api/v1/admin/**");
+            .excludePathPatterns("/api/v1/auth/**", "/api/v1/health", "/api/v1/admin/**");
         registry.addInterceptor(auditInterceptor).addPathPatterns("/api/v1/**");
     }
 

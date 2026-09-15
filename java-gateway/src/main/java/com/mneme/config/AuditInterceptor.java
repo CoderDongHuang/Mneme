@@ -12,7 +12,8 @@ public class AuditInterceptor implements HandlerInterceptor {
     private final AuditLogMapper logs;
     public AuditInterceptor(AuditLogMapper logs) { this.logs = logs; }
     @Override public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception error) {
-        if ("GET".equalsIgnoreCase(request.getMethod()) || "OPTIONS".equalsIgnoreCase(request.getMethod())) return;
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) return;
+        if ("GET".equalsIgnoreCase(request.getMethod()) && !request.getRequestURI().equals("/api/v1/health/config")) return;
         try {
             AuditLog log = new AuditLog();
             Object userId = request.getAttribute("userId"); if (userId instanceof Long id) log.setUserId(id);

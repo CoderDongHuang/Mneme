@@ -3,6 +3,7 @@ import {
   PanelLeftClose, PanelLeftOpen, Quote, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { endpoints, streamChat } from '../api/client'
@@ -15,6 +16,7 @@ function formatTime(value) {
 }
 
 export default function ChatPage() {
+  const navigate = useNavigate()
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
   const [messages, setMessages] = useState([])
@@ -29,6 +31,15 @@ export default function ChatPage() {
   const [error, setError] = useState('')
   const abortRef = useRef(null)
   const bottomRef = useRef(null)
+  function openSource(source) {
+    const documentId = String(source.document_id || '').replace(/^doc_/, '')
+    if (!/^\d+$/.test(documentId)) return
+    const params = new URLSearchParams({ document: documentId })
+    if (source.page) params.set('page', String(source.page))
+    if (source.chunk_content) params.set('highlight', source.chunk_content.slice(0, 500))
+    navigate(`/workspace?${params.toString()}`)
+    setSourceDrawer(null)
+  }
 
   useEffect(() => {
     Promise.allSettled([endpoints.sessions(), endpoints.knowledgeBases()])
@@ -232,7 +243,7 @@ export default function ChatPage() {
 
       {sourceDrawer && <aside className="source-drawer">
         <header><div><span>引用依据</span><strong>资料依据</strong></div><button onClick={() => setSourceDrawer(null)}><X size={18} /></button></header>
-        <div>{sourceDrawer.map((source, index) => <article key={`${source.document_name}-${index}`}><div><span>{index + 1}</span><strong>{source.document_name}</strong></div><small>{source.page ? `第 ${source.page} 页` : '全文'}{source.section ? ` · ${source.section}` : ''}</small><p>{source.chunk_content}</p></article>)}</div>
+        <div>{sourceDrawer.map((source, index) => <article key={`${source.document_id || source.document_name}-${index}`}><div><span>{index + 1}</span><strong>{source.document_name}</strong></div><small>{source.page ? `第 ${source.page} 页` : '全文'}{source.section ? ` · ${source.section}` : ''}</small><p>{source.chunk_content}</p><button className="source-open" onClick={() => openSource(source)} disabled={!source.document_id}>打开原文定位</button></article>)}</div>
       </aside>}
     </div>
   )

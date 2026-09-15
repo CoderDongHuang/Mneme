@@ -1,4 +1,4 @@
-import { BrainCircuit, Library, LogOut, Menu, MessageSquareText, PanelsTopLeft, X } from 'lucide-react'
+import { BrainCircuit, Library, LogOut, Menu, MessageSquareText, PanelsTopLeft, Settings, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { endpoints } from '../api/client'
@@ -10,6 +10,7 @@ const navItems = [
   { to: '/knowledge', label: '资料库', icon: Library },
   { to: '/memory', label: '学习画像', icon: BrainCircuit },
   { to: '/workspace', label: '学习工作台', icon: PanelsTopLeft },
+  { to: '/settings', label: '服务配置', icon: Settings },
 ]
 
 export default function AppShell() {

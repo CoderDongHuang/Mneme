@@ -41,7 +41,8 @@ class _TextHTMLParser(HTMLParser):
 
 
 def _document(content: str, source: str, **metadata: object) -> Document:
-    return Document(page_content=content, metadata={"source": source, **metadata})
+    clean_metadata = {key: value for key, value in metadata.items() if value is not None}
+    return Document(page_content=content, metadata={"source": source, **clean_metadata})
 
 
 def _parse_pdf(path: Path, source: str) -> list[Document]:
@@ -50,6 +51,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
     pdf = fitz.open(str(path))
     documents: list[Document] = []
     page_lines: list[list[str]] = []
+    page_ocr_confidences: list[float | None] = []
     page_images: list[tuple[int, bytes]] = []
 
     for page_index, page in enumerate(pdf, start=1):
@@ -64,6 +66,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
             if line.strip()
         ]
         text = "\n".join(lines).strip()
+        ocr_confidence = None
 
         if len(text) < settings.pdf_min_text_chars and settings.ocr_enabled:
             try:
@@ -74,9 +77,15 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                 image = Image.frombytes(
                     "RGB", [pixmap.width, pixmap.height], pixmap.samples
                 )
-                ocr_text = pytesseract.image_to_string(
-                    image, lang=settings.ocr_languages
-                ).strip()
+                ocr_data = pytesseract.image_to_data(
+                    image, lang=settings.ocr_languages, output_type=pytesseract.Output.DICT
+                )
+                confidence_values = [
+                    float(value) for value in ocr_data.get("conf", [])
+                    if str(value).strip() not in {"", "-1"} and float(value) >= 0
+                ]
+                ocr_confidence = round(sum(confidence_values) / len(confidence_values) / 100, 4) if confidence_values else None
+                ocr_text = pytesseract.image_to_string(image, lang=settings.ocr_languages).strip()
                 if ocr_text:
                     text = ocr_text
                     lines = [
@@ -89,6 +98,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                     error,
                 )
         page_lines.append(lines)
+        page_ocr_confidences.append(ocr_confidence)
 
         if (
             settings.multimodal_enabled
@@ -119,6 +129,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                     page=page_index,
                     chunk_type="text",
                     parser="pymupdf_layout",
+                    ocr_confidence=page_ocr_confidences[page_index - 1],
                 )
             )
 

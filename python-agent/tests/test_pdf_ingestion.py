@@ -34,6 +34,9 @@ def test_pdf_layout_removes_repeated_headers_and_footers(tmp_path):
     assert "TOKEN-2" in text_documents[1].page_content
     assert text_documents[1].metadata["page"] == 2
     assert text_documents[1].metadata["parser"] == "pymupdf_layout"
+    assert all(value is not None for value in text_documents[1].metadata.values())
+    if "ocr_confidence" in text_documents[1].metadata:
+        assert 0 <= text_documents[1].metadata["ocr_confidence"] <= 1
 
 
 def test_pdf_keeps_extracted_text_when_ocr_is_unavailable(tmp_path, monkeypatch):
@@ -78,3 +81,6 @@ def test_scanned_pdf_uses_ocr(tmp_path):
     content = "\n".join(document.page_content for document in parsed)
     assert "MNEME" in content
     assert "7294" in content
+    confidence = parsed[0].metadata.get("ocr_confidence")
+    assert confidence is not None
+    assert 0 <= confidence <= 1

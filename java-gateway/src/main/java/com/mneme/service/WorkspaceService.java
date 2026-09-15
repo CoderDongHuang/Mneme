@@ -11,7 +11,13 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -28,10 +34,17 @@ import java.util.regex.Pattern;
 public class WorkspaceService {
     private static final int IMPORT_MAX_ITEMS = 10_000;
     private static final int IMPORT_MAX_TEXT_LENGTH = 1_000_000;
+    private static final int ARCHIVE_MAX_BYTES = 50 * 1024 * 1024;
+    private static final int ARCHIVE_MAX_ENTRIES = 500;
+    private static final long ARCHIVE_MAX_UNCOMPRESSED_BYTES = 200L * 1024 * 1024;
+    private static final int ARCHIVE_MAX_ENTRY_BYTES = 20 * 1024 * 1024;
     private static final Pattern KEY_POINT_SPLIT = Pattern.compile("[。！？!?；;\\n]");
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final RestTemplate restTemplate;
+
+    @Value("${mneme.file-storage-path:./data/files}")
+    private String fileStoragePath;
 
     @Value("${mneme.python-agent-url}")
     private String pythonAgentUrl;
@@ -48,7 +61,7 @@ public class WorkspaceService {
             FROM knowledge_document d JOIN knowledge_base k ON k.id=d.kb_id
             WHERE d.id=? AND k.user_id=?
             """, documentId, userId);
-        Path path = Path.of(String.valueOf(document.get("file_path"))).normalize();
+        Path path = checkedDocumentPath(document);
         String fileName = String.valueOf(document.get("file_name"));
         String extension = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase() : "";
         String content;
@@ -58,7 +71,38 @@ public class WorkspaceService {
         } else {
             content = "该格式使用语义片段定位。请从回答引用或检索调试器查看对应页码、章节和片段。";
         }
-        return Map.of("document", document, "content", content, "extension", extension);
+        Map<String, Object> publicDocument = new LinkedHashMap<>(document);
+        publicDocument.remove("file_path");
+        return Map.of("document", publicDocument, "content", content, "extension", extension);
+    }
+
+    public Path documentPath(Long userId, Long documentId) {
+        Map<String, Object> document = one("""
+            SELECT d.file_path FROM knowledge_document d JOIN knowledge_base k ON k.id=d.kb_id
+            WHERE d.id=? AND k.user_id=?
+            """, documentId, userId);
+        return checkedDocumentPath(document);
+    }
+
+    private Path checkedDocumentPath(Map<String, Object> document) {
+        return checkedStoragePath(String.valueOf(document.get("file_path")), true);
+    }
+
+    private Path checkedStoragePath(String rawPath, boolean requireRegularFile) {
+        Path root = Path.of(fileStoragePath).toAbsolutePath().normalize();
+        Path path = Path.of(rawPath).toAbsolutePath().normalize();
+        if (!path.startsWith(root)
+            || (requireRegularFile && !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))) {
+            throw new IllegalArgumentException("文档原文件不存在或路径无效");
+        }
+        Path current = root;
+        for (Path part : root.relativize(path)) {
+            current = current.resolve(part);
+            if (Files.isSymbolicLink(current)) {
+                throw new IllegalArgumentException("文档原文件不存在或路径无效");
+            }
+        }
+        return path;
     }
 
     public List<Map<String, Object>> tasks(Long userId) {
@@ -257,6 +301,128 @@ public class WorkspaceService {
         data.put("branches", branches(userId));
         data.put("scope", Map.of("relational_data", true, "original_files", false, "vector_index", false));
         return data;
+    }
+
+    public byte[] exportArchive(Long userId) throws Exception {
+        Map<String, Object> workspace = exportData(userId);
+        workspace.put("documents", rows("""
+            SELECT d.id,d.kb_id,d.file_name,d.file_path,d.status,d.chunk_count,d.created_at,d.updated_at
+            FROM knowledge_document d JOIN knowledge_base k ON k.id=d.kb_id WHERE k.user_id=?
+            """, userId));
+        @SuppressWarnings("unchecked") List<Map<String, Object>> documents = (List<Map<String, Object>>) workspace.get("documents");
+        List<Map<String, Object>> manifestDocuments = documents.stream().map(document -> {
+            Map<String, Object> manifest = new LinkedHashMap<>();
+            manifest.put("id", document.get("id"));
+            manifest.put("kb_id", document.get("kb_id"));
+            manifest.put("file_name", document.get("file_name"));
+            manifest.put("status", document.get("status"));
+            manifest.put("chunk_count", document.get("chunk_count"));
+            manifest.put("created_at", document.get("created_at"));
+            manifest.put("updated_at", document.get("updated_at"));
+            return manifest;
+        }).toList();
+        workspace.put("documents", manifestDocuments);
+        workspace.put("scope", Map.of("relational_data", true, "original_files", true, "vector_index", false));
+        byte[] workspaceJson = mapper.writeValueAsBytes(workspace);
+        if (workspaceJson.length > ARCHIVE_MAX_ENTRY_BYTES) {
+            throw new IllegalArgumentException("工作区数据超过归档单文件大小限制");
+        }
+        if (documents.size() + 1 > ARCHIVE_MAX_ENTRIES) {
+            throw new IllegalArgumentException("归档包文件数量超限");
+        }
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(output)) {
+            zip.putNextEntry(new ZipEntry("workspace.json"));
+            zip.write(workspaceJson);
+            zip.closeEntry();
+            long total = workspaceJson.length;
+            for (Map<String, Object> document : documents) {
+                Path file;
+                try {
+                    file = checkedStoragePath(
+                        String.valueOf(document.getOrDefault("file_path", "")), true
+                    );
+                } catch (IllegalArgumentException error) {
+                    continue;
+                }
+                long fileSize = Files.size(file);
+                if (fileSize > ARCHIVE_MAX_ENTRY_BYTES) {
+                    throw new IllegalArgumentException("归档文件超过单文件大小限制: " + document.get("file_name"));
+                }
+                total += fileSize;
+                if (total > ARCHIVE_MAX_UNCOMPRESSED_BYTES) {
+                    throw new IllegalArgumentException("归档包解压大小超限");
+                }
+                String name = safeArchiveName(String.valueOf(document.get("file_name")));
+                zip.putNextEntry(new ZipEntry("files/" + document.get("id") + "/" + name));
+                Files.copy(file, zip);
+                zip.closeEntry();
+            }
+        }
+        byte[] archive = output.toByteArray();
+        if (archive.length > ARCHIVE_MAX_BYTES) {
+            throw new IllegalArgumentException("归档包压缩后超过 50MB 限制");
+        }
+        return archive;
+    }
+
+    public Map<String, Object> importArchive(Long userId, byte[] archive) throws Exception {
+        if (archive.length == 0 || archive.length > ARCHIVE_MAX_BYTES) {
+            throw new IllegalArgumentException("归档包大小必须在 1B 至 50MB 之间");
+        }
+        if (archive.length < 4 || archive[0] != 'P' || archive[1] != 'K') {
+            throw new IllegalArgumentException("归档包不是有效的 ZIP 文件");
+        }
+        byte[] workspaceJson = null;
+        int entries = 0;
+        long total = 0;
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archive))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (++entries > ARCHIVE_MAX_ENTRIES) throw new IllegalArgumentException("归档包文件数量超限");
+                validateArchiveEntry(entry);
+                ByteArrayOutputStream content = new ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int read;
+                long entryTotal = 0;
+                while ((read = zip.read(buffer)) != -1) {
+                    entryTotal += read;
+                    total += read;
+                    if (entryTotal > ARCHIVE_MAX_ENTRY_BYTES || total > ARCHIVE_MAX_UNCOMPRESSED_BYTES) {
+                        throw new IllegalArgumentException("归档包解压大小超限");
+                    }
+                    content.write(buffer, 0, read);
+                }
+                if ("workspace.json".equals(entry.getName())) workspaceJson = content.toByteArray();
+                zip.closeEntry();
+            }
+        } catch (java.util.zip.ZipException error) {
+            throw new IllegalArgumentException("归档包不是有效的 ZIP 文件", error);
+        }
+        if (workspaceJson == null) throw new IllegalArgumentException("归档包缺少 workspace.json");
+        Map<String, Object> workspace = mapper.readValue(workspaceJson, new TypeReference<>() {});
+        Map<String, Object> imported = importData(userId, workspace);
+        return Map.of("status", "imported", "workspace", imported, "original_files", "not_restored",
+            "message", "关系数据已导入；原始文件需重新上传以建立向量索引");
+    }
+
+    private void validateArchiveEntry(ZipEntry entry) {
+        String name = entry.getName().replace('\\', '/');
+        Path normalized = Path.of(name).normalize();
+        String normalizedName = normalized.toString().replace('\\', '/');
+        if (entry.isDirectory() || name.startsWith("/") || name.matches("^[A-Za-z]:.*")
+            || normalized.isAbsolute() || normalized.startsWith("..") || !normalizedName.equals(name)) {
+            throw new IllegalArgumentException("归档包包含非法路径: " + name);
+        }
+        if (!name.equals("workspace.json") && !name.startsWith("files/")) {
+            throw new IllegalArgumentException("归档包包含未知文件: " + name);
+        }
+    }
+
+    private String safeArchiveName(String fileName) {
+        String clean = Path.of(fileName == null ? "file" : fileName).getFileName().toString();
+        clean = clean.replaceAll("[^\\p{L}\\p{N}._-]", "_");
+        return clean.isBlank() ? "file" : clean;
     }
 
     @Transactional

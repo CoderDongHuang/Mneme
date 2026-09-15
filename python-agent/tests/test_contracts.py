@@ -18,6 +18,15 @@ def test_openapi_contains_structured_quiz_generation_contract():
     assert request_schema["$ref"].endswith("QuizGenerationRequest")
 
 
+def test_config_health_never_exposes_secret_values():
+    response = TestClient(app).get("/health/config")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "configuration" in payload
+    assert "deepseek_api_key" not in str(payload).lower()
+    assert "dashscope_api_key" not in str(payload).lower()
+
+
 def test_chat_contract_exposes_request_id():
     schema = TestClient(app).get("/openapi.json").json()
     chat_schema = schema["components"]["schemas"]["ChatRequest"]

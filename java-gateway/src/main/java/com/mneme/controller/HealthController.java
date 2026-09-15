@@ -48,4 +48,17 @@ public class HealthController {
             "components", components
         );
     }
+
+    @GetMapping("/config")
+    public Map<String, Object> config(@org.springframework.web.bind.annotation.RequestAttribute("userId") Long userId) {
+        try {
+            Map<?, ?> python = restTemplate.getForObject(pythonAgentUrl + "/health/config", Map.class);
+            if (python == null) return Map.of("status", "unavailable");
+            Map<String, Object> result = new LinkedHashMap<>();
+            python.forEach((key, value) -> result.put(String.valueOf(key), value));
+            return result;
+        } catch (Exception ignored) {
+            return Map.of("status", "unavailable", "service", "mneme-java-gateway");
+        }
+    }
 }
