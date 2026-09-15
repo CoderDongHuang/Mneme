@@ -26,6 +26,7 @@ def _source_payload(chunks: list[dict]) -> list[dict]:
         metadata = chunk.get("metadata", {})
         sources.append(
             {
+                "document_id": str(metadata.get("document_id", "")),
                 "document_name": metadata.get("source", "未知文档"),
                 "page": metadata.get("page") or None,
                 "section": metadata.get("section", ""),

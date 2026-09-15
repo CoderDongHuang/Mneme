@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 
@@ -30,15 +31,21 @@ def evaluate(dataset_path: Path, top_k: int, keep: bool) -> dict:
     reciprocal_rank = 0.0
     metadata_complete = 0
     retrieved_total = 0
+    citation_hits = 0
+    total_latency_ms = 0.0
     details = []
     for case in cases:
+        started = time.perf_counter()
         chunks = retrieve(user_id, kb_id, case["question"], top_k)
+        total_latency_ms += (time.perf_counter() - started) * 1000
         rank = None
         for index, chunk in enumerate(chunks, start=1):
             metadata = chunk.get("metadata", {})
             retrieved_total += 1
             if all(key in metadata for key in ("document_id", "source", "page", "section", "chunk_type")):
                 metadata_complete += 1
+            if metadata.get("source") == case["expected_source"]:
+                citation_hits += 1
             if (
                 rank is None
                 and metadata.get("source") == case["expected_source"]
@@ -58,6 +65,8 @@ def evaluate(dataset_path: Path, top_k: int, keep: bool) -> dict:
         "citation_metadata_completeness": round(
             metadata_complete / max(1, retrieved_total), 4
         ),
+        "citation_precision": round(citation_hits / max(1, retrieved_total), 4),
+        "mean_latency_ms": round(total_latency_ms / count, 2),
         "details": details,
     }
     if not keep:

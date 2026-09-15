@@ -21,6 +21,7 @@ import org.springframework.web.client.RestTemplate;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -35,6 +36,7 @@ public class ProcessingTaskService {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
     private final MeterRegistry meterRegistry;
+    private final NotificationService notificationService;
 
     @Value("${mneme.python-agent-url}")
     private String pythonAgentUrl;
@@ -48,7 +50,8 @@ public class ProcessingTaskService {
         KnowledgeBaseMapper knowledgeBaseMapper,
         ObjectMapper objectMapper,
         RestTemplate restTemplate,
-        MeterRegistry meterRegistry
+        MeterRegistry meterRegistry,
+        NotificationService notificationService
     ) {
         this.taskMapper = taskMapper;
         this.documentMapper = documentMapper;
@@ -56,6 +59,7 @@ public class ProcessingTaskService {
         this.objectMapper = objectMapper;
         this.restTemplate = restTemplate;
         this.meterRegistry = meterRegistry;
+        this.notificationService = notificationService;
     }
 
     @Scheduled(fixedDelayString = "${mneme.task-poll-delay-ms:2000}")
@@ -70,7 +74,10 @@ public class ProcessingTaskService {
         );
         for (ProcessingTask task : tasks) {
             if (claim(task)) {
-                execute(taskMapper.selectById(task.getId()));
+                ProcessingTask claimed = taskMapper.selectById(task.getId());
+                if (claimed == null) continue;
+                notificationService.publish(claimed);
+                execute(claimed);
             }
         }
     }
@@ -132,9 +139,10 @@ public class ProcessingTaskService {
         String documentId = payload.path("document_id").asText();
         restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId
             + "?user_id=" + userId + "&kb_id=" + kbId);
-        Path file = Path.of(payload.path("file_path").asText()).normalize();
-        Path root = Path.of(fileStoragePath).normalize();
-        if (file.startsWith(root)) Files.deleteIfExists(file);
+        Path file = checkedStoragePath(payload.path("file_path").asText(), false);
+        if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            Files.deleteIfExists(file);
+        }
         documentMapper.deleteById(task.getAggregateId());
     }
 
@@ -146,10 +154,11 @@ public class ProcessingTaskService {
         restTemplate.delete(
             pythonAgentUrl + "/api/v1/knowledge/admin/collections/" + knowledgeBaseId + "?user_id=" + userId
         );
-        Path directory = Path.of(fileStoragePath, userId, knowledgeBaseId).normalize();
-        Path root = Path.of(fileStoragePath).normalize();
+        Path root = Path.of(fileStoragePath).toAbsolutePath().normalize();
+        Path directory = root.resolve(userId).resolve(knowledgeBaseId).normalize();
         if (directory.startsWith(root) && Files.exists(directory)) {
-            try (var paths = Files.walk(directory)) {
+            Path checkedDirectory = checkedStoragePath(directory.toString(), false);
+            try (var paths = Files.walk(checkedDirectory)) {
                 paths.sorted(Comparator.reverseOrder()).forEach(path -> {
                     try { Files.deleteIfExists(path); }
                     catch (Exception error) { throw new IllegalStateException(error); }
@@ -159,6 +168,23 @@ public class ProcessingTaskService {
         knowledgeBaseMapper.deleteById(task.getAggregateId());
     }
 
+    private Path checkedStoragePath(String rawPath, boolean requireRegularFile) {
+        Path root = Path.of(fileStoragePath).toAbsolutePath().normalize();
+        Path path = Path.of(rawPath).toAbsolutePath().normalize();
+        if (!path.startsWith(root)
+            || (requireRegularFile && !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))) {
+            throw new IllegalStateException("文档原文件路径无效");
+        }
+        Path current = root;
+        for (Path part : root.relativize(path)) {
+            current = current.resolve(part);
+            if (Files.isSymbolicLink(current)) {
+                throw new IllegalStateException("文档原文件路径无效");
+            }
+        }
+        return path;
+    }
+
     private void complete(ProcessingTask task) {
         task.setStatus("completed");
         task.setLockedAt(null);
@@ -166,11 +192,13 @@ public class ProcessingTaskService {
         task.setErrorCode(null);
         task.setErrorMessage(null);
         taskMapper.updateById(task);
+        notificationService.publish(task);
     }
 
     private void retryOrFail(ProcessingTask task, Exception error) {
-        int attempts = task.getAttemptCount() + 1;
-        boolean exhausted = attempts >= task.getMaxAttempts();
+        int attempts = (task.getAttemptCount() == null ? 0 : task.getAttemptCount()) + 1;
+        int maxAttempts = task.getMaxAttempts() == null ? 3 : task.getMaxAttempts();
+        boolean exhausted = attempts >= maxAttempts;
         task.setAttemptCount(attempts);
         task.setStatus(exhausted ? "failed" : "retry");
         task.setNextAttemptAt(LocalDateTime.now().plusSeconds(Math.min(300, 1L << attempts)));
@@ -179,6 +207,7 @@ public class ProcessingTaskService {
         task.setErrorCode(error.getClass().getSimpleName());
         task.setErrorMessage(error.getMessage());
         taskMapper.updateById(task);
+        notificationService.publish(task);
         meterRegistry.counter(
             "mneme.processing.tasks", "type", task.getTaskType(), "outcome", exhausted ? "failed" : "retry"
         ).increment();

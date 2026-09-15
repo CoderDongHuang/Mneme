@@ -31,6 +31,7 @@ class Settings:
     stream_timeout_seconds: int = int(os.getenv("LLM_STREAM_TIMEOUT_SECONDS", "20"))
     llm_hourly_limit: int = int(os.getenv("LLM_HOURLY_LIMIT", "0"))
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
+    offline_embeddings: bool = _bool("MNEME_OFFLINE_EMBEDDINGS", False)
 
     chroma_mode: str = os.getenv("CHROMA_MODE", "local").lower()
     chroma_host: str = os.getenv("CHROMA_HOST", "localhost")
@@ -72,6 +73,7 @@ class Settings:
     )
     internal_service_token: str = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
     skip_internal_auth: bool = _bool("SKIP_INTERNAL_AUTH", False)
+    secret_rotation_due: bool = _bool("SECRET_ROTATION_DUE", False)
 
     @property
     def cors_origin_list(self) -> list[str]:

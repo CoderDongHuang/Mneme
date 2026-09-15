@@ -27,9 +27,11 @@ class ChatRequest(BaseModel):
 
 
 class Source(BaseModel):
+    document_id: str = ""
     document_name: str
     chunk_content: str
     page: int | None = None
+    section: str = ""
     score: float = 0.0
     chunk_type: str = "text"
 

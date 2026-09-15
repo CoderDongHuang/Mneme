@@ -83,9 +83,11 @@ async def chat(request: ChatRequest):
         metadata = chunk.get("metadata", {})
         sources.append(
             Source(
+                document_id=str(metadata.get("document_id", "")),
                 document_name=metadata.get("source", "unknown"),
                 chunk_content=content,
                 page=metadata.get("page"),
+                section=metadata.get("section", ""),
                 score=chunk.get("score", 0.0),
                 chunk_type=metadata.get("chunk_type", "text"),
             )

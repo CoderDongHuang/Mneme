@@ -1,8 +1,11 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Response
 
 from app.knowledge.vector_store import vector_store
 from app.memory.session_persistence import session_persistence
 from app.utils.llm import llm
+from app.core.config import settings
 
 
 router = APIRouter(tags=["health"])
@@ -29,5 +32,23 @@ async def readiness(response: Response) -> dict:
             "chroma": "up" if chroma_ok else "down",
             "llm": llm.status,
             "redis": "up" if session_persistence.available else "optional_down",
+        },
+    }
+
+
+@router.get("/health/config")
+async def config_status() -> dict:
+    """Expose configuration presence only; never return keys or secret values."""
+    return {
+        "service": "mneme-python-agent",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "rotation_required": settings.secret_rotation_due,
+        "configuration": {
+            "llm_api_key": bool(settings.deepseek_api_key or settings.dashscope_api_key),
+            "embedding_api_key": bool(settings.dashscope_api_key),
+            "redis_configured": bool(settings.redis_host),
+            "ocr_enabled": settings.ocr_enabled,
+            "multimodal_enabled": settings.multimodal_enabled,
+            "offline_embeddings": settings.offline_embeddings,
         },
     }

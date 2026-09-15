@@ -111,7 +111,8 @@ public class ProfileService {
     }
 
     public void deleteAccount(Long userId) throws IOException {
-        User user = requireUser(userId);
+        User user = users.selectById(userId);
+        if (user == null) return;
         String id = userId.toString();
         restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/user/" + id);
         restTemplate.delete(pythonAgentUrl + "/api/v1/memory/admin/user/" + id);

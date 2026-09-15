@@ -13,8 +13,9 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { downloadWorkspaceExport, endpoints } from "../api/client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+import { documentFileUrl, downloadWorkspaceArchive, downloadWorkspaceExport, endpoints } from "../api/client";
 import LoadingState from "../components/LoadingState";
 import StatusBadge from "../components/StatusBadge";
 import "../styles/workspace.css";
@@ -56,10 +57,12 @@ const categoryLabels = {
 };
 
 export default function WorkspacePage() {
+  const location = useLocation();
   const [mode, setMode] = useState("reader");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [knowledgeBases, setKnowledgeBases] = useState([]);
   const [kbId, setKbId] = useState("");
   const [documents, setDocuments] = useState([]);
@@ -88,6 +91,9 @@ export default function WorkspacePage() {
     label: "",
   });
   const [importText, setImportText] = useState("");
+  const [highlight, setHighlight] = useState("");
+  const [previewPage, setPreviewPage] = useState("");
+  const archiveRef = useRef(null);
 
   async function loadAll() {
     setLoading(true);
@@ -134,9 +140,20 @@ export default function WorkspacePage() {
     loadAll();
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const documentId = params.get("document");
+    if (!documentId) return;
+    setMode("reader");
+    setHighlight(params.get("highlight") || "");
+    setPreviewPage(params.get("page") || "");
+    endpoints.documentPreview(documentId).then(setPreview).catch((requestError) => setError(requestError.message));
+  }, [location.search]);
+
   async function run(action) {
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       await action();
     } catch (requestError) {
@@ -213,6 +230,7 @@ export default function WorkspacePage() {
         ))}
       </nav>
       {error && <div className="page-error">{error}</div>}
+      {notice && <div className="page-notice">{notice}</div>}
       {loading ? (
         <LoadingState label="正在装载学习工作台" />
       ) : (
@@ -233,9 +251,11 @@ export default function WorkspacePage() {
                     key={d.id}
                     className={preview?.document?.id === d.id ? "active" : ""}
                     onClick={() =>
-                      run(async () =>
-                        setPreview(await endpoints.documentPreview(d.id)),
-                      )
+                      run(async () => {
+                        setHighlight("");
+                        setPreviewPage("");
+                        setPreview(await endpoints.documentPreview(d.id));
+                      })
                     }
                   >
                     <span>{d.fileName}</span>
@@ -253,7 +273,15 @@ export default function WorkspacePage() {
                       </div>
                       <small>{preview.extension.toUpperCase()}</small>
                     </header>
-                    <pre>{preview.content}</pre>
+                    {preview.extension === "pdf" ? (
+                      <iframe
+                        className="document-frame"
+                        src={documentFileUrl(preview.document.id, previewPage)}
+                        title={`${preview.document.file_name} PDF 预览`}
+                      />
+                    ) : (
+                      <pre>{highlight && preview.content.includes(highlight) ? preview.content.split(highlight).map((part, index, parts) => <span key={`${index}-${part.slice(0, 12)}`}>{part}{index < parts.length - 1 && <mark>{highlight}</mark>}</span>) : preview.content}</pre>
+                    )}
                   </>
                 ) : (
                   <div className="studio-empty">
@@ -683,16 +711,22 @@ export default function WorkspacePage() {
                 <Download size={30} />
                 <h2>导出完整学习档案</h2>
                 <p>包含会话、资料库目录、计划、复习、测验和分支元数据。</p>
-                <button onClick={() => run(downloadWorkspaceExport)}>
-                  <Download size={17} />
-                  导出数据
-                </button>
+                <div className="data-actions">
+                  <button onClick={() => run(downloadWorkspaceExport)}>
+                    <Download size={17} />
+                    导出 JSON
+                  </button>
+                  <button onClick={() => run(downloadWorkspaceArchive)}>
+                    <ArchiveRestore size={17} />
+                    导出归档包
+                  </button>
+                </div>
               </article>
               <article>
                 <Upload size={30} />
                 <h2>导入完整学习档案</h2>
                 <p>
-                  恢复资料库目录、会话、消息、计划、复习、测验和分支；采用追加策略且不包含原始文件与向量索引。
+                  JSON 恢复关系数据；归档包包含原始文件副本，但导入后仍需重新上传文件以建立向量索引。
                 </p>
                 <textarea
                   value={importText}
@@ -709,7 +743,28 @@ export default function WorkspacePage() {
                   }
                 >
                   <Upload size={17} />
-                  开始导入
+                  导入 JSON
+                </button>
+                <input
+                  ref={archiveRef}
+                  type="file"
+                  accept=".zip,application/zip"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    run(async () => {
+                      const result = await endpoints.importArchive(file);
+                      await loadAll();
+                      setImportText("");
+                      setNotice(result.message || "归档包已导入；原始文件需重新上传");
+                    });
+                    event.target.value = "";
+                  }}
+                />
+                <button onClick={() => archiveRef.current?.click()}>
+                  <ArchiveRestore size={17} />
+                  导入归档包
                 </button>
               </article>
             </section>

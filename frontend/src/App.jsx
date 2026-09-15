@@ -8,6 +8,7 @@ import MemoryPage from './pages/MemoryPage'
 import WorkspacePage from './pages/WorkspacePage'
 import ProfilePage from './pages/ProfilePage'
 import LegalPage from './pages/LegalPage'
+import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/workspace" element={<WorkspacePage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/chat" replace />} />
