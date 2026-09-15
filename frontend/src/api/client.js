@@ -118,6 +118,7 @@ export const endpoints = {
   retryTask: (id) => api(`/workspace/tasks/${id}/retry`, { method: 'POST' }),
   retrievalDebug: (kbId, query, topK = 6) => api(`/workspace/retrieval/debug?kbId=${encodeURIComponent(kbId)}&query=${encodeURIComponent(query)}&topK=${topK}`),
   plans: () => api('/workspace/plans'),
+  metrics: () => api('/workspace/metrics'),
   createPlan: (body) => api('/workspace/plans', { method: 'POST', body: JSON.stringify(body) }),
   reviews: () => api('/workspace/reviews'),
   reviewCard: (id, rating) => api(`/workspace/reviews/${id}`, { method: 'POST', body: JSON.stringify({ rating }) }),

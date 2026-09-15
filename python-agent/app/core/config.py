@@ -52,6 +52,11 @@ class Settings:
     retriever_context_max_chars: int = int(
         os.getenv("RETRIEVER_CONTEXT_MAX_CHARS", "12000")
     )
+    lexical_index_path: str = os.getenv(
+        "LEXICAL_INDEX_PATH", str(PYTHON_AGENT_DIR / "data" / "lexical-index.sqlite3")
+    )
+    reranker_enabled: bool = _bool("RERANKER_ENABLED", False)
+    reranker_model: str = os.getenv("RERANKER_MODEL", "").strip()
     distillation_idle_minutes: int = int(os.getenv("DISTILLATION_IDLE_MINUTES", "15"))
     memory_reflection_every_sessions: int = int(
         os.getenv("MEMORY_REFLECTION_EVERY_SESSIONS", "5")

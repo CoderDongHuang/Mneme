@@ -15,8 +15,8 @@ Mneme 已经具备可运行的核心闭环：账号认证、资料库、异步�
 | 检查 | 结果 | 说明 |
 |---|---|---|
 | Python Ruff | 通过 | `ruff==0.15.17`，全量 Python 源码静态检查 |
-| Python Pytest | 74 passed，1 skipped | 本机虚拟环境运行；跳过项为依赖本机 Tesseract 的 OCR 集成测试 |
-| Java Maven Test | 12 passed，2 skipped | 单元/安全测试通过；2 个 Testcontainers/Flyway 集成测试因本机 Docker 引擎未启动而跳过 |
+| Python Pytest | 78 passed，1 skipped | 本机虚拟环境运行；跳过项为依赖本机 Tesseract 的 OCR 集成测试 |
+| Java Maven Test | 13 passed，2 skipped | 单元/安全/工作台指标测试通过；2 个 Testcontainers/Flyway 集成测试因本机 Docker 引擎未启动而跳过 |
 | 前端 ESLint | 通过 | React 源码静态检查 |
 | 前端 Vitest | 2 passed | API 客户端基础契约 |
 | Playwright mock E2E | 6 passed，2 skipped | 桌面与移动端；真实模型用例默认跳过 |
@@ -26,7 +26,7 @@ Mneme 已经具备可运行的核心闭环：账号认证、资料库、异步�
 
 自动化测试通过只能证明已覆盖路径没有回归，不能证明全部业务语义完整。下面按功能给出实际成熟度。
 
-本轮离线 RAG 基线为 3 条虚构资料问答：`Hit@5=1.0`、`MRR=1.0`、引用元数据完整度 `1.0`、引用精度 `1.0`、平均召回延迟约 `28.74ms`。该结果只代表小型基线，不代表复杂 PDF、真实模型或大规模资料质量。
+本轮离线 RAG 基线为 110 条虚构结构查询，其中 105 条可回答、5 条无答案：`Recall@5=1.0`、`MRR=0.8943`、`faithfulness_proxy=0.8762`、`citation_recall=1.0`、`abstention_proxy=1.0`、P95 检索延迟约 `15.13ms`。`faithfulness_proxy` 是关键事实覆盖 proxy，不是 RAGAS 或真实 LLM Faithfulness。该结果仍不代表复杂扫描 PDF、真实模型或大规模资料质量。
 
 ## 3. 功能成熟度
 
@@ -57,10 +57,10 @@ Mneme 已经具备可运行的核心闭环：账号认证、资料库、异步�
 
 仍需改进：
 
-- 当前 BM25 仍是查询时扫描 Chroma 元数据的轻量实现，文档规模增大后应迁移到专用倒排索引。
-- 增加 Metadata Filter、Cross Encoder 重排和更严格的上下文压缩评测。
-- 评测集需覆盖 PDF 表格、扫描件、跨页问题、否定问题、无答案拒答和多文档冲突。
-- 指标除 Hit@K、MRR 外，还应加入 Faithfulness、Answer Relevance、Citation Precision/Recall 和延迟/费用。
+- 已增加 SQLite FTS5 持久化词法索引，文档写入、替换、删除和用户/知识库清理会同步维护；索引不可用时保留 Chroma 扫描降级。
+- 已增加可选、懒加载的 Cross Encoder 重排接口；默认关闭，未安装 `sentence-transformers` 或模型不可用时确定性降级到 RRF。
+- 评测集已扩展到 110 条，覆盖 PDF、CSV/XLSX、PPTX、Markdown、HTML、解析策略、无答案问题和多主题查询；真实扫描 PDF、复杂表格、多栏和跨页仍需人工标注。
+- 已增加 Recall@K、MRR、Faithfulness proxy、Citation Precision/Recall、P95 延迟和输入费用估算；真实 LLM 忠实度、Answer Relevance 和模型费用仍需单独运行。
 
 ### 3.4 Agent 与 Prompt：基础路由到位
 
@@ -88,6 +88,7 @@ LangGraph 已区分问答、回顾、建议和普通交流，并按意图选择�
 - 测验已支持基于证据的结构化 LLM 出题、确定性回退和关键点评分，但尚未有大规模题目质量评测。
 - 导出与导入已支持关系型学习数据；原文件和向量索引仍需重新上传构建。
 - 会话分支复制消息，但需要补充来源消息归属校验和并发分支测试。
+- 工作台已提供按用户隔离的计划完成率、复习间隔、到期卡片、测验平均分、错题转卡 proxy 和待确认薄弱点指标；指标历史趋势和跨设备分析仍未实现。
 
 ### 3.7 可靠性与可观测性：基础到位
 
@@ -102,6 +103,7 @@ LangGraph 已区分问答、回顾、建议和普通交流，并按意图选择�
 3. 头像路径改为配置项 `AVATAR_STORAGE_PATH`；Docker 默认 `/data/avatars`，本地默认 `../data/avatars`。
 4. README 修正真实 E2E 描述，并加入本审计文档入口。
 5. 移除已经失效的 React Router 安全 allowlist，当前没有 high/critical 审计例外。
+6. 用 SQLite FTS5 替换查询时全量词法扫描，补充可选重排器、105 条离线评测和工作台学习指标。
 
 ## 5. 下一阶段实施顺序
 
@@ -127,7 +129,7 @@ LangGraph 已区分问答、回顾、建议和普通交流，并按意图选择�
 4. 建立至少 100 条虚构但接近真实结构的评测集。
 5. CI 跑离线召回指标，定期任务跑真实模型忠实度与费用评估。
 
-已实现 BM25 与 Dense 的 RRF 混合召回、确定性查询改写、重复片段过滤和动态上下文预算。Cross Encoder 重排及至少 100 条人工标注评测集仍属于后续质量工程，不能在缺少模型与标注数据时宣称完成。
+已实现 FTS5 BM25 风格词法索引与 Dense 的 RRF 混合召回、确定性查询改写、重复片段过滤和动态上下文预算，并提供可选 Cross Encoder 接口。评测集已达到 110 条，但仍是虚构离线数据；人工标注、真实 Cross Encoder 模型和 LLM 忠实度评测仍属于后续质量工程。
 
 ### P1：测验与学习闭环（已实施）
 
@@ -157,10 +159,10 @@ P2 修改后已执行 Python 测试与离线 RAG 基线、Java、前端和 Compo
 
 仍需提出并跟踪的问题：
 
-1. 上传队列已持久化到浏览器 localStorage，服务端任务通知中心已提供历史查询和 SSE；跨设备通知历史清理仍待实现。
+1. 上传队列已持久化到浏览器 localStorage，服务端任务通知中心已提供基于 `processing_task` 的历史查询和 JVM 内 SSE；尚未实现独立通知表、跨实例广播和历史清理策略。
 2. `/health/config` 已有 Java 代理和前端诊断页；密钥轮换和更细的管理员权限隔离仍待实现。
-3. OCR 已记录页级置信度；复杂表格/多栏/公式视觉解析和跨文档冲突评测仍不完整。
-4. RAG 已输出 citation precision 和平均延迟；人工标注集、Cross Encoder、Faithfulness 基线仍待扩充。
+3. OCR 解析结果已写入页级置信度元数据；复杂表格/多栏/公式视觉解析和跨文档冲突评测仍不完整。
+4. RAG 已接入持久化 FTS5、可选 Cross Encoder 接口和 110 条离线指标评测；人工标注集、真实模型 Faithfulness/Answer Relevance 仍待扩充。
 5. 账号删除已做幂等清理和故障注入测试；数据库状态化删除、多实例恢复演练仍待实现。
 6. 归档导出已接入工作台，导入会恢复关系数据并明确提示原始文件和向量索引需要重新建立；Java 已覆盖非法 ZIP、路径穿越、文件数量、单文件和总解压大小边界。
 
@@ -187,17 +189,17 @@ P2 修改后已执行 Python 测试与离线 RAG 基线、Java、前端和 Compo
 
 ### 近期
 
-- [x] 实现持久化通知中心和 SSE 任务进度。
+- [~] 实现持久化通知中心和 SSE 任务进度（当前复用任务表，SSE 订阅仅单 JVM，历史清理待补）。
 - [x] 增加引用点击后的原文定位、高亮和页码预览基础能力。
-- [x] 增加 Java 配置诊断、密钥轮换提示和脱敏审计基础能力。
+- [~] 增加 Java 配置诊断、密钥轮换提示和脱敏审计基础能力（诊断与提示完成，实际轮换和管理员隔离待补）。
 - [x] 为导出增加可选资料归档包，并加入压缩炸弹、路径穿越和容量限制校验及 Maven 自动化边界测试。
 
 ### 中期
 
-- 引入专用 BM25/倒排索引和 Cross Encoder 重排。
-- 建立覆盖扫描 PDF、表格、多栏、跨页、否定问题和无答案问题的 100+ 条评测集。
-- 增加 RAGAS 或等价离线评测：Recall@K、MRR、Faithfulness、Citation Precision/Recall、P95 延迟和费用。
-- 增加学习目标完成率、复习间隔效果、错题转化率等产品指标。
+- [~] 引入 SQLite FTS5 专用词法索引和可选 Cross Encoder 重排接口（索引完成，实际模型默认关闭）。
+- [x] 建立 110 条覆盖 PDF、表格、解析策略、否定/无答案问题的离线评测集；真实扫描 PDF 与人工标注仍需扩充。
+- [x] 增加等价离线评测：Recall@K、MRR、Faithfulness proxy、Citation Precision/Recall、P95 延迟和费用估算。
+- [x] 增加学习目标完成率、复习间隔效果、错题转卡 proxy 和待确认薄弱点指标。
 
 ### 长期
 

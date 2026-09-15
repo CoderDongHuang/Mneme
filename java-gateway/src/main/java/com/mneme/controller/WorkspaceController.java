@@ -50,6 +50,7 @@ public class WorkspaceController {
     @PostMapping("/tasks/{taskId}/retry") public Result<Map<String, Object>> retry(@RequestAttribute("userId") Long userId, @PathVariable String taskId) { return Result.success(workspace.retryTask(userId, taskId)); }
     @GetMapping("/retrieval/debug") public Result<Map<String, Object>> debug(@RequestAttribute("userId") Long userId, @RequestParam Long kbId, @RequestParam String query, @RequestParam(defaultValue="6") int topK) { return Result.success(workspace.debugRetrieval(userId, kbId, query, topK)); }
     @GetMapping("/plans") public Result<List<Map<String, Object>>> plans(@RequestAttribute("userId") Long userId) { return Result.success(workspace.plans(userId)); }
+    @GetMapping("/metrics") public Result<Map<String, Object>> metrics(@RequestAttribute("userId") Long userId) { return Result.success(workspace.metrics(userId)); }
     @PostMapping("/plans") public Result<Map<String, Object>> plan(@RequestAttribute("userId") Long userId, @RequestBody Map<String, Object> body) { return Result.success(workspace.createPlan(userId, body)); }
     @GetMapping("/reviews") public Result<List<Map<String, Object>>> reviews(@RequestAttribute("userId") Long userId) { return Result.success(workspace.reviews(userId)); }
     @PostMapping("/reviews/{id}") public Result<Map<String, Object>> review(@RequestAttribute("userId") Long userId, @PathVariable Long id, @RequestBody Map<String, Object> body) { return Result.success(workspace.review(userId, id, Integer.parseInt(String.valueOf(body.getOrDefault("rating", 3))))); }

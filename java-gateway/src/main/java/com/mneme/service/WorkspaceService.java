@@ -144,6 +144,49 @@ public class WorkspaceService {
         return rows("SELECT * FROM learning_plan WHERE user_id=? ORDER BY status,created_at DESC", userId);
     }
 
+    public Map<String, Object> metrics(Long userId) {
+        long planTotal = count("SELECT COUNT(*) FROM learning_plan WHERE user_id=?", userId);
+        long planCompleted = count(
+            "SELECT COUNT(*) FROM learning_plan WHERE user_id=? AND status='completed'", userId);
+        long reviewTotal = count("SELECT COUNT(*) FROM review_card WHERE user_id=?", userId);
+        long reviewCompleted = count(
+            "SELECT COUNT(*) FROM review_card WHERE user_id=? AND review_count>0", userId);
+        long reviewDue = count(
+            "SELECT COUNT(*) FROM review_card WHERE user_id=? AND due_at<=NOW()", userId);
+        long quizTotal = count("SELECT COUNT(*) FROM knowledge_quiz WHERE user_id=?", userId);
+        long attemptTotal = count("SELECT COUNT(*) FROM quiz_attempt WHERE user_id=?", userId);
+        long mistakeCards = count(
+            "SELECT COUNT(*) FROM review_card WHERE user_id=? AND origin='quiz_mistake'", userId);
+        long pendingWeakPoints = count(
+            "SELECT COUNT(*) FROM pending_memory WHERE user_id=? AND category='weak_point' AND status='pending'",
+            userId);
+        Map<String, Object> planMetrics = new LinkedHashMap<>();
+        planMetrics.put("total", planTotal);
+        planMetrics.put("completed", planCompleted);
+        planMetrics.put("completion_rate", ratio(planCompleted, planTotal));
+        Map<String, Object> reviewMetrics = new LinkedHashMap<>();
+        reviewMetrics.put("total", reviewTotal);
+        reviewMetrics.put("reviewed", reviewCompleted);
+        reviewMetrics.put("due", reviewDue);
+        reviewMetrics.put("average_interval_days", average(
+            "SELECT AVG(interval_days) FROM review_card WHERE user_id=?", userId));
+        Map<String, Object> quizMetrics = new LinkedHashMap<>();
+        quizMetrics.put("total", quizTotal);
+        quizMetrics.put("attempts", attemptTotal);
+        quizMetrics.put("average_score", average(
+            "SELECT AVG(score) FROM quiz_attempt WHERE user_id=?", userId));
+        Map<String, Object> mistakeMetrics = new LinkedHashMap<>();
+        mistakeMetrics.put("cards_created", mistakeCards);
+        mistakeMetrics.put("conversion_rate_proxy", ratio(mistakeCards, attemptTotal));
+        mistakeMetrics.put("pending_weak_points", pendingWeakPoints);
+        return Map.of(
+            "plans", planMetrics,
+            "reviews", reviewMetrics,
+            "quizzes", quizMetrics,
+            "mistakes", mistakeMetrics
+        );
+    }
+
     @Transactional
     public Map<String, Object> createPlan(Long userId, Map<String, Object> body) {
         String title = required(body, "title");
@@ -155,8 +198,9 @@ public class WorkspaceService {
         Long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         String[] prompts = {"用自己的话说明：" + goal, "列出核心概念：" + goal, "举一个实际例子：" + goal};
         for (int index = 0; index < prompts.length; index++) {
-            jdbc.update("INSERT INTO review_card(user_id,plan_id,prompt,answer,due_at) VALUES(?,?,?,?,?)",
-                userId, id, prompts[index], "完成学习后补充你的答案", Timestamp.valueOf(LocalDateTime.now().plusDays(index)));
+            jdbc.update("INSERT INTO review_card(user_id,plan_id,prompt,answer,due_at,origin) VALUES(?,?,?,?,?,?)",
+                userId, id, prompts[index], "完成学习后补充你的答案",
+                Timestamp.valueOf(LocalDateTime.now().plusDays(index)), "plan");
         }
         return one("SELECT * FROM learning_plan WHERE id=? AND user_id=?", id, userId);
     }
@@ -529,8 +573,8 @@ public class WorkspaceService {
     }
 
     private void createMistakeReview(Long userId, String prompt, String answer, String topic) {
-        jdbc.update("INSERT INTO review_card(user_id,prompt,answer,due_at) VALUES(?,?,?,NOW())",
-            userId, prompt, answer);
+        jdbc.update("INSERT INTO review_card(user_id,prompt,answer,due_at,origin) VALUES(?,?,?,NOW(),?)",
+            userId, prompt, answer, "quiz_mistake");
         jdbc.update("""
             INSERT INTO pending_memory(memory_id,user_id,category,content,topic,confidence,status)
             VALUES(?,?, 'weak_point', ?, ?, 0.8500, 'pending')
@@ -592,11 +636,11 @@ public class WorkspaceService {
         for (Map<String, Object> item : source) {
             jdbc.update("""
                 INSERT INTO review_card(user_id,plan_id,prompt,answer,interval_days,ease_factor,due_at,last_rating,review_count)
-                VALUES(?,?,?,?,?,?,COALESCE(?,NOW()),?,?)
+                VALUES(?,?,?,?,?,?,COALESCE(?,NOW()),?,?,?)
                 """, userId, nullableMappedId(item.get("plan_id"), plans), limited(item, "prompt", "导入复习题", IMPORT_MAX_TEXT_LENGTH),
                 limited(item, "answer", "", IMPORT_MAX_TEXT_LENGTH), positiveInteger(item.get("interval_days"), 1),
                 decimal(item.get("ease_factor"), 2.5), parseTimestamp(item.get("due_at")), nullableInteger(item.get("last_rating")),
-                positiveInteger(item.get("review_count"), 0));
+                positiveInteger(item.get("review_count"), 0), "imported");
         }
         counts.put("reviews", source.size());
     }
@@ -677,6 +721,17 @@ public class WorkspaceService {
         return value;
     }
     private List<Map<String, Object>> rows(String sql, Object... args) { return jdbc.queryForList(sql, args); }
+    private long count(String sql, Object... args) {
+        Long value = jdbc.queryForObject(sql, Long.class, args);
+        return value == null ? 0 : value;
+    }
+    private double average(String sql, Object... args) {
+        Double value = jdbc.queryForObject(sql, Double.class, args);
+        return value == null ? 0.0 : Math.round(value * 100.0) / 100.0;
+    }
+    private double ratio(long numerator, long denominator) {
+        return denominator == 0 ? 0.0 : Math.round((double) numerator / denominator * 10000.0) / 10000.0;
+    }
     private String jsonText(Object value) {
         return value instanceof byte[] bytes ? new String(bytes, StandardCharsets.UTF_8) : String.valueOf(value);
     }

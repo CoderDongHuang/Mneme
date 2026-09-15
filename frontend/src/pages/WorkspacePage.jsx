@@ -69,6 +69,7 @@ export default function WorkspacePage() {
   const [preview, setPreview] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [metrics, setMetrics] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [quizzes, setQuizzes] = useState([]);
   const [quiz, setQuiz] = useState(null);
@@ -102,6 +103,7 @@ export default function WorkspacePage() {
       const [
         kbs,
         taskItems,
+        metricData,
         planItems,
         reviewItems,
         quizItems,
@@ -111,6 +113,7 @@ export default function WorkspacePage() {
       ] = await Promise.all([
         endpoints.knowledgeBases(),
         endpoints.tasks(),
+        endpoints.metrics(),
         endpoints.plans(),
         endpoints.reviews(),
         endpoints.quizzes(),
@@ -120,6 +123,7 @@ export default function WorkspacePage() {
       ]);
       setKnowledgeBases(kbs || []);
       setTasks(taskItems || []);
+      setMetrics(metricData || null);
       setPlans(planItems || []);
       setReviews(reviewItems || []);
       setQuizzes(quizItems || []);
@@ -229,6 +233,35 @@ export default function WorkspacePage() {
           </button>
         ))}
       </nav>
+      {metrics && (
+        <section className="workspace-metrics" aria-label="学习指标">
+          <article>
+            <span>计划完成率</span>
+            <strong>{Math.round(Number(metrics.plans?.completion_rate || 0) * 100)}%</strong>
+            <small>{metrics.plans?.completed || 0}/{metrics.plans?.total || 0} 个计划</small>
+          </article>
+          <article>
+            <span>待复习</span>
+            <strong>{metrics.reviews?.due || 0}</strong>
+            <small>已复习 {metrics.reviews?.reviewed || 0}/{metrics.reviews?.total || 0}</small>
+          </article>
+          <article>
+            <span>平均复习间隔</span>
+            <strong>{Number(metrics.reviews?.average_interval_days || 0).toFixed(1)} 天</strong>
+            <small>按复习卡统计</small>
+          </article>
+          <article>
+            <span>测验平均分</span>
+            <strong>{Number(metrics.quizzes?.average_score || 0).toFixed(0)} 分</strong>
+            <small>{metrics.quizzes?.attempts || 0} 次作答</small>
+          </article>
+          <article>
+            <span>错题转卡</span>
+            <strong>{metrics.mistakes?.cards_created || 0}</strong>
+            <small>待确认薄弱点 {metrics.mistakes?.pending_weak_points || 0}</small>
+          </article>
+        </section>
+      )}
       {error && <div className="page-error">{error}</div>}
       {notice && <div className="page-notice">{notice}</div>}
       {loading ? (

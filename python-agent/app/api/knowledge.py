@@ -248,4 +248,7 @@ async def delete_user_collections(user_id: str) -> dict:
     for collection in vector_store.list_user_collections(user_id):
         deleted += collection.count()
         vector_store.client.delete_collection(collection.name)
+    from app.knowledge.lexical_index import lexical_index
+
+    lexical_index.delete_user(user_id)
     return {"status": "deleted", "user_id": user_id, "chunks": deleted}

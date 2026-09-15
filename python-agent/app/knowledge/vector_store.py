@@ -10,6 +10,7 @@ from chromadb.config import Settings as ChromaSettings
 
 from app.core.config import settings
 from app.core.logging import setup_logger
+from app.knowledge.lexical_index import lexical_index
 from app.utils.embedding import embeddings
 
 
@@ -66,18 +67,21 @@ class VectorStore:
         try:
             self.client.delete_collection(name=name)
             logger.info("知识库向量集合已删除: %s", name)
-            return True
         except Exception:
             return False
+        lexical_index.delete_collection(user_id, kb_id)
+        return True
 
     def delete_document(self, user_id: str, kb_id: str, document_id: str) -> int:
         collection = self.get_collection(user_id, kb_id)
         if collection is None:
+            lexical_index.delete_document(user_id, kb_id, document_id)
             return 0
         result = collection.get(where={"document_id": document_id})
         ids = result.get("ids", [])
         if ids:
             collection.delete(ids=ids)
+        lexical_index.delete_document(user_id, kb_id, document_id)
         return len(ids)
 
     def list_user_collections(self, user_id: str) -> list[Any]:

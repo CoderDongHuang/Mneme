@@ -10,6 +10,7 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.core.logging import setup_logger
 from app.knowledge.chunking import chunk_documents
+from app.knowledge.lexical_index import lexical_index
 from app.knowledge.vector_store import vector_store
 
 
@@ -386,11 +387,22 @@ def ingest_document(
             "chunk_type": str(chunk.metadata.get("chunk_type", "text")),
             "parser": str(chunk.metadata.get("parser", "")),
         }
+        if chunk.metadata.get("ocr_confidence") is not None:
+            metadata["ocr_confidence"] = float(chunk.metadata["ocr_confidence"])
         metadatas.append(metadata)
     collection.upsert(
         ids=ids,
         documents=[chunk.page_content for chunk in valid_chunks],
         metadatas=metadatas,
+    )
+    lexical_index.replace_document(
+        user_id,
+        kb_id,
+        document_id,
+        [
+            {"id": chunk_id, "content": chunk.page_content, "metadata": metadata}
+            for chunk_id, metadata, chunk in zip(ids, metadatas, valid_chunks)
+        ],
     )
     logger.info(
         "文档入库完成: user=%s kb=%s document=%s source=%s chunks=%s",

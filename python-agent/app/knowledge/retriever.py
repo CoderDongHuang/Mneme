@@ -4,6 +4,8 @@ from collections import Counter
 
 from app.core.config import settings
 from app.core.logging import setup_logger
+from app.knowledge.lexical_index import lexical_index
+from app.knowledge.reranker import rerank
 from app.knowledge.vector_store import vector_store
 
 logger = setup_logger("retriever")
@@ -84,6 +86,12 @@ def _bm25_candidates(collection, query: str, limit: int) -> list[dict]:
     return candidates[:limit]
 
 
+def _indexed_candidates(
+    user_id: str, kb_id: str, query: str, limit: int
+) -> list[dict]:
+    return lexical_index.search(user_id, kb_id, query, limit)
+
+
 def _semantic_candidates(collection, queries: list[str], limit: int) -> list[dict]:
     candidates = []
     for query_index, query in enumerate(queries):
@@ -139,7 +147,9 @@ def retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> 
             "语义检索失败，使用 BM25 降级: user=%s kb=%s error=%s",
             user_id, kb_id, error,
         )
-    lexical = _bm25_candidates(collection, query, pool_size)
+    lexical = _indexed_candidates(user_id, kb_id, query, pool_size)
+    if not lexical:
+        lexical = _bm25_candidates(collection, query, pool_size)
     if lexical:
         ranked_lists.append(lexical)
     merged: dict[str, dict] = {}
@@ -152,4 +162,5 @@ def retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> 
             if "lexical_score" in item:
                 current["lexical_score"] = item["lexical_score"]
     ranked = sorted(merged.values(), key=lambda item: item["score"], reverse=True)
-    return _deduplicate(ranked, limit)
+    candidates = _deduplicate(ranked, pool_size)
+    return rerank(query, candidates, limit)

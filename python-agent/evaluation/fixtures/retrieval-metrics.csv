@@ -1,0 +1,6 @@
+metric,definition,target
+Recall@5,相关证据出现在前五个片段的比例,0.85
+MRR,第一个相关片段排名的倒数平均值,0.70
+Citation Precision,引用片段中相关证据的比例,0.80
+Citation Recall,带有相关证据的答案比例,0.85
+P95 Latency,百分之九十五请求的检索延迟,250ms
