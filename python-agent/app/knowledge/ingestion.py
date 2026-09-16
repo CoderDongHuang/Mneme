@@ -385,6 +385,20 @@ def ingest_document(
             "page": int(chunk.metadata.get("page", 0) or 0),
             "section": str(chunk.metadata.get("section", "")),
             "chunk_type": str(chunk.metadata.get("chunk_type", "text")),
+            "evidence_type": str(
+                chunk.metadata.get("evidence_type")
+                or (
+                    "visual"
+                    if chunk.metadata.get("chunk_type") in {"image_vision", "table"}
+                    else "text"
+                )
+            ),
+            "visual_page": int(
+                chunk.metadata.get("visual_page")
+                or chunk.metadata.get("page", 0)
+                or 0
+            ),
+            "visual_region": str(chunk.metadata.get("visual_region", "")),
             "parser": str(chunk.metadata.get("parser", "")),
         }
         if chunk.metadata.get("ocr_confidence") is not None:

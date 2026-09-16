@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from app.agents.nodes import memory_write_node, run_pre_llm_nodes
+from app.agents.trace_store import agent_trace_store
 from app.memory.reflection_scheduler import reflection_scheduler
 from app.memory.session_store import session_store
 from app.memory.short_term_memory import short_term_memory
@@ -22,20 +23,31 @@ def prepare_conversation(request: ChatRequest) -> dict:
         request.session_id,
         title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
     )
-    return run_pre_llm_nodes(
-        {
-            "user_id": request.user_id,
-            "session_id": request.session_id,
-            "message": request.message,
-            "knowledge_base_ids": request.knowledge_base_ids,
-        }
-    )
+    state = {
+        "user_id": request.user_id,
+        "session_id": request.session_id,
+        "message": request.message,
+        "knowledge_base_ids": request.knowledge_base_ids,
+    }
+    with agent_trace_store.span(
+        request.user_id,
+        request.session_id,
+        "conversation.prepare",
+        {"message_chars": len(request.message), "kb_count": len(request.knowledge_base_ids)},
+    ):
+        return run_pre_llm_nodes(state)
 
 
 def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dict:
     answer = answer.strip()
     state["answer"] = answer
-    memory_result = memory_write_node(state)
+    with agent_trace_store.span(
+        request.user_id,
+        request.session_id,
+        "memory_write",
+        {"answer_chars": len(answer)},
+    ):
+        memory_result = memory_write_node(state)
     assistant_message = Message(
         role="assistant",
         content=answer,
@@ -51,9 +63,20 @@ def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dic
 
     session_summary = None
     if short_term_memory.should_summarize(request.session_id):
-        short_term_memory.summarize(request.session_id)
+        with agent_trace_store.span(request.user_id, request.session_id, "summarize"):
+            short_term_memory.summarize(request.session_id)
         for message in short_term_memory.get_history(request.session_id):
             if message.role == "system" and message.content.startswith("[历史摘要]"):
                 session_summary = message.content
                 break
+    agent_trace_store.record(
+        request.user_id,
+        request.session_id,
+        "conversation.complete",
+        "ok",
+        {
+            "pending_memories": len(memory_result.get("pending_memories", [])),
+            "summary_created": bool(session_summary),
+        },
+    )
     return {**memory_result, "session_summary": session_summary}

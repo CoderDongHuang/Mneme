@@ -57,6 +57,7 @@ class WorkspaceArchiveSecurityTest {
 
         assertThat(manifest.path("documents")).hasSize(1);
         assertThat(manifest.path("documents").get(0).has("file_path")).isFalse();
+        assertThat(manifest.path("documents").get(0).path("sha256").asText()).hasSize(64);
         assertThat(readEntryBytes(archive, "files/9/resume.pdf"))
             .isEqualTo("%PDF-1.7 test".getBytes(StandardCharsets.UTF_8));
     }

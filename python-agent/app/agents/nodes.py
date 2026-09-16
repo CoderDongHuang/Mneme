@@ -11,6 +11,7 @@ from app.agents.prompts import (
     REVIEW_PROMPT,
     SUGGEST_PROMPT,
 )
+from app.agents.trace_store import agent_trace_store
 from app.core.config import settings
 from app.core.logging import setup_logger
 from app.knowledge.retriever import retrieve
@@ -222,16 +223,51 @@ def memory_write_node(state: dict) -> dict:
 
 
 def run_pre_llm_nodes(state: dict) -> dict:
-    state.update(intent_classification_node(state))
+    user_id = state["user_id"]
+    session_id = state["session_id"]
+    with agent_trace_store.span(
+        user_id,
+        session_id,
+        "intent_classification",
+        {"has_kb": bool(state.get("knowledge_base_ids"))},
+    ):
+        state.update(intent_classification_node(state))
     if state["intent"] == "qa":
-        state.update(knowledge_retrieval_node(state))
-    elif state["intent"] == "review":
-        state.update(memory_retrieval_node(state))
-    elif state["intent"] == "suggest":
-        state.update(weak_point_retrieval_node(state))
-        state.update(suggestion_generation_node(state))
-    else:
-        state["memory_context"] = _memory_context(
-            state["user_id"], state["session_id"], include_history=True
+        with agent_trace_store.span(
+            user_id,
+            session_id,
+            "knowledge_retrieval",
+            {"kb_count": len(state.get("knowledge_base_ids") or [])},
+        ):
+            state.update(knowledge_retrieval_node(state))
+        agent_trace_store.record(
+            user_id,
+            session_id,
+            "knowledge_retrieval.result",
+            "ok",
+            {
+                "chunk_count": len(state.get("retrieved_chunks", [])),
+                "kb_ids": state.get("knowledge_base_ids", []),
+            },
         )
+    elif state["intent"] == "review":
+        with agent_trace_store.span(user_id, session_id, "memory_retrieval"):
+            state.update(memory_retrieval_node(state))
+    elif state["intent"] == "suggest":
+        with agent_trace_store.span(user_id, session_id, "weak_point_retrieval"):
+            state.update(weak_point_retrieval_node(state))
+        with agent_trace_store.span(user_id, session_id, "suggestion_generation"):
+            state.update(suggestion_generation_node(state))
+    else:
+        with agent_trace_store.span(user_id, session_id, "memory_context"):
+            state["memory_context"] = _memory_context(
+                state["user_id"], state["session_id"], include_history=True
+            )
+    agent_trace_store.record(
+        user_id,
+        session_id,
+        "pre_llm.complete",
+        "ok",
+        {"intent": state.get("intent"), "confidence": state.get("confidence")},
+    )
     return state

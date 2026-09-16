@@ -13,6 +13,7 @@ import com.mneme.mapper.KnowledgeDocumentMapper;
 import com.mneme.mapper.ProcessingTaskMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ProcessingTaskService {
@@ -37,6 +39,9 @@ public class ProcessingTaskService {
     private final RestTemplate restTemplate;
     private final MeterRegistry meterRegistry;
     private final NotificationService notificationService;
+
+    @Autowired(required = false)
+    private OperationLogService operationLog;
 
     @Value("${mneme.python-agent-url}")
     private String pythonAgentUrl;
@@ -83,12 +88,14 @@ public class ProcessingTaskService {
     }
 
     private boolean claim(ProcessingTask task) {
-        return taskMapper.update(null, new LambdaUpdateWrapper<ProcessingTask>()
+        boolean claimed = taskMapper.update(null, new LambdaUpdateWrapper<ProcessingTask>()
             .eq(ProcessingTask::getId, task.getId())
             .in(ProcessingTask::getStatus, "pending", "retry")
             .set(ProcessingTask::getStatus, "processing")
             .set(ProcessingTask::getLockedAt, LocalDateTime.now())
             .set(ProcessingTask::getLockedBy, hostName())) == 1;
+        if (claimed) record(task, "claim", "processing", Map.of("locked_by", hostName()), null);
+        return claimed;
     }
 
     private void execute(ProcessingTask task) {
@@ -103,6 +110,7 @@ public class ProcessingTaskService {
                 throw new IllegalArgumentException("未知任务类型: " + task.getTaskType());
             }
             complete(task);
+            record(task, "complete", "completed", Map.of(), null);
             meterRegistry.counter("mneme.processing.tasks", "type", task.getTaskType(), "outcome", "completed").increment();
         } catch (Exception error) {
             retryOrFail(task, error);
@@ -208,6 +216,7 @@ public class ProcessingTaskService {
         task.setErrorMessage(error.getMessage());
         taskMapper.updateById(task);
         notificationService.publish(task);
+        record(task, "retry_or_fail", task.getStatus(), Map.of("attempts", attempts), error);
         meterRegistry.counter(
             "mneme.processing.tasks", "type", task.getTaskType(), "outcome", exhausted ? "failed" : "retry"
         ).increment();
@@ -242,5 +251,26 @@ public class ProcessingTaskService {
 
     private String hostName() {
         return System.getenv().getOrDefault("HOSTNAME", "local-worker");
+    }
+
+    private void record(
+        ProcessingTask task,
+        String step,
+        String status,
+        Map<String, ?> payload,
+        Exception error
+    ) {
+        if (operationLog != null) {
+            operationLog.record(
+                task.getTaskId(),
+                task.getUserId(),
+                task.getTaskType(),
+                String.valueOf(task.getAggregateId()),
+                step,
+                status,
+                payload,
+                error
+            );
+        }
     }
 }

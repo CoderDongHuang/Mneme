@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   Download,
   GitBranch,
+  History,
   Play,
   RefreshCw,
   Search,
@@ -76,6 +77,7 @@ export default function WorkspacePage() {
   const [answers, setAnswers] = useState([]);
   const [quizResult, setQuizResult] = useState(null);
   const [memories, setMemories] = useState([]);
+  const [memoryVersions, setMemoryVersions] = useState({});
   const [sessions, setSessions] = useState([]);
   const [branches, setBranches] = useState([]);
   const [comparison, setComparison] = useState(null);
@@ -170,6 +172,23 @@ export default function WorkspacePage() {
   async function changeKb(value) {
     setKbId(value);
     setDocuments(value ? await endpoints.documents(value) : []);
+  }
+  async function loadMemoryVersions(memoryId) {
+    await run(async () => {
+      const data = await endpoints.memoryVersions(memoryId);
+      setMemoryVersions((current) => ({
+        ...current,
+        [memoryId]: data?.versions || data?.data?.versions || [],
+      }));
+    });
+  }
+  async function restoreMemory(memoryId, version) {
+    await run(async () => {
+      const data = await endpoints.restoreMemory(memoryId, version);
+      setMemories(data?.memories || data?.data?.memories || []);
+      setMemoryVersions((current) => ({ ...current, [memoryId]: [] }));
+      setNotice("记忆已恢复到所选版本。");
+    });
   }
   async function createPlan(event) {
     event.preventDefault();
@@ -623,6 +642,12 @@ export default function WorkspacePage() {
                     <small>{memory.topic || "未分类"}</small>
                   </div>
                   <button
+                    onClick={() => loadMemoryVersions(memory.id)}
+                    title="版本历史"
+                  >
+                    <History size={17} />
+                  </button>
+                  <button
                     onClick={() =>
                       run(async () => {
                         const data = await endpoints.updateManagedMemory(
@@ -657,6 +682,22 @@ export default function WorkspacePage() {
                   >
                     <Trash2 size={17} />
                   </button>
+                  {memoryVersions[memory.id]?.length ? (
+                    <div className="memory-versions">
+                      {memoryVersions[memory.id].map((version) => (
+                        <button
+                          key={version.version}
+                          onClick={() =>
+                            restoreMemory(memory.id, version.version)
+                          }
+                        >
+                          <span>v{version.version}</span>
+                          <strong>{version.action}</strong>
+                          <small>{version.content}</small>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </article>
               ))}
             </section>

@@ -11,7 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from fastapi.responses import Response
 
-from app.api import chat, chat_stream, health, knowledge, memory
+from app.api import agent, chat, chat_stream, health, knowledge, memory
 from app.core.config import settings
 from app.core.logging import setup_logger, trace_id_var
 from app.memory.reflection_scheduler import reflection_scheduler
@@ -164,6 +164,7 @@ app.include_router(chat.router)
 app.include_router(chat_stream.router)
 app.include_router(knowledge.router)
 app.include_router(memory.router)
+app.include_router(agent.router)
 app.include_router(health.router)
 
 

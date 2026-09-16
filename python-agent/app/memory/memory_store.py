@@ -22,6 +22,7 @@ from chromadb.config import Settings as ChromaSettings
 from app.core.config import settings
 from app.utils.embedding import embeddings
 from app.core.logging import setup_logger
+from app.memory.version_store import memory_version_store
 
 logger = setup_logger("memory_store")
 
@@ -105,9 +106,10 @@ class MemoryVectorStore:
 
     def update_importance(self, mem_id: str, new_importance: float):
         """更新记忆的重要性分数"""
-        current = self._collection.get(ids=[mem_id], include=["metadatas"])
+        current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
         if not current.get("ids"):
             return
+        memory_version_store.snapshot(self._memory_from_result(mem_id, current), "importance")
         metadata = dict((current.get("metadatas") or [{}])[0] or {})
         metadata["importance"] = max(0.0, min(float(new_importance), 1.0))
         metadata["updated_at"] = datetime.now().isoformat()
@@ -115,9 +117,10 @@ class MemoryVectorStore:
 
     def update_memory_topic(self, mem_id: str, new_topic: str):
         """更新记忆的 topic 字段"""
-        current = self._collection.get(ids=[mem_id], include=["metadatas"])
+        current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
         if not current.get("ids"):
             return
+        memory_version_store.snapshot(self._memory_from_result(mem_id, current), "topic")
         metadata = dict((current.get("metadatas") or [{}])[0] or {})
         metadata["topic"] = new_topic
         metadata["updated_at"] = datetime.now().isoformat()
@@ -130,6 +133,7 @@ class MemoryVectorStore:
         current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
         if not current.get("ids"):
             return False
+        memory_version_store.snapshot(self._memory_from_result(mem_id, current), "update")
         metadata = dict((current.get("metadatas") or [{}])[0] or {})
         if topic is not None:
             metadata["topic"] = topic
@@ -143,14 +147,28 @@ class MemoryVectorStore:
         return True
 
     def set_frozen(self, mem_id: str, frozen: bool):
-        current = self._collection.get(ids=[mem_id], include=["metadatas"])
+        current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
         if not current.get("ids"):
             return False
+        memory_version_store.snapshot(
+            self._memory_from_result(mem_id, current),
+            "freeze" if frozen else "unfreeze",
+        )
         metadata = dict((current.get("metadatas") or [{}])[0] or {})
         metadata["frozen"] = bool(frozen)
         metadata["updated_at"] = datetime.now().isoformat()
         self._collection.update(ids=[mem_id], metadatas=[metadata])
         return True
+
+    def restore_memory(self, memory_id: str, content: str, metadata: dict):
+        metadata = dict(metadata)
+        metadata["updated_at"] = datetime.now().isoformat()
+        self._collection.upsert(
+            ids=[memory_id],
+            documents=[content],
+            metadatas=[metadata],
+        )
+        return self.get_memory(memory_id)
 
     def get_memory(self, mem_id: str):
         result = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
@@ -185,13 +203,24 @@ class MemoryVectorStore:
 
     def delete_memory(self, mem_id: str):
         """删除单条记忆"""
+        memory_version_store.snapshot(self.get_memory(mem_id), "delete")
         self._collection.delete(ids=[mem_id])
         logger.debug(f"记忆已删除: {mem_id}")
 
     def delete_user_memories(self, user_id: str):
         """删除某用户所有长期记忆"""
+        for memory in self.list_all(user_id):
+            memory_version_store.snapshot(memory, "delete_user")
         self._collection.delete(where={"user_id": user_id})
         logger.info(f"用户 {user_id} 所有记忆已删除")
+
+    def _memory_from_result(self, mem_id: str, result: dict):
+        metadata = dict((result.get("metadatas") or [{}])[0] or {})
+        return {
+            "id": mem_id,
+            "content": (result.get("documents") or [""])[0],
+            **metadata,
+        }
 
     # ── 读操作 ──────────────────────────────────────────────
 

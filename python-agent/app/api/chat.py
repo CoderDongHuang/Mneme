@@ -13,6 +13,19 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = setup_logger("chat_api")
 
 
+def _visual_region(metadata: dict) -> list[float] | None:
+    value = metadata.get("visual_region")
+    if isinstance(value, list):
+        return [float(item) for item in value[:4]]
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = [float(item.strip()) for item in value.split(",")]
+        except ValueError:
+            return None
+        return parsed[:4]
+    return None
+
+
 @router.get(
     "/sessions",
     summary="历史会话列表",
@@ -90,6 +103,10 @@ async def chat(request: ChatRequest):
                 section=metadata.get("section", ""),
                 score=chunk.get("score", 0.0),
                 chunk_type=metadata.get("chunk_type", "text"),
+                evidence_type=metadata.get("evidence_type", "text"),
+                visual_page=metadata.get("visual_page") or metadata.get("page") or None,
+                visual_region=_visual_region(metadata),
+                ocr_confidence=metadata.get("ocr_confidence"),
             )
         )
 

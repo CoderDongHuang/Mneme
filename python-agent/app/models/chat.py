@@ -34,6 +34,10 @@ class Source(BaseModel):
     section: str = ""
     score: float = 0.0
     chunk_type: str = "text"
+    evidence_type: str = "text"
+    visual_page: int | None = None
+    visual_region: list[float] | None = None
+    ocr_confidence: float | None = None
 
 
 class PendingMemory(BaseModel):

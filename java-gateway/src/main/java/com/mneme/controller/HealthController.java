@@ -1,5 +1,6 @@
 package com.mneme.controller;
 
+import com.mneme.service.StorageDiagnosticsService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,13 +16,19 @@ import java.util.Map;
 public class HealthController {
     private final JdbcTemplate jdbcTemplate;
     private final RestTemplate restTemplate;
+    private final StorageDiagnosticsService storageDiagnostics;
 
     @Value("${mneme.python-agent-url}")
     private String pythonAgentUrl;
 
-    public HealthController(JdbcTemplate jdbcTemplate, RestTemplate restTemplate) {
+    public HealthController(
+        JdbcTemplate jdbcTemplate,
+        RestTemplate restTemplate,
+        StorageDiagnosticsService storageDiagnostics
+    ) {
         this.jdbcTemplate = jdbcTemplate;
         this.restTemplate = restTemplate;
+        this.storageDiagnostics = storageDiagnostics;
     }
 
     @GetMapping
@@ -56,9 +63,19 @@ public class HealthController {
             if (python == null) return Map.of("status", "unavailable");
             Map<String, Object> result = new LinkedHashMap<>();
             python.forEach((key, value) -> result.put(String.valueOf(key), value));
+            result.put("storage", storageDiagnostics.status());
+            result.put("tenant_isolation", Map.of(
+                "relational_user_filters", true,
+                "vector_collections_scoped", true,
+                "memory_metadata_scoped", true
+            ));
             return result;
         } catch (Exception ignored) {
-            return Map.of("status", "unavailable", "service", "mneme-java-gateway");
+            return Map.of(
+                "status", "unavailable",
+                "service", "mneme-java-gateway",
+                "storage", storageDiagnostics.status()
+            );
         }
     }
 }

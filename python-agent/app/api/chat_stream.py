@@ -31,6 +31,10 @@ def _source_payload(chunks: list[dict]) -> list[dict]:
                 "page": metadata.get("page") or None,
                 "section": metadata.get("section", ""),
                 "chunk_type": metadata.get("chunk_type", "text"),
+                "evidence_type": metadata.get("evidence_type", "text"),
+                "visual_page": metadata.get("visual_page") or metadata.get("page") or None,
+                "visual_region": metadata.get("visual_region"),
+                "ocr_confidence": metadata.get("ocr_confidence"),
                 "chunk_content": chunk.get("content", ""),
                 "score": chunk.get("score", 0.0),
             }

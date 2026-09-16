@@ -9,6 +9,7 @@ from app.models.memory import (
 from app.models.chat import MemoryConfirmRequest
 from app.memory.long_term_memory import long_term_memory
 from app.memory.memory_store import memory_store
+from app.memory.version_store import memory_version_store
 from app.core.logging import setup_logger
 
 router = APIRouter(prefix="/api/v1/memory", tags=["memory"])
@@ -20,6 +21,11 @@ class MemoryAdminUpdate(BaseModel):
     content: str | None = None
     topic: str | None = None
     frozen: bool | None = None
+
+
+class MemoryRestoreRequest(BaseModel):
+    user_id: str
+    version: int | None = None
 
 
 def _owned_memory(memory_id: str, user_id: str):
@@ -49,6 +55,35 @@ async def delete_memory(memory_id: str, user_id: str):
     _owned_memory(memory_id, user_id)
     memory_store.delete_memory(memory_id)
     return {"status": "deleted", "id": memory_id}
+
+
+@router.get("/admin/{memory_id}/versions")
+async def list_memory_versions(memory_id: str, user_id: str):
+    current = memory_store.get_memory(memory_id)
+    if current and str(current.get("user_id")) != str(user_id):
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    versions = memory_version_store.list_versions(user_id, memory_id)
+    if not current and not versions:
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    return {"memory_id": memory_id, "versions": versions}
+
+
+@router.post("/admin/{memory_id}/restore")
+async def restore_memory(memory_id: str, request: MemoryRestoreRequest):
+    current = memory_store.get_memory(memory_id)
+    if current and str(current.get("user_id")) != str(request.user_id):
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    version = memory_version_store.get_version(
+        request.user_id, memory_id, request.version
+    )
+    if version is None:
+        raise HTTPException(status_code=404, detail="记忆版本不存在")
+    if current:
+        memory_version_store.snapshot(current, "restore")
+    restored = memory_store.restore_memory(
+        memory_id, version["content"], version["metadata"]
+    )
+    return {"status": "restored", "version": version["version"], "memory": restored}
 
 
 @router.delete("/admin/user/{user_id}")

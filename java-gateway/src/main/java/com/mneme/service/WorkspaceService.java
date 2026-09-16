@@ -2,6 +2,7 @@ package com.mneme.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.security.MessageDigest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -42,6 +44,9 @@ public class WorkspaceService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final RestTemplate restTemplate;
+
+    @Autowired(required = false)
+    private OperationLogService operationLog;
 
     @Value("${mneme.file-storage-path:./data/files}")
     private String fileStoragePath;
@@ -348,6 +353,8 @@ public class WorkspaceService {
     }
 
     public byte[] exportArchive(Long userId) throws Exception {
+        String operationId = operationId();
+        record(operationId, userId, "workspace_archive_export", null, "start", "started", Map.of(), null);
         Map<String, Object> workspace = exportData(userId);
         workspace.put("documents", rows("""
             SELECT d.id,d.kb_id,d.file_name,d.file_path,d.status,d.chunk_count,d.created_at,d.updated_at
@@ -363,6 +370,12 @@ public class WorkspaceService {
             manifest.put("chunk_count", document.get("chunk_count"));
             manifest.put("created_at", document.get("created_at"));
             manifest.put("updated_at", document.get("updated_at"));
+            try {
+                Path file = checkedStoragePath(String.valueOf(document.getOrDefault("file_path", "")), true);
+                manifest.put("sha256", sha256(file));
+            } catch (Exception ignored) {
+                manifest.put("sha256", "");
+            }
             return manifest;
         }).toList();
         workspace.put("documents", manifestDocuments);
@@ -407,10 +420,15 @@ public class WorkspaceService {
         if (archive.length > ARCHIVE_MAX_BYTES) {
             throw new IllegalArgumentException("归档包压缩后超过 50MB 限制");
         }
+        record(operationId, userId, "workspace_archive_export", null, "complete", "completed",
+            Map.of("bytes", archive.length, "documents", manifestDocuments.size()), null);
         return archive;
     }
 
     public Map<String, Object> importArchive(Long userId, byte[] archive) throws Exception {
+        String operationId = operationId();
+        record(operationId, userId, "workspace_archive_import", null, "start", "started",
+            Map.of("bytes", archive.length), null);
         if (archive.length == 0 || archive.length > ARCHIVE_MAX_BYTES) {
             throw new IllegalArgumentException("归档包大小必须在 1B 至 50MB 之间");
         }
@@ -446,8 +464,16 @@ public class WorkspaceService {
         if (workspaceJson == null) throw new IllegalArgumentException("归档包缺少 workspace.json");
         Map<String, Object> workspace = mapper.readValue(workspaceJson, new TypeReference<>() {});
         Map<String, Object> imported = importData(userId, workspace);
-        return Map.of("status", "imported", "workspace", imported, "original_files", "not_restored",
+        Map<String, Object> result = Map.of("status", "imported", "workspace", imported, "original_files", "not_restored",
             "message", "关系数据已导入；原始文件需重新上传以建立向量索引");
+        record(operationId, userId, "workspace_archive_import", null, "complete", "completed",
+            Map.of("entries", entries), null);
+        return result;
+    }
+
+    public List<Map<String, Object>> operationLogs(Long userId, int limit) {
+        if (operationLog == null) return List.of();
+        return operationLog.list(userId, limit);
     }
 
     private void validateArchiveEntry(ZipEntry entry) {
@@ -467,6 +493,22 @@ public class WorkspaceService {
         String clean = Path.of(fileName == null ? "file" : fileName).getFileName().toString();
         clean = clean.replaceAll("[^\\p{L}\\p{N}._-]", "_");
         return clean.isBlank() ? "file" : clean;
+    }
+
+    private String sha256(Path file) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (var input = Files.newInputStream(file)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        StringBuilder builder = new StringBuilder();
+        for (byte value : digest.digest()) {
+            builder.append(String.format("%02x", value));
+        }
+        return builder.toString();
     }
 
     @Transactional
@@ -731,6 +773,23 @@ public class WorkspaceService {
     }
     private double ratio(long numerator, long denominator) {
         return denominator == 0 ? 0.0 : Math.round((double) numerator / denominator * 10000.0) / 10000.0;
+    }
+    private String operationId() {
+        return operationLog == null ? UUID.randomUUID().toString() : operationLog.newOperationId();
+    }
+    private void record(
+        String operationId,
+        Long userId,
+        String type,
+        String aggregateId,
+        String step,
+        String status,
+        Map<String, ?> payload,
+        Exception error
+    ) {
+        if (operationLog != null) {
+            operationLog.record(operationId, userId, type, aggregateId, step, status, payload, error);
+        }
     }
     private String jsonText(Object value) {
         return value instanceof byte[] bytes ? new String(bytes, StandardCharsets.UTF_8) : String.valueOf(value);

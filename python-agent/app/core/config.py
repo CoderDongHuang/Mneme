@@ -55,8 +55,17 @@ class Settings:
     lexical_index_path: str = os.getenv(
         "LEXICAL_INDEX_PATH", str(PYTHON_AGENT_DIR / "data" / "lexical-index.sqlite3")
     )
+    memory_version_store_path: str = os.getenv(
+        "MEMORY_VERSION_STORE_PATH",
+        str(PYTHON_AGENT_DIR / "data" / "memory_versions.sqlite3"),
+    )
+    agent_trace_store_path: str = os.getenv(
+        "AGENT_TRACE_STORE_PATH", str(PYTHON_AGENT_DIR / "data" / "agent_traces.sqlite3")
+    )
     reranker_enabled: bool = _bool("RERANKER_ENABLED", False)
     reranker_model: str = os.getenv("RERANKER_MODEL", "").strip()
+    vector_shard_count: int = max(1, int(os.getenv("VECTOR_SHARD_COUNT", "1")))
+    vector_shard_id: int = max(0, int(os.getenv("VECTOR_SHARD_ID", "0")))
     distillation_idle_minutes: int = int(os.getenv("DISTILLATION_IDLE_MINUTES", "15"))
     memory_reflection_every_sessions: int = int(
         os.getenv("MEMORY_REFLECTION_EVERY_SESSIONS", "5")

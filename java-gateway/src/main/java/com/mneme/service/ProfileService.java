@@ -5,12 +5,12 @@ import com.mneme.dto.PasswordChangeRequest;
 import com.mneme.dto.ProfileUpdateRequest;
 import com.mneme.entity.User;
 import com.mneme.mapper.UserMapper;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,6 +29,9 @@ public class ProfileService {
     private final Path avatarRoot;
     private final String pythonAgentUrl;
     private final Path fileRoot;
+
+    @Autowired(required = false)
+    private OperationLogService operationLog;
 
     public ProfileService(
         UserMapper users,
@@ -113,13 +116,40 @@ public class ProfileService {
     public void deleteAccount(Long userId) throws IOException {
         User user = users.selectById(userId);
         if (user == null) return;
+        String operationId = operationLog == null ? UUID.randomUUID().toString() : operationLog.newOperationId();
         String id = userId.toString();
-        restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/user/" + id);
-        restTemplate.delete(pythonAgentUrl + "/api/v1/memory/admin/user/" + id);
-        restTemplate.delete(pythonAgentUrl + "/api/v1/admin/user/" + id);
-        deleteDirectory(fileRoot.resolve(id).normalize(), fileRoot);
-        if (user.getAvatarPath() != null) Files.deleteIfExists(Path.of(user.getAvatarPath()));
-        users.deleteById(user.getId());
+        record(operationId, userId, "account_delete", id, "start", "started", Map.of("username", user.getUsername()), null);
+        try {
+            restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/user/" + id);
+            record(operationId, userId, "account_delete", id, "knowledge_cleanup", "completed", Map.of(), null);
+            restTemplate.delete(pythonAgentUrl + "/api/v1/memory/admin/user/" + id);
+            record(operationId, userId, "account_delete", id, "memory_cleanup", "completed", Map.of(), null);
+            restTemplate.delete(pythonAgentUrl + "/api/v1/admin/user/" + id);
+            record(operationId, userId, "account_delete", id, "session_cleanup", "completed", Map.of(), null);
+            deleteDirectory(fileRoot.resolve(id).normalize(), fileRoot);
+            record(operationId, userId, "account_delete", id, "file_cleanup", "completed", Map.of(), null);
+            if (user.getAvatarPath() != null) Files.deleteIfExists(Path.of(user.getAvatarPath()));
+            users.deleteById(user.getId());
+            record(operationId, userId, "account_delete", id, "user_delete", "completed", Map.of(), null);
+        } catch (IOException | RuntimeException error) {
+            record(operationId, userId, "account_delete", id, "failed", "failed", Map.of(), error);
+            throw error;
+        }
+    }
+
+    private void record(
+        String operationId,
+        Long userId,
+        String type,
+        String aggregateId,
+        String step,
+        String status,
+        Map<String, ?> payload,
+        Exception error
+    ) {
+        if (operationLog != null) {
+            operationLog.record(operationId, userId, type, aggregateId, step, status, payload, error);
+        }
     }
 
     private void deleteDirectory(Path directory, Path root) throws IOException {

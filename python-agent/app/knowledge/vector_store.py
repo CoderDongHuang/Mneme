@@ -1,5 +1,6 @@
 import os
 import re
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,17 @@ def _safe(value: str) -> str:
 
 
 def _get_collection_name(user_id: str, kb_id: str) -> str:
-    return f"user_{_safe(user_id)}_kb_{_safe(kb_id)}"[:120]
+    shard = resolve_vector_shard(user_id, kb_id)
+    suffix = "" if settings.vector_shard_count == 1 else f"_s{shard}"
+    return f"user_{_safe(user_id)}_kb_{_safe(kb_id)}{suffix}"[:120]
+
+
+def resolve_vector_shard(user_id: str, kb_id: str) -> int:
+    shard_count = max(1, settings.vector_shard_count)
+    if shard_count == 1:
+        return 0
+    digest = hashlib.sha256(f"{user_id}:{kb_id}".encode("utf-8")).hexdigest()
+    return int(digest[:12], 16) % shard_count
 
 
 class VectorStore:
@@ -50,7 +61,12 @@ class VectorStore:
     def get_or_create_collection(self, user_id: str, kb_id: str) -> Any:
         return self.client.get_or_create_collection(
             name=_get_collection_name(user_id, kb_id),
-            metadata={"user_id": user_id, "kb_id": kb_id},
+            metadata={
+                "user_id": user_id,
+                "kb_id": kb_id,
+                "vector_shard_id": resolve_vector_shard(user_id, kb_id),
+                "vector_shard_count": settings.vector_shard_count,
+            },
             embedding_function=embeddings,
         )
 
@@ -101,6 +117,8 @@ class VectorStore:
                 {
                     "name": collection.name,
                     "kb_id": metadata.get("kb_id", collection.name.split("_kb_")[-1]),
+                    "vector_shard_id": metadata.get("vector_shard_id", 0),
+                    "vector_shard_count": metadata.get("vector_shard_count", 1),
                     "chunk_count": collection.count(),
                     "metadata": metadata,
                 }
@@ -113,6 +131,8 @@ class VectorStore:
             "total_collections": len(collections),
             "total_chunks": sum(collection.count() for collection in collections),
             "collection_names": [collection.name for collection in collections],
+            "vector_shard_id": settings.vector_shard_id,
+            "vector_shard_count": settings.vector_shard_count,
         }
 
     def cleanup_orphan_collections(
