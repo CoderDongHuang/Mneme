@@ -59,6 +59,14 @@ SSE 事件：
 - `POST /memory/write`：手动补充。
 - `POST /memory/confirm`：确认或忽略蒸馏记忆。
 
+## 学习工作台与迁移
+
+- `GET /workspace/metrics`：读取当前学习指标，并写入当天用户快照；响应同时包含近 30 天 `history`。
+- `GET /workspace/metrics/history?days=30`：读取 7 至 365 天按用户隔离的指标趋势。
+- `GET /workspace/export/archive`：导出关系数据、文档清单和受限原文件归档。
+- `POST /workspace/import/archive`：校验 ZIP 路径、容量、清单和 SHA-256，恢复原文件并自动排队重建索引。
+- `GET /notifications/stream`：任务通知 SSE；多实例可使用 Redis Pub/Sub，数据库事件表负责历史和断线补偿。
+
 ## 管理接口
 
 - `GET /admin/secrets/internal-token`：管理员查看内部服务令牌指纹与轮换状态。

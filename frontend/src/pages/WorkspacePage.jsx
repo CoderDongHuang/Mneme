@@ -12,6 +12,7 @@ import {
   Search,
   Snowflake,
   Trash2,
+  TrendingUp,
   Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -71,6 +72,7 @@ export default function WorkspacePage() {
   const [tasks, setTasks] = useState([]);
   const [plans, setPlans] = useState([]);
   const [metrics, setMetrics] = useState(null);
+  const [metricHistory, setMetricHistory] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [quizzes, setQuizzes] = useState([]);
   const [quiz, setQuiz] = useState(null);
@@ -126,6 +128,7 @@ export default function WorkspacePage() {
       setKnowledgeBases(kbs || []);
       setTasks(taskItems || []);
       setMetrics(metricData || null);
+      setMetricHistory(metricData?.history || []);
       setPlans(planItems || []);
       setReviews(reviewItems || []);
       setQuizzes(quizItems || []);
@@ -279,6 +282,23 @@ export default function WorkspacePage() {
             <strong>{metrics.mistakes?.cards_created || 0}</strong>
             <small>待确认薄弱点 {metrics.mistakes?.pending_weak_points || 0}</small>
           </article>
+        </section>
+      )}
+      {metricHistory.length > 0 && (
+        <section className="metric-trend" aria-label="近 30 天学习趋势">
+          <header>
+            <TrendingUp size={17} />
+            <span>近 30 天测验趋势</span>
+          </header>
+          <div>
+            {metricHistory.map((point) => (
+              <span
+                key={point.snapshot_date}
+                style={{ height: `${Math.max(4, Number(point.quiz_average_score || 0))}%` }}
+                title={`${point.snapshot_date}: ${Number(point.quiz_average_score || 0).toFixed(0)} 分`}
+              />
+            ))}
+          </div>
         </section>
       )}
       {error && <div className="page-error">{error}</div>}
@@ -813,7 +833,7 @@ export default function WorkspacePage() {
                 <Upload size={30} />
                 <h2>导入完整学习档案</h2>
                 <p>
-                  JSON 恢复关系数据；归档包包含原始文件副本，但导入后仍需重新上传文件以建立向量索引。
+                  JSON 恢复关系数据；归档包会校验并恢复原始文件，随后自动重建向量索引。
                 </p>
                 <textarea
                   value={importText}
@@ -844,7 +864,7 @@ export default function WorkspacePage() {
                       const result = await endpoints.importArchive(file);
                       await loadAll();
                       setImportText("");
-                      setNotice(result.message || "归档包已导入；原始文件需重新上传");
+                      setNotice(result.message || "归档包已导入并加入索引重建队列");
                     });
                     event.target.value = "";
                   }}

@@ -42,6 +42,19 @@ INTERNAL_SERVICE_TOKEN_PREVIOUS=
 
 默认使用本地文件存储。接入 S3/MinIO 时配置 `STORAGE_BACKEND=s3`、`OBJECT_STORAGE_ENDPOINT`、`OBJECT_STORAGE_ACCESS_KEY`、`OBJECT_STORAGE_SECRET_KEY` 和 `OBJECT_STORAGE_BUCKET`。用户对象按租户前缀隔离，`TENANT_STORAGE_QUOTA_MB` 与 `TENANT_KNOWLEDGE_BASE_QUOTA` 控制配额。
 
+多实例部署可设置 `NOTIFICATION_REDIS_ENABLED=true`，任务通知会通过 Redis Pub/Sub 低延迟广播，同时保留数据库事件轮询作为断线补偿。单机源码开发默认关闭该开关，避免 Redis 未启动时产生无意义连接。
+
+生产环境建议启用 ClamAV 内容扫描：
+
+```dotenv
+MALWARE_SCAN_ENABLED=true
+MALWARE_SCAN_FAIL_CLOSED=true
+CLAMAV_HOST=clamav
+CLAMAV_PORT=3310
+```
+
+Compose 中的 ClamAV 使用可选 `security` profile，启动命令为 `docker compose --profile security up -d --build`。`MALWARE_SCAN_FAIL_CLOSED=true` 会在扫描器不可用时拒绝上传；仅本地低风险开发才应使用 fail-open。
+
 在线轮换内部服务令牌时调用管理员轮换接口，并把新值持久化到部署密钥；滚动重启期间可将旧值暂存为 `INTERNAL_SERVICE_TOKEN_PREVIOUS`，全部实例切换后清空。
 
 #### DeepSeek API Key

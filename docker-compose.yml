@@ -29,6 +29,12 @@ services:
       MP_SMTP_AUTH_ACCEPT_ANY: "1"
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"
 
+  clamav:
+    image: clamav/clamav:1.4
+    profiles: ["security"]
+    volumes:
+      - clamav-signatures:/var/lib/clamav
+
   chroma:
     image: chromadb/chroma:0.5.3
     ports:
@@ -93,6 +99,7 @@ services:
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
       - REDIS_HOST=redis
+      - NOTIFICATION_REDIS_ENABLED=true
       - PYTHON_AGENT_URL=http://python-agent:8001
       - FILE_STORAGE_PATH=/data/files
       - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
@@ -107,6 +114,10 @@ services:
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
       - INTERNAL_SERVICE_TOKEN_PREVIOUS=${INTERNAL_SERVICE_TOKEN_PREVIOUS:-}
       - PASSWORD_RESET_FROM=${PASSWORD_RESET_FROM:-mneme@local.test}
+      - MALWARE_SCAN_ENABLED=${MALWARE_SCAN_ENABLED:-false}
+      - MALWARE_SCAN_FAIL_CLOSED=${MALWARE_SCAN_FAIL_CLOSED:-true}
+      - CLAMAV_HOST=${CLAMAV_HOST:-clamav}
+      - CLAMAV_PORT=${CLAMAV_PORT:-3310}
       - SPRING_MAIL_HOST=mailpit
       - SPRING_MAIL_PORT=1025
       - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=false
@@ -122,3 +133,6 @@ services:
         condition: service_started
       python-agent:
         condition: service_started
+
+volumes:
+  clamav-signatures:

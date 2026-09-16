@@ -54,6 +54,20 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml exec \
 
 基线指标包括 Hit@5、MRR 和引用元数据完整率。
 
+真实模型 Faithfulness 与 Answer Relevance 评测需要显式指定样本数，并会消耗模型额度：
+
+```bash
+python scripts/evaluate_rag.py --llm-sample-size 20 --input-cost-per-million 0.14 --output-cost-per-million 0.28
+```
+
+复杂版式回归夹具可通过 `python scripts/generate_layout_fixtures.py` 重新生成，固定样例覆盖扫描页、多栏、跨页表格、公式和带图表的电子表格；标注在 `evaluation/layout_annotations.json`。
+
+测验质量可直接针对工作区 JSON 导出运行；默认检查结构、证据和来源覆盖，显式设置样本数时再调用真实模型评估 grounding、clarity 与 answerability：
+
+```bash
+python scripts/evaluate_quiz_quality.py mneme-export.json --llm-sample-size 20
+```
+
 ## 全链路冒烟
 
 1. 注册并登录。

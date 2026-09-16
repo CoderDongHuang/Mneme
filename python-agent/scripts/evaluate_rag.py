@@ -13,6 +13,7 @@ sys.path.insert(0, str(AGENT_DIR))
 from app.knowledge.ingestion import ingest_document  # noqa: E402
 from app.knowledge.retriever import retrieve  # noqa: E402
 from app.knowledge.vector_store import vector_store  # noqa: E402
+from app.utils.llm import llm  # noqa: E402
 
 
 def _fixture_path(case: dict) -> Path:
@@ -68,11 +69,80 @@ def _case_fixture_source(case: dict) -> str:
     )
 
 
+def _content(response: object) -> str:
+    value = getattr(response, "content", response)
+    if isinstance(value, list):
+        return "".join(
+            str(item.get("text", "") if isinstance(item, dict) else item)
+            for item in value
+        )
+    return str(value)
+
+
+def _json_object(text: str) -> dict:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("评测模型未返回 JSON 对象")
+    value = json.loads(text[start : end + 1])
+    if not isinstance(value, dict):
+        raise ValueError("评测模型返回结构无效")
+    return value
+
+
+def _real_llm_scores(question: str, chunks: list[dict]) -> dict:
+    evidence = "\n\n".join(
+        f"[{index}] {chunk.get('content', '')}"
+        for index, chunk in enumerate(chunks[:5], start=1)
+    )
+    answer = _content(
+        llm.invoke(
+            [
+                ("system", "只能依据给定证据回答；证据不足时明确说不知道，并引用证据编号。"),
+                ("human", f"问题：{question}\n\n证据：\n{evidence}"),
+            ]
+        )
+    )
+    judge_response = _content(
+        llm.invoke(
+            [
+                (
+                    "system",
+                    "你是严格的 RAG 评测器。仅返回 JSON，分数范围 0 到 1："
+                    '{"faithfulness":0.0,"answer_relevance":0.0,"reason":""}。'
+                    "faithfulness 衡量回答是否完全由证据支持；answer_relevance 衡量是否直接回答问题。",
+                ),
+                (
+                    "human",
+                    f"问题：{question}\n\n证据：\n{evidence}\n\n待评回答：\n{answer}",
+                ),
+            ]
+        )
+    )
+    judged = _json_object(judge_response)
+    return {
+        "answer": answer,
+        "faithfulness": max(0.0, min(1.0, float(judged["faithfulness"]))),
+        "answer_relevance": max(
+            0.0, min(1.0, float(judged["answer_relevance"]))
+        ),
+        "reason": str(judged.get("reason", "")),
+        "estimated_input_tokens": max(
+            1, (len(question) * 2 + len(evidence) * 2 + len(answer)) // 4
+        ),
+        "estimated_output_tokens": max(
+            1, (len(answer) + len(judge_response)) // 4
+        ),
+    }
+
+
 def evaluate(
     dataset_path: Path,
     top_k: int,
     keep: bool,
     input_cost_per_million: float = 0.0,
+    llm_sample_size: int = 0,
+    output_cost_per_million: float = 0.0,
 ) -> dict:
     cases = json.loads(dataset_path.read_text(encoding="utf-8"))
     if not isinstance(cases, list) or not cases:
@@ -101,6 +171,7 @@ def evaluate(
     input_tokens = 0
     details = []
     category_stats: dict[str, dict[str, int]] = {}
+    llm_details: list[dict] = []
 
     for case in cases:
         started = time.perf_counter()
@@ -163,11 +234,22 @@ def evaluate(
                 "latency_ms": round(latency_ms, 2),
             }
         )
+        if answerable and chunks and len(llm_details) < max(0, llm_sample_size):
+            if not llm.configured:
+                raise RuntimeError("真实模型评测需要 DEEPSEEK_API_KEY 或 DASHSCOPE_API_KEY")
+            scores = _real_llm_scores(case["question"], chunks)
+            llm_details.append({"question": case["question"], **scores})
 
     count = max(1, len(cases))
     answerable_denominator = max(1, answerable_count)
     unanswerable_count = count - answerable_count
     estimated_cost = input_tokens / 1_000_000 * max(0.0, input_cost_per_million)
+    llm_input_tokens = sum(item["estimated_input_tokens"] for item in llm_details)
+    llm_output_tokens = sum(item["estimated_output_tokens"] for item in llm_details)
+    llm_estimated_cost = (
+        llm_input_tokens / 1_000_000 * max(0.0, input_cost_per_million)
+        + llm_output_tokens / 1_000_000 * max(0.0, output_cost_per_million)
+    )
     report = {
         "cases": len(cases),
         "answerable_cases": answerable_count,
@@ -195,6 +277,25 @@ def evaluate(
         "cost_assumption_usd_per_million_input_tokens": input_cost_per_million,
         "category_stats": category_stats,
         "details": details,
+        "real_llm_evaluation": {
+            "status": "completed" if llm_details else "disabled",
+            "samples": len(llm_details),
+            "faithfulness": round(
+                sum(item["faithfulness"] for item in llm_details)
+                / max(1, len(llm_details)),
+                4,
+            ),
+            "answer_relevance": round(
+                sum(item["answer_relevance"] for item in llm_details)
+                / max(1, len(llm_details)),
+                4,
+            ),
+            "estimated_input_tokens": llm_input_tokens,
+            "estimated_output_tokens": llm_output_tokens,
+            "estimated_cost": round(llm_estimated_cost, 6),
+            "cost_assumption_usd_per_million_output_tokens": output_cost_per_million,
+            "details": llm_details,
+        },
     }
     if not keep:
         vector_store.delete_collection(user_id, kb_id)
@@ -215,6 +316,17 @@ def main() -> None:
         default=float(os.getenv("RAG_INPUT_COST_PER_MILLION", "0")),
     )
     parser.add_argument("--keep", action="store_true")
+    parser.add_argument(
+        "--llm-sample-size",
+        type=int,
+        default=0,
+        help="使用真实回答与评判模型计算 Faithfulness/Answer Relevance 的样本数",
+    )
+    parser.add_argument(
+        "--output-cost-per-million",
+        type=float,
+        default=float(os.getenv("RAG_OUTPUT_COST_PER_MILLION", "0")),
+    )
     arguments = parser.parse_args()
     print(
         json.dumps(
@@ -223,6 +335,8 @@ def main() -> None:
                 arguments.top_k,
                 arguments.keep,
                 arguments.input_cost_per_million,
+                arguments.llm_sample_size,
+                arguments.output_cost_per_million,
             ),
             ensure_ascii=False,
             indent=2,

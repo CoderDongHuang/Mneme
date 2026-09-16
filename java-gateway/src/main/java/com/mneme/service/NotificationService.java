@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mneme.entity.ProcessingTask;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,12 +21,20 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.UUID;
 
 @Service
 public class NotificationService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final Map<Long, CopyOnWriteArrayList<Subscriber>> subscribers = new ConcurrentHashMap<>();
+    private final String instanceId = UUID.randomUUID().toString();
+
+    @Autowired(required = false)
+    private StringRedisTemplate redis;
+
+    @Value("${mneme.notification-redis-enabled:false}")
+    private boolean redisEnabled;
 
     @Value("${mneme.notification-retention-days:30}")
     private int retentionDays;
@@ -69,6 +79,36 @@ public class NotificationService {
         for (Subscriber subscriber : subscribers.getOrDefault(task.getUserId(), new CopyOnWriteArrayList<>())) {
             send(task.getUserId(), subscriber, event);
         }
+        publishToRedis(task.getUserId(), event);
+    }
+
+    private void publishToRedis(Long userId, Map<String, Object> event) {
+        if (!redisEnabled || redis == null) return;
+        try {
+            redis.convertAndSend("mneme:notifications", mapper.writeValueAsString(Map.of(
+                "origin", instanceId,
+                "user_id", userId,
+                "event", event
+            )));
+        } catch (Exception ignored) {
+            // The persisted-event pump remains the delivery fallback.
+        }
+    }
+
+    public void receiveRedisMessage(String message) {
+        try {
+            Map<String, Object> envelope = mapper.readValue(message, new TypeReference<>() {});
+            if (instanceId.equals(String.valueOf(envelope.get("origin")))) return;
+            Long userId = Long.valueOf(String.valueOf(envelope.get("user_id")));
+            Map<String, Object> event = mapper.convertValue(envelope.get("event"), new TypeReference<>() {});
+            for (Subscriber subscriber : subscribers.getOrDefault(userId, new CopyOnWriteArrayList<>())) {
+                if (((Number) event.getOrDefault("id", 0)).longValue() > subscriber.lastSeen.get()) {
+                    send(userId, subscriber, event);
+                }
+            }
+        } catch (Exception ignored) {
+            // Invalid broadcasts are ignored; the database remains authoritative.
+        }
     }
 
     @Scheduled(fixedDelayString = "${mneme.notification-poll-delay-ms:2000}")
@@ -105,7 +145,8 @@ public class NotificationService {
     private void send(Long userId, Subscriber subscriber, Map<String, Object> event) {
         try {
             subscriber.emitter.send(SseEmitter.event().name("task").data(event));
-            subscriber.lastSeen.set(((Number) event.getOrDefault("id", subscriber.lastSeen.get())).longValue());
+            long deliveredId = ((Number) event.getOrDefault("id", subscriber.lastSeen.get())).longValue();
+            subscriber.lastSeen.accumulateAndGet(deliveredId, Math::max);
         } catch (IOException error) {
             remove(userId, subscriber);
         }

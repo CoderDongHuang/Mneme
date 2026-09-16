@@ -126,6 +126,7 @@ export const endpoints = {
   retrievalDebug: (kbId, query, topK = 6) => api(`/workspace/retrieval/debug?kbId=${encodeURIComponent(kbId)}&query=${encodeURIComponent(query)}&topK=${topK}`),
   plans: () => api('/workspace/plans'),
   metrics: () => api('/workspace/metrics'),
+  metricHistory: (days = 30) => api(`/workspace/metrics/history?days=${days}`),
   createPlan: (body) => api('/workspace/plans', { method: 'POST', body: JSON.stringify(body) }),
   reviews: () => api('/workspace/reviews'),
   reviewCard: (id, rating) => api(`/workspace/reviews/${id}`, { method: 'POST', body: JSON.stringify({ rating }) }),

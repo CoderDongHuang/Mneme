@@ -60,3 +60,9 @@ mneme:
   admin-api-token: ${ADMIN_API_TOKEN:}
   account-deletion-max-attempts: ${ACCOUNT_DELETION_MAX_ATTEMPTS:8}
   account-deletion-poll-delay-ms: ${ACCOUNT_DELETION_POLL_DELAY_MS:3000}
+  notification-redis-enabled: ${NOTIFICATION_REDIS_ENABLED:false}
+  malware-scan-enabled: ${MALWARE_SCAN_ENABLED:false}
+  malware-scan-fail-closed: ${MALWARE_SCAN_FAIL_CLOSED:true}
+  clamav-host: ${CLAMAV_HOST:localhost}
+  clamav-port: ${CLAMAV_PORT:3310}
+  clamav-timeout-ms: ${CLAMAV_TIMEOUT_MS:5000}

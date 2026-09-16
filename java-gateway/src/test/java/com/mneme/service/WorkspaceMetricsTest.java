@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 class WorkspaceMetricsTest {
     @Test
@@ -50,5 +51,7 @@ class WorkspaceMetricsTest {
             .containsEntry("completion_rate", 0.3333);
         assertThat(mistakes).containsEntry("cards_created", 1L);
         assertThat(queries).allMatch(sql -> sql.contains("user_id=?"));
+        verify(jdbc).update(org.mockito.ArgumentMatchers.contains("learning_metric_snapshot"),
+            any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 }

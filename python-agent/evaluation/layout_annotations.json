@@ -1,0 +1,34 @@
+[
+  {
+    "fixture": "complex-layout.pdf",
+    "category": "scanned_pdf",
+    "page": 1,
+    "expected_terms": ["SCAN-ALPHA", "42 months"],
+    "region": [0.0, 0.0, 1.0, 1.0]
+  },
+  {
+    "fixture": "complex-layout.pdf",
+    "category": "multi_column",
+    "page": 2,
+    "expected_terms": ["COLUMN-LEFT", "COLUMN-RIGHT", "15 minutes", "60 minutes"]
+  },
+  {
+    "fixture": "complex-layout.pdf",
+    "category": "cross_page_table",
+    "pages": [3, 4],
+    "expected_terms": ["Item 08", "Item 09", "value=56", "value=63"]
+  },
+  {
+    "fixture": "complex-layout.pdf",
+    "category": "formula_chart",
+    "page": 4,
+    "expected_terms": ["quality", "supported claims", "total claims"]
+  },
+  {
+    "fixture": "formula-chart.xlsx",
+    "category": "spreadsheet_formula_chart",
+    "sheet": "FormulaChart",
+    "expected_formula": "=C2/B2",
+    "expected_chart_count": 1
+  }
+]

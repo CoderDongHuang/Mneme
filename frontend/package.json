@@ -9,7 +9,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run build && node e2e/run-e2e.js",
     "test:e2e:real": "playwright test e2e/real-stack.spec.js --project=桌面端",
     "audit": "audit-ci --config ./audit-ci.jsonc"
   },

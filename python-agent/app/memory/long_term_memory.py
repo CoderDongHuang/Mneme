@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from app.memory.memory_store import memory_store
 from app.core.logging import setup_logger
+from app.memory.cache_revision import memory_cache_revision
 
 logger = setup_logger("long_term_memory")
 
@@ -47,8 +48,11 @@ class LongTermMemoryManager:
         bucket = self._cache.get(user_id, {}).get(category)
         if bucket is None:
             return None
-        ts, data = bucket
+        ts, revision, data = bucket
         if (datetime.now() - ts).total_seconds() > CACHE_TTL_SECONDS:
+            self._cache.get(user_id, {}).pop(category, None)
+            return None
+        if revision != memory_cache_revision.current(user_id):
             self._cache.get(user_id, {}).pop(category, None)
             return None
         return data
@@ -57,10 +61,13 @@ class LongTermMemoryManager:
         """写入缓存"""
         if user_id not in self._cache:
             self._cache[user_id] = {}
-        self._cache[user_id][category] = (datetime.now(), data)
+        self._cache[user_id][category] = (
+            datetime.now(), memory_cache_revision.current(user_id), data
+        )
 
     def _invalidate_cache(self, user_id: str, category: Optional[str] = None):
         """使缓存失效，category 为 None 时清空该用户全部缓存"""
+        memory_cache_revision.bump(user_id)
         if user_id not in self._cache:
             return
         if category:

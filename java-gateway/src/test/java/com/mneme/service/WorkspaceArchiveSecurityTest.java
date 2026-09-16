@@ -2,10 +2,12 @@ package com.mneme.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mneme.entity.KnowledgeDocument;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -26,6 +28,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 
 class WorkspaceArchiveSecurityTest {
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
@@ -109,15 +113,95 @@ class WorkspaceArchiveSecurityTest {
     }
 
     @Test
-    void importsAValidArchiveAndRestoresOnlyRelationalData() throws Exception {
+    void importsAValidArchiveWithoutDocuments() throws Exception {
         WorkspaceService service = service(mock(JdbcTemplate.class), tempDir);
         Map<String, Object> result = service.importArchive(1L, zip(
             Map.of("workspace.json", "{\"schema\":\"mneme.workspace\",\"version\":2,\"knowledge_bases\":[]}")
         ));
 
         assertThat(result).containsEntry("status", "imported")
-            .containsEntry("original_files", "not_restored");
-        assertThat(result.get("message").toString()).contains("重新上传");
+            .containsEntry("original_files", "restored");
+        assertThat(result.get("message").toString()).contains("索引重建队列");
+    }
+
+    @Test
+    void restoresVerifiedOriginalFilesAndQueuesIngestion() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class)).thenReturn(31L);
+        WorkspaceService service = service(jdbc, tempDir);
+        KnowledgeService knowledge = mock(KnowledgeService.class);
+        ReflectionTestUtils.setField(service, "knowledgeService", knowledge);
+        byte[] content = "archived notes".getBytes(StandardCharsets.UTF_8);
+        String hash = java.util.HexFormat.of().formatHex(
+            java.security.MessageDigest.getInstance("SHA-256").digest(content));
+        String workspace = mapper.writeValueAsString(Map.of(
+            "schema", "mneme.workspace",
+            "version", 2,
+            "knowledge_bases", List.of(Map.of("id", 4, "name", "Imported")),
+            "documents", List.of(Map.of(
+                "id", 9, "kb_id", 4, "file_name", "notes.txt", "sha256", hash))
+        ));
+
+        Map<String, Object> result = service.importArchive(7L, zipBytes(Map.of(
+            "workspace.json", workspace.getBytes(StandardCharsets.UTF_8),
+            "files/9/notes.txt", content
+        )));
+
+        @SuppressWarnings("unchecked") Map<String, Integer> documents =
+            (Map<String, Integer>) result.get("documents");
+        assertThat(documents).containsEntry("restored", 1).containsEntry("skipped", 0);
+        verify(knowledge).importArchivedDocument(7L, 31L, "notes.txt", content);
+    }
+
+    @Test
+    void rejectsArchiveFileWhoseDigestDoesNotMatchManifest() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class)).thenReturn(31L);
+        String workspace = mapper.writeValueAsString(Map.of(
+            "schema", "mneme.workspace", "version", 2,
+            "knowledge_bases", List.of(Map.of("id", 4, "name", "Imported")),
+            "documents", List.of(Map.of(
+                "id", 9, "kb_id", 4, "file_name", "notes.txt", "sha256", "0".repeat(64)))
+        ));
+
+        assertThatThrownBy(() -> service(jdbc, tempDir).importArchive(7L, zipBytes(Map.of(
+            "workspace.json", workspace.getBytes(StandardCharsets.UTF_8),
+            "files/9/notes.txt", "tampered".getBytes(StandardCharsets.UTF_8)
+        )))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("完整性校验失败");
+    }
+
+    @Test
+    void removesAlreadyRestoredFilesWhenALaterImportFails() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class)).thenReturn(31L);
+        WorkspaceService service = service(jdbc, tempDir);
+        KnowledgeService knowledge = mock(KnowledgeService.class);
+        ReflectionTestUtils.setField(service, "knowledgeService", knowledge);
+        byte[] first = "first".getBytes(StandardCharsets.UTF_8);
+        byte[] second = "second".getBytes(StandardCharsets.UTF_8);
+        KnowledgeDocument restored = new KnowledgeDocument();
+        restored.setId(101L);
+        when(knowledge.importArchivedDocument(7L, 31L, "first.txt", first)).thenReturn(restored);
+        doThrow(new IllegalStateException("storage unavailable")).when(knowledge)
+            .importArchivedDocument(7L, 31L, "second.txt", second);
+        String firstHash = java.util.HexFormat.of().formatHex(
+            java.security.MessageDigest.getInstance("SHA-256").digest(first));
+        String secondHash = java.util.HexFormat.of().formatHex(
+            java.security.MessageDigest.getInstance("SHA-256").digest(second));
+        String workspace = mapper.writeValueAsString(Map.of(
+            "schema", "mneme.workspace", "version", 2,
+            "knowledge_bases", List.of(Map.of("id", 4, "name", "Imported")),
+            "documents", List.of(
+                Map.of("id", 9, "kb_id", 4, "file_name", "first.txt", "sha256", firstHash),
+                Map.of("id", 10, "kb_id", 4, "file_name", "second.txt", "sha256", secondHash))
+        ));
+
+        assertThatThrownBy(() -> service.importArchive(7L, zipBytes(Map.of(
+            "workspace.json", workspace.getBytes(StandardCharsets.UTF_8),
+            "files/9/first.txt", first,
+            "files/10/second.txt", second
+        )))).isInstanceOf(IllegalStateException.class).hasMessageContaining("storage unavailable");
+        verify(knowledge).discardImportedDocument(restored);
     }
 
     @Test

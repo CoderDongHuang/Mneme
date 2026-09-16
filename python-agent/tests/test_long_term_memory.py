@@ -150,6 +150,25 @@ class TestPreferences:
             result = ltm.add_preference("u1", "喜欢图表讲解")
         assert result is None  # 去重命中，返回 None
 
+    def test_write_invalidates_another_manager_cache(self):
+        first = LongTermMemoryManager()
+        second = LongTermMemoryManager()
+        initial = [{"id": "old", "content": "旧偏好"}]
+        refreshed = initial + [{"id": "new", "content": "新偏好"}]
+        with patch.object(first._store, "get_by_category", return_value=initial):
+            assert first.get_preferences("shared-user") == initial
+        with (
+            patch.object(second._store, "find_duplicates", return_value=[]),
+            patch.object(second._store, "search", return_value=[]),
+            patch.object(second._store, "add_memory", return_value="new"),
+        ):
+            second.add_preference("shared-user", "新偏好")
+        with patch.object(
+            first._store, "get_by_category", return_value=refreshed
+        ) as reload_store:
+            assert first.get_preferences("shared-user") == refreshed
+            reload_store.assert_called_once()
+
 
 class TestWeakPoints:
     def test_add_and_get(self, ltm):

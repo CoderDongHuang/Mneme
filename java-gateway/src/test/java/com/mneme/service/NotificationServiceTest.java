@@ -5,6 +5,7 @@ import com.mneme.entity.ProcessingTask;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -69,5 +71,24 @@ class NotificationServiceTest {
         service.publish(task);
 
         verify(jdbc).update(any(org.springframework.jdbc.core.PreparedStatementCreator.class), any(org.springframework.jdbc.support.KeyHolder.class));
+    }
+
+    @Test
+    void publishBroadcastsPersistedEventWhenRedisIsEnabled() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject(anyString(), eq(Long.class), anyLong())).thenReturn(12L);
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        NotificationService service = new NotificationService(jdbc, new ObjectMapper());
+        ReflectionTestUtils.setField(service, "redisEnabled", true);
+        ReflectionTestUtils.setField(service, "redis", redis);
+        ProcessingTask task = new ProcessingTask();
+        task.setUserId(7L);
+        task.setTaskId("task_redis");
+        task.setAggregateId(3L);
+        task.setStatus("completed");
+
+        service.publish(task);
+
+        verify(redis).convertAndSend(eq("mneme:notifications"), contains("task_redis"));
     }
 }

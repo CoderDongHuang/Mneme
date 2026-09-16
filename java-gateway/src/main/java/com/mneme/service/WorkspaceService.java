@@ -2,6 +2,7 @@ package com.mneme.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mneme.entity.KnowledgeDocument;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -50,6 +51,9 @@ public class WorkspaceService {
 
     @Autowired(required = false)
     private ObjectStorageService objectStorage;
+
+    @Autowired(required = false)
+    private KnowledgeService knowledgeService;
 
     @Value("${mneme.file-storage-path:./data/files}")
     private String fileStoragePath;
@@ -210,12 +214,50 @@ public class WorkspaceService {
         mistakeMetrics.put("cards_created", mistakeCards);
         mistakeMetrics.put("conversion_rate_proxy", ratio(mistakeCards, attemptTotal));
         mistakeMetrics.put("pending_weak_points", pendingWeakPoints);
-        return Map.of(
-            "plans", planMetrics,
-            "reviews", reviewMetrics,
-            "quizzes", quizMetrics,
-            "mistakes", mistakeMetrics
-        );
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("plans", planMetrics);
+        result.put("reviews", reviewMetrics);
+        result.put("quizzes", quizMetrics);
+        result.put("mistakes", mistakeMetrics);
+        saveMetricSnapshot(userId, planMetrics, reviewMetrics, quizMetrics, mistakeMetrics);
+        result.put("history", metricHistory(userId, 30));
+        return result;
+    }
+
+    public List<Map<String, Object>> metricHistory(Long userId, int days) {
+        int window = Math.max(7, Math.min(days, 365));
+        return rows("""
+            SELECT snapshot_date,plan_completion_rate,review_due,reviewed_total,
+                   average_interval_days,quiz_average_score,quiz_attempts,
+                   mistake_cards,pending_weak_points
+            FROM learning_metric_snapshot
+            WHERE user_id=? AND snapshot_date>=DATE_SUB(CURRENT_DATE, INTERVAL ? DAY)
+            ORDER BY snapshot_date ASC
+            """, userId, window - 1);
+    }
+
+    private void saveMetricSnapshot(
+        Long userId,
+        Map<String, Object> plans,
+        Map<String, Object> reviews,
+        Map<String, Object> quizzes,
+        Map<String, Object> mistakes
+    ) {
+        jdbc.update("""
+            INSERT INTO learning_metric_snapshot(
+              user_id,snapshot_date,plan_completion_rate,review_due,reviewed_total,
+              average_interval_days,quiz_average_score,quiz_attempts,mistake_cards,pending_weak_points)
+            VALUES(?,CURRENT_DATE,?,?,?,?,?,?,?,?)
+            ON DUPLICATE KEY UPDATE
+              plan_completion_rate=VALUES(plan_completion_rate),review_due=VALUES(review_due),
+              reviewed_total=VALUES(reviewed_total),average_interval_days=VALUES(average_interval_days),
+              quiz_average_score=VALUES(quiz_average_score),quiz_attempts=VALUES(quiz_attempts),
+              mistake_cards=VALUES(mistake_cards),pending_weak_points=VALUES(pending_weak_points)
+            """,
+            userId,
+            plans.get("completion_rate"), reviews.get("due"), reviews.get("reviewed"),
+            reviews.get("average_interval_days"), quizzes.get("average_score"), quizzes.get("attempts"),
+            mistakes.get("cards_created"), mistakes.get("pending_weak_points"));
     }
 
     @Transactional
@@ -337,6 +379,9 @@ public class WorkspaceService {
         Long sourceMessageId = body.get("source_message_id") == null ? null : Long.valueOf(String.valueOf(body.get("source_message_id")));
         String label = required(body, "label");
         one("SELECT id FROM chat_session WHERE id=? AND user_id=?", sourceSessionId, userId);
+        if (sourceMessageId != null) {
+            one("SELECT id FROM chat_message WHERE id=? AND session_id=?", sourceMessageId, sourceSessionId);
+        }
         jdbc.update("INSERT INTO chat_session(user_id,title) VALUES(?,?)", userId, label);
         Long branchSessionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         String copySql = """
@@ -451,6 +496,7 @@ public class WorkspaceService {
         return archive;
     }
 
+    @Transactional
     public Map<String, Object> importArchive(Long userId, byte[] archive) throws Exception {
         String operationId = operationId();
         record(operationId, userId, "workspace_archive_import", null, "start", "started",
@@ -462,6 +508,7 @@ public class WorkspaceService {
             throw new IllegalArgumentException("归档包不是有效的 ZIP 文件");
         }
         byte[] workspaceJson = null;
+        Map<String, byte[]> archivedFiles = new LinkedHashMap<>();
         int entries = 0;
         long total = 0;
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archive))) {
@@ -481,7 +528,13 @@ public class WorkspaceService {
                     }
                     content.write(buffer, 0, read);
                 }
-                if ("workspace.json".equals(entry.getName())) workspaceJson = content.toByteArray();
+                byte[] bytes = content.toByteArray();
+                if ("workspace.json".equals(entry.getName())) {
+                    if (workspaceJson != null) throw new IllegalArgumentException("归档包包含重复的 workspace.json");
+                    workspaceJson = bytes;
+                } else if (archivedFiles.put(entry.getName(), bytes) != null) {
+                    throw new IllegalArgumentException("归档包包含重复文件: " + entry.getName());
+                }
                 zip.closeEntry();
             }
         } catch (java.util.zip.ZipException error) {
@@ -489,12 +542,74 @@ public class WorkspaceService {
         }
         if (workspaceJson == null) throw new IllegalArgumentException("归档包缺少 workspace.json");
         Map<String, Object> workspace = mapper.readValue(workspaceJson, new TypeReference<>() {});
-        Map<String, Object> imported = importData(userId, workspace);
-        Map<String, Object> result = Map.of("status", "imported", "workspace", imported, "original_files", "not_restored",
-            "message", "关系数据已导入；原始文件需重新上传以建立向量索引");
+        ImportOutcome outcome = importDataInternal(userId, workspace);
+        Map<String, Integer> restored = restoreArchivedDocuments(
+            userId, items(workspace, "documents"), archivedFiles, outcome.knowledgeBaseIds());
+        boolean complete = restored.get("skipped") == 0;
+        Map<String, Object> result = Map.of(
+            "status", "imported",
+            "workspace", outcome.response(),
+            "original_files", complete ? "restored" : "partial",
+            "documents", restored,
+            "message", complete
+                ? "归档已导入；原始文件已恢复并加入索引重建队列"
+                : "归档已导入；可用原始文件已恢复，缺失文件已跳过"
+        );
         record(operationId, userId, "workspace_archive_import", null, "complete", "completed",
-            Map.of("entries", entries), null);
+            Map.of("entries", entries, "restored_documents", restored.get("restored")), null);
         return result;
+    }
+
+    private Map<String, Integer> restoreArchivedDocuments(
+        Long userId,
+        List<Map<String, Object>> manifests,
+        Map<String, byte[]> archivedFiles,
+        Map<Long, Long> knowledgeBaseIds
+    ) throws Exception {
+        List<ArchivedDocument> pending = new ArrayList<>();
+        Map<String, Boolean> expectedEntries = new HashMap<>();
+        int skipped = 0;
+        for (Map<String, Object> manifest : manifests) {
+            long oldDocumentId = longValue(manifest.get("id"));
+            Long newKbId = knowledgeBaseIds.get(longValue(manifest.get("kb_id")));
+            String fileName = safeArchiveName(limited(manifest, "file_name", "file", 255));
+            String entryName = "files/" + oldDocumentId + "/" + fileName;
+            expectedEntries.put(entryName, true);
+            byte[] content = archivedFiles.get(entryName);
+            if (content == null) {
+                skipped++;
+                continue;
+            }
+            if (newKbId == null) throw new IllegalArgumentException("归档文档引用了不存在的资料库");
+            String expectedHash = limited(manifest, "sha256", "", 64).toLowerCase();
+            String actualHash = sha256(content);
+            if (!expectedHash.matches("[0-9a-f]{64}") || !expectedHash.equals(actualHash)) {
+                throw new IllegalArgumentException("归档文件完整性校验失败: " + fileName);
+            }
+            pending.add(new ArchivedDocument(newKbId, fileName, content));
+        }
+        for (String entry : archivedFiles.keySet()) {
+            if (!expectedEntries.containsKey(entry)) {
+                throw new IllegalArgumentException("归档包包含未在清单登记的文件: " + entry);
+            }
+        }
+        if (!pending.isEmpty() && knowledgeService == null) {
+            throw new IllegalStateException("文档恢复服务不可用");
+        }
+        List<KnowledgeDocument> importedDocuments = new ArrayList<>();
+        try {
+            for (ArchivedDocument document : pending) {
+                importedDocuments.add(knowledgeService.importArchivedDocument(
+                    userId, document.knowledgeBaseId(), document.fileName(), document.content()));
+            }
+        } catch (RuntimeException error) {
+            for (KnowledgeDocument document : importedDocuments) {
+                try { knowledgeService.discardImportedDocument(document); }
+                catch (Exception ignored) { }
+            }
+            throw error;
+        }
+        return Map.of("restored", pending.size(), "skipped", skipped);
     }
 
     public List<Map<String, Object>> operationLogs(Long userId, int limit) {
@@ -537,8 +652,19 @@ public class WorkspaceService {
         return builder.toString();
     }
 
+    private String sha256(byte[] content) throws Exception {
+        byte[] hash = MessageDigest.getInstance("SHA-256").digest(content);
+        StringBuilder builder = new StringBuilder();
+        for (byte value : hash) builder.append(String.format("%02x", value));
+        return builder.toString();
+    }
+
     @Transactional
     public Map<String, Object> importData(Long userId, Map<String, Object> payload) throws Exception {
+        return importDataInternal(userId, payload).response();
+    }
+
+    private ImportOutcome importDataInternal(Long userId, Map<String, Object> payload) throws Exception {
         int version = integer(payload.getOrDefault("version", 1), 1);
         if (version < 1 || version > 2) throw new IllegalArgumentException("不支持的导出版本: " + version);
         if (version == 2 && !"mneme.workspace".equals(payload.get("schema"))) {
@@ -553,8 +679,13 @@ public class WorkspaceService {
         Map<Long, Long> quizIds = importQuizzes(userId, items(payload, "quizzes"), kbIds, counts);
         importAttempts(userId, items(payload, "quiz_attempts"), quizIds, counts);
         importBranches(userId, items(payload, "branches"), sessionIds, messageIds, counts);
-        return Map.of("status", "imported", "version", version, "counts", counts);
+        Map<String, Object> response = Map.of(
+            "status", "imported", "version", version, "counts", counts);
+        return new ImportOutcome(response, kbIds);
     }
+
+    private record ImportOutcome(Map<String, Object> response, Map<Long, Long> knowledgeBaseIds) { }
+    private record ArchivedDocument(Long knowledgeBaseId, String fileName, byte[] content) { }
 
     private void validateQuestion(Map<String, Object> question) {
         String type = String.valueOf(question.get("type"));

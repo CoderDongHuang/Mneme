@@ -9,6 +9,7 @@ import com.mneme.mapper.KnowledgeDocumentMapper;
 import com.mneme.mapper.ProcessingTaskMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,8 @@ import java.util.Set;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.zip.ZipInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 
 @Service
 public class KnowledgeService {
@@ -36,6 +39,9 @@ public class KnowledgeService {
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbc;
     private final ObjectStorageService storage;
+
+    @Autowired(required = false)
+    private MaliciousContentScanner maliciousContentScanner;
 
     @Value("${mneme.file-storage-path:./data/files}")
     private String fileStoragePath;
@@ -111,6 +117,7 @@ public class KnowledgeService {
         if (file.getSize() > 30L * 1024 * 1024) throw new IllegalArgumentException("文件不能超过 30MB");
         requireStorageQuota(userId, file.getSize());
         validateUpload(file, lowerName);
+        scanUpload(file);
         Path targetDirectory = Path.of(fileStoragePath, userId.toString(), kbId.toString()).normalize();
         Path targetPath = targetDirectory.resolve(UUID.randomUUID() + "-" + safeName).normalize();
         if (!targetPath.startsWith(targetDirectory)) {
@@ -123,14 +130,15 @@ public class KnowledgeService {
             throw new IllegalStateException("文件保存失败", error);
         }
 
-        String location = storage.persist(targetPath, userId, kbId, safeName);
-        KnowledgeDocument document = new KnowledgeDocument();
-        document.setKbId(kbId);
-        document.setFileName(safeName);
-        document.setFilePath(location);
-        document.setStatus("parsing");
-        document.setChunkCount(0);
+        String location = null;
         try {
+            location = storage.persist(targetPath, userId, kbId, safeName);
+            KnowledgeDocument document = new KnowledgeDocument();
+            document.setKbId(kbId);
+            document.setFileName(safeName);
+            document.setFilePath(location);
+            document.setStatus("parsing");
+            document.setChunkCount(0);
             docMapper.insert(document);
             saveVersion(document, location, targetPath);
             ProcessingTask task = new ProcessingTask();
@@ -152,13 +160,14 @@ public class KnowledgeService {
             task.setNextAttemptAt(java.time.LocalDateTime.now());
             taskMapper.insert(task);
             document.setParseTaskId(taskId);
+            docMapper.updateById(document);
+            if ("s3".equals(storage.backend())) Files.deleteIfExists(targetPath);
+            return document;
         } catch (Exception error) {
-            try { storage.delete(location); } catch (Exception ignored) { }
+            if (location != null) try { storage.delete(location); } catch (Exception ignored) { }
             try { Files.deleteIfExists(targetPath); } catch (Exception ignored) { }
             throw new IllegalStateException("文档入库或解析任务创建失败", error);
         }
-        docMapper.updateById(document);
-        return document;
     }
 
     private boolean startsWith(byte[] bytes, String value) { byte[] expected = value.getBytes(java.nio.charset.StandardCharsets.US_ASCII); if (bytes.length < expected.length) return false; for (int i=0;i<expected.length;i++) if (bytes[i] != expected[i]) return false; return true; }
@@ -255,6 +264,7 @@ public class KnowledgeService {
         if (file.isEmpty() || file.getSize() > 30L * 1024 * 1024) throw new IllegalArgumentException("文件大小必须在 30MB 以内");
         requireStorageQuota(userId, file.getSize());
         validateUpload(file, lowerName);
+        scanUpload(file);
         Path directory = Path.of(fileStoragePath, userId.toString(), document.getKbId().toString()).normalize();
         Path target = directory.resolve(UUID.randomUUID() + "-" + safeName).normalize();
         if (!target.startsWith(directory)) throw new IllegalArgumentException("文件名不合法");
@@ -271,6 +281,7 @@ public class KnowledgeService {
             docMapper.updateById(document);
             saveVersion(document, newLocation, target);
             createDocumentTask(userId, document, "document_ingest");
+            if ("s3".equals(storage.backend())) Files.deleteIfExists(target);
             return document;
         } catch (Exception error) {
             if (newLocation != null) try { storage.delete(newLocation); } catch (Exception ignored) { }
@@ -320,6 +331,38 @@ public class KnowledgeService {
         docMapper.updateById(document);
         createDocumentTask(userId, document, "document_ingest");
         return document;
+    }
+
+    public KnowledgeDocument importArchivedDocument(Long userId, Long kbId, String fileName, byte[] content) {
+        return uploadDocument(userId, kbId, new ArchivedMultipartFile(fileName, content));
+    }
+
+    public void discardImportedDocument(KnowledgeDocument document) {
+        if (document != null && document.getFilePath() != null) storage.delete(document.getFilePath());
+    }
+
+    private void scanUpload(MultipartFile file) {
+        if (maliciousContentScanner == null) return;
+        try (InputStream input = file.getInputStream()) {
+            maliciousContentScanner.scan(input);
+        } catch (IllegalArgumentException | IllegalStateException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new IllegalStateException("文件扫描失败", error);
+        }
+    }
+
+    private record ArchivedMultipartFile(String fileName, byte[] content) implements MultipartFile {
+        @Override public String getName() { return "file"; }
+        @Override public String getOriginalFilename() { return fileName; }
+        @Override public String getContentType() { return null; }
+        @Override public boolean isEmpty() { return content.length == 0; }
+        @Override public long getSize() { return content.length; }
+        @Override public byte[] getBytes() { return content.clone(); }
+        @Override public InputStream getInputStream() { return new ByteArrayInputStream(content); }
+        @Override public void transferTo(java.io.File destination) throws java.io.IOException {
+            Files.write(destination.toPath(), content);
+        }
     }
 
     public List<KnowledgeDocument> listDocuments(Long userId, Long kbId) {

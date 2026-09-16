@@ -14,6 +14,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.sql.DriverManager;
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -115,5 +119,104 @@ class FlywayMigrationTest {
             .containsEntry("quizzes", 1).containsEntry("quiz_attempts", 1).containsEntry("branches", 1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM chat_branch WHERE user_id=?", Integer.class, targetUser)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM quiz_attempt WHERE user_id=?", Integer.class, targetUser)).isEqualTo(1);
+    }
+
+    @Test
+    void onlyOneInstanceCanClaimTheSameRecoveryTask() throws Exception {
+        Flyway.configure().dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+            .locations("classpath:db/migration").load().migrate();
+        var dataSource = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+        var jdbc = new JdbcTemplate(dataSource);
+        jdbc.update("INSERT INTO user(username,password_hash,status) VALUES('claim-user','hash','deleting')");
+        Long userId = jdbc.queryForObject("SELECT id FROM user WHERE username='claim-user'", Long.class);
+        jdbc.update("""
+            INSERT INTO account_deletion_task(operation_id,user_id,status,next_attempt_at)
+            VALUES('claim-op',?,'pending',?)
+            """, userId, LocalDateTime.now());
+        Long taskId = jdbc.queryForObject(
+            "SELECT id FROM account_deletion_task WHERE operation_id='claim-op'", Long.class);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> claim(jdbc, taskId, "instance-a", ready, start));
+            var second = executor.submit(() -> claim(jdbc, taskId, "instance-b", ready, start));
+            ready.await();
+            start.countDown();
+            assertThat(first.get() + second.get()).isEqualTo(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentBranchesRemainIndependent() throws Exception {
+        Flyway.configure().dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+            .locations("classpath:db/migration").load().migrate();
+        var dataSource = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+        var jdbc = new JdbcTemplate(dataSource);
+        jdbc.update("INSERT INTO user(username,password_hash) VALUES('branch-user','hash')");
+        Long userId = jdbc.queryForObject("SELECT id FROM user WHERE username='branch-user'", Long.class);
+        jdbc.update("INSERT INTO chat_session(user_id,title) VALUES(?, 'source')", userId);
+        Long sessionId = jdbc.queryForObject("SELECT id FROM chat_session WHERE user_id=?", Long.class, userId);
+        jdbc.update("INSERT INTO chat_message(session_id,role,content) VALUES(?, 'user', 'source question')", sessionId);
+        Long messageId = jdbc.queryForObject("SELECT id FROM chat_message WHERE session_id=?", Long.class, sessionId);
+        WorkspaceService service = new WorkspaceService(
+            jdbc, new ObjectMapper().findAndRegisterModules(), new RestTemplate());
+        var transactionManager = new DataSourceTransactionManager(dataSource);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> {
+                createBranch(service, transactionManager, userId, sessionId, messageId, "branch-a", ready, start);
+                return null;
+            });
+            var second = executor.submit(() -> {
+                createBranch(service, transactionManager, userId, sessionId, messageId, "branch-b", ready, start);
+                return null;
+            });
+            ready.await();
+            start.countDown();
+            first.get();
+            second.get();
+            assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM chat_branch WHERE user_id=?", Integer.class, userId)).isEqualTo(2);
+            assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM chat_message m JOIN chat_branch b ON b.branch_session_id=m.session_id
+                WHERE b.user_id=? AND m.content='source question'
+                """, Integer.class, userId)).isEqualTo(2);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private void createBranch(
+        WorkspaceService service,
+        DataSourceTransactionManager transactionManager,
+        Long userId,
+        Long sessionId,
+        Long messageId,
+        String label,
+        CountDownLatch ready,
+        CountDownLatch start
+    ) throws Exception {
+        ready.countDown();
+        start.await();
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> service.createBranch(userId, Map.of(
+            "source_session_id", sessionId,
+            "source_message_id", messageId,
+            "label", label
+        )));
+    }
+
+    private int claim(JdbcTemplate jdbc, Long taskId, String instance, CountDownLatch ready, CountDownLatch start)
+        throws Exception {
+        ready.countDown();
+        start.await();
+        return jdbc.update("""
+            UPDATE account_deletion_task SET status='processing',locked_at=NOW(),locked_by=?
+            WHERE id=? AND status IN ('pending','retry')
+            """, instance, taskId);
     }
 }
