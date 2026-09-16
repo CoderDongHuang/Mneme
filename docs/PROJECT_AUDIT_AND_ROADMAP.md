@@ -17,6 +17,7 @@ Mneme 已经具备可运行的核心闭环：账号认证、资料库、异步�
 | Python Ruff | 通过 | `ruff==0.15.17`，全量 Python 源码静态检查 |
 | Python Pytest | 94 passed，1 skipped | 本机虚拟环境运行；跳过项为依赖本机 Tesseract 的 OCR 集成测试 |
 | Java Maven Test | 38 run，4 skipped | 单元/安全/归档恢复与补偿/通知/指标/分支/删除任务/存储测试通过；4 个 Testcontainers/Flyway/多实例测试因本机 Docker 引擎未启动而跳过 |
+| GitHub Actions | 3 jobs passed | 提交 `7275315` 的 Python Agent、React Frontend、Java Gateway 全部通过；Java 在 CI Docker 环境执行 38/38 项测试，包含 4 项 Testcontainers/Flyway/多实例测试 |
 | 前端 ESLint | 通过 | React 源码静态检查 |
 | 前端 Vitest | 3 passed | API 客户端基础契约 |
 | Playwright mock E2E | 8 passed，2 skipped | 桌面与移动端；真实模型用例默认跳过；静态测试服务现在可在用例结束后正常退出 |
