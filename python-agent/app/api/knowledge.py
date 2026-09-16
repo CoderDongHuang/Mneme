@@ -295,11 +295,5 @@ async def document_report(document_id: str, user_id: str, kb_id: str) -> dict:
 
 @router.delete("/admin/user/{user_id}")
 async def delete_user_collections(user_id: str) -> dict:
-    deleted = 0
-    for collection in vector_store.list_user_collections(user_id):
-        deleted += collection.count()
-        vector_store.client.delete_collection(collection.name)
-    from app.knowledge.lexical_index import lexical_index
-
-    lexical_index.delete_user(user_id)
+    deleted = vector_store.delete_user_collections(user_id)
     return {"status": "deleted", "user_id": user_id, "chunks": deleted}

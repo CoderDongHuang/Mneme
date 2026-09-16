@@ -79,4 +79,21 @@ public class KnowledgeController {
         knowledgeService.reparseDocument(userId, documentId);
         return Result.success(Map.of("accepted", true));
     }
+
+    @PostMapping("/document/{documentId}/replace")
+    public Result<KnowledgeDocument> replaceDocument(
+        @RequestAttribute("userId") Long userId,
+        @PathVariable Long documentId,
+        @RequestParam("file") MultipartFile file
+    ) { return Result.success(knowledgeService.replaceDocument(userId, documentId, file)); }
+
+    @GetMapping("/document/{documentId}/versions")
+    public Result<List<Map<String, Object>>> documentVersions(
+        @RequestAttribute("userId") Long userId, @PathVariable Long documentId
+    ) { return Result.success(knowledgeService.documentVersions(userId, documentId)); }
+
+    @PostMapping("/document/{documentId}/versions/{version}/restore")
+    public Result<KnowledgeDocument> restoreDocumentVersion(
+        @RequestAttribute("userId") Long userId, @PathVariable Long documentId, @PathVariable int version
+    ) { return Result.success(knowledgeService.restoreDocumentVersion(userId, documentId, version)); }
 }

@@ -14,13 +14,13 @@ from app.agents.prompts import (
 from app.agents.trace_store import agent_trace_store
 from app.core.config import settings
 from app.core.logging import setup_logger
-from app.knowledge.retriever import retrieve
 from app.knowledge.vector_store import vector_store
 from app.memory.distillation import apply_distilled_entries, distill_conversation
 from app.memory.long_term_memory import long_term_memory
 from app.memory.reflection import run_reflection
 from app.memory.short_term_memory import short_term_memory
 from app.utils.llm import llm
+from app.tools.registry import tool_registry
 
 
 logger = setup_logger("nodes")
@@ -81,13 +81,23 @@ def intent_classification_node(state: dict) -> dict:
         return {"intent": "general", "confidence": 0.95}
     prompt = INTENT_CLASSIFICATION_PROMPT.format(question=state.get("message", ""))
     try:
-        response = llm.invoke(
-            [
-                SystemMessage(content="你是意图分类器，只输出合法 JSON。"),
-                HumanMessage(content=prompt),
-            ]
-        )
-        intent_data = _extract_json(response.content)
+        last_error: Exception | None = None
+        intent_data = None
+        for attempt in range(2):
+            try:
+                response = llm.invoke(
+                    [
+                        SystemMessage(content="你是意图分类器，只输出合法 JSON。"),
+                        HumanMessage(content=prompt),
+                    ]
+                )
+                intent_data = _extract_json(response.content)
+                break
+            except (json.JSONDecodeError, TypeError, ValueError) as error:
+                last_error = error
+                prompt += "\n上一次输出无法解析。请严格输出包含 intent 和 confidence 的 JSON 对象。"
+        if intent_data is None:
+            raise last_error or json.JSONDecodeError("invalid intent", "", 0)
     except json.JSONDecodeError:
         return {"intent": "general", "confidence": 0.0}
     except Exception as error:
@@ -125,7 +135,19 @@ def knowledge_retrieval_node(state: dict) -> dict:
 
     chunks = []
     for kb_id in kb_ids:
-        chunks.extend(retrieve(state["user_id"], kb_id, state["message"]))
+        chunks.extend(
+            tool_registry.execute(
+                "knowledge.retrieve",
+                {
+                    "user_id": state["user_id"],
+                    "kb_id": kb_id,
+                    "query": state["message"],
+                    "top_k": settings.retriever_top_k,
+                },
+                trace_user_id=state["user_id"],
+                trace_session_id=state["session_id"],
+            )
+        )
     chunks.sort(key=lambda item: item.get("score", 0.0), reverse=True)
     chunks = chunks[: settings.retriever_top_k]
 

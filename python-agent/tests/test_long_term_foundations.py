@@ -3,7 +3,10 @@ from app.api.chat import _visual_region
 from app.api.chat_stream import _source_payload
 from app.api.knowledge import document_report
 from app.memory.version_store import MemoryVersionStore
-from app.tools.registry import tool_registry
+from app.tools.registry import ToolRegistry, ToolSpec, tool_registry
+from app.core.internal_tokens import InternalTokenState
+from app.memory.distillation import apply_distilled_entries
+from unittest.mock import patch
 
 
 def test_memory_version_store_snapshots_and_reads_latest(tmp_path):
@@ -130,3 +133,65 @@ def test_document_report_aggregates_visual_and_ocr_metadata(monkeypatch):
     assert report["chunk_types"] == {"text": 1, "table": 1}
     assert report["pages"][0]["visual_evidence_count"] == 1
     assert report["pages"][0]["ocr_confidence_avg"] == 0.8
+
+
+def test_tool_registry_executes_validated_tool_and_rejects_bad_arguments():
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec("math.double", "double", {"value": "integer"}, "test"),
+        lambda value: value * 2,
+    )
+
+    assert registry.execute("math.double", {"value": 4}) == 8
+    import pytest
+
+    with pytest.raises(ValueError):
+        registry.execute("math.double", {"value": 4, "extra": True})
+    with pytest.raises(TypeError):
+        registry.execute("math.double", {"value": "4"})
+
+
+def test_trace_store_redacts_sensitive_tool_arguments(tmp_path):
+    store = AgentTraceStore(str(tmp_path / "redacted.sqlite3"))
+    store.record("u1", "s1", "tool.knowledge.retrieve", "ok", {"query": "private text", "top_k": 4})
+
+    payload = store.list_session("u1", "s1")[0]["payload"]
+    assert payload["query"]["redacted"] is True
+    assert payload["query"]["length"] == len("private text")
+    assert payload["top_k"] == 4
+
+
+def test_internal_token_rotation_keeps_previous_token_during_grace_period():
+    state = InternalTokenState()
+    state._current = "a" * 32
+
+    status = state.rotate("b" * 32)
+
+    assert state.accepts("a" * 32)
+    assert state.accepts("b" * 32)
+    assert status["previous_configured"] is True
+    assert "b" * 8 not in status["current_fingerprint"]
+
+
+def test_distilled_memory_preserves_provenance_without_message_content():
+    with patch(
+        "app.memory.distillation.long_term_memory.add_preference",
+        return_value="mem_1",
+    ) as add:
+        apply_distilled_entries(
+            "u1",
+            [{
+                "category": "preference",
+                "content": "likes diagrams",
+                "confidence": 0.9,
+                "source_session_id": "s1",
+                "evidence_hashes": ["abc123"],
+            }],
+        )
+
+    add.assert_called_once_with(
+        "u1",
+        "likes diagrams",
+        source_session_id="s1",
+        evidence_hashes=["abc123"],
+    )

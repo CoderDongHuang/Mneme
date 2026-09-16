@@ -8,9 +8,11 @@ import {
   FileSpreadsheet,
   FileText,
   FolderPlus,
+  History,
   Plus,
   Search,
   Trash2,
+  RefreshCw,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -42,6 +44,9 @@ export default function KnowledgePage() {
   const [error, setError] = useState("");
   const [notifications, setNotifications] = useState([]);
   const fileRef = useRef(null);
+  const replaceRef = useRef(null);
+  const [replacingDocument, setReplacingDocument] = useState(null);
+  const [versionDialog, setVersionDialog] = useState(null);
 
   useEffect(() => {
     try {
@@ -189,6 +194,39 @@ export default function KnowledgePage() {
     } catch (requestError) { setError(requestError.message); }
   }
 
+  async function replaceDocument(file) {
+    if (!file || !replacingDocument) return;
+    try {
+      setError("");
+      const updated = await endpoints.replaceDocument(replacingDocument.id, file);
+      setDocuments((current) => current.map((item) => item.id === updated.id ? updated : item));
+    } catch (requestError) { setError(requestError.message); }
+    finally {
+      setReplacingDocument(null);
+      if (replaceRef.current) replaceRef.current.value = "";
+    }
+  }
+
+  async function showVersions(document) {
+    try {
+      setVersionDialog({ document, versions: null });
+      const versions = await endpoints.documentVersions(document.id);
+      setVersionDialog({ document, versions: versions || [] });
+    } catch (requestError) {
+      setVersionDialog(null);
+      setError(requestError.message);
+    }
+  }
+
+  async function restoreVersion(version) {
+    if (!versionDialog || !window.confirm(`恢复到 v${version.version_number} 并重新建立索引？`)) return;
+    try {
+      const updated = await endpoints.restoreDocumentVersion(versionDialog.document.id, version.version_number);
+      setDocuments((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setVersionDialog(null);
+    } catch (requestError) { setError(requestError.message); }
+  }
+
   const visibleDocuments = useMemo(
     () =>
       documents.filter((item) =>
@@ -217,6 +255,13 @@ export default function KnowledgePage() {
       </header>
 
       <div className="knowledge-layout">
+        <input
+          ref={replaceRef}
+          type="file"
+          hidden
+          accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.csv,.md,.markdown,.txt,.html,.htm"
+          onChange={(event) => replaceDocument(event.target.files?.[0])}
+        />
         <aside className="kb-index">
           <div className="kb-index-label">
             <span>资料库</span>
@@ -384,6 +429,12 @@ export default function KnowledgePage() {
                       </span>
                       <span>
                         {!["deleting", "parsing"].includes(document.status) && <>
+                          <button title="版本历史" onClick={() => showVersions(document)}>
+                            <History size={16} />
+                          </button>
+                          <button title="替换文件" onClick={() => { setReplacingDocument(document); replaceRef.current?.click(); }}>
+                            <RefreshCw size={16} />
+                          </button>
                           <button title="重新解析" onClick={() => reparseDocument(document)}>
                             <ArrowUpRight size={16} />
                           </button>
@@ -467,6 +518,28 @@ export default function KnowledgePage() {
               <ArrowUpRight size={17} />
             </button>
           </form>
+        </div>
+      )}
+      {versionDialog && (
+        <div className="dialog-backdrop" onMouseDown={() => setVersionDialog(null)}>
+          <section className="kb-dialog version-dialog" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <div><span>版本历史</span><h2>{versionDialog.document.fileName}</h2></div>
+              <button type="button" onClick={() => setVersionDialog(null)}><X size={18} /></button>
+            </header>
+            <div className="version-list">
+              {versionDialog.versions === null && <LoadingState label="正在读取版本" />}
+              {versionDialog.versions?.map((version) => (
+                <button key={version.version_number} disabled={Boolean(version.active)} onClick={() => restoreVersion(version)}>
+                  <span>
+                    <strong>v{version.version_number} · {version.file_name}</strong>
+                    <small>{String(version.sha256).slice(0, 12)} · {new Date(version.created_at).toLocaleString("zh-CN")}</small>
+                  </span>
+                  <StatusBadge status={version.active ? "active" : "ready"} />
+                </button>
+              ))}
+            </div>
+          </section>
         </div>
       )}
     </div>

@@ -3,6 +3,7 @@ import re
 import hashlib
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 
@@ -39,27 +40,55 @@ def resolve_vector_shard(user_id: str, kb_id: str) -> int:
 
 class VectorStore:
     def __init__(self) -> None:
-        self.client = self._build_client()
+        self.clients = self._build_clients()
+        self.client = self.clients[0]
 
-    def _build_client(self) -> Any:
+    def _build_clients(self) -> list[Any]:
         chroma_settings = ChromaSettings(anonymized_telemetry=False)
+        urls = [item.strip() for item in settings.vector_shard_urls.split(",") if item.strip()]
+        if urls:
+            clients = []
+            for raw_url in urls:
+                parsed = urlparse(raw_url if "://" in raw_url else f"http://{raw_url}")
+                if not parsed.hostname or not parsed.port:
+                    raise ValueError(f"无效的 VECTOR_SHARD_URLS 地址: {raw_url}")
+                clients.append(
+                    chromadb.HttpClient(
+                        host=parsed.hostname,
+                        port=parsed.port,
+                        ssl=parsed.scheme == "https",
+                        settings=chroma_settings,
+                    )
+                )
+            if settings.vector_shard_count not in {1, len(clients)}:
+                raise ValueError("VECTOR_SHARD_COUNT 必须与 VECTOR_SHARD_URLS 数量一致")
+            return clients
         if settings.chroma_mode == "http":
-            return chromadb.HttpClient(
+            return [chromadb.HttpClient(
                 host=settings.chroma_host,
                 port=settings.chroma_port,
                 settings=chroma_settings,
-            )
-        Path(settings.chroma_path).mkdir(parents=True, exist_ok=True)
-        return chromadb.PersistentClient(
-            path=settings.chroma_path, settings=chroma_settings
-        )
+            )]
+        shard_count = max(1, settings.vector_shard_count)
+        clients = []
+        for shard_id in range(shard_count):
+            path = Path(settings.chroma_path)
+            if shard_count > 1:
+                path = path / f"shard-{shard_id}"
+            path.mkdir(parents=True, exist_ok=True)
+            clients.append(chromadb.PersistentClient(path=str(path), settings=chroma_settings))
+        return clients
+
+    def _client_for(self, user_id: str, kb_id: str) -> Any:
+        return self.clients[resolve_vector_shard(user_id, kb_id) % len(self.clients)]
 
     def heartbeat(self) -> bool:
-        self.client.heartbeat()
+        for client in self.clients:
+            client.heartbeat()
         return True
 
     def get_or_create_collection(self, user_id: str, kb_id: str) -> Any:
-        return self.client.get_or_create_collection(
+        return self._client_for(user_id, kb_id).get_or_create_collection(
             name=_get_collection_name(user_id, kb_id),
             metadata={
                 "user_id": user_id,
@@ -72,7 +101,7 @@ class VectorStore:
 
     def get_collection(self, user_id: str, kb_id: str) -> Any | None:
         try:
-            return self.client.get_collection(
+            return self._client_for(user_id, kb_id).get_collection(
                 name=_get_collection_name(user_id, kb_id), embedding_function=embeddings
             )
         except Exception:
@@ -81,7 +110,7 @@ class VectorStore:
     def delete_collection(self, user_id: str, kb_id: str) -> bool:
         name = _get_collection_name(user_id, kb_id)
         try:
-            self.client.delete_collection(name=name)
+            self._client_for(user_id, kb_id).delete_collection(name=name)
             logger.info("知识库向量集合已删除: %s", name)
         except Exception:
             return False
@@ -122,7 +151,11 @@ class VectorStore:
         return chunks
 
     def list_user_collections(self, user_id: str) -> list[Any]:
-        collections = self.client.list_collections()
+        collections = [
+            collection
+            for client in self.clients
+            for collection in client.list_collections()
+        ]
         return [
             collection
             for collection in collections
@@ -147,14 +180,38 @@ class VectorStore:
         return stats
 
     def get_total_stats(self) -> dict[str, Any]:
-        collections = self.client.list_collections()
+        by_shard = []
+        collections = []
+        for shard_id, client in enumerate(self.clients):
+            shard_collections = client.list_collections()
+            collections.extend(shard_collections)
+            by_shard.append({
+                "shard_id": shard_id,
+                "collections": len(shard_collections),
+                "chunks": sum(collection.count() for collection in shard_collections),
+            })
         return {
             "total_collections": len(collections),
             "total_chunks": sum(collection.count() for collection in collections),
             "collection_names": [collection.name for collection in collections],
             "vector_shard_id": settings.vector_shard_id,
             "vector_shard_count": settings.vector_shard_count,
+            "active_shard_clients": len(self.clients),
+            "shards": by_shard,
         }
+
+    def delete_user_collections(self, user_id: str) -> int:
+        deleted = 0
+        for client in self.clients:
+            for collection in client.list_collections():
+                metadata = collection.metadata or {}
+                if metadata.get("user_id") == user_id or collection.name.startswith(
+                    f"user_{_safe(user_id)}_kb_"
+                ):
+                    deleted += collection.count()
+                    client.delete_collection(collection.name)
+        lexical_index.delete_user(user_id)
+        return deleted
 
     def cleanup_orphan_collections(
         self, valid_kb_pairs: set[tuple[str, str]]
@@ -162,20 +219,21 @@ class VectorStore:
         removed: list[str] = []
         kept: list[str] = []
         errors: list[dict[str, str]] = []
-        for collection in self.client.list_collections():
-            metadata = collection.metadata or {}
-            user_id = str(metadata.get("user_id", ""))
-            kb_id = str(metadata.get("kb_id", ""))
-            if not user_id or not kb_id:
-                continue
-            if (user_id, kb_id) in valid_kb_pairs:
-                kept.append(collection.name)
-                continue
-            try:
-                self.client.delete_collection(collection.name)
-                removed.append(collection.name)
-            except Exception as error:
-                errors.append({"name": collection.name, "error": str(error)})
+        for client in self.clients:
+            for collection in client.list_collections():
+                metadata = collection.metadata or {}
+                user_id = str(metadata.get("user_id", ""))
+                kb_id = str(metadata.get("kb_id", ""))
+                if not user_id or not kb_id:
+                    continue
+                if (user_id, kb_id) in valid_kb_pairs:
+                    kept.append(collection.name)
+                    continue
+                try:
+                    client.delete_collection(collection.name)
+                    removed.append(collection.name)
+                except Exception as error:
+                    errors.append({"name": collection.name, "error": str(error)})
         return {"removed": removed, "kept": kept, "errors": errors}
 
 

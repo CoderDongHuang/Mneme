@@ -29,7 +29,8 @@
 词法索引配置：
 
 - `LEXICAL_INDEX_PATH`：SQLite 文件路径，默认 `python-agent/data/lexical-index.sqlite3`。
-- `RERANKER_ENABLED=true` 与 `RERANKER_MODEL`：启用可选 Cross Encoder；未安装 `sentence-transformers` 或模型不可用时自动降级到 RRF。
+- `RERANKER_ENABLED=true`、`RERANKER_PROVIDER=dashscope` 与 `RERANKER_MODEL=gte-rerank-v2`：使用现有 DashScope SDK 在线重排；也可将 provider 设为 `cross_encoder` 使用本地模型。失败时自动降级到 RRF。
+- `VECTOR_SHARD_URLS=http://chroma-0:8000,http://chroma-1:8000`：按 `user_id + kb_id` 稳定哈希到独立 Chroma 节点；`VECTOR_SHARD_COUNT` 应与地址数量一致。
 
 ## 生产评测建议
 

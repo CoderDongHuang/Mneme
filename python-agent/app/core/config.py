@@ -65,9 +65,11 @@ class Settings:
     agent_trace_retention_days: int = int(os.getenv("AGENT_TRACE_RETENTION_DAYS", "30"))
     memory_version_retention_days: int = int(os.getenv("MEMORY_VERSION_RETENTION_DAYS", "180"))
     reranker_enabled: bool = _bool("RERANKER_ENABLED", False)
-    reranker_model: str = os.getenv("RERANKER_MODEL", "").strip()
+    reranker_provider: str = os.getenv("RERANKER_PROVIDER", "dashscope").strip().lower()
+    reranker_model: str = os.getenv("RERANKER_MODEL", "gte-rerank-v2").strip()
     vector_shard_count: int = max(1, int(os.getenv("VECTOR_SHARD_COUNT", "1")))
     vector_shard_id: int = max(0, int(os.getenv("VECTOR_SHARD_ID", "0")))
+    vector_shard_urls: str = os.getenv("VECTOR_SHARD_URLS", "").strip()
     distillation_idle_minutes: int = int(os.getenv("DISTILLATION_IDLE_MINUTES", "15"))
     memory_reflection_every_sessions: int = int(
         os.getenv("MEMORY_REFLECTION_EVERY_SESSIONS", "5")
@@ -88,8 +90,15 @@ class Settings:
         "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
     )
     internal_service_token: str = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
+    internal_service_token_previous: str = os.getenv("INTERNAL_SERVICE_TOKEN_PREVIOUS", "").strip()
     skip_internal_auth: bool = _bool("SKIP_INTERNAL_AUTH", False)
     secret_rotation_due: bool = _bool("SECRET_ROTATION_DUE", False)
+    agent_tool_timeout_seconds: float = float(os.getenv("AGENT_TOOL_TIMEOUT_SECONDS", "8"))
+    agent_tool_max_attempts: int = max(1, int(os.getenv("AGENT_TOOL_MAX_ATTEMPTS", "2")))
+    agent_trace_redact_fields: str = os.getenv(
+        "AGENT_TRACE_REDACT_FIELDS",
+        "content,message,query,question,answer,prompt,token,password,secret,api_key",
+    )
 
     @property
     def cors_origin_list(self) -> list[str]:

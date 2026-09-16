@@ -47,6 +47,9 @@ SSE 事件：
 - `GET /knowledge/document/{id}/status`
 - `DELETE /knowledge/document/{id}`：异步删除原文件和该文档的全部向量片段。
 - `POST /knowledge/document/{id}/reparse`：复用原文件重新解析，保留文档 ID，完成后替换旧片段。
+- `POST /knowledge/document/{id}/replace`：上传替换文件，创建新版本并复用文档 ID 重建索引。
+- `GET /knowledge/document/{id}/versions`：列出文件版本、SHA-256、大小和当前版本状态。
+- `POST /knowledge/document/{id}/versions/{version}/restore`：恢复指定原文件版本并重建索引。
 
 文档状态：`parsing -> ready | failed`；删除时为 `deleting`，删除任务失败时为 `delete_failed`。
 
@@ -55,3 +58,8 @@ SSE 事件：
 - `GET /memory`：读取画像。
 - `POST /memory/write`：手动补充。
 - `POST /memory/confirm`：确认或忽略蒸馏记忆。
+
+## 管理接口
+
+- `GET /admin/secrets/internal-token`：管理员查看内部服务令牌指纹与轮换状态。
+- `POST /admin/secrets/internal-token/rotate`：管理员先更新 Python 接受令牌，再无停机切换 Java 出站令牌；请求体为 `new_token`。

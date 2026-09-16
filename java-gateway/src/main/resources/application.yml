@@ -45,9 +45,18 @@ mneme:
   jwt-expiration: ${JWT_EXPIRATION:86400000}
   file-storage-path: ${FILE_STORAGE_PATH:../data/files}
   storage-backend: ${STORAGE_BACKEND:local}
+  object-storage-endpoint: ${OBJECT_STORAGE_ENDPOINT:}
+  object-storage-access-key: ${OBJECT_STORAGE_ACCESS_KEY:}
+  object-storage-secret-key: ${OBJECT_STORAGE_SECRET_KEY:}
+  object-storage-bucket: ${OBJECT_STORAGE_BUCKET:mneme}
+  tenant-storage-quota-mb: ${TENANT_STORAGE_QUOTA_MB:2048}
+  tenant-knowledge-base-quota: ${TENANT_KNOWLEDGE_BASE_QUOTA:100}
   avatar-storage-path: ${AVATAR_STORAGE_PATH:../data/avatars}
   internal-service-token: ${INTERNAL_SERVICE_TOKEN}
+  internal-service-token-previous: ${INTERNAL_SERVICE_TOKEN_PREVIOUS:}
   cors-origins: ${CORS_ORIGINS:http://localhost:5173}
   secure-cookies: ${SECURE_COOKIES:true}
   password-reset-from: ${PASSWORD_RESET_FROM:}
   admin-api-token: ${ADMIN_API_TOKEN:}
+  account-deletion-max-attempts: ${ACCOUNT_DELETION_MAX_ATTEMPTS:8}
+  account-deletion-poll-delay-ms: ${ACCOUNT_DELETION_POLL_DELAY_MS:3000}

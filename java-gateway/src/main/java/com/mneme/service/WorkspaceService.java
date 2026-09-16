@@ -48,6 +48,9 @@ public class WorkspaceService {
     @Autowired(required = false)
     private OperationLogService operationLog;
 
+    @Autowired(required = false)
+    private ObjectStorageService objectStorage;
+
     @Value("${mneme.file-storage-path:./data/files}")
     private String fileStoragePath;
 
@@ -113,6 +116,10 @@ public class WorkspaceService {
     }
 
     private Path checkedStoragePath(String rawPath, boolean requireRegularFile) {
+        if (rawPath.startsWith("s3://")) {
+            if (objectStorage == null) throw new IllegalArgumentException("对象存储服务不可用");
+            return objectStorage.materialize(rawPath);
+        }
         Path root = Path.of(fileStoragePath).toAbsolutePath().normalize();
         Path path = Path.of(rawPath).toAbsolutePath().normalize();
         if (!path.startsWith(root)

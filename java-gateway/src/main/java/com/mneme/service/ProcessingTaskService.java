@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.client.RestTemplate;
 import io.micrometer.core.instrument.MeterRegistry;
 
@@ -39,6 +40,8 @@ public class ProcessingTaskService {
     private final RestTemplate restTemplate;
     private final MeterRegistry meterRegistry;
     private final NotificationService notificationService;
+    private final JdbcTemplate jdbc;
+    private final ObjectStorageService storage;
 
     @Autowired(required = false)
     private OperationLogService operationLog;
@@ -56,7 +59,9 @@ public class ProcessingTaskService {
         ObjectMapper objectMapper,
         RestTemplate restTemplate,
         MeterRegistry meterRegistry,
-        NotificationService notificationService
+        NotificationService notificationService,
+        JdbcTemplate jdbc,
+        ObjectStorageService storage
     ) {
         this.taskMapper = taskMapper;
         this.documentMapper = documentMapper;
@@ -65,6 +70,8 @@ public class ProcessingTaskService {
         this.restTemplate = restTemplate;
         this.meterRegistry = meterRegistry;
         this.notificationService = notificationService;
+        this.jdbc = jdbc;
+        this.storage = storage;
     }
 
     @Scheduled(fixedDelayString = "${mneme.task-poll-delay-ms:2000}")
@@ -119,10 +126,11 @@ public class ProcessingTaskService {
 
     private void ingest(ProcessingTask task) throws Exception {
         JsonNode payload = objectMapper.readTree(task.getPayload());
+        Path localFile = storage.materialize(payload.path("file_path").asText());
         IngestionRequest request = new IngestionRequest(
             payload.path("user_id").asText(),
             payload.path("kb_id").asText(),
-            payload.path("file_path").asText(),
+            localFile.toString(),
             payload.path("document_id").asText()
         );
         IngestionResult result = restTemplate.postForObject(
@@ -147,9 +155,11 @@ public class ProcessingTaskService {
         String documentId = payload.path("document_id").asText();
         restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId
             + "?user_id=" + userId + "&kb_id=" + kbId);
-        Path file = checkedStoragePath(payload.path("file_path").asText(), false);
-        if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-            Files.deleteIfExists(file);
+        List<Map<String, Object>> versions = jdbc.queryForList(
+            "SELECT file_path FROM knowledge_document_version WHERE document_id=?", task.getAggregateId());
+        if (versions.isEmpty()) versions = List.of(Map.of("file_path", payload.path("file_path").asText()));
+        for (Map<String, Object> version : versions) {
+            storage.delete(String.valueOf(version.get("file_path")));
         }
         documentMapper.deleteById(task.getAggregateId());
     }
@@ -162,6 +172,7 @@ public class ProcessingTaskService {
         restTemplate.delete(
             pythonAgentUrl + "/api/v1/knowledge/admin/collections/" + knowledgeBaseId + "?user_id=" + userId
         );
+        storage.deleteKnowledgeBasePrefix(Long.valueOf(userId), Long.valueOf(knowledgeBaseId));
         Path root = Path.of(fileStoragePath).toAbsolutePath().normalize();
         Path directory = root.resolve(userId).resolve(knowledgeBaseId).normalize();
         if (directory.startsWith(root) && Files.exists(directory)) {

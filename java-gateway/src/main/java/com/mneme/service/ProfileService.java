@@ -5,13 +5,10 @@ import com.mneme.dto.PasswordChangeRequest;
 import com.mneme.dto.ProfileUpdateRequest;
 import com.mneme.entity.User;
 import com.mneme.mapper.UserMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -25,30 +22,20 @@ import java.util.UUID;
 public class ProfileService {
     private static final Set<String> IMAGE_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private final UserMapper users;
-    private final RestTemplate restTemplate;
+    private final AccountDeletionService accountDeletions;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
     private final Path avatarRoot;
-    private final String pythonAgentUrl;
-    private final Path fileRoot;
-
-    @Autowired(required = false)
-    private OperationLogService operationLog;
-
-    @Autowired(required = false)
-    private JdbcTemplate jdbc;
 
     public ProfileService(
         UserMapper users,
-        RestTemplate restTemplate,
+        AccountDeletionService accountDeletions,
         @Value("${mneme.avatar-storage-path:${mneme.file-storage-path:../data/files}/avatars}") String avatarStoragePath,
-        @Value("${mneme.python-agent-url}") String pythonAgentUrl,
-        @Value("${mneme.file-storage-path:../data/files}") String fileStoragePath
+        @Value("${mneme.python-agent-url}") String ignoredPythonAgentUrl,
+        @Value("${mneme.file-storage-path:../data/files}") String ignoredFileStoragePath
     ) {
         this.users = users;
-        this.restTemplate = restTemplate;
+        this.accountDeletions = accountDeletions;
         this.avatarRoot = Path.of(avatarStoragePath).toAbsolutePath().normalize();
-        this.pythonAgentUrl = pythonAgentUrl;
-        this.fileRoot = Path.of(fileStoragePath).toAbsolutePath().normalize();
     }
 
     public Map<String, Object> profile(Long userId) {
@@ -117,85 +104,8 @@ public class ProfileService {
         users.updateById(user);
     }
 
-    public void deleteAccount(Long userId) throws IOException {
-        User user = users.selectById(userId);
-        if (user == null) return;
-        String operationId = operationLog == null ? UUID.randomUUID().toString() : operationLog.newOperationId();
-        String id = userId.toString();
-        user.setStatus("deleting");
-        users.updateById(user);
-        updateDeletionTask(operationId, userId, "processing", "start", 0, null);
-        record(operationId, userId, "account_delete", id, "start", "started", Map.of("username", user.getUsername()), null);
-        try {
-            restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/user/" + id);
-            updateDeletionTask(operationId, userId, "processing", "knowledge_cleanup", 0, null);
-            record(operationId, userId, "account_delete", id, "knowledge_cleanup", "completed", Map.of(), null);
-            restTemplate.delete(pythonAgentUrl + "/api/v1/memory/admin/user/" + id);
-            updateDeletionTask(operationId, userId, "processing", "memory_cleanup", 0, null);
-            record(operationId, userId, "account_delete", id, "memory_cleanup", "completed", Map.of(), null);
-            restTemplate.delete(pythonAgentUrl + "/api/v1/admin/user/" + id);
-            updateDeletionTask(operationId, userId, "processing", "session_cleanup", 0, null);
-            record(operationId, userId, "account_delete", id, "session_cleanup", "completed", Map.of(), null);
-            deleteDirectory(fileRoot.resolve(id).normalize(), fileRoot);
-            updateDeletionTask(operationId, userId, "processing", "file_cleanup", 0, null);
-            record(operationId, userId, "account_delete", id, "file_cleanup", "completed", Map.of(), null);
-            if (user.getAvatarPath() != null) Files.deleteIfExists(Path.of(user.getAvatarPath()));
-            updateDeletionTask(operationId, userId, "processing", "avatar_cleanup", 0, null);
-            users.deleteById(user.getId());
-            updateDeletionTask(operationId, userId, "completed", "user_delete", 0, null);
-            record(operationId, userId, "account_delete", id, "user_delete", "completed", Map.of(), null);
-        } catch (IOException | RuntimeException error) {
-            user.setStatus("deletion_failed");
-            users.updateById(user);
-            updateDeletionTask(operationId, userId, "failed", "failed", 1, error.getMessage());
-            record(operationId, userId, "account_delete", id, "failed", "failed", Map.of(), error);
-            throw error;
-        }
-    }
-
-    private void updateDeletionTask(
-        String operationId,
-        Long userId,
-        String status,
-        String step,
-        int attemptCount,
-        String error
-    ) {
-        if (jdbc == null) return;
-        try {
-            jdbc.update("""
-                INSERT INTO account_deletion_task(operation_id,user_id,status,current_step,attempt_count,error_message)
-                VALUES(?,?,?,?,?,?)
-                ON DUPLICATE KEY UPDATE status=VALUES(status),current_step=VALUES(current_step),
-                    attempt_count=GREATEST(account_deletion_task.attempt_count, VALUES(attempt_count)),
-                    error_message=VALUES(error_message)
-                """, operationId, userId, status, step, attemptCount, error);
-        } catch (Exception ignored) { }
-    }
-
-    private void record(
-        String operationId,
-        Long userId,
-        String type,
-        String aggregateId,
-        String step,
-        String status,
-        Map<String, ?> payload,
-        Exception error
-    ) {
-        if (operationLog != null) {
-            operationLog.record(operationId, userId, type, aggregateId, step, status, payload, error);
-        }
-    }
-
-    private void deleteDirectory(Path directory, Path root) throws IOException {
-        if (!directory.startsWith(root) || !Files.exists(directory)) return;
-        try (var paths = Files.walk(directory)) {
-            paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
-                try { Files.deleteIfExists(path); }
-                catch (IOException error) { throw new IllegalStateException(error); }
-            });
-        }
+    public String deleteAccount(Long userId) {
+        return accountDeletions.enqueue(userId);
     }
 
     private User requireUser(Long id) {

@@ -34,6 +34,10 @@ def test_pdf_layout_removes_repeated_headers_and_footers(tmp_path):
     assert "TOKEN-2" in text_documents[1].page_content
     assert text_documents[1].metadata["page"] == 2
     assert text_documents[1].metadata["parser"] == "pymupdf_layout"
+    region = [float(value) for value in text_documents[1].metadata["visual_region"].split(",")]
+    assert len(region) == 4
+    assert all(0 <= value <= 1 for value in region)
+    assert region[0] < region[2] and region[1] < region[3]
     assert all(value is not None for value in text_documents[1].metadata.values())
     if "ocr_confidence" in text_documents[1].metadata:
         assert 0 <= text_documents[1].metadata["ocr_confidence"] <= 1

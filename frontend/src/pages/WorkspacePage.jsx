@@ -325,6 +325,19 @@ export default function WorkspacePage() {
                       </div>
                       <small>{preview.extension.toUpperCase()}</small>
                     </header>
+                    {(preview.parse_report?.pages || []).some((page) =>
+                      page.ocr_confidence_min != null && page.ocr_confidence_min < 0.7
+                    ) && (
+                      <div className="parse-warning" role="alert">
+                        <strong>部分页面识别置信度较低</strong>
+                        <span>
+                          请重点核对第 {(preview.parse_report.pages || [])
+                            .filter((page) => page.ocr_confidence_min != null && page.ocr_confidence_min < 0.7)
+                            .map((page) => page.page)
+                            .join("、")} 页的引用原文。
+                        </span>
+                      </div>
+                    )}
                     {preview.extension === "pdf" ? (
                       <iframe
                         className="document-frame"

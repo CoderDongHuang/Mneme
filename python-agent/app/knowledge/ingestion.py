@@ -46,12 +46,26 @@ def _document(content: str, source: str, **metadata: object) -> Document:
     return Document(page_content=content, metadata={"source": source, **clean_metadata})
 
 
+def _region(x0: float, y0: float, x1: float, y1: float, width: float, height: float) -> str:
+    if width <= 0 or height <= 0:
+        return ""
+    values = (
+        max(0.0, min(1.0, x0 / width)),
+        max(0.0, min(1.0, y0 / height)),
+        max(0.0, min(1.0, x1 / width)),
+        max(0.0, min(1.0, y1 / height)),
+    )
+    return ",".join(f"{value:.4f}" for value in values)
+
+
 def _parse_pdf(path: Path, source: str) -> list[Document]:
     import fitz
 
     pdf = fitz.open(str(path))
     documents: list[Document] = []
     page_lines: list[list[str]] = []
+    page_blocks: list[list[tuple[float, float, float, float, str]]] = []
+    page_sizes: list[tuple[float, float]] = []
     page_ocr_confidences: list[float | None] = []
     page_images: list[tuple[int, bytes]] = []
 
@@ -60,6 +74,12 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
             page.get_text("blocks"),
             key=lambda block: (round(float(block[1]) / 12), float(block[0])),
         )
+        page_blocks.append([
+            (float(block[0]), float(block[1]), float(block[2]), float(block[3]), str(block[4]))
+            for block in blocks
+            if str(block[4]).strip()
+        ])
+        page_sizes.append((float(page.rect.width), float(page.rect.height)))
         lines = [
             line.strip()
             for block in blocks
@@ -123,6 +143,18 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
     for page_index, lines in enumerate(page_lines, start=1):
         text = "\n".join(line for line in lines if line not in repeated).strip()
         if text:
+            width, height = page_sizes[page_index - 1]
+            retained = [
+                block for block in page_blocks[page_index - 1]
+                if any(line.strip() and line.strip() not in repeated for line in block[4].splitlines())
+            ]
+            visual_region = "0.0000,0.0000,1.0000,1.0000"
+            if retained and page_ocr_confidences[page_index - 1] is None:
+                visual_region = _region(
+                    min(block[0] for block in retained), min(block[1] for block in retained),
+                    max(block[2] for block in retained), max(block[3] for block in retained),
+                    width, height,
+                )
             documents.append(
                 _document(
                     text,
@@ -131,6 +163,8 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                     chunk_type="text",
                     parser="pymupdf_layout",
                     ocr_confidence=page_ocr_confidences[page_index - 1],
+                    visual_page=page_index,
+                    visual_region=visual_region,
                 )
             )
 
@@ -140,11 +174,11 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
         with pdfplumber.open(str(path)) as pdf:
             for page_index, page in enumerate(pdf.pages, start=1):
                 for table_index, table in enumerate(
-                    page.extract_tables() or [], start=1
+                    page.find_tables() or [], start=1
                 ):
                     rows = [
                         " | ".join("" if cell is None else str(cell) for cell in row)
-                        for row in table
+                        for row in table.extract()
                     ]
                     content = "\n".join(rows).strip()
                     if content:
@@ -155,6 +189,10 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                                 page=page_index,
                                 chunk_type="table",
                                 section=f"第 {page_index} 页表格 {table_index}",
+                                parser="pdfplumber_table",
+                                evidence_type="visual",
+                                visual_page=page_index,
+                                visual_region=_region(*table.bbox, page.width, page.height),
                             )
                         )
     except ImportError:
@@ -178,6 +216,10 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                             page=page_index,
                             section=f"第 {page_index} 页图片 {image_index}",
                             chunk_type="image_vision",
+                            parser=settings.multimodal_model,
+                            evidence_type="visual",
+                            visual_page=page_index,
+                            visual_region="0.0000,0.0000,1.0000,1.0000",
                         )
                     )
             except Exception as error:
@@ -224,6 +266,7 @@ def _parse_pptx(path: Path, source: str) -> list[Document]:
             else f"第 {slide_index} 页"
         )
         body: list[str] = []
+        body_regions: list[tuple[float, float, float, float]] = []
         for shape in slide.shapes:
             if getattr(shape, "has_table", False):
                 rows = [
@@ -237,6 +280,13 @@ def _parse_pptx(path: Path, source: str) -> list[Document]:
                         page=slide_index,
                         section=title,
                         chunk_type="table",
+                        evidence_type="visual",
+                        visual_page=slide_index,
+                        visual_region=_region(
+                            shape.left, shape.top, shape.left + shape.width,
+                            shape.top + shape.height, presentation.slide_width,
+                            presentation.slide_height,
+                        ),
                     )
                 )
             elif (
@@ -245,6 +295,7 @@ def _parse_pptx(path: Path, source: str) -> list[Document]:
                 and shape is not slide.shapes.title
             ):
                 body.append(shape.text.strip())
+                body_regions.append((shape.left, shape.top, shape.left + shape.width, shape.top + shape.height))
         output.append(
             _document(
                 title, source, page=slide_index, section=title, chunk_type="title"
@@ -258,6 +309,15 @@ def _parse_pptx(path: Path, source: str) -> list[Document]:
                     page=slide_index,
                     section=title,
                     chunk_type="text",
+                    visual_page=slide_index,
+                    visual_region=_region(
+                        min(region[0] for region in body_regions),
+                        min(region[1] for region in body_regions),
+                        max(region[2] for region in body_regions),
+                        max(region[3] for region in body_regions),
+                        presentation.slide_width,
+                        presentation.slide_height,
+                    ),
                 )
             )
     return output

@@ -1,4 +1,3 @@
-import hmac
 import time
 import uuid
 from collections import defaultdict
@@ -15,6 +14,7 @@ from app.api import agent, chat, chat_stream, health, knowledge, memory
 from app.core.config import settings
 from app.core.logging import setup_logger, trace_id_var
 from app.memory.reflection_scheduler import reflection_scheduler
+from app.core.internal_tokens import internal_tokens
 
 
 logger = setup_logger("main")
@@ -128,9 +128,7 @@ class InternalServiceAuthMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
         supplied = request.headers.get("X-Internal-Service-Token", "")
-        if not supplied or not hmac.compare_digest(
-            supplied, settings.internal_service_token
-        ):
+        if not internal_tokens.accepts(supplied):
             return JSONResponse(
                 status_code=401,
                 content={

@@ -3,7 +3,7 @@ package com.mneme.config;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.beans.factory.annotation.Value;
+import com.mneme.service.InternalServiceTokenProvider;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
@@ -14,11 +14,11 @@ public class RestTemplateConfig {
     @Bean
     public RestTemplate restTemplate(
         RestTemplateBuilder builder,
-        @Value("${mneme.internal-service-token}") String internalServiceToken
+        InternalServiceTokenProvider tokens
     ) {
         return builder
             .additionalInterceptors((request, body, execution) -> {
-                request.getHeaders().set("X-Internal-Service-Token", internalServiceToken);
+                request.getHeaders().set("X-Internal-Service-Token", tokens.current());
                 return execution.execute(request, body);
             })
             .setConnectTimeout(Duration.ofSeconds(30))

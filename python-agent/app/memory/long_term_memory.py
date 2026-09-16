@@ -84,7 +84,10 @@ class LongTermMemoryManager:
 
     # ── 偏好 (Preference) ───────────────────────────────────
 
-    def add_preference(self, user_id: str, content: str) -> Optional[str]:
+    def add_preference(
+        self, user_id: str, content: str, source_session_id: str = "",
+        evidence_hashes: list[str] | None = None
+    ) -> Optional[str]:
         """添加用户偏好。语义去重通过后写入 Chroma。返回记忆 ID，重复时返回 None。"""
         # 语义去重
         if self._is_duplicate(user_id, "preference", content):
@@ -102,7 +105,10 @@ class LongTermMemoryManager:
                 f"偏好数量达上限({MAX_PREFERENCES})，淘汰最旧记忆: {oldest['content'][:40]}"
             )
 
-        mem_id = self._store.add_memory(user_id, "preference", content)
+        mem_id = self._store.add_memory(
+            user_id, "preference", content,
+            source_session_id=source_session_id, evidence_hashes=evidence_hashes,
+        )
         self._invalidate_cache(user_id, "preferences")
         logger.info(f"用户 {user_id} 新增偏好: {content}")
         return mem_id
@@ -125,7 +131,10 @@ class LongTermMemoryManager:
 
     # ── 薄弱点 (WeakPoint) ──────────────────────────────────
 
-    def add_weak_point(self, user_id: str, content: str, topic: str) -> Optional[str]:
+    def add_weak_point(
+        self, user_id: str, content: str, topic: str,
+        source_session_id: str = "", evidence_hashes: list[str] | None = None
+    ) -> Optional[str]:
         """添加用户薄弱点。同 topic 会合并（增加计数），语义相似会去重。"""
         # 检查是否已有相同 topic 的薄弱点（精确匹配 → 累加计数）
         existing = self._store.get_by_category(
@@ -152,7 +161,8 @@ class LongTermMemoryManager:
             logger.info(f"薄弱点数量达上限({MAX_WEAK_POINTS})，淘汰最旧记忆")
 
         mem_id = self._store.add_memory(
-            user_id, "weak_point", content, topic=topic, importance=0.5
+            user_id, "weak_point", content, topic=topic, importance=0.5,
+            source_session_id=source_session_id, evidence_hashes=evidence_hashes,
         )
         self._invalidate_cache(user_id, "weak_points")
         logger.info(f"用户 {user_id} 新增薄弱点: {topic}")
@@ -195,7 +205,10 @@ class LongTermMemoryManager:
 
     # ── 学习进度 (Progress) ────────────────────────────────
 
-    def update_progress(self, user_id: str, chapter: str, section: str):
+    def update_progress(
+        self, user_id: str, chapter: str, section: str,
+        source_session_id: str = "", evidence_hashes: list[str] | None = None
+    ):
         """更新用户学习进度。同一用户只保留最新一条进度记录。"""
         # 删除旧进度
         existing = self._store.get_by_category(user_id, "progress", limit=5)
@@ -204,7 +217,8 @@ class LongTermMemoryManager:
 
         content = f"学习进度: {chapter}/{section}"
         self._store.add_memory(
-            user_id, "progress", content, topic=f"{chapter}/{section}"
+            user_id, "progress", content, topic=f"{chapter}/{section}",
+            source_session_id=source_session_id, evidence_hashes=evidence_hashes,
         )
         self._invalidate_cache(user_id, "progress")
         logger.info(f"用户 {user_id} 学习进度更新: {chapter}/{section}")

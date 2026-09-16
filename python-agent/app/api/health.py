@@ -56,5 +56,8 @@ async def config_status() -> dict:
             "memory_version_retention_days": settings.memory_version_retention_days,
             "vector_shard_count": settings.vector_shard_count,
             "vector_shard_id": settings.vector_shard_id,
+            "vector_shard_clients": len(vector_store.clients),
+            "agent_tool_timeout_seconds": settings.agent_tool_timeout_seconds,
+            "agent_trace_redaction": bool(settings.agent_trace_redact_fields),
         },
     }

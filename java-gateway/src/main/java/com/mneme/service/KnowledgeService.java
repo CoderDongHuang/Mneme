@@ -10,6 +10,7 @@ import com.mneme.mapper.ProcessingTaskMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -20,6 +21,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.Set;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.zip.ZipInputStream;
 
 @Service
 public class KnowledgeService {
@@ -30,25 +34,41 @@ public class KnowledgeService {
     private final KnowledgeDocumentMapper docMapper;
     private final ProcessingTaskMapper taskMapper;
     private final ObjectMapper objectMapper;
+    private final JdbcTemplate jdbc;
+    private final ObjectStorageService storage;
 
     @Value("${mneme.file-storage-path:./data/files}")
     private String fileStoragePath;
+
+    @Value("${mneme.tenant-storage-quota-mb:2048}")
+    private long tenantStorageQuotaMb;
+
+    @Value("${mneme.tenant-knowledge-base-quota:100}")
+    private int tenantKnowledgeBaseQuota;
 
     public KnowledgeService(
         KnowledgeBaseMapper kbMapper,
         KnowledgeDocumentMapper docMapper,
         ProcessingTaskMapper taskMapper,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        JdbcTemplate jdbc,
+        ObjectStorageService storage
     ) {
         this.kbMapper = kbMapper;
         this.docMapper = docMapper;
         this.taskMapper = taskMapper;
         this.objectMapper = objectMapper;
+        this.jdbc = jdbc;
+        this.storage = storage;
     }
 
     public KnowledgeBase createKb(Long userId, String name, String description) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("知识库名称不能为空");
+        }
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_base WHERE user_id=?", Long.class, userId);
+        if (count != null && count >= tenantKnowledgeBaseQuota) {
+            throw new IllegalArgumentException("知识库数量已达到租户配额");
         }
         KnowledgeBase kb = new KnowledgeBase();
         kb.setUserId(userId);
@@ -89,12 +109,8 @@ public class KnowledgeService {
             throw new IllegalArgumentException("不支持的文件格式");
         }
         if (file.getSize() > 30L * 1024 * 1024) throw new IllegalArgumentException("文件不能超过 30MB");
-        try (var input = file.getInputStream()) {
-            byte[] header = input.readNBytes(16);
-            if (isExecutable(header) || (lowerName.endsWith(".pdf") && !startsWith(header, "%PDF"))) {
-                throw new IllegalArgumentException("文件内容校验失败");
-            }
-        } catch (java.io.IOException error) { throw new IllegalStateException("文件校验失败", error); }
+        requireStorageQuota(userId, file.getSize());
+        validateUpload(file, lowerName);
         Path targetDirectory = Path.of(fileStoragePath, userId.toString(), kbId.toString()).normalize();
         Path targetPath = targetDirectory.resolve(UUID.randomUUID() + "-" + safeName).normalize();
         if (!targetPath.startsWith(targetDirectory)) {
@@ -107,14 +123,16 @@ public class KnowledgeService {
             throw new IllegalStateException("文件保存失败", error);
         }
 
+        String location = storage.persist(targetPath, userId, kbId, safeName);
         KnowledgeDocument document = new KnowledgeDocument();
         document.setKbId(kbId);
         document.setFileName(safeName);
-        document.setFilePath(targetPath.toAbsolutePath().toString());
+        document.setFilePath(location);
         document.setStatus("parsing");
         document.setChunkCount(0);
-        docMapper.insert(document);
         try {
+            docMapper.insert(document);
+            saveVersion(document, location, targetPath);
             ProcessingTask task = new ProcessingTask();
             String taskId = "task_" + UUID.randomUUID().toString().replace("-", "");
             task.setTaskId(taskId);
@@ -126,7 +144,7 @@ public class KnowledgeService {
             task.setPayload(objectMapper.writeValueAsString(Map.of(
                 "user_id", userId.toString(),
                 "kb_id", kbId.toString(),
-                "file_path", targetPath.toAbsolutePath().toString(),
+                "file_path", location,
                 "document_id", "doc_" + document.getId()
             )));
             task.setAttemptCount(0);
@@ -135,8 +153,9 @@ public class KnowledgeService {
             taskMapper.insert(task);
             document.setParseTaskId(taskId);
         } catch (Exception error) {
+            try { storage.delete(location); } catch (Exception ignored) { }
             try { Files.deleteIfExists(targetPath); } catch (Exception ignored) { }
-            throw new IllegalStateException("解析任务创建失败", error);
+            throw new IllegalStateException("文档入库或解析任务创建失败", error);
         }
         docMapper.updateById(document);
         return document;
@@ -144,6 +163,164 @@ public class KnowledgeService {
 
     private boolean startsWith(byte[] bytes, String value) { byte[] expected = value.getBytes(java.nio.charset.StandardCharsets.US_ASCII); if (bytes.length < expected.length) return false; for (int i=0;i<expected.length;i++) if (bytes[i] != expected[i]) return false; return true; }
     private boolean isExecutable(byte[] bytes) { return startsWith(bytes, "MZ") || startsWith(bytes, "#!"); }
+
+    private void validateUpload(MultipartFile file, String lowerName) {
+        try (var input = file.getInputStream()) {
+            byte[] header = input.readNBytes(16);
+            boolean zipOffice = lowerName.endsWith(".docx") || lowerName.endsWith(".pptx")
+                || lowerName.endsWith(".xlsx") || lowerName.endsWith(".xlsm");
+            if (isExecutable(header)
+                || (lowerName.endsWith(".pdf") && !startsWith(header, "%PDF"))
+                || (zipOffice && !(header.length >= 4 && header[0] == 'P' && header[1] == 'K'))) {
+                throw new IllegalArgumentException("文件扩展名与内容签名不匹配");
+            }
+            String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase();
+            if (!contentType.isBlank() && !"application/octet-stream".equals(contentType)
+                && !contentType.startsWith("text/") && !contentType.contains("pdf")
+                && !contentType.contains("word") && !contentType.contains("presentation")
+                && !contentType.contains("sheet") && !contentType.contains("excel")
+                && !contentType.contains("office") && !contentType.contains("zip")) {
+                throw new IllegalArgumentException("文件 MIME 类型不受支持");
+            }
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException("文件校验失败", error);
+        }
+        if (lowerName.endsWith(".docx") || lowerName.endsWith(".pptx")
+            || lowerName.endsWith(".xlsx") || lowerName.endsWith(".xlsm")) {
+            validateOfficeArchive(file);
+        }
+    }
+
+    private void validateOfficeArchive(MultipartFile file) {
+        long expanded = 0;
+        int entries = 0;
+        boolean contentTypes = false;
+        try (ZipInputStream zip = new ZipInputStream(file.getInputStream())) {
+            for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
+                entries++;
+                if (entries > 10_000) throw new IllegalArgumentException("Office 文档条目过多");
+                String name = entry.getName().replace('\\', '/').toLowerCase();
+                if (name.equals("[content_types].xml")) contentTypes = true;
+                if (name.startsWith("/") || name.contains("../")
+                    || name.matches(".*\\.(exe|dll|com|bat|cmd|ps1|vbs|js)$")) {
+                    throw new IllegalArgumentException("Office 文档包含危险条目");
+                }
+                byte[] buffer = new byte[8192];
+                for (int read = zip.read(buffer); read >= 0; read = zip.read(buffer)) {
+                    expanded += read;
+                    if (expanded > 200L * 1024 * 1024) {
+                        throw new IllegalArgumentException("Office 文档展开后体积过大");
+                    }
+                }
+            }
+        } catch (java.io.IOException error) {
+            throw new IllegalArgumentException("Office 文档压缩结构无效", error);
+        }
+        if (!contentTypes) throw new IllegalArgumentException("Office 文档缺少内容类型清单");
+    }
+
+    private void saveVersion(KnowledgeDocument document, String location, Path localPath) {
+        try {
+            Integer next = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(version_number),0)+1 FROM knowledge_document_version WHERE document_id=?",
+                Integer.class, document.getId());
+            jdbc.update("""
+                INSERT INTO knowledge_document_version(document_id,version_number,file_name,file_path,sha256,size_bytes)
+                VALUES(?,?,?,?,?,?)
+                """, document.getId(), next, document.getFileName(), location,
+                sha256(localPath), Files.size(localPath));
+        } catch (Exception error) {
+            throw new IllegalStateException("文档版本记录失败", error);
+        }
+    }
+
+    private String sha256(Path path) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (var input = Files.newInputStream(path)) {
+            byte[] buffer = new byte[8192];
+            for (int read = input.read(buffer); read >= 0; read = input.read(buffer)) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    @Transactional
+    public KnowledgeDocument replaceDocument(Long userId, Long documentId, MultipartFile file) {
+        KnowledgeDocument document = ownedDocument(userId, documentId);
+        String originalName = file.getOriginalFilename() == null ? "document" : file.getOriginalFilename();
+        String safeName = Path.of(originalName).getFileName().toString();
+        String lowerName = safeName.toLowerCase(java.util.Locale.ROOT);
+        if (SUPPORTED_EXTENSIONS.stream().noneMatch(lowerName::endsWith)) throw new IllegalArgumentException("不支持的文件格式");
+        if (file.isEmpty() || file.getSize() > 30L * 1024 * 1024) throw new IllegalArgumentException("文件大小必须在 30MB 以内");
+        requireStorageQuota(userId, file.getSize());
+        validateUpload(file, lowerName);
+        Path directory = Path.of(fileStoragePath, userId.toString(), document.getKbId().toString()).normalize();
+        Path target = directory.resolve(UUID.randomUUID() + "-" + safeName).normalize();
+        if (!target.startsWith(directory)) throw new IllegalArgumentException("文件名不合法");
+        String newLocation = null;
+        try {
+            Files.createDirectories(directory);
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            newLocation = storage.persist(target, userId, document.getKbId(), safeName);
+            document.setFileName(safeName);
+            document.setFilePath(newLocation);
+            document.setStatus("parsing");
+            document.setChunkCount(0);
+            document.setErrorMessage(null);
+            docMapper.updateById(document);
+            saveVersion(document, newLocation, target);
+            createDocumentTask(userId, document, "document_ingest");
+            return document;
+        } catch (Exception error) {
+            if (newLocation != null) try { storage.delete(newLocation); } catch (Exception ignored) { }
+            try { Files.deleteIfExists(target); } catch (Exception ignored) { }
+            throw error instanceof RuntimeException runtime ? runtime : new IllegalStateException("文档替换失败", error);
+        }
+    }
+
+    public List<Map<String, Object>> documentVersions(Long userId, Long documentId) {
+        ownedDocument(userId, documentId);
+        return jdbc.queryForList("""
+            SELECT version_number,file_name,sha256,size_bytes,created_at,
+                CASE WHEN file_path=(SELECT file_path FROM knowledge_document WHERE id=?) THEN TRUE ELSE FALSE END AS active
+            FROM knowledge_document_version WHERE document_id=? ORDER BY version_number DESC
+            """, documentId, documentId);
+    }
+
+    private void requireStorageQuota(Long userId, long incomingBytes) {
+        Long used = jdbc.queryForObject("""
+            SELECT COALESCE(SUM(v.size_bytes),0)
+            FROM knowledge_document_version v
+            JOIN knowledge_document d ON d.id=v.document_id
+            JOIN knowledge_base k ON k.id=d.kb_id
+            WHERE k.user_id=?
+            """, Long.class, userId);
+        long limit = Math.max(1, tenantStorageQuotaMb) * 1024L * 1024L;
+        if ((used == null ? 0 : used) + incomingBytes > limit) {
+            throw new IllegalArgumentException("文档存储量已达到租户配额");
+        }
+    }
+
+    @Transactional
+    public KnowledgeDocument restoreDocumentVersion(Long userId, Long documentId, int version) {
+        KnowledgeDocument document = ownedDocument(userId, documentId);
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            SELECT file_name,file_path FROM knowledge_document_version
+            WHERE document_id=? AND version_number=?
+            """, documentId, version);
+        if (rows.isEmpty()) throw new IllegalArgumentException("文档版本不存在");
+        String location = String.valueOf(rows.get(0).get("file_path"));
+        storage.materialize(location);
+        document.setFileName(String.valueOf(rows.get(0).get("file_name")));
+        document.setFilePath(location);
+        document.setStatus("parsing");
+        document.setChunkCount(0);
+        document.setErrorMessage(null);
+        docMapper.updateById(document);
+        createDocumentTask(userId, document, "document_ingest");
+        return document;
+    }
 
     public List<KnowledgeDocument> listDocuments(Long userId, Long kbId) {
         getOwnedKb(userId, kbId);
@@ -178,9 +355,7 @@ public class KnowledgeService {
         if ("deleting".equals(document.getStatus())) {
             throw new IllegalArgumentException("文档正在删除，无法重新解析");
         }
-        if (!Files.isRegularFile(Path.of(document.getFilePath()))) {
-            throw new IllegalArgumentException("原文件不存在，无法重新解析");
-        }
+        storage.materialize(document.getFilePath());
         document.setStatus("parsing");
         document.setChunkCount(0);
         document.setErrorMessage(null);

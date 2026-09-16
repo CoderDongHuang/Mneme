@@ -10,6 +10,7 @@
 
 import os
 import uuid
+import json
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Dict
@@ -69,6 +70,8 @@ class MemoryVectorStore:
         content: str,
         topic: str = "",
         importance: float = 0.5,
+        source_session_id: str = "",
+        evidence_hashes: list[str] | None = None,
     ) -> str:
         """添加一条长期记忆，返回记忆 ID。
 
@@ -95,6 +98,8 @@ class MemoryVectorStore:
                     "importance": importance,
                     "created_at": now,
                     "updated_at": now,
+                    "source_session_id": source_session_id,
+                    "evidence_hashes": json.dumps(evidence_hashes or []),
                 }
             ],
             ids=[mem_id],
@@ -316,6 +321,8 @@ class MemoryVectorStore:
                     "importance": metadata.get("importance", 0.5),
                     "score": 0.0,
                     "created_at": metadata.get("created_at", ""),
+                    "source_session_id": metadata.get("source_session_id", ""),
+                    "evidence_hashes": json.loads(metadata.get("evidence_hashes", "[]")),
                     "updated_at": metadata.get("updated_at", ""),
                 }
             )

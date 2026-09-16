@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import time
+import hashlib
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -54,7 +55,7 @@ class AgentTraceStore:
         duration_ms: float = 0,
         error: str = "",
     ) -> None:
-        safe_payload = payload or {}
+        safe_payload = self._redact(payload or {})
         with self._connect() as connection:
             connection.execute(
                 """
@@ -71,6 +72,22 @@ class AgentTraceStore:
                     error[:1000],
                 ),
             )
+
+    def _redact(self, value: Any, field: str = "") -> Any:
+        sensitive = {
+            item.strip().lower()
+            for item in settings.agent_trace_redact_fields.split(",")
+            if item.strip()
+        }
+        normalized = field.lower()
+        if normalized and any(token in normalized for token in sensitive):
+            raw = str(value).encode("utf-8", errors="replace")
+            return {"redacted": True, "sha256": hashlib.sha256(raw).hexdigest()[:16], "length": len(raw)}
+        if isinstance(value, dict):
+            return {str(key): self._redact(item, str(key)) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [self._redact(item, field) for item in value]
+        return value
 
     @contextmanager
     def span(

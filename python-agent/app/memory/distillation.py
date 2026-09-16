@@ -8,6 +8,7 @@
 """
 
 import json
+import hashlib
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.utils.llm import llm
 from app.memory.long_term_memory import long_term_memory
@@ -101,6 +102,15 @@ def distill_conversation(user_id: str, session_id: str, conversation: list) -> l
     filtered = [
         e for e in entries if e.get("confidence", 0) >= 0.6 and e.get("is_new", True)
     ]
+    evidence_hashes = [
+        hashlib.sha256(
+            f"{index}:{message.get('role', '')}:{message.get('content', '')}".encode("utf-8")
+        ).hexdigest()[:24]
+        for index, message in enumerate(conversation)
+    ]
+    for entry in filtered:
+        entry["source_session_id"] = session_id
+        entry["evidence_hashes"] = evidence_hashes
     logger.info(
         f"蒸馏完成: 原始提取 {len(entries)} 条, "
         f"过滤后 {len(filtered)} 条 "
@@ -132,6 +142,13 @@ def apply_distilled_entries(user_id: str, entries: list) -> list:
         content = entry.get("content", "")
         confidence = entry.get("confidence", 0.5)
         topic = entry.get("topic", content)
+        source_session_id = entry.get("source_session_id", "")
+        evidence_hashes = entry.get("evidence_hashes", [])
+        provenance = (
+            {"source_session_id": source_session_id, "evidence_hashes": evidence_hashes}
+            if source_session_id or evidence_hashes
+            else {}
+        )
 
         # 中等置信度 → 待用户确认
         if confidence < HIGH_CONFIDENCE_THRESHOLD:
@@ -150,13 +167,15 @@ def apply_distilled_entries(user_id: str, entries: list) -> list:
 
         # 高置信度 → 直接写入
         if category == "preference":
-            result = long_term_memory.add_preference(user_id, content)
+            result = long_term_memory.add_preference(user_id, content, **provenance)
             if result:
                 written += 1
             else:
                 skipped += 1
         elif category == "weak_point":
-            result = long_term_memory.add_weak_point(user_id, content, topic)
+            result = long_term_memory.add_weak_point(
+                user_id, content, topic, **provenance
+            )
             if result:
                 written += 1
             else:
@@ -165,7 +184,9 @@ def apply_distilled_entries(user_id: str, entries: list) -> list:
             parts = content.split("/")
             chapter = parts[0] if parts else ""
             section = parts[1] if len(parts) > 1 else ""
-            long_term_memory.update_progress(user_id, chapter, section)
+            long_term_memory.update_progress(
+                user_id, chapter, section, **provenance
+            )
             written += 1
 
     if written or skipped or pending:
