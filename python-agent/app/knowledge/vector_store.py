@@ -100,6 +100,27 @@ class VectorStore:
         lexical_index.delete_document(user_id, kb_id, document_id)
         return len(ids)
 
+    def get_document_chunks(
+        self, user_id: str, kb_id: str, document_id: str
+    ) -> list[dict[str, Any]]:
+        collection = self.get_collection(user_id, kb_id)
+        if collection is None:
+            return []
+        result = collection.get(
+            where={"document_id": document_id},
+            include=["documents", "metadatas"],
+        )
+        chunks = []
+        for index, chunk_id in enumerate(result.get("ids", [])):
+            chunks.append(
+                {
+                    "id": chunk_id,
+                    "content": (result.get("documents") or [""])[index],
+                    "metadata": (result.get("metadatas") or [{}])[index] or {},
+                }
+            )
+        return chunks
+
     def list_user_collections(self, user_id: str) -> list[Any]:
         collections = self.client.list_collections()
         return [

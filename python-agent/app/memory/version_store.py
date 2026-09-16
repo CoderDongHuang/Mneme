@@ -40,6 +40,7 @@ class MemoryVersionStore:
                 ON memory_version(user_id, memory_id, version DESC)
                 """
             )
+        self.prune(settings.memory_version_retention_days)
 
     def snapshot(self, memory: dict[str, Any] | None, action: str) -> int | None:
         if not memory:
@@ -124,6 +125,15 @@ class MemoryVersionStore:
             "metadata": metadata,
             "created_at": row["created_at"],
         }
+
+    def prune(self, retention_days: int) -> int:
+        days = max(1, int(retention_days))
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM memory_version WHERE created_at < datetime('now', ?)",
+                (f"-{days} days",),
+            )
+            return cursor.rowcount
 
 
 memory_version_store = MemoryVersionStore(

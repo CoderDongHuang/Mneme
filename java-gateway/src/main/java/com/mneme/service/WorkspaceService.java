@@ -78,7 +78,26 @@ public class WorkspaceService {
         }
         Map<String, Object> publicDocument = new LinkedHashMap<>(document);
         publicDocument.remove("file_path");
-        return Map.of("document", publicDocument, "content", content, "extension", extension);
+        return Map.of(
+            "document", publicDocument,
+            "content", content,
+            "extension", extension,
+            "parse_report", parseReport(userId, document)
+        );
+    }
+
+    private Object parseReport(Long userId, Map<String, Object> document) {
+        try {
+            String documentId = "doc_" + document.get("id");
+            String url = UriComponentsBuilder.fromHttpUrl(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId + "/report")
+                .queryParam("user_id", userId)
+                .queryParam("kb_id", document.get("kb_id"))
+                .build().encode().toUriString();
+            @SuppressWarnings("unchecked") Map<String, Object> result = restTemplate.getForObject(url, Map.class);
+            return result == null ? Map.of("pages", List.of()) : result;
+        } catch (Exception ignored) {
+            return Map.of("pages", List.of(), "status", "unavailable");
+        }
     }
 
     public Path documentPath(Long userId, Long documentId) {

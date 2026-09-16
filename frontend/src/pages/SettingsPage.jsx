@@ -16,7 +16,20 @@ export default function SettingsPage() {
 
   useEffect(() => { load(); }, []);
 
-  const entries = Object.entries(data?.configuration || {});
+  const groups = [
+    ["模型与解析", data?.configuration || {}],
+    ["存储与隔离", { ...(data?.storage || {}), ...(data?.tenant_isolation || {}) }],
+    ["密钥与治理", data?.secret_rotation || {}],
+  ];
+  function label(value) {
+    if (typeof value === "boolean") return value ? "已就绪" : "需处理";
+    return String(value);
+  }
+  function warning(value, key) {
+    if (key === "browser_secrets_exposed") return value === true;
+    if (key.endsWith("_due")) return value === true;
+    return value === false;
+  }
   return (
     <div className="settings-page">
       <header className="settings-head">
@@ -30,13 +43,22 @@ export default function SettingsPage() {
       {error && <div className="page-error">{error}</div>}
       {!data && !error ? <LoadingState label="正在检查服务配置" /> : (
         <section className="config-grid">
-          {entries.map(([key, value]) => (
-            <article key={key} className={value === false ? "config-item warning" : "config-item"}>
-              {value === false ? <CircleAlert size={20} /> : <CheckCircle2 size={20} />}
-              <div><strong>{key}</strong><span>{typeof value === "boolean" ? (value ? "已配置" : "未配置") : String(value)}</span></div>
-            </article>
-          ))}
-          {!entries.length && <div className="settings-empty"><Activity size={28} /><span>暂时无法读取配置状态</span></div>}
+          {groups.map(([title, values]) => {
+            const entries = Object.entries(values);
+            if (!entries.length) return null;
+            return (
+              <div className="config-group" key={title}>
+                <h2>{title}</h2>
+                {entries.map(([key, value]) => (
+                  <article key={key} className={warning(value, key) ? "config-item warning" : "config-item"}>
+                    {warning(value, key) ? <CircleAlert size={20} /> : <CheckCircle2 size={20} />}
+                    <div><strong>{key}</strong><span>{label(value)}</span></div>
+                  </article>
+                ))}
+              </div>
+            );
+          })}
+          {!groups.some(([, values]) => Object.keys(values).length) && <div className="settings-empty"><Activity size={28} /><span>暂时无法读取配置状态</span></div>}
         </section>
       )}
     </div>

@@ -7,6 +7,7 @@ import com.mneme.entity.User;
 import com.mneme.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,6 +33,9 @@ public class ProfileService {
 
     @Autowired(required = false)
     private OperationLogService operationLog;
+
+    @Autowired(required = false)
+    private JdbcTemplate jdbc;
 
     public ProfileService(
         UserMapper users,
@@ -118,23 +122,55 @@ public class ProfileService {
         if (user == null) return;
         String operationId = operationLog == null ? UUID.randomUUID().toString() : operationLog.newOperationId();
         String id = userId.toString();
+        user.setStatus("deleting");
+        users.updateById(user);
+        updateDeletionTask(operationId, userId, "processing", "start", 0, null);
         record(operationId, userId, "account_delete", id, "start", "started", Map.of("username", user.getUsername()), null);
         try {
             restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/user/" + id);
+            updateDeletionTask(operationId, userId, "processing", "knowledge_cleanup", 0, null);
             record(operationId, userId, "account_delete", id, "knowledge_cleanup", "completed", Map.of(), null);
             restTemplate.delete(pythonAgentUrl + "/api/v1/memory/admin/user/" + id);
+            updateDeletionTask(operationId, userId, "processing", "memory_cleanup", 0, null);
             record(operationId, userId, "account_delete", id, "memory_cleanup", "completed", Map.of(), null);
             restTemplate.delete(pythonAgentUrl + "/api/v1/admin/user/" + id);
+            updateDeletionTask(operationId, userId, "processing", "session_cleanup", 0, null);
             record(operationId, userId, "account_delete", id, "session_cleanup", "completed", Map.of(), null);
             deleteDirectory(fileRoot.resolve(id).normalize(), fileRoot);
+            updateDeletionTask(operationId, userId, "processing", "file_cleanup", 0, null);
             record(operationId, userId, "account_delete", id, "file_cleanup", "completed", Map.of(), null);
             if (user.getAvatarPath() != null) Files.deleteIfExists(Path.of(user.getAvatarPath()));
+            updateDeletionTask(operationId, userId, "processing", "avatar_cleanup", 0, null);
             users.deleteById(user.getId());
+            updateDeletionTask(operationId, userId, "completed", "user_delete", 0, null);
             record(operationId, userId, "account_delete", id, "user_delete", "completed", Map.of(), null);
         } catch (IOException | RuntimeException error) {
+            user.setStatus("deletion_failed");
+            users.updateById(user);
+            updateDeletionTask(operationId, userId, "failed", "failed", 1, error.getMessage());
             record(operationId, userId, "account_delete", id, "failed", "failed", Map.of(), error);
             throw error;
         }
+    }
+
+    private void updateDeletionTask(
+        String operationId,
+        Long userId,
+        String status,
+        String step,
+        int attemptCount,
+        String error
+    ) {
+        if (jdbc == null) return;
+        try {
+            jdbc.update("""
+                INSERT INTO account_deletion_task(operation_id,user_id,status,current_step,attempt_count,error_message)
+                VALUES(?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE status=VALUES(status),current_step=VALUES(current_step),
+                    attempt_count=GREATEST(account_deletion_task.attempt_count, VALUES(attempt_count)),
+                    error_message=VALUES(error_message)
+                """, operationId, userId, status, step, attemptCount, error);
+        } catch (Exception ignored) { }
     }
 
     private void record(

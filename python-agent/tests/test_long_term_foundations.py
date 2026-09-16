@@ -1,6 +1,7 @@
 from app.agents.trace_store import AgentTraceStore
 from app.api.chat import _visual_region
 from app.api.chat_stream import _source_payload
+from app.api.knowledge import document_report
 from app.memory.version_store import MemoryVersionStore
 from app.tools.registry import tool_registry
 
@@ -40,6 +41,18 @@ def test_agent_trace_store_records_auditable_events(tmp_path):
     assert traces[0]["payload"]["intent"] == "qa"
 
 
+def test_trace_store_prunes_old_events(tmp_path):
+    store = AgentTraceStore(str(tmp_path / "traces.sqlite3"))
+    store.record("u1", "s1", "node", "ok")
+    with store._connect() as connection:
+        connection.execute(
+            "UPDATE agent_trace SET created_at=datetime('now', '-40 days')"
+        )
+
+    assert store.prune(30) == 1
+    assert store.list_session("u1", "s1") == []
+
+
 def test_tool_registry_lists_audited_tool_contracts():
     tools = {tool["name"]: tool for tool in tool_registry.list_specs()}
 
@@ -70,3 +83,50 @@ def test_source_payload_includes_visual_evidence_metadata():
     assert source["visual_page"] == 3
     assert source["ocr_confidence"] == 0.88
     assert _visual_region(chunks[0]["metadata"]) == [0.1, 0.2, 0.7, 0.8]
+
+
+def test_memory_version_store_prunes_old_versions(tmp_path):
+    store = MemoryVersionStore(str(tmp_path / "versions.sqlite3"))
+    store.snapshot({"id": "mem_1", "user_id": "u1", "content": "old"}, "update")
+    with store._connect() as connection:
+        connection.execute(
+            "UPDATE memory_version SET created_at=datetime('now', '-200 days')"
+        )
+
+    assert store.prune(180) == 1
+    assert store.list_versions("u1", "mem_1") == []
+
+
+def test_document_report_aggregates_visual_and_ocr_metadata(monkeypatch):
+    monkeypatch.setattr(
+        "app.api.knowledge.vector_store.get_document_chunks",
+        lambda user_id, kb_id, document_id: [
+            {
+                "id": "c1",
+                "content": "text",
+                "metadata": {
+                    "page": 1,
+                    "chunk_type": "text",
+                    "ocr_confidence": 0.9,
+                },
+            },
+            {
+                "id": "c2",
+                "content": "table",
+                "metadata": {
+                    "page": 1,
+                    "chunk_type": "table",
+                    "evidence_type": "visual",
+                    "ocr_confidence": 0.7,
+                },
+            },
+        ],
+    )
+
+    import asyncio
+
+    report = asyncio.run(document_report("doc_1", "u1", "kb1"))
+    assert report["chunk_count"] == 2
+    assert report["chunk_types"] == {"text": 1, "table": 1}
+    assert report["pages"][0]["visual_evidence_count"] == 1
+    assert report["pages"][0]["ocr_confidence_avg"] == 0.8

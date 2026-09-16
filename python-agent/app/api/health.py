@@ -52,6 +52,8 @@ async def config_status() -> dict:
             "offline_embeddings": settings.offline_embeddings,
             "agent_trace_store": bool(settings.agent_trace_store_path),
             "memory_version_store": bool(settings.memory_version_store_path),
+            "agent_trace_retention_days": settings.agent_trace_retention_days,
+            "memory_version_retention_days": settings.memory_version_retention_days,
             "vector_shard_count": settings.vector_shard_count,
             "vector_shard_id": settings.vector_shard_id,
         },

@@ -13,6 +13,8 @@ public class User {
     private String nickname;
     private String email;
     private String avatarPath;
+    private String role;
+    private String status;
     private String passwordHash;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -28,6 +30,10 @@ public class User {
     public void setEmail(String email) { this.email = email; }
     public String getAvatarPath() { return avatarPath; }
     public void setAvatarPath(String avatarPath) { this.avatarPath = avatarPath; }
+    public String getRole() { return role == null ? "user" : role; }
+    public void setRole(String role) { this.role = role; }
+    public String getStatus() { return status == null ? "active" : status; }
+    public void setStatus(String status) { this.status = status; }
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public LocalDateTime getCreatedAt() { return createdAt; }

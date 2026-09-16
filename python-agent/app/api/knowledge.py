@@ -242,6 +242,57 @@ async def delete_document(document_id: str, user_id: str, kb_id: str) -> dict:
     return {"deleted_chunks": deleted, "document_id": document_id}
 
 
+@router.get("/admin/documents/{document_id}/report")
+async def document_report(document_id: str, user_id: str, kb_id: str) -> dict:
+    chunks = vector_store.get_document_chunks(user_id, kb_id, document_id)
+    pages: dict[int, dict] = {}
+    chunk_types: dict[str, int] = {}
+    for chunk in chunks:
+        metadata = chunk.get("metadata", {})
+        page = int(metadata.get("page") or metadata.get("visual_page") or 0)
+        page_report = pages.setdefault(
+            page,
+            {
+                "page": page or None,
+                "chunk_count": 0,
+                "chunk_types": {},
+                "visual_evidence_count": 0,
+                "ocr_confidence_min": None,
+                "ocr_confidence_avg": None,
+                "_ocr_values": [],
+            },
+        )
+        chunk_type = str(metadata.get("chunk_type", "text"))
+        chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
+        page_report["chunk_count"] += 1
+        page_report["chunk_types"][chunk_type] = (
+            page_report["chunk_types"].get(chunk_type, 0) + 1
+        )
+        if metadata.get("evidence_type") == "visual" or chunk_type in {
+            "table",
+            "image_vision",
+        }:
+            page_report["visual_evidence_count"] += 1
+        if metadata.get("ocr_confidence") is not None:
+            page_report["_ocr_values"].append(float(metadata["ocr_confidence"]))
+
+    output_pages = []
+    for page in sorted(pages):
+        item = pages[page]
+        values = item.pop("_ocr_values")
+        if values:
+            item["ocr_confidence_min"] = round(min(values), 4)
+            item["ocr_confidence_avg"] = round(sum(values) / len(values), 4)
+        output_pages.append(item)
+    return {
+        "document_id": document_id,
+        "kb_id": kb_id,
+        "chunk_count": len(chunks),
+        "chunk_types": chunk_types,
+        "pages": output_pages,
+    }
+
+
 @router.delete("/admin/user/{user_id}")
 async def delete_user_collections(user_id: str) -> dict:
     deleted = 0

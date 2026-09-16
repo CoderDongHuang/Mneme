@@ -20,7 +20,6 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.annotation.PostConstruct;
 
 @Service
@@ -44,6 +43,7 @@ public class AuthService {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
             .eq(User::getUsername, username.trim()).eq(User::getEmail, email.trim().toLowerCase()));
         if (user == null) throw new IllegalArgumentException("用户名与绑定邮箱不匹配");
+        requireActive(user);
         resetTokens.delete(new LambdaQueryWrapper<PasswordResetToken>().eq(PasswordResetToken::getUserId, user.getId()));
         byte[] raw = new byte[32]; new SecureRandom().nextBytes(raw);
         String token = HexFormat.of().formatHex(raw);
@@ -59,6 +59,7 @@ public class AuthService {
         if (record == null || record.getExpiresAt().isBefore(LocalDateTime.now())) throw new IllegalArgumentException("重置链接无效或已过期");
         User user = userMapper.selectById(record.getUserId());
         if (user == null) throw new IllegalArgumentException("用户不存在");
+        requireActive(user);
         user.setPasswordHash(passwordEncoder.encode(password)); userMapper.updateById(user);
         record.setUsedAt(LocalDateTime.now()); resetTokens.updateById(record);
     }
@@ -86,6 +87,8 @@ public class AuthService {
         User user = new User();
         user.setUsername(normalized);
         user.setPasswordHash(passwordEncoder.encode(password));
+        user.setRole("user");
+        user.setStatus("active");
         userMapper.insert(user);
         return payload(user);
     }
@@ -97,13 +100,25 @@ public class AuthService {
         if (user == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new IllegalArgumentException("用户名或密码错误");
         }
+        requireActive(user);
         return payload(user);
     }
 
     public Long parseUserId(String token) {
         Claims claims = Jwts.parser().verifyWith(signingKey()).build()
             .parseSignedClaims(token).getPayload();
-        return claims.get("userId", Long.class);
+        Long userId = claims.get("userId", Long.class);
+        User user = userMapper.selectById(userId);
+        if (user == null || !"active".equals(user.getStatus())) {
+            return null;
+        }
+        return userId;
+    }
+
+    private void requireActive(User user) {
+        if (!"active".equals(user.getStatus())) {
+            throw new IllegalArgumentException("账号当前不可用");
+        }
     }
 
     private AuthResponse payload(User user) {

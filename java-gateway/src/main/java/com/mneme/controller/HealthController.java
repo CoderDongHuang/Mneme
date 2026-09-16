@@ -1,6 +1,7 @@
 package com.mneme.controller;
 
 import com.mneme.service.StorageDiagnosticsService;
+import com.mneme.service.AdminAuthorizationService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +18,7 @@ public class HealthController {
     private final JdbcTemplate jdbcTemplate;
     private final RestTemplate restTemplate;
     private final StorageDiagnosticsService storageDiagnostics;
+    private final AdminAuthorizationService adminAuthorization;
 
     @Value("${mneme.python-agent-url}")
     private String pythonAgentUrl;
@@ -24,11 +26,13 @@ public class HealthController {
     public HealthController(
         JdbcTemplate jdbcTemplate,
         RestTemplate restTemplate,
-        StorageDiagnosticsService storageDiagnostics
+        StorageDiagnosticsService storageDiagnostics,
+        AdminAuthorizationService adminAuthorization
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.restTemplate = restTemplate;
         this.storageDiagnostics = storageDiagnostics;
+        this.adminAuthorization = adminAuthorization;
     }
 
     @GetMapping
@@ -68,6 +72,11 @@ public class HealthController {
                 "relational_user_filters", true,
                 "vector_collections_scoped", true,
                 "memory_metadata_scoped", true
+            ));
+            result.put("secret_rotation", Map.of(
+                "jwt_rotation_due", Boolean.TRUE.equals(result.get("rotation_required")),
+                "admin_token_configured", adminAuthorization.configured(),
+                "browser_secrets_exposed", false
             ));
             return result;
         } catch (Exception ignored) {

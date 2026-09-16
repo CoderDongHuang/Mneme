@@ -42,6 +42,7 @@ class AgentTraceStore:
                 ON agent_trace(user_id, session_id, id)
                 """
             )
+        self.prune(settings.agent_trace_retention_days)
 
     def record(
         self,
@@ -134,6 +135,15 @@ class AgentTraceStore:
                 }
             )
         return traces
+
+    def prune(self, retention_days: int) -> int:
+        days = max(1, int(retention_days))
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM agent_trace WHERE created_at < datetime('now', ?)",
+                (f"-{days} days",),
+            )
+            return cursor.rowcount
 
 
 agent_trace_store = AgentTraceStore()

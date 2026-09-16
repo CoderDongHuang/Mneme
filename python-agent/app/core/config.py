@@ -62,6 +62,8 @@ class Settings:
     agent_trace_store_path: str = os.getenv(
         "AGENT_TRACE_STORE_PATH", str(PYTHON_AGENT_DIR / "data" / "agent_traces.sqlite3")
     )
+    agent_trace_retention_days: int = int(os.getenv("AGENT_TRACE_RETENTION_DAYS", "30"))
+    memory_version_retention_days: int = int(os.getenv("MEMORY_VERSION_RETENTION_DAYS", "180"))
     reranker_enabled: bool = _bool("RERANKER_ENABLED", False)
     reranker_model: str = os.getenv("RERANKER_MODEL", "").strip()
     vector_shard_count: int = max(1, int(os.getenv("VECTOR_SHARD_COUNT", "1")))
