@@ -834,12 +834,12 @@ public class WorkspaceService {
     private void importReviews(Long userId, List<Map<String, Object>> source, Map<Long, Long> plans, Map<String, Integer> counts) {
         for (Map<String, Object> item : source) {
             jdbc.update("""
-                INSERT INTO review_card(user_id,plan_id,prompt,answer,interval_days,ease_factor,due_at,last_rating,review_count)
+                INSERT INTO review_card(user_id,plan_id,prompt,answer,interval_days,ease_factor,due_at,last_rating,review_count,origin)
                 VALUES(?,?,?,?,?,?,COALESCE(?,NOW()),?,?,?)
                 """, userId, nullableMappedId(item.get("plan_id"), plans), limited(item, "prompt", "导入复习题", IMPORT_MAX_TEXT_LENGTH),
                 limited(item, "answer", "", IMPORT_MAX_TEXT_LENGTH), positiveInteger(item.get("interval_days"), 1),
                 decimal(item.get("ease_factor"), 2.5), parseTimestamp(item.get("due_at")), nullableInteger(item.get("last_rating")),
-                positiveInteger(item.get("review_count"), 0), "imported");
+                positiveInteger(item.get("review_count"), 0), limited(item, "origin", "imported", 32));
         }
         counts.put("reviews", source.size());
     }

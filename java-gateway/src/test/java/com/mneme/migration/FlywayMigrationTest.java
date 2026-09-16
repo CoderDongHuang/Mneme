@@ -92,7 +92,7 @@ class FlywayMigrationTest {
         Long message = jdbc.queryForObject("SELECT id FROM chat_message WHERE session_id=?", Long.class, sessions.get(0));
         jdbc.update("INSERT INTO learning_plan(user_id,title,goal) VALUES(?, '学习计划', '掌握反向传播')", sourceUser);
         Long plan = jdbc.queryForObject("SELECT id FROM learning_plan WHERE user_id=?", Long.class, sourceUser);
-        jdbc.update("INSERT INTO review_card(user_id,plan_id,prompt,answer) VALUES(?,?, '什么是链式法则', '复合函数求导规则')", sourceUser, plan);
+        jdbc.update("INSERT INTO review_card(user_id,plan_id,prompt,answer,origin) VALUES(?,?, '什么是链式法则', '复合函数求导规则', 'quiz_mistake')", sourceUser, plan);
         jdbc.update("INSERT INTO knowledge_quiz(user_id,kb_id,title,topic,questions_json) VALUES(?,?, '测验', '反向传播', JSON_ARRAY())", sourceUser, kb);
         Long quiz = jdbc.queryForObject("SELECT id FROM knowledge_quiz WHERE user_id=?", Long.class, sourceUser);
         jdbc.update("INSERT INTO quiz_attempt(quiz_id,user_id,answers_json,score,feedback_json) VALUES(?,?,JSON_ARRAY(),80,JSON_ARRAY())", quiz, sourceUser);
@@ -119,6 +119,8 @@ class FlywayMigrationTest {
             .containsEntry("quizzes", 1).containsEntry("quiz_attempts", 1).containsEntry("branches", 1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM chat_branch WHERE user_id=?", Integer.class, targetUser)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM quiz_attempt WHERE user_id=?", Integer.class, targetUser)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT origin FROM review_card WHERE user_id=?", String.class, targetUser))
+            .isEqualTo("quiz_mistake");
     }
 
     @Test
