@@ -1,8 +1,16 @@
+import asyncio
+
+import pytest
+
+import app.api.chat as chat_api
+import app.api.memory as memory_api
 from app.agents.trace_store import AgentTraceStore
 from app.api.chat import _visual_region
 from app.api.chat_stream import _source_payload
 from app.api.knowledge import document_report
 from app.memory.version_store import MemoryVersionStore
+from app.memory.session_persistence import SessionPersistence
+from app.memory.session_store import SessionStore
 from app.tools.registry import ToolRegistry, ToolSpec, tool_registry
 from app.core.internal_tokens import InternalTokenState
 from app.memory.distillation import apply_distilled_entries
@@ -98,6 +106,62 @@ def test_memory_version_store_prunes_old_versions(tmp_path):
 
     assert store.prune(180) == 1
     assert store.list_versions("u1", "mem_1") == []
+
+
+def test_memory_version_store_deletes_only_requested_user(tmp_path):
+    store = MemoryVersionStore(str(tmp_path / "versions.sqlite3"))
+    store.snapshot({"id": "mem_1", "user_id": "u1", "content": "private"}, "update")
+    store.snapshot({"id": "mem_2", "user_id": "u2", "content": "keep"}, "update")
+
+    assert store.delete_user("u1") == 1
+    assert store.list_versions("u1", "mem_1") == []
+    assert len(store.list_versions("u2", "mem_2")) == 1
+
+
+def test_agent_trace_store_deletes_only_requested_user(tmp_path):
+    store = AgentTraceStore(str(tmp_path / "traces.sqlite3"))
+    store.record("u1", "s1", "node", "ok")
+    store.record("u2", "s2", "node", "ok")
+
+    assert store.delete_user("u1") == 1
+    assert store.list_session("u1", "s1") == []
+    assert len(store.list_session("u2", "s2")) == 1
+
+
+def test_account_cleanup_endpoints_remove_versions_and_traces(monkeypatch):
+    memory_calls = []
+    trace_calls = []
+    monkeypatch.setattr(memory_api.memory_store, "delete_user_memories", lambda user_id: None)
+    monkeypatch.setattr(memory_api.memory_version_store, "delete_user", lambda user_id: memory_calls.append(user_id) or 2)
+    monkeypatch.setattr(chat_api.session_store, "get_sessions", lambda user_id: [])
+    monkeypatch.setattr(chat_api.session_store, "delete_user", lambda user_id: None)
+    monkeypatch.setattr(chat_api.agent_trace_store, "delete_user", lambda user_id: trace_calls.append(user_id) or 3)
+
+    memory_result = asyncio.run(memory_api.delete_user_memories("u1"))
+    session_result = asyncio.run(chat_api.delete_user_sessions("u1"))
+
+    assert memory_calls == ["u1"]
+    assert trace_calls == ["u1"]
+    assert memory_result["versions"] == 2
+    assert session_result["traces"] == 3
+
+
+def test_session_file_delete_failure_is_not_silenced(tmp_path, monkeypatch):
+    store = SessionStore(str(tmp_path))
+    session_file = tmp_path / "u1.json"
+    session_file.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("app.memory.session_store.os.unlink", lambda _path: (_ for _ in ()).throw(PermissionError("locked")))
+
+    with pytest.raises(PermissionError, match="locked"):
+        store.delete_user("u1")
+
+
+def test_redis_delete_requires_available_backend(monkeypatch):
+    persistence = object.__new__(SessionPersistence)
+    monkeypatch.setattr(persistence, "_ensure_connection", lambda: False)
+
+    with pytest.raises(RuntimeError, match="Redis 不可用"):
+        persistence.delete_session("s1")
 
 
 def test_document_report_aggregates_visual_and_ocr_metadata(monkeypatch):

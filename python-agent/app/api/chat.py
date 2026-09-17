@@ -6,6 +6,7 @@ from app.utils.llm import llm
 from app.memory.session_store import session_store
 from app.memory.short_term_memory import short_term_memory
 from app.memory.working_memory import working_memory
+from app.agents.trace_store import agent_trace_store
 from langchain_core.messages import HumanMessage
 from app.core.logging import setup_logger
 
@@ -70,7 +71,8 @@ async def delete_user_sessions(user_id: str):
             short_term_memory.clear(session_id)
             working_memory.clear(session_id)
     session_store.delete_user(user_id)
-    return {"status": "deleted", "user_id": user_id}
+    traces = agent_trace_store.delete_user(user_id)
+    return {"status": "deleted", "user_id": user_id, "traces": traces}
 
 
 @router.post(

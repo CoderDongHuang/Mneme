@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from app.core.config import PYTHON_AGENT_DIR, settings
+from app.core.config import settings
 
 
 class MemoryVersionStore:
@@ -135,7 +135,12 @@ class MemoryVersionStore:
             )
             return cursor.rowcount
 
+    def delete_user(self, user_id: str) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM memory_version WHERE user_id=?", (str(user_id),)
+            )
+            return max(0, cursor.rowcount)
 
-memory_version_store = MemoryVersionStore(
-    str(PYTHON_AGENT_DIR / "data" / "memory_versions.sqlite3")
-)
+
+memory_version_store = MemoryVersionStore()

@@ -162,5 +162,12 @@ class AgentTraceStore:
             )
             return cursor.rowcount
 
+    def delete_user(self, user_id: str) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM agent_trace WHERE user_id=?", (str(user_id),)
+            )
+            return max(0, cursor.rowcount)
+
 
 agent_trace_store = AgentTraceStore()

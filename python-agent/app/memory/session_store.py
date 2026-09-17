@@ -156,6 +156,7 @@ class SessionStore:
                     os.unlink(file_path)
             except OSError as error:
                 logger.error("用户会话文件删除失败: %s", error)
+                raise
 
     def get_session_count(self, user_id: str) -> int:
         """获取用户会话数量"""

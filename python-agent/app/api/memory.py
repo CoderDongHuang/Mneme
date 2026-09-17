@@ -89,7 +89,8 @@ async def restore_memory(memory_id: str, request: MemoryRestoreRequest):
 @router.delete("/admin/user/{user_id}")
 async def delete_user_memories(user_id: str):
     memory_store.delete_user_memories(user_id)
-    return {"status": "deleted", "user_id": user_id}
+    versions = memory_version_store.delete_user(user_id)
+    return {"status": "deleted", "user_id": user_id, "versions": versions}
 
 
 @router.post(

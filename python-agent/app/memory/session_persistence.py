@@ -109,11 +109,12 @@ class SessionPersistence:
 
     def delete_session(self, session_id: str):
         if not self._ensure_connection():
-            return
+            raise RuntimeError("Redis 不可用，无法确认会话数据已删除")
         try:
             self._redis.delete(self._session_key(session_id))
-        except Exception:
-            pass
+        except Exception as error:
+            self._available = False
+            raise RuntimeError("Redis 会话删除失败") from error
 
     @property
     def available(self) -> bool:
