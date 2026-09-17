@@ -8,21 +8,22 @@
 
 Mneme 的核心产品闭环已经存在：认证、资料库、异步解析、结构化 RAG、流式对话、引用、三级记忆、学习计划、复习、测验、导入导出和自托管配置均有真实实现，不是仅有页面或占位接口。
 
-旧版文档中的近期、中期、长期勾选清单和历史修复记录已经删除。它们已经完成且通过相应自动化检查，继续保留会把开发历史误读为待办事项。
+旧版文档中的历史修复记录已经删除；本次完成的 P0 保留勾选项和可追踪验收链接，未完成工作继续按 P1、P2 和近期、中期、长期列出。
 
-当前仍不能把项目描述为“全部功能均经过生产验证”。常规 CI 没有执行真实模型全链路、Tesseract OCR、跨存储删除 E2E、备份恢复演练、多节点对象存储/向量分片压测和故障注入。当前版本继续定位为 Beta。
+当前仍不能把项目描述为“全部功能均经过生产验证”。常规 CI 已执行真实基础设施上的全链路、跨存储删除故障注入和备份恢复演练，但模型生成与 Embedding 使用可重复的确定性 CI 替身；外部付费模型质量、Tesseract OCR、多节点对象存储/向量分片压测仍未进入常规验收。当前版本继续定位为 Beta。
 
-本次复审发现并修复了账号删除残留风险：记忆版本和 Agent 轨迹现在按用户清理；会话文件或 Redis 删除失败会向 Java 删除 Saga 返回失败并触发重试；`MEMORY_VERSION_STORE_PATH` 配置现在真实生效。对应用户隔离和失败传播测试已加入 Python 测试集。
+本次复审除账号删除残留风险外，还发现并修复了 Chroma 冷启动依赖竞态、向量数据未真实持久化、非 root 日志权限、MinIO `.object-cache` 删除残留和并发创建会话分支死锁。对应用户隔离、失败传播、跨存储残留、恢复后 RAG 和 MySQL 并发测试均已加入自动化验收。
 
 ## 2. 重新验证结果
 
 | 检查 | 结果 | 验证边界 |
 |---|---|---|
 | Python Ruff | 通过 | 全量 `app`、`tests` 静态检查 |
-| Python Pytest | 99 passed，1 skipped | 跳过项依赖本机 Tesseract；包含本次可信删除回归测试 |
-| Java Maven Test | 38 run，4 skipped | 本机 Docker 不可用时跳过 4 个 Testcontainers 测试；最近一次 GitHub CI 在 Docker 环境执行 38/38 |
+| Python Pytest | 106 passed，1 skipped | 跳过项依赖本机 Tesseract；包含可信删除、备份归档安全和确定性模型回归测试 |
+| Java Maven Test | 39/39 passed | 本机 Docker 不可用时跳过 4 个 Testcontainers 测试；GitHub CI 在 Docker/MySQL 环境执行全部 39 个测试 |
 | 前端 ESLint / Vitest | 通过，3 passed | Vitest 目前只有 API 客户端基础契约 |
 | Playwright mock E2E | 8 passed，2 skipped | 桌面和移动端通过；2 个真实栈用例默认跳过 |
+| Full-stack P0 acceptance | 通过 | CI 启动 MySQL、Redis、Chroma、MinIO、Python、Java 和前端，执行真实浏览器流程、删除故障注入与备份恢复 |
 | Vite Build | 通过 | 生产构建成功 |
 | npm 安全审计 | 通过 | 0 low、0 moderate、0 high、0 critical |
 | Docker Compose | 通过 | 基础、selfhost 和 `security` profile 均可解析 |
@@ -42,11 +43,13 @@ Mneme 的核心产品闭环已经存在：认证、资料库、异步解析、�
 
 ## 4. 当前问题
 
-### P0：发布前必须完成
+### P0：已完成（2026-09-17）
 
-1. **真实全链路没有进入常规验收。** `real-stack.spec.js` 默认跳过，当前 CI 只运行 mock 浏览器测试。需要在受控环境执行注册、上传、解析、Embedding、真实回答、引用定位和多轮会话，并保存可追踪报告。
-2. **可信删除缺少跨存储 E2E。** 单元和数据库竞争测试已覆盖代码路径，但还没有同时启动 MySQL、Redis、Chroma、文件存储或 MinIO 后验证成功清理，也没有覆盖 Redis/Chroma 中断、文件占用、进程重启后的最终一致性。
-3. **备份恢复能力不完整。** PowerShell 备份包含 MySQL、文件和 Chroma，但恢复脚本只恢复 MySQL；Shell 脚本仍使用固定数据库密码，并可能忽略缺失归档项。当前没有校验和、版本 manifest、自动恢复演练或 RPO/RTO 结果。
+- [x] **全链路进入常规验收。** PR CI 在真实 MySQL、Redis、Chroma、MinIO、Java、Python 和前端上执行注册、上传、解析、RAG、回答、引用定位、多轮会话和刷新后持久化，并上传 Playwright 报告与截图。模型和 Embedding 使用确定性 CI 替身，外部模型质量仍属 P1/人工或定时验收。
+- [x] **可信删除具备跨存储 E2E。** 自动化场景验证 MySQL、Redis、Chroma、MinIO、本地文件、SQLite 版本与 Agent 轨迹无残留，并覆盖 Chroma、MinIO、Redis 中断重试和 Java 重启后的最终一致性。
+- [x] **备份恢复闭环完成。** 统一 Python 实现备份与恢复 MySQL、文件、头像、Chroma、MinIO 和 Python 辅助状态；使用环境凭据、版本化 manifest、SHA-256、归档路径安全校验，包含篡改/缺项回归测试、自动恢复后 RAG 验证及 RPO/RTO 报告。
+
+验收证据：[GitHub Actions #35203480246](https://github.com/CoderDongHuang/Mneme/actions/runs/35203480246)，四个作业全部通过；`Full-stack P0 acceptance` 中真实浏览器、删除故障注入和备份恢复三个阶段均通过。
 
 ### P1：质量与可靠性
 
@@ -67,9 +70,6 @@ Mneme 的核心产品闭环已经存在：认证、资料库、异步解析、�
 
 ### 近期
 
-- 建立可重复的全栈验收环境，加入真实 OCR 和可控模型 E2E；外部模型测试放入手动或定时工作流并记录费用。
-- 为账号和文档删除增加 Redis、Chroma、MySQL、文件/MinIO 联合 E2E 及故障注入。
-- 合并并重写备份恢复脚本，使用环境凭据、manifest、SHA-256 和自动隔离恢复验证。
 - 为离线 RAG 定义有效指标口径和 CI 阈值，首先修正最终引用精确率的计算。
 
 ### 中期
@@ -88,13 +88,13 @@ Mneme 的核心产品闭环已经存在：认证、资料库、异步解析、�
 
 ## 6. 发布门槛
 
-下一次非 Beta 发布至少需要满足：
+下一次非 Beta 发布至少需要满足；前三项 P0 已完成，后三项仍未完成：
 
-- 主分支全部 CI 通过，真实栈验收报告可追踪。
-- 账号和文档删除在外部依赖故障后能够重试并最终证明无残留。
-- 备份可在隔离环境恢复 MySQL、原文件、辅助索引和必要配置，并记录 RPO/RTO。
-- RAG 与多模态指标使用目标领域样本，指标定义与阈值一致，真实模型抽检通过。
-- 多节点部署完成容量、故障转移和数据一致性验证。
-- 各语言依赖和容器镜像无未解释的 high/critical，SBOM 可生成。
+- [x] PR CI 全部通过，真实栈验收报告可追踪；合并后仍需确认 `main` CI。
+- [x] 账号和文档删除在外部依赖故障后能够重试并最终证明无残留。
+- [x] 备份可恢复 MySQL、原文件、对象存储、向量索引和辅助状态，并记录 RPO/RTO。
+- [ ] RAG 与多模态指标使用目标领域样本，指标定义与阈值一致，真实模型抽检通过。
+- [ ] 多节点部署完成容量、故障转移和数据一致性验证。
+- [ ] 各语言依赖和容器镜像无未解释的 high/critical，SBOM 可生成。
 
 在这些条件完成前，GitHub 简介和发布说明应继续使用“Beta”“本地自托管”，不使用“生产级”“完全准确”或“支持任意复杂文档”。
