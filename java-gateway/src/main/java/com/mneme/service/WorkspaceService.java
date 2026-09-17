@@ -378,7 +378,8 @@ public class WorkspaceService {
         Long sourceSessionId = Long.valueOf(String.valueOf(body.get("source_session_id")));
         Long sourceMessageId = body.get("source_message_id") == null ? null : Long.valueOf(String.valueOf(body.get("source_message_id")));
         String label = required(body, "label");
-        one("SELECT id FROM chat_session WHERE id=? AND user_id=?", sourceSessionId, userId);
+        // Serialize snapshots of one source session to avoid MySQL INSERT ... SELECT deadlocks.
+        one("SELECT id FROM chat_session WHERE id=? AND user_id=? FOR UPDATE", sourceSessionId, userId);
         if (sourceMessageId != null) {
             one("SELECT id FROM chat_message WHERE id=? AND session_id=?", sourceMessageId, sourceSessionId);
         }

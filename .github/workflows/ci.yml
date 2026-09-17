@@ -72,3 +72,88 @@ jobs:
       - name: Run browser tests
         working-directory: frontend
         run: npm run test:e2e
+
+  full-stack:
+    name: Full-stack P0 acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: [python, java, frontend]
+    env:
+      MYSQL_ROOT_PASSWORD: ci-database-password
+      SPRING_DATASOURCE_PASSWORD: ci-database-password
+      JWT_SECRET: ci-jwt-secret-at-least-32-characters-long
+      INTERNAL_SERVICE_TOKEN: ci-internal-token-at-least-32-characters
+      DEEPSEEK_API_KEY: ci-dummy-key
+      DASHSCOPE_API_KEY: ci-dummy-key
+      MNEME_OFFLINE_EMBEDDINGS: "true"
+      MNEME_DETERMINISTIC_TEST_LLM: "true"
+      COMPOSE: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install browser test dependencies
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Prepare writable bind mounts
+        run: |
+          mkdir -p data/files data/avatars data/chroma data/minio python-agent/data
+          echo "MNEME_CI_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "MNEME_CI_GID=$(id -g)" >> "$GITHUB_ENV"
+      - name: Validate and start full stack
+        run: |
+          $COMPOSE config --quiet
+          $COMPOSE up -d --build
+          for attempt in {1..90}; do
+            if curl --fail --silent http://127.0.0.1:8080/actuator/health >/dev/null && curl --fail --silent http://127.0.0.1:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          $COMPOSE ps
+          exit 1
+      - name: Run real browser workflow
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-real
+        run: npx playwright test e2e/real-stack.spec.js --project=桌面端 --reporter=html
+      - name: Run cross-storage deletion fault injection
+        run: >-
+          python scripts/full_stack_verification.py deletion
+          --compose-file docker-compose.yml
+          --compose-file docker-compose.selfhost.yml
+          --compose-file docker-compose.ci.yml
+      - name: Run backup and restore drill
+        run: >-
+          python scripts/full_stack_verification.py backup-restore
+          --compose-file docker-compose.yml
+          --compose-file docker-compose.selfhost.yml
+          --compose-file docker-compose.ci.yml
+      - name: Collect service logs
+        if: failure()
+        run: $COMPOSE logs --no-color > full-stack-services.log
+      - name: Upload P0 acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-stack-p0-acceptance
+          if-no-files-found: warn
+          path: |
+            frontend/playwright-report-real/
+            frontend/test-results/
+            docs/images/mneme-*.png
+            backups/ci/
+            full-stack-services.log
+      - name: Stop full stack
+        if: always()
+        run: $COMPOSE down --volumes --remove-orphans

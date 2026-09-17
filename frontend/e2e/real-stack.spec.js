@@ -59,5 +59,13 @@ test('真实注册、资料入库、检索引用和流式回答', async ({ page 
   await page.getByTitle('发送').click()
   await expect(page.locator('.message-assistant')).toContainText('QZ-7294', { timeout: 90_000 })
   await expect(page.getByRole('button', { name: /查看 \d+ 条资料依据/ })).toBeVisible()
+
+  await page.getByPlaceholder('向忆知提问...').fill('请结合上一轮，再用一句话确认识别码。')
+  await page.getByTitle('发送').click()
+  await expect(page.locator('.message-assistant')).toHaveCount(2, { timeout: 90_000 })
+  await expect(page.locator('.message-assistant').last()).toContainText('QZ-7294')
+  await page.reload()
+  await page.locator('.history-list > button').first().click()
+  await expect(page.locator('.message-assistant')).toHaveCount(2, { timeout: 30_000 })
   await page.screenshot({ path: path.join(imageDirectory, 'mneme-rag-chat.png'), fullPage: true })
 })
