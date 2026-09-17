@@ -40,10 +40,12 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - ./data/chroma:/chroma
+      - ./data/chroma:/chroma/data
+      - ./config/chroma-log-config.yml:/etc/chroma/log_config.yml:ro
     environment:
       - CHROMA_SERVER_HOST=0.0.0.0
       - CHROMA_SERVER_HTTP_PORT=8000
+      - CHROMA_LOG_CONFIG=/etc/chroma/log_config.yml
       - IS_PERSISTENT=TRUE
       - PERSIST_DIRECTORY=/chroma/data
       - ANONYMIZED_TELEMETRY=FALSE
