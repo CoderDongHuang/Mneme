@@ -37,4 +37,19 @@ class ObjectStorageServiceTest {
             Files.deleteIfExists(outside);
         }
     }
+
+    @Test
+    void cachePathIsStableAndScopedToCacheRoot() throws Exception {
+        ObjectStorageService storage = new ObjectStorageService(
+            "local", root.toString(), "", "", "", "mneme");
+
+        Path first = storage.cachedPath("s3://mneme/users/7/knowledge/3/note.txt");
+        Path second = storage.cachedPath("s3://mneme/users/7/knowledge/3/note.txt");
+
+        assertEquals(first, second);
+        assertTrue(first.startsWith(root.resolve(".object-cache")));
+        assertTrue(first.getFileName().toString().endsWith("-note.txt"));
+        assertThrows(IllegalArgumentException.class,
+            () -> storage.cachedPath("s3://other/users/7/note.txt"));
+    }
 }

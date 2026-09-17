@@ -1,4 +1,9 @@
-param([Parameter(Mandatory=$true)][string]$SqlFile)
-if (!(Test-Path -LiteralPath $SqlFile)) { throw "Backup file not found" }
-docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" mneme' < $SqlFile
-Write-Output "Database restore completed"
+param(
+    [Parameter(Mandatory=$true)][string]$Archive,
+    [switch]$Force,
+    [string]$Report = "./backups/last-restore-report.json"
+)
+
+if (!$Force) { throw "Restore overwrites current data. Re-run with -Force." }
+python "$PSScriptRoot/backup_restore.py" restore $Archive --yes --report $Report
+if ($LASTEXITCODE -ne 0) { throw "Mneme restore failed" }

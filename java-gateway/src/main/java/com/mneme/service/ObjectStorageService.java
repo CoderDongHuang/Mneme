@@ -68,9 +68,7 @@ public class ObjectStorageService {
         String key = objectKey(location);
         try {
             Files.createDirectories(cacheRoot);
-            String suffix = Path.of(key).getFileName().toString();
-            Path target = cacheRoot.resolve(hash(location) + "-" + suffix).normalize();
-            if (!target.startsWith(cacheRoot)) throw new IllegalArgumentException("对象缓存路径无效");
+            Path target = cachedPath(location);
             if (!Files.isRegularFile(target)) {
                 try (InputStream input = minio.getObject(
                     GetObjectArgs.builder().bucket(bucket).object(key).build())) {
@@ -90,7 +88,7 @@ public class ObjectStorageService {
                 return;
             }
             minio.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(objectKey(location)).build());
-            Files.deleteIfExists(cacheRoot.resolve(hash(location) + "-" + Path.of(objectKey(location)).getFileName()));
+            Files.deleteIfExists(cachedPath(location));
         } catch (Exception error) {
             throw new IllegalStateException("对象删除失败", error);
         }
@@ -118,7 +116,10 @@ public class ObjectStorageService {
         try {
             var results = minio.listObjects(ListObjectsArgs.builder().bucket(bucket).prefix(prefix).recursive(true).build());
             for (var result : results) {
-                minio.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(result.get().objectName()).build());
+                String key = result.get().objectName();
+                String location = "s3://" + bucket + "/" + key;
+                minio.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(key).build());
+                Files.deleteIfExists(cachedPath(location));
             }
         } catch (Exception error) {
             throw new IllegalStateException("对象前缀删除失败", error);
@@ -149,6 +150,13 @@ public class ObjectStorageService {
             throw new IllegalArgumentException("文件路径无效");
         }
         return path;
+    }
+
+    Path cachedPath(String location) throws Exception {
+        String suffix = Path.of(objectKey(location)).getFileName().toString();
+        Path target = cacheRoot.resolve(hash(location) + "-" + suffix).normalize();
+        if (!target.startsWith(cacheRoot)) throw new IllegalArgumentException("对象缓存路径无效");
+        return target;
     }
 
     private String hash(String value) throws Exception {

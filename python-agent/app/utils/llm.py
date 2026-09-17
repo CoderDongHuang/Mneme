@@ -3,12 +3,43 @@ import time
 from collections import deque
 from typing import Any, AsyncIterator
 
+from langchain_core.messages import AIMessage, AIMessageChunk
+
 from app.core.config import settings
 from app.core.logging import setup_logger
 from app.core.metrics import LLM_ACTIVE, LLM_FALLBACKS, LLM_REQUESTS
 
 
 logger = setup_logger("llm")
+
+
+class DeterministicTestLLM:
+    """Network-free model used only by explicitly enabled full-stack acceptance tests."""
+
+    @staticmethod
+    def _content(messages: Any) -> str:
+        return "\n".join(str(getattr(message, "content", message)) for message in messages)
+
+    def _answer(self, messages: Any) -> str:
+        prompt = self._content(messages)
+        if "intent" in prompt and "confidence" in prompt:
+            return '{"intent":"qa","confidence":0.99,"extracted_entities":[]}'
+        if "记忆蒸馏器" in prompt or "提取关键信息" in prompt:
+            return "[]"
+        if "记忆反思器" in prompt or "implicit_preferences" in prompt:
+            return '{"implicit_preferences":[],"priority_weak_points":[],"next_step_suggestion":""}'
+        return "根据资料，星桥计划的核心识别码是 QZ-7294 [1]。"
+
+    def invoke(self, messages: Any, **kwargs: Any) -> AIMessage:
+        return AIMessage(content=self._answer(messages))
+
+    async def ainvoke(self, messages: Any, **kwargs: Any) -> AIMessage:
+        return self.invoke(messages, **kwargs)
+
+    async def astream(self, messages: Any, **kwargs: Any) -> AsyncIterator[AIMessageChunk]:
+        answer = self._answer(messages)
+        for start in range(0, len(answer), 12):
+            yield AIMessageChunk(content=answer[start : start + 12])
 
 
 class FallbackLLM:
@@ -24,10 +55,22 @@ class FallbackLLM:
 
     @property
     def configured(self) -> bool:
-        return bool(settings.deepseek_api_key or settings.dashscope_api_key)
+        return bool(
+            settings.deterministic_test_llm
+            or settings.deepseek_api_key
+            or settings.dashscope_api_key
+        )
 
     @property
     def status(self) -> dict[str, Any]:
+        if settings.deterministic_test_llm:
+            return {
+                "configured": True,
+                "primary": "deterministic-test",
+                "fallback": None,
+                "circuit_open": False,
+                "failure_count": 0,
+            }
         return {
             "configured": self.configured,
             "primary": settings.deepseek_model,
@@ -105,6 +148,8 @@ class FallbackLLM:
         logger.warning("LLM 主模型调用失败: %s", error)
 
     def _selected(self) -> tuple[Any, bool]:
+        if settings.deterministic_test_llm:
+            return DeterministicTestLLM(), False
         if self._is_circuit_open():
             fallback = self._get_fallback()
             if fallback is not None:

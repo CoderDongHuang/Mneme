@@ -32,6 +32,7 @@ class Settings:
     llm_hourly_limit: int = int(os.getenv("LLM_HOURLY_LIMIT", "0"))
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
     offline_embeddings: bool = _bool("MNEME_OFFLINE_EMBEDDINGS", False)
+    deterministic_test_llm: bool = _bool("MNEME_DETERMINISTIC_TEST_LLM", False)
 
     chroma_mode: str = os.getenv("CHROMA_MODE", "local").lower()
     chroma_host: str = os.getenv("CHROMA_HOST", "localhost")

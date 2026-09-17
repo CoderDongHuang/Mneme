@@ -34,7 +34,17 @@ npm run build
 
 ## 真实全链路 E2E
 
-`frontend/e2e/real-stack.spec.js` 覆盖真实注册、创建资料库、上传、任务轮询、Embedding、RAG、流式回答和引用。为了避免 CI 自动消耗模型额度，必须显式设置：
+`frontend/e2e/real-stack.spec.js` 覆盖真实注册、创建资料库、上传、任务轮询、Embedding、RAG、流式回答、引用、多轮对话和刷新恢复。常规 CI 使用显式启用的确定性验收模型，MySQL、Redis、Chroma、MinIO、Java、Python、Caddy 和浏览器仍为真实组件，不访问付费模型：
+
+```bash
+export MNEME_OFFLINE_EMBEDDINGS=true
+export MNEME_DETERMINISTIC_TEST_LLM=true
+docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml up -d --build
+cd frontend
+MNEME_REAL_E2E=true MNEME_E2E_BASE_URL=http://127.0.0.1:3000 npm run test:e2e:real
+```
+
+`MNEME_DETERMINISTIC_TEST_LLM` 只能用于验收环境，不能用于生产。验证外部模型质量和供应商连通性时不要设置该变量，并显式设置：
 
 ```powershell
 $env:MNEME_REAL_E2E='true'
@@ -42,7 +52,27 @@ $env:MNEME_E2E_BASE_URL='http://127.0.0.1:3000'
 npm run test:e2e:real
 ```
 
-该测试会把 `test-fixtures/rag-fixture.txt` 的虚构内容发送给 DashScope Embedding，并把测试问题发送给配置的 LLM。
+外部模型模式会把 `test-fixtures/rag-fixture.txt` 的虚构内容发送给配置的 Embedding 和 LLM 供应商，并产生调用费用。
+
+## 跨存储删除与恢复演练
+
+完整 CI 栈启动后，可运行 MySQL、Redis、Chroma、MinIO 和 SQLite 辅助状态联合清理及故障注入：
+
+```bash
+python scripts/full_stack_verification.py deletion \
+  --compose-file docker-compose.yml \
+  --compose-file docker-compose.selfhost.yml \
+  --compose-file docker-compose.ci.yml
+```
+
+该演练覆盖 Chroma、MinIO、Redis 中断和 Java 重启，要求删除 Saga 最终完成且各存储无用户残留。备份恢复演练会创建真实数据、备份、删除、恢复并重新登录执行 RAG：
+
+```bash
+python scripts/full_stack_verification.py backup-restore \
+  --compose-file docker-compose.yml \
+  --compose-file docker-compose.selfhost.yml \
+  --compose-file docker-compose.ci.yml
+```
 
 ## RAG 评测
 
