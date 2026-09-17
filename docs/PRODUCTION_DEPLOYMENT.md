@@ -28,4 +28,6 @@ python scripts/backup_restore.py restore backups/mneme-YYYYMMDD-HHMMSS.tar.gz --
 
 PowerShell 可继续使用 `scripts/backup-data.ps1` 和 `scripts/restore-data.ps1 -Archive <path> -Force`，Shell 使用 `scripts/backup.sh`，它们均调用同一个 Python 实现，不再维护独立恢复逻辑或固定数据库密码。
 
+执行恢复的系统用户必须对 `data/files`、`data/avatars`、`data/chroma`、`data/minio` 和 `python-agent/data` 拥有读写权限。Linux 部署应让容器与备份进程使用一致 UID/GID，或由受控的运维账号执行恢复；不要长期将数据目录设为全局可写。
+
 每天创建备份并同步到异地不可变存储；每月至少在隔离环境恢复一次。`restore-report.json` 记录本次 RPO（备份创建至恢复完成的时间）和 RTO（恢复执行耗时），应纳入 SLO 审查。使用外部 S3 而非内置 MinIO 时，还必须通过供应商快照或版本化复制独立备份对象桶；本工具只能直接归档本机 `data/minio`。

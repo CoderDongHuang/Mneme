@@ -1,6 +1,7 @@
 services:
   minio:
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    user: "${MNEME_CI_UID:-1000}:${MNEME_CI_GID:-1000}"
     command: server /data
     environment:
       MINIO_ROOT_USER: mneme-ci-access
@@ -14,6 +15,7 @@ services:
       retries: 30
 
   java-gateway:
+    user: "${MNEME_CI_UID:-1000}:${MNEME_CI_GID:-1000}"
     environment:
       STORAGE_BACKEND: s3
       OBJECT_STORAGE_ENDPOINT: http://minio:9000
@@ -26,6 +28,10 @@ services:
         condition: service_healthy
 
   python-agent:
+    user: "${MNEME_CI_UID:-1000}:${MNEME_CI_GID:-1000}"
     environment:
       MNEME_OFFLINE_EMBEDDINGS: "true"
       MNEME_DETERMINISTIC_TEST_LLM: "true"
+
+  chroma:
+    user: "${MNEME_CI_UID:-1000}:${MNEME_CI_GID:-1000}"
