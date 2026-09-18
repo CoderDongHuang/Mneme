@@ -1,0 +1,9 @@
+{
+  "recall@5": {"min": 0.95},
+  "mrr": {"min": 0.85},
+  "faithfulness_proxy": {"min": 0.85},
+  "citation_precision": {"min": 0.80},
+  "citation_recall": {"min": 0.85},
+  "abstention_proxy": {"min": 1.0},
+  "p95_latency_ms": {"max": 250.0}
+}

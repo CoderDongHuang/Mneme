@@ -2,6 +2,8 @@ server:
   port: 8080
 
 spring:
+  application:
+    name: ${OTEL_SERVICE_NAME:mneme-java-gateway}
   sql:
     init:
       mode: never
@@ -30,6 +32,13 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 management:
+  tracing:
+    enabled: ${OTEL_TRACING_ENABLED:false}
+    sampling:
+      probability: ${OTEL_TRACES_SAMPLER_ARG:0.1}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
   endpoints:
     web:
       exposure:

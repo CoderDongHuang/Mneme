@@ -96,6 +96,9 @@ services:
       - MULTIMODAL_ENABLED=${MULTIMODAL_ENABLED:-false}
       - MULTIMODAL_MODEL=${MULTIMODAL_MODEL:-qwen-vl-plus}
       - MULTIMODAL_MAX_IMAGES=${MULTIMODAL_MAX_IMAGES:-8}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_SERVICE_NAME=${OTEL_PYTHON_SERVICE_NAME:-mneme-python-agent}
+      - OTEL_TRACES_SAMPLER_ARG=${OTEL_TRACES_SAMPLER_ARG:-0.1}
     volumes:
       - ./data:/data
       - ./python-agent:/app
@@ -135,6 +138,9 @@ services:
       - SPRING_MAIL_PORT=1025
       - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=false
       - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=false
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_JAVA_EXPORTER_ENDPOINT:-http://localhost:4318/v1/traces}
+      - OTEL_SERVICE_NAME=${OTEL_JAVA_SERVICE_NAME:-mneme-java-gateway}
+      - OTEL_TRACES_SAMPLER_ARG=${OTEL_TRACES_SAMPLER_ARG:-0.1}
     volumes:
       - ./data:/data
     depends_on:

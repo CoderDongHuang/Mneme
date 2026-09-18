@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from contextvars import copy_context
 from typing import Any, Callable
 
 from app.agents.trace_store import agent_trace_store
@@ -58,7 +59,8 @@ class ToolRegistry:
         attempts = settings.agent_tool_max_attempts
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
-            future = self._executor.submit(handler, **arguments)
+            context = copy_context()
+            future = self._executor.submit(context.run, handler, **arguments)
             try:
                 result = future.result(timeout=max(0.1, settings.agent_tool_timeout_seconds))
                 self._trace(name, trace_user_id, trace_session_id, "ok", attempt, arguments)

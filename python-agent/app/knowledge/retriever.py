@@ -4,6 +4,7 @@ from collections import Counter
 
 from app.core.config import settings
 from app.core.logging import setup_logger
+from app.core.telemetry import tracer
 from app.knowledge.lexical_index import lexical_index
 from app.knowledge.reranker import rerank
 from app.knowledge.vector_store import vector_store
@@ -129,7 +130,7 @@ def _deduplicate(ranked: list[dict], limit: int) -> list[dict]:
     return selected
 
 
-def retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> list[dict]:
+def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> list[dict]:
     limit = max(1, min(top_k or settings.retriever_top_k, 20))
     collection = vector_store.get_collection(user_id, kb_id)
     if collection is None or collection.count() == 0 or not query.strip():
@@ -164,3 +165,12 @@ def retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> 
     ranked = sorted(merged.values(), key=lambda item: item["score"], reverse=True)
     candidates = _deduplicate(ranked, pool_size)
     return rerank(query, candidates, limit)
+
+
+def retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> list[dict]:
+    with tracer.start_as_current_span("mneme.retrieval") as span:
+        span.set_attribute("mneme.knowledge_base_id", kb_id)
+        span.set_attribute("mneme.retrieval.top_k", top_k or settings.retriever_top_k)
+        results = _retrieve(user_id, kb_id, query, top_k)
+        span.set_attribute("mneme.retrieval.result_count", len(results))
+        return results

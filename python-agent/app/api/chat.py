@@ -9,6 +9,8 @@ from app.memory.working_memory import working_memory
 from app.agents.trace_store import agent_trace_store
 from langchain_core.messages import HumanMessage
 from app.core.logging import setup_logger
+from app.knowledge.citations import select_citations
+from app.core.telemetry import tracer
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = setup_logger("chat_api")
@@ -85,13 +87,15 @@ async def chat(request: ChatRequest):
     logger.info(f"收到对话请求: user_id={request.user_id}, message={request.message}")
 
     state = prepare_conversation(request)
-    response = llm.invoke([HumanMessage(content=build_llm_prompt(state))])
+    with tracer.start_as_current_span("mneme.llm.invoke") as span:
+        span.set_attribute("mneme.llm.streaming", False)
+        response = llm.invoke([HumanMessage(content=build_llm_prompt(state))])
     answer = str(response.content or "").strip()
     completion = complete_conversation(request, state, answer)
     result = {**state, **completion, "answer": answer}
 
     sources = []
-    for chunk in result.get("retrieved_chunks", []):
+    for chunk in select_citations(result.get("retrieved_chunks", [])):
         content = chunk.get("content")
         if not content:
             continue

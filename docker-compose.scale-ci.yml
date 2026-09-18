@@ -1,0 +1,139 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ci-database-password
+      MYSQL_DATABASE: mneme
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -pci-database-password"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  redis:
+    image: redis:7-alpine
+
+  chroma-1:
+    image: chromadb/chroma:0.5.3
+    environment: &chroma-environment
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /chroma/data
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - scale-chroma-1:/chroma/data
+    healthcheck: &chroma-health
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8000/api/v1/heartbeat', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  chroma-2:
+    image: chromadb/chroma:0.5.3
+    environment: *chroma-environment
+    volumes:
+      - scale-chroma-2:/chroma/data
+    healthcheck: *chroma-health
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"
+
+  python-agent-1:
+    build: ./python-agent
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment: &agent-environment
+      INTERNAL_SERVICE_TOKEN: ci-internal-token-at-least-32-characters
+      DEEPSEEK_API_KEY: ci-dummy-key
+      DASHSCOPE_API_KEY: ci-dummy-key
+      MNEME_OFFLINE_EMBEDDINGS: "true"
+      MNEME_DETERMINISTIC_TEST_LLM: "true"
+      VECTOR_SHARD_COUNT: "2"
+      VECTOR_SHARD_URLS: http://chroma-1:8000,http://chroma-2:8000
+      REDIS_HOST: redis
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_TRACES_SAMPLER_ARG: "1.0"
+      OTEL_SERVICE_NAME: mneme-python-agent-1
+    volumes:
+      - ./test-fixtures:/test-fixtures:ro
+      - scale-agent-1:/app/data
+    depends_on:
+      chroma-1:
+        condition: service_healthy
+      chroma-2:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      jaeger:
+        condition: service_started
+
+  python-agent-2:
+    build: ./python-agent
+    ports:
+      - "127.0.0.1:8002:8001"
+    environment:
+      <<: *agent-environment
+      OTEL_SERVICE_NAME: mneme-python-agent-2
+    volumes:
+      - ./test-fixtures:/test-fixtures:ro
+      - scale-agent-2:/app/data
+    depends_on:
+      chroma-1:
+        condition: service_healthy
+      chroma-2:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      jaeger:
+        condition: service_started
+
+  java-gateway-1:
+    build: ./java-gateway
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment: &gateway-environment
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/mneme
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ci-database-password
+      REDIS_HOST: redis
+      NOTIFICATION_REDIS_ENABLED: "true"
+      PYTHON_AGENT_URL: http://python-agent-1:8001
+      JWT_SECRET: ci-jwt-secret-at-least-32-characters-long
+      INTERNAL_SERVICE_TOKEN: ci-internal-token-at-least-32-characters
+      SECURE_COOKIES: "false"
+      OTEL_TRACING_ENABLED: "true"
+      OTEL_TRACES_SAMPLER_ARG: "1.0"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_SERVICE_NAME: mneme-java-gateway-1
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      python-agent-1:
+        condition: service_healthy
+
+  java-gateway-2:
+    build: ./java-gateway
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      <<: *gateway-environment
+      PYTHON_AGENT_URL: http://python-agent-2:8001
+      OTEL_SERVICE_NAME: mneme-java-gateway-2
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      python-agent-2:
+        condition: service_healthy
+
+volumes:
+  scale-chroma-1:
+  scale-chroma-2:
+  scale-agent-1:
+  scale-agent-2:

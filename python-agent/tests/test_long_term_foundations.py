@@ -1,4 +1,5 @@
 import asyncio
+from contextvars import ContextVar
 
 import pytest
 
@@ -213,6 +214,21 @@ def test_tool_registry_executes_validated_tool_and_rejects_bad_arguments():
         registry.execute("math.double", {"value": 4, "extra": True})
     with pytest.raises(TypeError):
         registry.execute("math.double", {"value": "4"})
+
+
+def test_tool_registry_propagates_request_context_to_worker_thread():
+    request_context = ContextVar("request_context", default="missing")
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec("context.read", "read context", {}, "test"),
+        request_context.get,
+    )
+
+    token = request_context.set("trace-context")
+    try:
+        assert registry.execute("context.read", {}) == "trace-context"
+    finally:
+        request_context.reset(token)
 
 
 def test_trace_store_redacts_sensitive_tool_arguments(tmp_path):

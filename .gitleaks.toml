@@ -1,0 +1,6 @@
+[[allowlists]]
+description = "Deterministic non-secret credentials used only by isolated CI containers"
+regexTarget = "match"
+regexes = [
+  '''ci-internal-token-at-least-32-characters''',
+]
