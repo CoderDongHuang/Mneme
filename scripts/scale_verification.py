@@ -80,6 +80,14 @@ def compose(*args: str) -> str:
     return result.stdout
 
 
+def _jaeger_traces(response: object) -> list[dict]:
+    if isinstance(response, dict):
+        response = response.get("data", [])
+    if not isinstance(response, list):
+        return []
+    return [trace for trace in response if isinstance(trace, dict)]
+
+
 def agent(path: str, method: str = "GET", payload: dict | None = None, port: int = 8001):
     return request_json(
         f"http://127.0.0.1:{port}{path}", method, payload,
@@ -222,16 +230,20 @@ def trace_chain(username: str, knowledge_bases: list[str], client) -> str:
         {"traceparent": f"00-{trace_id}-{uuid.uuid4().hex[:16]}-01"},
         client,
     )
-    deadline = time.monotonic() + 30
+    deadline = time.monotonic() + 45
+    observed_services: set[str] = set()
+    observed_operations: set[str] = set()
     while time.monotonic() < deadline:
         try:
-            data = request_json(f"http://127.0.0.1:16686/api/traces/{trace_id}")
-            data = data if isinstance(data, list) else []
-            if data:
-                spans = data[0].get("spans", [])
+            response = request_json(f"http://127.0.0.1:16686/api/traces/{trace_id}")
+            traces = _jaeger_traces(response)
+            if traces:
+                spans = traces[0].get("spans", [])
                 operations = {item.get("operationName") for item in spans}
-                processes = data[0].get("processes", {})
+                processes = traces[0].get("processes", {})
                 services = {item.get("serviceName") for item in processes.values()}
+                observed_services.update(item for item in services if item)
+                observed_operations.update(item for item in operations if item)
                 if (
                     "mneme-java-gateway-1" in services
                     and "mneme-python-agent-1" in services
@@ -242,7 +254,10 @@ def trace_chain(username: str, knowledge_bases: list[str], client) -> str:
         except Exception:
             pass
         time.sleep(2)
-    raise VerificationError(f"Jaeger did not receive the complete trace {trace_id} for {username}")
+    raise VerificationError(
+        f"Jaeger did not receive the complete trace {trace_id} for {username}; "
+        f"services={sorted(observed_services)}, operations={sorted(observed_operations)}"
+    )
 
 
 def concurrent_baseline() -> dict:

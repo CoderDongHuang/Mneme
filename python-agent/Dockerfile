@@ -6,11 +6,15 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 poppler-utils tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng \
     fonts-noto-cjk \
+    && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 ARG PIP_INDEX_URL=https://pypi.org/simple
-RUN pip install --no-cache-dir -r requirements.txt --index-url "$PIP_INDEX_URL"
+RUN pip install --no-cache-dir -r requirements.txt \
+        "wheel==0.46.2" "jaraco.context==6.1.0" \
+        --index-url "$PIP_INDEX_URL" \
+    && rm -rf /root/.cache/pip
 
 COPY . .
 
