@@ -44,7 +44,6 @@ class VectorStore:
         self.client = self.clients[0]
 
     def _build_clients(self) -> list[Any]:
-        chroma_settings = ChromaSettings(anonymized_telemetry=False)
         urls = [item.strip() for item in settings.vector_shard_urls.split(",") if item.strip()]
         if urls:
             clients = []
@@ -57,7 +56,7 @@ class VectorStore:
                         host=parsed.hostname,
                         port=parsed.port,
                         ssl=parsed.scheme == "https",
-                        settings=chroma_settings,
+                        settings=ChromaSettings(anonymized_telemetry=False),
                     )
                 )
             if settings.vector_shard_count not in {1, len(clients)}:
@@ -67,7 +66,7 @@ class VectorStore:
             return [chromadb.HttpClient(
                 host=settings.chroma_host,
                 port=settings.chroma_port,
-                settings=chroma_settings,
+                settings=ChromaSettings(anonymized_telemetry=False),
             )]
         shard_count = max(1, settings.vector_shard_count)
         clients = []
@@ -76,7 +75,12 @@ class VectorStore:
             if shard_count > 1:
                 path = path / f"shard-{shard_id}"
             path.mkdir(parents=True, exist_ok=True)
-            clients.append(chromadb.PersistentClient(path=str(path), settings=chroma_settings))
+            clients.append(
+                chromadb.PersistentClient(
+                    path=str(path),
+                    settings=ChromaSettings(anonymized_telemetry=False),
+                )
+            )
         return clients
 
     def _client_for(self, user_id: str, kb_id: str) -> Any:
