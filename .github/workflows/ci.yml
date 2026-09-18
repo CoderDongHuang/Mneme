@@ -315,16 +315,20 @@ jobs:
           format: json
           output: java-image-report.json
       - name: Generate Python CycloneDX SBOM
+        id: python_sbom
+        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: mneme-python-agent:p1
-          format: cyclonedx-json
+          format: cyclonedx
           output: mneme-python-agent.cdx.json
       - name: Generate Java CycloneDX SBOM
+        id: java_sbom
+        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: mneme-java-gateway:p1
-          format: cyclonedx-json
+          format: cyclonedx
           output: mneme-java-gateway.cdx.json
       - name: Upload supply-chain evidence
         if: always()
@@ -344,8 +348,12 @@ jobs:
           SECRET_SCAN: ${{ steps.secret_scan.outcome }}
           PYTHON_IMAGE: ${{ steps.python_image_scan.outcome }}
           JAVA_IMAGE: ${{ steps.java_image_scan.outcome }}
+          PYTHON_SBOM: ${{ steps.python_sbom.outcome }}
+          JAVA_SBOM: ${{ steps.java_sbom.outcome }}
         run: |
           test "$JAVA_DEPENDENCIES" = success
           test "$SECRET_SCAN" = success
           test "$PYTHON_IMAGE" = success
           test "$JAVA_IMAGE" = success
+          test "$PYTHON_SBOM" = success
+          test "$JAVA_SBOM" = success

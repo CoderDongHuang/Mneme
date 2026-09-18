@@ -87,8 +87,7 @@ def agent(path: str, method: str = "GET", payload: dict | None = None, port: int
     )
 
 
-def distributed_vectors() -> tuple[str, list[str]]:
-    user_id = "scale-user"
+def distributed_vectors(user_id: str) -> list[str]:
     kb_by_shard: dict[int, str] = {}
     for candidate in range(100):
         kb_id = f"scale-kb-{candidate}"
@@ -143,7 +142,7 @@ def distributed_vectors() -> tuple[str, list[str]]:
         time.sleep(2)
     else:
         raise VerificationError("failed vector shard did not recover")
-    return user_id, list(kb_by_shard.values())
+    return list(kb_by_shard.values())
 
 
 def cache_revision(user_id: str) -> None:
@@ -160,7 +159,7 @@ def gateway_client(port: int):
     return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 
 
-def notification_broadcast() -> tuple[str, object]:
+def notification_broadcast() -> tuple[str, str, object]:
     suffix = uuid.uuid4().hex[:10]
     username = f"scale_{suffix}"
     password = f"Scale_{suffix}!Aa1"
@@ -205,10 +204,10 @@ def notification_broadcast() -> tuple[str, object]:
     compose("exec", "-T", "redis", "redis-cli", "PUBLISH", "mneme:notifications", message)
     if not received.wait(15):
         raise VerificationError(f"cross-instance notification was not delivered: {error}")
-    return username, client1
+    return str(auth["userId"]), username, client1
 
 
-def trace_chain(username: str, client) -> str:
+def trace_chain(username: str, knowledge_bases: list[str], client) -> str:
     session = request_json(
         "http://127.0.0.1:8080/api/v1/sessions", "POST", {"title": "scale trace"}, opener=client
     )
@@ -218,7 +217,7 @@ def trace_chain(username: str, client) -> str:
         {
             "session_id": str(session["id"]),
             "message": "QZ-7294 是什么？",
-            "knowledge_base_ids": ["scale-kb-0", "scale-kb-1"],
+            "knowledge_base_ids": knowledge_bases,
         },
         {"traceparent": f"00-{trace_id}-{uuid.uuid4().hex[:16]}-01"},
         client,
@@ -277,10 +276,10 @@ def main() -> None:
         "http://127.0.0.1:16686/api/services",
     ):
         wait_http(url)
-    user_id, knowledge_bases = distributed_vectors()
+    user_id, username, client = notification_broadcast()
+    knowledge_bases = distributed_vectors(user_id)
     cache_revision(user_id)
-    username, client = notification_broadcast()
-    trace_id = trace_chain(username, client)
+    trace_id = trace_chain(username, knowledge_bases, client)
     report = {
         "status": "passed",
         "vector_shards": 2,
