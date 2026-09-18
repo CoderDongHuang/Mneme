@@ -4,6 +4,7 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import com.mneme.service.InternalServiceTokenProvider;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
@@ -17,6 +18,7 @@ public class RestTemplateConfig {
         InternalServiceTokenProvider tokens
     ) {
         return builder
+            .requestFactory(SimpleClientHttpRequestFactory::new)
             .additionalInterceptors((request, body, execution) -> {
                 request.getHeaders().set("X-Internal-Service-Token", tokens.current());
                 return execution.execute(request, body);

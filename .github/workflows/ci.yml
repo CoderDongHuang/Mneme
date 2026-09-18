@@ -268,6 +268,8 @@ jobs:
             --ignore-vuln PYSEC-2026-3815 \
             --format=json --output=python-audit.json
       - name: Scan Java dependencies
+        id: java_dependency_scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
@@ -279,6 +281,8 @@ jobs:
           format: json
           output: java-vulnerability-report.json
       - name: Scan repository secrets
+        id: secret_scan
+        continue-on-error: true
         uses: gitleaks/gitleaks-action@v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -287,6 +291,8 @@ jobs:
           docker build -t mneme-python-agent:p1 python-agent
           docker build -t mneme-java-gateway:p1 java-gateway
       - name: Scan Python runtime image
+        id: python_image_scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: mneme-python-agent:p1
@@ -297,6 +303,8 @@ jobs:
           format: json
           output: python-image-report.json
       - name: Scan Java runtime image
+        id: java_image_scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: mneme-java-gateway:p1
@@ -329,3 +337,15 @@ jobs:
             *-vulnerability-report.json
             *-image-report.json
             *.cdx.json
+      - name: Enforce supply-chain policy
+        if: always()
+        env:
+          JAVA_DEPENDENCIES: ${{ steps.java_dependency_scan.outcome }}
+          SECRET_SCAN: ${{ steps.secret_scan.outcome }}
+          PYTHON_IMAGE: ${{ steps.python_image_scan.outcome }}
+          JAVA_IMAGE: ${{ steps.java_image_scan.outcome }}
+        run: |
+          test "$JAVA_DEPENDENCIES" = success
+          test "$SECRET_SCAN" = success
+          test "$PYTHON_IMAGE" = success
+          test "$JAVA_IMAGE" = success

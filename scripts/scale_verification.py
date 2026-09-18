@@ -39,8 +39,14 @@ def request_json(
     merged = {"Content-Type": "application/json", **(headers or {})}
     request = urllib.request.Request(url, data=data, method=method, headers=merged)
     open_request = opener.open if opener is not None else urllib.request.urlopen
-    with open_request(request, timeout=90) as response:
-        body = json.loads(response.read() or b"null")
+    try:
+        with open_request(request, timeout=90) as response:
+            body = json.loads(response.read() or b"null")
+    except urllib.error.HTTPError as error:
+        response_body = error.read().decode("utf-8", errors="replace")
+        raise VerificationError(
+            f"{method} {url} returned HTTP {error.code}: {response_body}"
+        ) from error
     if isinstance(body, dict) and body.get("code") not in {None, 200}:
         raise VerificationError(f"{method} {url} failed: {body}")
     return body.get("data", body) if isinstance(body, dict) else body
