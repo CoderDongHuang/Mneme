@@ -62,6 +62,43 @@ jobs:
         working-directory: java-gateway
         run: mvn --batch-mode test
 
+  external-model-quality:
+    name: Real OCR and Qwen-VL quality
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python-agent/requirements.txt
+      - name: Install OCR runtime and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng fonts-noto-cjk
+          pip install -r python-agent/requirements.txt
+      - name: Run real document AI quality gate
+        working-directory: python-agent
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          MULTIMODAL_ENABLED: "true"
+          MULTIMODAL_MODEL: qwen-vl-plus
+          MULTIMODAL_MAX_IMAGES: "1"
+          OCR_ENABLED: "true"
+          OCR_LANGUAGES: chi_sim+eng
+        run: |
+          test -n "$DASHSCOPE_API_KEY"
+          python scripts/evaluate_document_ai.py --require-multimodal --report ../artifacts/document-ai-external-report.json
+      - name: Upload external quality evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: document-ai-external-quality
+          if-no-files-found: error
+          path: artifacts/document-ai-external-report.json
+
   frontend:
     name: React Frontend
     runs-on: ubuntu-latest
@@ -231,7 +268,7 @@ jobs:
             --ignore-vuln PYSEC-2026-3815 \
             --format=json --output=python-audit.json
       - name: Scan Java dependencies
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: java-gateway
@@ -242,7 +279,7 @@ jobs:
           format: json
           output: java-vulnerability-report.json
       - name: Scan repository secrets
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build runtime images
@@ -250,7 +287,7 @@ jobs:
           docker build -t mneme-python-agent:p1 python-agent
           docker build -t mneme-java-gateway:p1 java-gateway
       - name: Scan Python runtime image
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: mneme-python-agent:p1
           scanners: vuln
@@ -260,7 +297,7 @@ jobs:
           format: json
           output: python-image-report.json
       - name: Scan Java runtime image
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: mneme-java-gateway:p1
           scanners: vuln
@@ -270,13 +307,13 @@ jobs:
           format: json
           output: java-image-report.json
       - name: Generate Python CycloneDX SBOM
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: mneme-python-agent:p1
           format: cyclonedx-json
           output: mneme-python-agent.cdx.json
       - name: Generate Java CycloneDX SBOM
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: mneme-java-gateway:p1
           format: cyclonedx-json
