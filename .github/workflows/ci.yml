@@ -30,7 +30,13 @@ jobs:
         working-directory: python-agent
         env:
           MNEME_OFFLINE_EMBEDDINGS: "true"
-        run: python scripts/evaluate_rag.py
+        run: python scripts/evaluate_rag.py --report ../artifacts/rag-quality-report.json
+      - name: Upload RAG quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-quality-report
+          path: artifacts/rag-quality-report.json
 
   java:
     name: Java Gateway

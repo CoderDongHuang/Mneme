@@ -1,7 +1,7 @@
 [
-  {"question":"星桥计划的核心识别码是什么？","expected_source":"rag-fixture.txt","expected_terms":["QZ-7294"],"category":"identifier"},
-  {"question":"星桥计划的负责人是谁？","expected_source":"rag-fixture.txt","expected_terms":["林舟"],"category":"entity"},
-  {"question":"星桥计划计划在哪一年完成？","expected_source":"rag-fixture.txt","expected_terms":["2032"],"category":"date"},
+  {"question":"星桥计划的核心识别码是什么？","fixture":"rag-fixture.txt","expected_sources":["rag-fixture.txt","rag-fixture.pdf","rag-fixture.csv","rag-fixture.xlsx","rag-fixture.md","rag-fixture.pptx"],"expected_terms":["QZ-7294"],"category":"identifier"},
+  {"question":"星桥计划的负责人是谁？","fixture":"rag-fixture.txt","expected_sources":["rag-fixture.txt","rag-fixture.pdf","rag-fixture.csv","rag-fixture.xlsx","rag-fixture.md","rag-fixture.pptx"],"expected_terms":["林舟"],"category":"entity"},
+  {"question":"星桥计划计划在哪一年完成？","fixture":"rag-fixture.txt","expected_sources":["rag-fixture.txt","rag-fixture.pdf","rag-fixture.csv","rag-fixture.xlsx","rag-fixture.md","rag-fixture.pptx"],"expected_terms":["2032"],"category":"date"},
   {"question":"PDF 第 1 页的星桥计划识别码是什么？","expected_source":"rag-fixture.pdf","expected_terms":["QZ-7294"],"expected_page":1,"category":"pdf"},
   {"question":"CSV 中星桥计划 林舟 对应什么字段？","expected_source":"rag-fixture.csv","expected_terms":["林舟"],"category":"table"},
   {"question":"XLSX 资料中的星桥计划完成年份是什么？","expected_source":"rag-fixture.xlsx","expected_terms":["2032"],"category":"spreadsheet"},

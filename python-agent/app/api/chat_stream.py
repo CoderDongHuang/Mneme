@@ -8,6 +8,7 @@ from app.agents.nodes import build_llm_prompt
 from app.agents.runtime import complete_conversation, prepare_conversation
 from app.core.config import settings
 from app.core.logging import setup_logger
+from app.knowledge.citations import select_citations
 from app.models.chat import ChatRequest
 from app.utils.llm import llm
 
@@ -73,7 +74,9 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             "meta",
             {
                 "intent": state.get("intent", "general"),
-                "sources": _source_payload(state.get("retrieved_chunks", [])),
+                "sources": _source_payload(
+                    select_citations(state.get("retrieved_chunks", []))
+                ),
             },
         )
         try:

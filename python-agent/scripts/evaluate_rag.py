@@ -11,6 +11,7 @@ PROJECT_DIR = AGENT_DIR.parent
 sys.path.insert(0, str(AGENT_DIR))
 
 from app.knowledge.ingestion import ingest_document  # noqa: E402
+from app.knowledge.citations import select_citations  # noqa: E402
 from app.knowledge.retriever import retrieve  # noqa: E402
 from app.knowledge.vector_store import vector_store  # noqa: E402
 from app.utils.llm import llm  # noqa: E402
@@ -189,10 +190,13 @@ def evaluate(
             if _relevant(chunk, case)
         ]
         rank = relevant_ranks[0] if relevant_ranks else None
-        relevant_count = len(relevant_ranks)
+        final_citations = select_citations(chunks)
+        relevant_citations = [
+            chunk for chunk in final_citations if _relevant(chunk, case)
+        ]
         retrieved_total += len(chunks)
-        relevant_retrieved += relevant_count
-        citation_recall_hits += bool(rank)
+        relevant_retrieved += len(relevant_citations)
+        citation_recall_hits += bool(relevant_citations)
         input_tokens += sum(
             max(1, len(str(chunk.get("content", ""))) // 4) for chunk in chunks
         )
@@ -231,6 +235,8 @@ def evaluate(
                 "answerable": answerable,
                 "rank": rank,
                 "chunks": len(chunks),
+                "citations": len(final_citations),
+                "relevant_citations": len(relevant_citations),
                 "latency_ms": round(latency_ms, 2),
             }
         )
@@ -262,7 +268,9 @@ def evaluate(
             metadata_complete / max(1, retrieved_total), 4
         ),
         "citation_precision": round(
-            relevant_retrieved / max(1, retrieved_total), 4
+            relevant_retrieved
+            / max(1, sum(item["citations"] for item in details)),
+            4,
         ),
         "citation_recall": round(
             citation_recall_hits / answerable_denominator, 4
@@ -302,6 +310,20 @@ def evaluate(
     return report
 
 
+def apply_thresholds(report: dict, thresholds: dict) -> list[str]:
+    failures = []
+    for metric, rule in thresholds.items():
+        if metric not in report:
+            failures.append(f"missing metric: {metric}")
+            continue
+        value = float(report[metric])
+        if "min" in rule and value < float(rule["min"]):
+            failures.append(f"{metric}={value} is below {rule['min']}")
+        if "max" in rule and value > float(rule["max"]):
+            failures.append(f"{metric}={value} exceeds {rule['max']}")
+    return failures
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Mneme RAG 离线评测")
     parser.add_argument(
@@ -310,6 +332,12 @@ def main() -> None:
         default=AGENT_DIR / "evaluation" / "rag_cases.json",
     )
     parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument(
+        "--thresholds",
+        type=Path,
+        default=AGENT_DIR / "evaluation" / "rag_thresholds.json",
+    )
+    parser.add_argument("--report", type=Path)
     parser.add_argument(
         "--input-cost-per-million",
         type=float,
@@ -328,20 +356,28 @@ def main() -> None:
         default=float(os.getenv("RAG_OUTPUT_COST_PER_MILLION", "0")),
     )
     arguments = parser.parse_args()
-    print(
-        json.dumps(
-            evaluate(
+    report = evaluate(
                 arguments.dataset,
                 arguments.top_k,
                 arguments.keep,
                 arguments.input_cost_per_million,
                 arguments.llm_sample_size,
                 arguments.output_cost_per_million,
-            ),
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
+            )
+    thresholds = json.loads(arguments.thresholds.read_text(encoding="utf-8"))
+    failures = apply_thresholds(report, thresholds)
+    report["quality_gate"] = {
+        "status": "failed" if failures else "passed",
+        "thresholds": thresholds,
+        "failures": failures,
+    }
+    output = json.dumps(report, ensure_ascii=False, indent=2)
+    if arguments.report:
+        arguments.report.parent.mkdir(parents=True, exist_ok=True)
+        arguments.report.write_text(output + "\n", encoding="utf-8")
+    print(output)
+    if failures:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
