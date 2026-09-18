@@ -11,6 +11,7 @@ from app.core.logging import setup_logger
 from app.knowledge.citations import select_citations
 from app.models.chat import ChatRequest
 from app.utils.llm import llm
+from app.core.telemetry import tracer
 
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
@@ -81,18 +82,20 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
         )
         try:
             try:
-                stream = llm.astream([HumanMessage(content=prompt)]).__aiter__()
-                while True:
-                    try:
-                        chunk = await asyncio.wait_for(
-                            stream.__anext__(), timeout=settings.stream_timeout_seconds
-                        )
-                    except StopAsyncIteration:
-                        break
-                    content = str(chunk.content or "")
-                    if content:
-                        answer += content
-                        yield _event("token", {"content": content})
+                with tracer.start_as_current_span("mneme.llm.stream") as span:
+                    span.set_attribute("mneme.llm.streaming", True)
+                    stream = llm.astream([HumanMessage(content=prompt)]).__aiter__()
+                    while True:
+                        try:
+                            chunk = await asyncio.wait_for(
+                                stream.__anext__(), timeout=settings.stream_timeout_seconds
+                            )
+                        except StopAsyncIteration:
+                            break
+                        content = str(chunk.content or "")
+                        if content:
+                            answer += content
+                            yield _event("token", {"content": content})
             except asyncio.TimeoutError:
                 logger.warning(
                     "流式模型调用超过 %s 秒，启用检索降级",

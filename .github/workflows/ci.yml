@@ -173,3 +173,122 @@ jobs:
       - name: Stop full stack
         if: always()
         run: $COMPOSE down --volumes --remove-orphans
+
+  distributed:
+    name: Distributed scaling and tracing
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: [python, java]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Validate and start two-node topology
+        run: |
+          docker compose -f docker-compose.scale-ci.yml config --quiet
+          docker compose -f docker-compose.scale-ci.yml up -d --build
+      - name: Verify sharding, propagation, recovery, load, and traces
+        run: python scripts/scale_verification.py --report artifacts/scale-report.json
+      - name: Collect distributed service logs
+        if: failure()
+        run: docker compose -f docker-compose.scale-ci.yml logs --no-color > distributed-services.log
+      - name: Upload distributed acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributed-scaling-and-tracing
+          if-no-files-found: warn
+          path: |
+            artifacts/scale-report.json
+            distributed-services.log
+      - name: Stop distributed topology
+        if: always()
+        run: docker compose -f docker-compose.scale-ci.yml down --volumes --remove-orphans
+
+  supply-chain:
+    name: Supply-chain policy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python-agent/requirements.txt
+      - name: Audit Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools
+          pip install -r python-agent/requirements.txt pip-audit==2.9.0
+          pip-audit --local \
+            --ignore-vuln PYSEC-2026-3813 \
+            --ignore-vuln PYSEC-2026-3814 \
+            --ignore-vuln PYSEC-2026-3815 \
+            --format=json --output=python-audit.json
+      - name: Scan Java dependencies
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: java-gateway
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: json
+          output: java-vulnerability-report.json
+      - name: Scan repository secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build runtime images
+        run: |
+          docker build -t mneme-python-agent:p1 python-agent
+          docker build -t mneme-java-gateway:p1 java-gateway
+      - name: Scan Python runtime image
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: mneme-python-agent:p1
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: json
+          output: python-image-report.json
+      - name: Scan Java runtime image
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: mneme-java-gateway:p1
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: json
+          output: java-image-report.json
+      - name: Generate Python CycloneDX SBOM
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: mneme-python-agent:p1
+          format: cyclonedx-json
+          output: mneme-python-agent.cdx.json
+      - name: Generate Java CycloneDX SBOM
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: mneme-java-gateway:p1
+          format: cyclonedx-json
+          output: mneme-java-gateway.cdx.json
+      - name: Upload supply-chain evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-chain-evidence
+          if-no-files-found: warn
+          path: |
+            *-audit.json
+            *-vulnerability-report.json
+            *-image-report.json
+            *.cdx.json

@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.logging import setup_logger, trace_id_var
 from app.memory.reflection_scheduler import reflection_scheduler
 from app.core.internal_tokens import internal_tokens
+from app.core.telemetry import configure_telemetry
 
 
 logger = setup_logger("main")
@@ -50,6 +51,7 @@ app = FastAPI(
     description="三级记忆个人学习助手的内部推理服务",
     lifespan=lifespan,
 )
+configure_telemetry(app)
 
 app.add_middleware(
     CORSMiddleware,

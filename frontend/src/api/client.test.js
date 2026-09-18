@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, endpoints } from './client'
+import { api, createTraceparent, endpoints } from './client'
 
 describe('api client', () => {
   beforeEach(() => {
+    vi.stubGlobal('crypto', { getRandomValues: (values) => values.fill(7) })
     vi.stubGlobal('localStorage', {
       getItem: vi.fn(() => null),
       setItem: vi.fn(),
       removeItem: vi.fn(),
     })
+  })
+  it('creates valid W3C trace context for gateway propagation', () => {
+    expect(createTraceparent()).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/)
   })
   it('unwraps the gateway result envelope', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -15,6 +19,9 @@ describe('api client', () => {
       json: async () => ({ code: 200, message: 'success', data: { id: 7 } }),
     }))
     await expect(api('/example')).resolves.toEqual({ id: 7 })
+    expect(fetch).toHaveBeenCalledWith('/api/v1/example', expect.objectContaining({
+      headers: expect.objectContaining({ traceparent: expect.stringMatching(/^00-/) }),
+    }))
     vi.unstubAllGlobals()
   })
 

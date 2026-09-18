@@ -9,8 +9,18 @@ export class ApiError extends Error {
   }
 }
 
+function randomHex(bytes) {
+  const values = new Uint8Array(bytes)
+  crypto.getRandomValues(values)
+  return Array.from(values, (value) => value.toString(16).padStart(2, '0')).join('')
+}
+
+export function createTraceparent() {
+  return `00-${randomHex(16)}-${randomHex(8)}-01`
+}
+
 function authHeaders(extra = {}) {
-  return extra
+  return { traceparent: createTraceparent(), ...extra }
 }
 
 async function parseResponse(response) {
