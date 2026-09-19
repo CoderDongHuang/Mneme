@@ -59,9 +59,9 @@ def _region(x0: float, y0: float, x1: float, y1: float, width: float, height: fl
 
 
 def _parse_pdf(path: Path, source: str) -> list[Document]:
-    import fitz
+    import pymupdf
 
-    pdf = fitz.open(str(path))
+    pdf = pymupdf.open(str(path))
     documents: list[Document] = []
     page_lines: list[list[str]] = []
     page_blocks: list[list[tuple[float, float, float, float, str]]] = []
@@ -94,7 +94,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                 import pytesseract
                 from PIL import Image
 
-                pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
                 image = Image.frombytes(
                     "RGB", [pixmap.width, pixmap.height], pixmap.samples
                 )
@@ -126,7 +126,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
             and len(page_images) < settings.multimodal_max_images
             and (page.get_images(full=True) or page.get_drawings())
         ):
-            rendered = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+            rendered = page.get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5), alpha=False)
             page_images.append((page_index, rendered.tobytes("png")))
 
     edge_lines: Counter[str] = Counter()

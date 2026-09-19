@@ -15,6 +15,7 @@ from app.knowledge.citations import select_citations  # noqa: E402
 from app.knowledge.retriever import retrieve  # noqa: E402
 from app.knowledge.vector_store import vector_store  # noqa: E402
 from app.utils.llm import llm  # noqa: E402
+from scripts.quality_policy import CostBudget, require_sanitized  # noqa: E402
 
 
 def _fixture_path(case: dict) -> Path:
@@ -101,7 +102,8 @@ def _real_llm_scores(question: str, chunks: list[dict]) -> dict:
             [
                 ("system", "只能依据给定证据回答；证据不足时明确说不知道，并引用证据编号。"),
                 ("human", f"问题：{question}\n\n证据：\n{evidence}"),
-            ]
+            ],
+            max_tokens=400,
         )
     )
     judge_response = _content(
@@ -117,7 +119,8 @@ def _real_llm_scores(question: str, chunks: list[dict]) -> dict:
                     "human",
                     f"问题：{question}\n\n证据：\n{evidence}\n\n待评回答：\n{answer}",
                 ),
-            ]
+            ],
+            max_tokens=200,
         )
     )
     judged = _json_object(judge_response)
@@ -144,10 +147,23 @@ def evaluate(
     input_cost_per_million: float = 0.0,
     llm_sample_size: int = 0,
     output_cost_per_million: float = 0.0,
+    max_estimated_cost: float = 0.0,
+    require_sanitized_dataset: bool = False,
 ) -> dict:
     cases = json.loads(dataset_path.read_text(encoding="utf-8"))
     if not isinstance(cases, list) or not cases:
         raise ValueError("评测集必须是非空 JSON 数组")
+    if require_sanitized_dataset:
+        require_sanitized(cases)
+    budget = (
+        CostBudget(
+            max_estimated_cost,
+            input_cost_per_million,
+            output_cost_per_million,
+        )
+        if llm_sample_size > 0
+        else None
+    )
     user_id = "rag_evaluation"
     kb_id = "baseline"
     vector_store.delete_collection(user_id, kb_id)
@@ -243,6 +259,12 @@ def evaluate(
         if answerable and chunks and len(llm_details) < max(0, llm_sample_size):
             if not llm.configured:
                 raise RuntimeError("真实模型评测需要 DEEPSEEK_API_KEY 或 DASHSCOPE_API_KEY")
+            evidence_chars = sum(len(str(chunk.get("content", ""))) for chunk in chunks[:5])
+            budget.reserve(
+                input_tokens=max(1, (evidence_chars * 2 + len(case["question"]) * 4) // 4) + 400,
+                output_tokens=600,
+                label=f"RAG 样本 {len(llm_details) + 1}",
+            )
             scores = _real_llm_scores(case["question"], chunks)
             llm_details.append({"question": case["question"], **scores})
 
@@ -301,6 +323,8 @@ def evaluate(
             "estimated_input_tokens": llm_input_tokens,
             "estimated_output_tokens": llm_output_tokens,
             "estimated_cost": round(llm_estimated_cost, 6),
+            "reserved_cost": round(budget.reserved_usd, 6) if budget else 0.0,
+            "max_cost": max_estimated_cost,
             "cost_assumption_usd_per_million_output_tokens": output_cost_per_million,
             "details": llm_details,
         },
@@ -322,6 +346,13 @@ def apply_thresholds(report: dict, thresholds: dict) -> list[str]:
         if "max" in rule and value > float(rule["max"]):
             failures.append(f"{metric}={value} exceeds {rule['max']}")
     return failures
+
+
+def apply_real_llm_thresholds(report: dict, thresholds: dict) -> list[str]:
+    evaluation = report.get("real_llm_evaluation", {})
+    if evaluation.get("status") != "completed":
+        return ["real_llm_evaluation was not completed"]
+    return [f"real_llm_evaluation.{failure}" for failure in apply_thresholds(evaluation, thresholds)]
 
 
 def main() -> None:
@@ -355,6 +386,9 @@ def main() -> None:
         type=float,
         default=float(os.getenv("RAG_OUTPUT_COST_PER_MILLION", "0")),
     )
+    parser.add_argument("--max-estimated-cost", type=float, default=0.0)
+    parser.add_argument("--require-sanitized", action="store_true")
+    parser.add_argument("--real-llm-thresholds", type=Path)
     arguments = parser.parse_args()
     report = evaluate(
                 arguments.dataset,
@@ -363,12 +397,22 @@ def main() -> None:
                 arguments.input_cost_per_million,
                 arguments.llm_sample_size,
                 arguments.output_cost_per_million,
+                arguments.max_estimated_cost,
+                arguments.require_sanitized,
             )
     thresholds = json.loads(arguments.thresholds.read_text(encoding="utf-8"))
     failures = apply_thresholds(report, thresholds)
+    if arguments.real_llm_thresholds:
+        real_thresholds = json.loads(
+            arguments.real_llm_thresholds.read_text(encoding="utf-8")
+        )
+        failures.extend(apply_real_llm_thresholds(report, real_thresholds))
+    else:
+        real_thresholds = None
     report["quality_gate"] = {
         "status": "failed" if failures else "passed",
         "thresholds": thresholds,
+        "real_llm_thresholds": real_thresholds,
         "failures": failures,
     }
     output = json.dumps(report, ensure_ascii=False, indent=2)

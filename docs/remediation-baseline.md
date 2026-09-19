@@ -2,8 +2,8 @@
 
 - Baseline commit: `b2c5604107803d587c28d3d5ed0dfa80a1a54fe7`
 - Baseline date: 2026-07-28
-- Python: 60 tests passing; Ruff passing.
-- Java: build passing; no tests existed at baseline.
+- Python: the baseline suite and Ruff passed; use the baseline commit to reproduce the historical count.
+- Java: the build passed; Java tests did not exist at baseline.
 - Frontend: production build passing; lint command failing because ESLint was not installed.
 - Integration and browser end-to-end coverage did not exist.
 

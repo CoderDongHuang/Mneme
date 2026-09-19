@@ -1,0 +1,5 @@
+{
+  "samples": {"min": 5},
+  "faithfulness": {"min": 0.7},
+  "answer_relevance": {"min": 0.7}
+}

@@ -46,3 +46,61 @@ jobs:
           name: document-ai-external-quality
           if-no-files-found: error
           path: artifacts/document-ai-external-report.json
+
+  text-and-quiz-quality:
+    name: Real RAG and quiz quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python-agent/requirements.txt
+      - name: Install Python dependencies
+        run: pip install -r python-agent/requirements.txt
+      - name: Require model credentials
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+        run: test -n "$DASHSCOPE_API_KEY"
+      - name: Run budgeted real RAG quality gate
+        working-directory: python-agent
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          LLM_FALLBACK_ENABLED: "true"
+          MNEME_OFFLINE_EMBEDDINGS: "true"
+        run: >-
+          python scripts/evaluate_rag.py
+          --dataset evaluation/external_rag_cases.json
+          --llm-sample-size 5
+          --require-sanitized
+          --input-cost-per-million 0.30
+          --output-cost-per-million 0.60
+          --max-estimated-cost 0.03
+          --real-llm-thresholds evaluation/real_rag_thresholds.json
+          --report ../artifacts/real-rag-quality-report.json
+      - name: Run budgeted real quiz quality gate
+        working-directory: python-agent
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          LLM_FALLBACK_ENABLED: "true"
+        run: >-
+          python scripts/evaluate_quiz_quality.py evaluation/external_quiz_workspace.json
+          --llm-sample-size 4
+          --require-sanitized
+          --input-cost-per-million 0.30
+          --output-cost-per-million 0.60
+          --max-estimated-cost 0.02
+          --thresholds evaluation/real_quiz_thresholds.json
+          --report ../artifacts/real-quiz-quality-report.json
+      - name: Upload text quality evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-text-and-quiz-quality
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            artifacts/real-rag-quality-report.json
+            artifacts/real-quiz-quality-report.json

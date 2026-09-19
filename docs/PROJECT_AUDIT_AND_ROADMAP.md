@@ -19,15 +19,15 @@ Mneme 的核心产品闭环已经存在：认证、资料库、异步解析、�
 | 检查 | 结果 | 验证边界 |
 |---|---|---|
 | Python Ruff | 通过 | 全量 `app`、`tests` 静态检查 |
-| Python Pytest | 118 passed，1 skipped | 包含可信删除、备份归档安全、质量门禁、线程 trace 上下文和确定性模型回归测试 |
-| Java Maven Test | 41 collected，0 failed | 本机 37 passed、4 个 Testcontainers skipped；GitHub CI 的 Maven 作业通过 |
-| 前端 ESLint / Vitest | 通过，3 passed | Vitest 目前只有 API 客户端基础契约 |
-| Playwright mock E2E | 8 passed，2 skipped | 桌面和移动端通过；2 个真实栈用例默认跳过 |
+| Python Ruff / Pytest | 通过 | 当前数量与报告见 GitHub Actions；覆盖可信删除、备份归档安全、质量门禁、日志编码、预算脱敏策略和 trace 上下文 |
+| Java Maven Test | 通过 | 单元测试与 Testcontainers 集成测试由 CI 汇总，不在文档复制固定数量 |
+| 前端 ESLint / Vitest | 通过 | 覆盖 API、认证状态、错误恢复、SSE 重连、表单边界与无障碍语义 |
+| Playwright mock E2E | 通过 | 桌面和移动端报告见 CI artifact；真实栈用例由全栈作业执行 |
 | Full-stack P0 acceptance | 通过 | CI 启动 MySQL、Redis、Chroma、MinIO、Python、Java 和前端，执行真实浏览器流程、删除故障注入与备份恢复 |
 | Vite Build | 通过 | 生产构建成功 |
 | npm 安全审计 | 通过 | 0 low、0 moderate、0 high、0 critical |
 | Docker Compose | 通过 | 基础、selfhost 和 `security` profile 均可解析 |
-| 离线 RAG 质量门禁 | 110 cases，通过 | `Recall@5=1.0`、`MRR=0.9114`、`faithfulness_proxy=0.8762`、`citation_precision=0.8125`、`citation_recall=0.8667`、拒答 `1.0`、P95 `8.39ms` |
+| 离线 RAG 质量门禁 | 通过 | 样本数和指标以 CI 生成的 `rag-quality-report` artifact 为准 |
 | 真实文档 AI | 通过 | Tesseract `chi_sim+eng` 与 Qwen-VL 术语召回均为 `1.0`，OCR 最低置信度 `0.9143` |
 | 双节点与 Trace | 通过 | 2 Java、2 Python、2 Chroma；缓存、通知和故障恢复通过；60 请求零错误，P95 `17.21ms`；Java/Python/检索/LLM 同链路 |
 | 供应链策略 | 通过 | Python/Java 依赖、两张运行镜像、Gitleaks、两份 CycloneDX SBOM 均通过策略 |

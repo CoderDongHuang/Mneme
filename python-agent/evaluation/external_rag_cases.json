@@ -1,0 +1,41 @@
+[
+  {
+    "question": "学习路线分成哪四个阶段？",
+    "expected_source": "evaluation/fixtures/learning-roadmap.md",
+    "expected_terms": ["输入", "理解", "练习", "复盘"],
+    "category": "roadmap"
+  },
+  {
+    "question": "低评分卡片何时再次出现？",
+    "expected_source": "evaluation/fixtures/learning-roadmap.md",
+    "expected_terms": ["一天后"],
+    "category": "roadmap"
+  },
+  {
+    "question": "Recall@5 的定义是什么？",
+    "expected_source": "evaluation/fixtures/retrieval-metrics.csv",
+    "expected_terms": ["Recall@5", "相关证据"],
+    "category": "metrics"
+  },
+  {
+    "question": "工作记忆保存什么内容？",
+    "expected_source": "evaluation/fixtures/memory-model.md",
+    "expected_terms": ["当前对话窗口"],
+    "category": "memory"
+  },
+  {
+    "question": "PDF 文本页采用什么处理方式？",
+    "expected_source": "evaluation/fixtures/document-policy.html",
+    "expected_terms": ["布局排序"],
+    "category": "parser"
+  },
+  {
+    "question": "资料中是否说明了火星基地的开放日期？",
+    "fixture": "evaluation/fixtures/learning-roadmap.md",
+    "source_name": "evaluation/fixtures/learning-roadmap.md",
+    "expected_sources": [],
+    "expected_terms": [],
+    "answerable": false,
+    "category": "unanswerable"
+  }
+]

@@ -1,7 +1,7 @@
 from pathlib import Path
 import shutil
 
-import fitz
+import pymupdf
 import pytest
 from PIL import Image, ImageDraw, ImageFont
 
@@ -9,7 +9,7 @@ from app.knowledge.ingestion import parse_document
 
 
 def _create_layout_pdf(path: Path) -> None:
-    document = fitz.open()
+    document = pymupdf.open()
     for page_number in range(1, 4):
         page = document.new_page()
         page.insert_text((72, 40), "Mneme test material")
@@ -47,7 +47,7 @@ def test_pdf_keeps_extracted_text_when_ocr_is_unavailable(tmp_path, monkeypatch)
     import pytesseract
 
     path = tmp_path / "ocr-fallback.pdf"
-    document = fitz.open()
+    document = pymupdf.open()
     page = document.new_page()
     page.insert_text((72, 90), "Extracted text must survive OCR failure")
     document.save(path)
@@ -76,7 +76,7 @@ def test_scanned_pdf_uses_ocr(tmp_path):
     image.save(image_path)
 
     pdf_path = tmp_path / "scan.pdf"
-    document = fitz.open()
+    document = pymupdf.open()
     page = document.new_page(width=1200, height=300)
     page.insert_image(page.rect, filename=str(image_path))
     document.save(pdf_path)

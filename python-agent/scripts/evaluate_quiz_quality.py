@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -8,6 +9,7 @@ AGENT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AGENT_DIR))
 
 from app.utils.llm import llm  # noqa: E402
+from scripts.quality_policy import CostBudget, require_sanitized  # noqa: E402
 
 
 def _questions(workspace: dict) -> list[dict]:
@@ -72,12 +74,23 @@ def deterministic_report(workspace: dict) -> dict:
     }
 
 
-def llm_sample_report(workspace: dict, sample_size: int) -> dict:
+def llm_sample_report(
+    workspace: dict,
+    sample_size: int,
+    budget: CostBudget | None = None,
+) -> dict:
     questions = _questions(workspace)[: max(0, sample_size)]
     if questions and not llm.configured:
         raise RuntimeError("真实测验质量评测需要 DEEPSEEK_API_KEY 或 DASHSCOPE_API_KEY")
     scores = []
-    for question in questions:
+    for index, question in enumerate(questions, start=1):
+        serialized = json.dumps(question, ensure_ascii=False)
+        if budget:
+            budget.reserve(
+                input_tokens=max(1, len(serialized) // 2),
+                output_tokens=250,
+                label=f"测验样本 {index}",
+            )
         response = llm.invoke(
             [
                 (
@@ -87,7 +100,8 @@ def llm_sample_report(workspace: dict, sample_size: int) -> dict:
                     "分数范围 0 到 1，依据题目、答案、证据和来源判断。",
                 ),
                 ("human", json.dumps(question, ensure_ascii=False)),
-            ]
+            ],
+            max_tokens=250,
         )
         text = str(getattr(response, "content", response))
         start, end = text.find("{"), text.rfind("}")
@@ -107,19 +121,77 @@ def llm_sample_report(workspace: dict, sample_size: int) -> dict:
         "answerability": round(
             sum(item["answerability"] for item in scores) / max(1, len(scores)), 4
         ),
+        "reserved_cost": round(budget.reserved_usd, 6) if budget else 0.0,
+        "max_cost": budget.max_usd if budget else 0.0,
         "details": scores,
     }
+
+
+def apply_thresholds(report: dict, thresholds: dict) -> list[str]:
+    failures = []
+    for metric, rule in thresholds.items():
+        if metric not in report:
+            failures.append(f"missing metric: {metric}")
+            continue
+        value = float(report[metric])
+        if "min" in rule and value < float(rule["min"]):
+            failures.append(f"{metric}={value} is below {rule['min']}")
+    return failures
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="评估 Mneme 工作区导出的测验质量")
     parser.add_argument("workspace", type=Path)
     parser.add_argument("--llm-sample-size", type=int, default=0)
+    parser.add_argument("--thresholds", type=Path)
+    parser.add_argument("--report", type=Path)
+    parser.add_argument("--require-sanitized", action="store_true")
+    parser.add_argument(
+        "--input-cost-per-million",
+        type=float,
+        default=float(os.getenv("QUIZ_INPUT_COST_PER_MILLION", "0")),
+    )
+    parser.add_argument(
+        "--output-cost-per-million",
+        type=float,
+        default=float(os.getenv("QUIZ_OUTPUT_COST_PER_MILLION", "0")),
+    )
+    parser.add_argument("--max-estimated-cost", type=float, default=0.0)
     arguments = parser.parse_args()
     workspace = json.loads(arguments.workspace.read_text(encoding="utf-8"))
+    if arguments.require_sanitized:
+        require_sanitized(workspace)
+    budget = (
+        CostBudget(
+            arguments.max_estimated_cost,
+            arguments.input_cost_per_million,
+            arguments.output_cost_per_million,
+        )
+        if arguments.llm_sample_size > 0
+        else None
+    )
     report = deterministic_report(workspace)
-    report["real_llm_evaluation"] = llm_sample_report(workspace, arguments.llm_sample_size)
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    report["real_llm_evaluation"] = llm_sample_report(
+        workspace, arguments.llm_sample_size, budget
+    )
+    thresholds = (
+        json.loads(arguments.thresholds.read_text(encoding="utf-8"))
+        if arguments.thresholds
+        else {}
+    )
+    failures = apply_thresholds(report["real_llm_evaluation"], thresholds)
+    report["quality_gate"] = {
+        "status": "failed" if failures else "passed",
+        "thresholds": thresholds,
+        "failures": failures,
+    }
+    output = json.dumps(report, ensure_ascii=False, indent=2)
+    if arguments.report:
+        arguments.report.parent.mkdir(parents=True, exist_ok=True)
+        arguments.report.write_text(output + "\n", encoding="utf-8")
+    print(output)
+    if failures:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
