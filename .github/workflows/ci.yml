@@ -302,8 +302,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build runtime images
         run: |
-          docker build -t mneme-python-agent:p1 python-agent
-          docker build -t mneme-java-gateway:p1 java-gateway
+          build_image() {
+            local image="$1"
+            local context="$2"
+            for attempt in 1 2 3; do
+              if docker build -t "$image" "$context"; then
+                return 0
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "Failed to build $image after $attempt attempts"
+                return 1
+              fi
+              echo "Build attempt $attempt for $image failed; retrying"
+              sleep $((attempt * 10))
+            done
+          }
+          build_image mneme-python-agent:p1 python-agent
+          build_image mneme-java-gateway:p1 java-gateway
       - name: Scan Python runtime image
         id: python_image_scan
         continue-on-error: true
