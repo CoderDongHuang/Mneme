@@ -8,6 +8,7 @@ from app.core.telemetry import tracer
 from app.knowledge.lexical_index import lexical_index
 from app.knowledge.reranker import rerank
 from app.knowledge.vector_store import vector_store
+from app.utils.embedding import embeddings
 
 logger = setup_logger("retriever")
 RRF_K = 60
@@ -95,7 +96,42 @@ def _indexed_candidates(
     return lexical_index.search(user_id, kb_id, query, limit)
 
 
+def _exact_semantic_candidates(
+    collection, queries: list[str], limit: int
+) -> list[dict]:
+    results = collection.get(include=["documents", "metadatas", "embeddings"])
+    chunk_ids = results.get("ids", [])
+    documents = results.get("documents", [])
+    metadatas = results.get("metadatas", [])
+    stored_embeddings = results.get("embeddings")
+    if stored_embeddings is None or len(stored_embeddings) != len(chunk_ids):
+        return []
+    candidates = []
+    for query_index, query_embedding in enumerate(embeddings(queries)):
+        query_candidates = []
+        for index, chunk_id in enumerate(chunk_ids):
+            stored_embedding = stored_embeddings[index]
+            distance = sum(
+                (float(left) - float(right)) ** 2
+                for left, right in zip(query_embedding, stored_embedding)
+            )
+            query_candidates.append(
+                {
+                    "id": chunk_id,
+                    "content": documents[index],
+                    "metadata": metadatas[index] or {},
+                    "distance": distance,
+                    "query_index": query_index,
+                }
+            )
+        query_candidates.sort(key=lambda item: (item["distance"], str(item["id"])))
+        candidates.extend(query_candidates[:limit])
+    return candidates
+
+
 def _semantic_candidates(collection, queries: list[str], limit: int) -> list[dict]:
+    if settings.offline_embeddings:
+        return _exact_semantic_candidates(collection, queries, limit)
     candidates = []
     for query_index, query in enumerate(queries):
         results = collection.query(
@@ -135,6 +171,22 @@ def _deduplicate(ranked: list[dict], limit: int) -> list[dict]:
     return selected
 
 
+def _term_coverage(query: str, item: dict) -> float:
+    query_terms = set(_terms(query))
+    if not query_terms:
+        return 0.0
+    metadata = item.get("metadata", {})
+    searchable = " ".join(
+        (
+            str(item.get("content", "")),
+            str(metadata.get("source", "")),
+            str(metadata.get("section", "")),
+        )
+    )
+    content_terms = set(_terms(searchable))
+    return len(query_terms & content_terms) / len(query_terms)
+
+
 def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> list[dict]:
     limit = max(1, min(top_k or settings.retriever_top_k, 20))
     collection = vector_store.get_collection(user_id, kb_id)
@@ -167,6 +219,9 @@ def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) ->
                 current["distance"] = min(item["distance"], current.get("distance", item["distance"]))
             if "lexical_score" in item:
                 current["lexical_score"] = item["lexical_score"]
+    for item in merged.values():
+        item["term_coverage"] = _term_coverage(query, item)
+        item["score"] += item["term_coverage"] / RRF_K
     ranked = sorted(
         merged.values(),
         key=lambda item: (

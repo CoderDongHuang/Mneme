@@ -1,6 +1,11 @@
 from unittest.mock import patch
 
-from app.knowledge.retriever import _semantic_candidates, retrieve, rewrite_queries
+from app.knowledge.retriever import (
+    _exact_semantic_candidates,
+    _semantic_candidates,
+    retrieve,
+    rewrite_queries,
+)
 
 
 class FakeCollection:
@@ -45,6 +50,7 @@ def test_hybrid_rrf_promotes_lexically_relevant_result():
         chunks = retrieve("u1", "kb1", "反向传播 链式法则", 3)
     assert chunks[0]["id"] in {"gradient", "chain"}
     assert all("score" in chunk for chunk in chunks)
+    assert all("term_coverage" in chunk for chunk in chunks)
     assert chunks == sorted(chunks, key=lambda chunk: chunk["score"], reverse=True)
 
 
@@ -69,3 +75,24 @@ def test_semantic_distance_ties_use_stable_chunk_id():
     chunks = _semantic_candidates(TiedCollection(), ["query"], 2)
 
     assert [chunk["id"] for chunk in chunks] == ["chunk-a", "chunk-b"]
+
+
+def test_exact_semantic_candidates_rank_stored_vectors(monkeypatch):
+    class ExactCollection:
+        def get(self, **_kwargs):
+            return {
+                "ids": ["chunk-b", "chunk-a"],
+                "documents": ["B", "A"],
+                "metadatas": [{}, {}],
+                "embeddings": [[1.0, 0.0], [0.0, 1.0]],
+            }
+
+    monkeypatch.setattr(
+        "app.knowledge.retriever.embeddings",
+        lambda _queries: [[0.0, 1.0]],
+    )
+
+    chunks = _exact_semantic_candidates(ExactCollection(), ["query"], 2)
+
+    assert [chunk["id"] for chunk in chunks] == ["chunk-a", "chunk-b"]
+    assert [chunk["distance"] for chunk in chunks] == [0.0, 2.0]
