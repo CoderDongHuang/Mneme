@@ -224,12 +224,26 @@ jobs:
       - name: Validate and start two-node topology
         run: |
           docker compose -f docker-compose.scale-ci.yml config --quiet
-          docker compose -f docker-compose.scale-ci.yml up -d --build
+          docker compose -f docker-compose.scale-ci.yml build
+          docker compose -f docker-compose.scale-ci.yml up -d java-gateway-1
+          for attempt in {1..80}; do
+            if curl --fail --silent http://127.0.0.1:8080/actuator/health > /dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 80 ]; then
+              echo "Primary gateway did not become ready after 240 seconds"
+              exit 1
+            fi
+            sleep 3
+          done
+          docker compose -f docker-compose.scale-ci.yml up -d java-gateway-2
       - name: Verify sharding, propagation, recovery, load, and traces
         run: python scripts/scale_verification.py --report artifacts/scale-report.json
       - name: Collect distributed service logs
         if: failure()
-        run: docker compose -f docker-compose.scale-ci.yml logs --no-color > distributed-services.log
+        run: |
+          docker compose -f docker-compose.scale-ci.yml ps --all > distributed-services.log
+          docker compose -f docker-compose.scale-ci.yml logs --no-color >> distributed-services.log
       - name: Upload distributed acceptance evidence
         if: always()
         uses: actions/upload-artifact@v4
