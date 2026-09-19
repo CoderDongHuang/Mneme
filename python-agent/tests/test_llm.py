@@ -51,3 +51,24 @@ def test_fallback_llm_selects_deterministic_model(monkeypatch):
     assert client.status["primary"] == "deterministic-test"
     assert isinstance(selected, llm_module.DeterministicTestLLM)
     assert using_fallback is False
+
+
+def test_fallback_llm_uses_dashscope_when_primary_key_is_missing(monkeypatch):
+    monkeypatch.setattr(
+        llm_module,
+        "settings",
+        SimpleNamespace(
+            deterministic_test_llm=False,
+            deepseek_api_key="",
+            dashscope_api_key="configured",
+        ),
+    )
+    client = llm_module.FallbackLLM()
+    fallback = object()
+    monkeypatch.setattr(client, "_get_fallback", lambda: fallback)
+
+    selected, using_fallback = client._selected()
+
+    assert client.configured is True
+    assert selected is fallback
+    assert using_fallback is True

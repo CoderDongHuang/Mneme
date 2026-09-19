@@ -150,6 +150,11 @@ class FallbackLLM:
     def _selected(self) -> tuple[Any, bool]:
         if settings.deterministic_test_llm:
             return DeterministicTestLLM(), False
+        if not settings.deepseek_api_key:
+            fallback = self._get_fallback()
+            if fallback is not None:
+                return fallback, True
+            raise RuntimeError("未配置可用的 LLM API Key")
         if self._is_circuit_open():
             fallback = self._get_fallback()
             if fallback is not None:

@@ -3,8 +3,17 @@ import { endpoints } from '../api/client'
 
 const AuthContext = createContext(null)
 
+function storedSession() {
+  try {
+    return JSON.parse(localStorage.getItem('mneme_auth') || 'null')
+  } catch {
+    localStorage.removeItem('mneme_auth')
+    return null
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(() => JSON.parse(localStorage.getItem('mneme_auth') || 'null'))
+  const [session, setSession] = useState(storedSession)
 
   useEffect(() => {
     const logout = () => setSession(null)

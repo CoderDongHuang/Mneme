@@ -1,0 +1,42 @@
+{
+  "dataset": "synthetic-sanitized-v1",
+  "quizzes": [
+    {
+      "title": "学习方法抽检",
+      "questions_json": [
+        {
+          "type": "choice",
+          "prompt": "学习路线的复盘阶段使用哪种安排？",
+          "options": ["间隔重复", "随机跳过", "只读一次"],
+          "answer": "间隔重复",
+          "evidence": "复盘阶段根据间隔重复安排回顾，低评分卡片一天后再次出现。",
+          "source": {"document_id": "synthetic-roadmap", "page": 1}
+        },
+        {
+          "type": "short",
+          "prompt": "一个可执行学习目标应包含哪些要素？",
+          "answer": "主题、完成条件、截止日期和验证方式。",
+          "key_points": ["主题", "完成条件", "截止日期", "验证方式"],
+          "evidence": "可执行目标包含主题、完成条件、截止日期和验证方式。",
+          "source": {"document_id": "synthetic-roadmap", "page": 1}
+        },
+        {
+          "type": "choice",
+          "prompt": "Recall@5 衡量的是什么？",
+          "options": ["前五个结果是否包含相关证据", "回答字数", "模型调用次数"],
+          "answer": "前五个结果是否包含相关证据",
+          "evidence": "Recall@5 表示前五个检索结果是否覆盖相关证据。",
+          "source": {"document_id": "synthetic-metrics", "page": 1}
+        },
+        {
+          "type": "short",
+          "prompt": "为什么回答需要携带来源？",
+          "answer": "让学习者能够核验答案依据并返回原文。",
+          "key_points": ["核验", "答案依据", "原文"],
+          "evidence": "引用记录文档、页码和原文位置，用于核验回答依据。",
+          "source": {"document_id": "synthetic-policy", "page": 2}
+        }
+      ]
+    }
+  ]
+}

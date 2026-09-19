@@ -69,9 +69,9 @@ export default function AuthPage() {
             <p>{mode === 'login' ? '欢迎回来' : mode === 'register' ? '建立学习档案' : '找回访问权限'}</p>
             <h2>{mode === 'login' ? '继续你的学习轨迹' : mode === 'register' ? '从第一次提问开始' : '通过绑定邮箱重置密码'}</h2>
           </div>
-          <div className="auth-tabs" role="tablist">
-            <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>登录</button>
-            <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>注册</button>
+          <div className="auth-tabs" role="tablist" aria-label="账号操作">
+            <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>登录</button>
+            <button type="button" role="tab" aria-selected={mode === 'register'} className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>注册</button>
           </div>
           {mode !== 'reset' && <label>
             <span>用户名</span>
@@ -92,8 +92,8 @@ export default function AuthPage() {
           {mode === 'login' && <div className="auth-options"><label><input type="checkbox" checked={remember} onChange={(e)=>setRemember(e.target.checked)} /><span>记住我</span></label><button type="button" onClick={()=>{setMode('reset');setError('');setNotice('')}}>忘记密码</button></div>}
           {mode === 'reset' && <button className="back-login" type="button" onClick={()=>{setMode('login');setResetRequested(false)}}>返回登录</button>}
           {error && <div className="form-error" role="alert">{error}</div>}
-          {notice && <div className="auth-notice">{notice}</div>}
-          <button className="auth-submit" disabled={busy}>
+          {notice && <div className="auth-notice" role="status" aria-live="polite">{notice}</div>}
+          <button className="auth-submit" type="submit" disabled={busy}>
             <span>{busy ? '请稍候' : mode === 'login' ? '进入忆知' : mode === 'register' ? '创建账号' : resetRequested ? '确认重置密码' : '发送验证码'}</span>
             <ArrowRight size={19} />
           </button>

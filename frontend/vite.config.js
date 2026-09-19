@@ -7,7 +7,11 @@ export default defineConfig(({ mode }) => {
   const gateway = configuredGateway.replace('://localhost', '://127.0.0.1')
   return {
     plugins: [react()],
-    test: { include: ['src/**/*.test.{js,jsx}'] },
+    test: {
+      environment: 'jsdom',
+      include: ['src/**/*.test.{js,jsx}'],
+      setupFiles: ['./src/test/setup.js'],
+    },
     server: {
       port: 5173,
       proxy: {

@@ -1,0 +1,6 @@
+{
+  "samples": {"min": 4},
+  "grounding": {"min": 0.75},
+  "clarity": {"min": 0.75},
+  "answerability": {"min": 0.75}
+}

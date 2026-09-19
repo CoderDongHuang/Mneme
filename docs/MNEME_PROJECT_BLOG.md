@@ -317,17 +317,9 @@ Mneme 将测试分为四层：
 | 前端单元/E2E | Vitest、Playwright | API 客户端、页面流程和响应式布局 |
 | RAG 评测 | 自定义评测脚本 | Hit@K、MRR、引用元数据完整率 |
 
-本次发布前实测结果：
+发布前结果不再复制固定测试数量。Python、Java、前端、浏览器、全栈、分布式和供应链检查的当前状态以 [GitHub Actions](https://github.com/CoderDongHuang/Mneme/actions) 为准，执行范围和本地复现命令见 [`docs/testing.md`](testing.md)。离线与真实模型质量报告由工作流作为 artifact 保存。
 
-- Ruff：通过
-- Python：67 tests passed
-- Java：4 tests passed，1 个需要 Docker 的 Testcontainers 用例按环境跳过
-- 前端单元测试：2 tests passed
-- Mock Playwright：6 tests passed
-- 离线 RAG：Hit@5 = 1.0、MRR = 1.0、引用元数据完整率 = 1.0
-- 真实 Docker E2E：1 passed，约 25.7 秒
-
-真实 E2E 使用虚构资料，实际经过注册、创建资料库、文件上传、DashScope Embedding、解析状态轮询、Chroma 检索、DeepSeek 流式回答和引用按钮展示。它不会默认在 GitHub Actions 中执行，因为真实模型调用会消耗额度；本地显式运行：
+真实 E2E 使用虚构资料，实际经过注册、创建资料库、文件上传、解析状态轮询、Chroma 检索、流式回答和引用按钮展示。常规 CI 使用确定性模型完成全栈验收；付费模型质量由带脱敏和预算门禁的周期工作流抽检。本地显式运行：
 
 ```bash
 cd frontend

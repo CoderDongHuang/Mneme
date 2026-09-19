@@ -25,6 +25,8 @@ Maven 构建会同时验证 Flyway 迁移资源、Spring 类型和 Java 17 编�
 ```powershell
 cd frontend
 npm ci
+npm run lint
+npm test
 npm run build
 ```
 
@@ -82,12 +84,18 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml exec \
   python scripts/evaluate_rag.py
 ```
 
-基线指标包括 Hit@5、MRR 和引用元数据完整率。
+基线指标包括 Recall@5、MRR、最终引用 Precision/Recall、拒答和延迟。报告由 CI 作为 artifact 保存，文档不复制容易过期的测试计数。
 
-真实模型 Faithfulness 与 Answer Relevance 评测需要显式指定样本数，并会消耗模型额度：
+真实模型 Faithfulness 与 Answer Relevance 评测必须使用脱敏数据、显式样本数、价格假设和单次预算上限：
 
 ```bash
-python scripts/evaluate_rag.py --llm-sample-size 20 --input-cost-per-million 0.14 --output-cost-per-million 0.28
+python scripts/evaluate_rag.py \
+  --dataset evaluation/external_rag_cases.json \
+  --llm-sample-size 5 --require-sanitized \
+  --input-cost-per-million 0.30 --output-cost-per-million 0.60 \
+  --max-estimated-cost 0.03 \
+  --real-llm-thresholds evaluation/real_rag_thresholds.json \
+  --report ../artifacts/real-rag-quality-report.json
 ```
 
 复杂版式回归夹具可通过 `python scripts/generate_layout_fixtures.py` 重新生成，固定样例覆盖扫描页、多栏、跨页表格、公式和带图表的电子表格；标注在 `evaluation/layout_annotations.json`。
@@ -95,8 +103,17 @@ python scripts/evaluate_rag.py --llm-sample-size 20 --input-cost-per-million 0.1
 测验质量可直接针对工作区 JSON 导出运行；默认检查结构、证据和来源覆盖，显式设置样本数时再调用真实模型评估 grounding、clarity 与 answerability：
 
 ```bash
-python scripts/evaluate_quiz_quality.py mneme-export.json --llm-sample-size 20
+python scripts/evaluate_quiz_quality.py evaluation/external_quiz_workspace.json \
+  --llm-sample-size 4 --require-sanitized \
+  --input-cost-per-million 0.30 --output-cost-per-million 0.60 \
+  --max-estimated-cost 0.02 \
+  --thresholds evaluation/real_quiz_thresholds.json \
+  --report ../artifacts/real-quiz-quality-report.json
 ```
+
+`.github/workflows/model-quality.yml` 每周运行真实 OCR、多模态、RAG 和测验抽检，也支持手动触发。预算守卫会在每次模型调用前预留最坏情况下的输出成本；脱敏扫描发现邮箱、手机号、身份证号或 API Key 形态时会在发送前失败。真实模型报告保留 30 天，并包含失败样例和评审理由。
+
+当前测试结果以 [GitHub Actions](https://github.com/CoderDongHuang/Mneme/actions) 和对应运行的 artifact 为准，不在说明文档中维护固定通过数量。
 
 ## 全链路冒烟
 

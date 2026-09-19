@@ -64,26 +64,29 @@ export async function streamChat(payload, { signal, onEvent }) {
   const decoder = new TextDecoder()
   let buffer = ''
   let eventName = 'message'
+  const consumeLine = (line) => {
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim()
+    } else if (line.startsWith('data:')) {
+      const raw = line.slice(5).trim()
+      if (!raw) return
+      let data
+      try { data = JSON.parse(raw) } catch { data = { content: raw } }
+      onEvent(eventName, data)
+    } else if (!line.trim()) {
+      eventName = 'message'
+    }
+  }
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
     buffer = lines.pop() || ''
-    for (const line of lines) {
-      if (line.startsWith('event:')) {
-        eventName = line.slice(6).trim()
-      } else if (line.startsWith('data:')) {
-        const raw = line.slice(5).trim()
-        if (!raw) continue
-        let data
-        try { data = JSON.parse(raw) } catch { data = { content: raw } }
-        onEvent(eventName, data)
-      } else if (!line.trim()) {
-        eventName = 'message'
-      }
-    }
+    lines.forEach(consumeLine)
   }
+  buffer += decoder.decode()
+  if (buffer) buffer.split('\n').forEach(consumeLine)
 }
 
 export const endpoints = {
@@ -161,13 +164,49 @@ export const endpoints = {
   },
 }
 
-export function openNotificationStream(onEvent) {
-  const stream = new EventSource(`${API_BASE}/notifications/stream`, { withCredentials: true })
-  stream.addEventListener('task', (event) => {
-    try { onEvent(JSON.parse(event.data)) } catch { /* ignore malformed server events */ }
-  })
-  stream.onerror = () => onEvent(null)
-  return stream
+export function openNotificationStream(onEvent, options = {}) {
+  const EventSourceClass = options.EventSourceClass || EventSource
+  const schedule = options.setTimeout || globalThis.setTimeout
+  const cancel = options.clearTimeout || globalThis.clearTimeout
+  const baseDelayMs = options.baseDelayMs ?? 1_000
+  const maxDelayMs = options.maxDelayMs ?? 30_000
+  let source = null
+  let reconnectTimer = null
+  let reconnectAttempt = 0
+  let closed = false
+
+  const connect = () => {
+    if (closed) return
+    source = new EventSourceClass(`${API_BASE}/notifications/stream`, { withCredentials: true })
+    source.onopen = () => { reconnectAttempt = 0 }
+    source.addEventListener('task', (event) => {
+      reconnectAttempt = 0
+      try { onEvent(JSON.parse(event.data)) } catch { /* ignore malformed server events */ }
+    })
+    source.onerror = () => {
+      source?.close()
+      source = null
+      onEvent(null)
+      if (closed || reconnectTimer !== null) return
+      const delay = Math.min(maxDelayMs, baseDelayMs * (2 ** reconnectAttempt))
+      reconnectAttempt += 1
+      reconnectTimer = schedule(() => {
+        reconnectTimer = null
+        connect()
+      }, delay)
+    }
+  }
+
+  connect()
+  return {
+    close() {
+      closed = true
+      source?.close()
+      source = null
+      if (reconnectTimer !== null) cancel(reconnectTimer)
+      reconnectTimer = null
+    },
+  }
 }
 
 export async function downloadWorkspaceExport() {
