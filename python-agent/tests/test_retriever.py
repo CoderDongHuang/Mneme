@@ -1,8 +1,8 @@
 from unittest.mock import patch
 
 from app.knowledge.retriever import (
+    _ann_semantic_candidates,
     _exact_semantic_candidates,
-    _semantic_candidates,
     retrieve,
     rewrite_queries,
 )
@@ -72,7 +72,7 @@ def test_semantic_distance_ties_use_stable_chunk_id():
                 "distances": [[0.5, 0.5]],
             }
 
-    chunks = _semantic_candidates(TiedCollection(), ["query"], 2)
+    chunks = _ann_semantic_candidates(TiedCollection(), ["query"], 2)
 
     assert [chunk["id"] for chunk in chunks] == ["chunk-a", "chunk-b"]
 

@@ -132,6 +132,10 @@ def _exact_semantic_candidates(
 def _semantic_candidates(collection, queries: list[str], limit: int) -> list[dict]:
     if settings.offline_embeddings:
         return _exact_semantic_candidates(collection, queries, limit)
+    return _ann_semantic_candidates(collection, queries, limit)
+
+
+def _ann_semantic_candidates(collection, queries: list[str], limit: int) -> list[dict]:
     candidates = []
     for query_index, query in enumerate(queries):
         results = collection.query(

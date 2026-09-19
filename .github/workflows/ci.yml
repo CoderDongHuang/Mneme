@@ -276,11 +276,21 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools
           pip install -r python-agent/requirements.txt pip-audit==2.9.0
-          pip-audit --local \
-            --ignore-vuln PYSEC-2026-3813 \
-            --ignore-vuln PYSEC-2026-3814 \
-            --ignore-vuln PYSEC-2026-3815 \
-            --format=json --output=python-audit.json
+          for attempt in 1 2 3; do
+            if pip-audit --local --timeout 60 \
+              --ignore-vuln PYSEC-2026-3813 \
+              --ignore-vuln PYSEC-2026-3814 \
+              --ignore-vuln PYSEC-2026-3815 \
+              --format=json --output=python-audit.json; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Python dependency audit failed after $attempt attempts"
+              exit 1
+            fi
+            echo "Python dependency audit attempt $attempt failed; retrying"
+            sleep $((attempt * 10))
+          done
       - name: Scan Java dependencies
         id: java_dependency_scan
         continue-on-error: true
