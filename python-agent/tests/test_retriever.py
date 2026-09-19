@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from app.knowledge.retriever import retrieve, rewrite_queries
+from app.knowledge.retriever import _semantic_candidates, retrieve, rewrite_queries
 
 
 class FakeCollection:
@@ -51,3 +51,21 @@ def test_hybrid_rrf_promotes_lexically_relevant_result():
 def test_empty_query_does_not_search():
     with patch("app.knowledge.retriever.vector_store.get_collection", return_value=FakeCollection()):
         assert retrieve("u1", "kb1", "   ") == []
+
+
+def test_semantic_distance_ties_use_stable_chunk_id():
+    class TiedCollection:
+        def count(self):
+            return 2
+
+        def query(self, **_kwargs):
+            return {
+                "ids": [["chunk-b", "chunk-a"]],
+                "documents": [["B", "A"]],
+                "metadatas": [[{}, {}]],
+                "distances": [[0.5, 0.5]],
+            }
+
+    chunks = _semantic_candidates(TiedCollection(), ["query"], 2)
+
+    assert [chunk["id"] for chunk in chunks] == ["chunk-a", "chunk-b"]

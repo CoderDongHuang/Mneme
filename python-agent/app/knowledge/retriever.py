@@ -83,7 +83,9 @@ def _bm25_candidates(collection, query: str, limit: int) -> list[dict]:
                     "lexical_score": score,
                 }
             )
-    candidates.sort(key=lambda item: item["lexical_score"], reverse=True)
+    candidates.sort(
+        key=lambda item: (-item["lexical_score"], str(item.get("id", "")))
+    )
     return candidates[:limit]
 
 
@@ -100,8 +102,9 @@ def _semantic_candidates(collection, queries: list[str], limit: int) -> list[dic
             query_texts=[query], n_results=min(limit, collection.count()),
             include=["documents", "metadatas", "distances"],
         )
+        query_candidates = []
         for index, chunk_id in enumerate(results.get("ids", [[]])[0]):
-            candidates.append(
+            query_candidates.append(
                 {
                     "id": chunk_id,
                     "content": results.get("documents", [[]])[0][index],
@@ -110,6 +113,8 @@ def _semantic_candidates(collection, queries: list[str], limit: int) -> list[dic
                     "query_index": query_index,
                 }
             )
+        query_candidates.sort(key=lambda item: (item["distance"], str(item["id"])))
+        candidates.extend(query_candidates)
     return candidates
 
 
@@ -162,7 +167,15 @@ def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) ->
                 current["distance"] = min(item["distance"], current.get("distance", item["distance"]))
             if "lexical_score" in item:
                 current["lexical_score"] = item["lexical_score"]
-    ranked = sorted(merged.values(), key=lambda item: item["score"], reverse=True)
+    ranked = sorted(
+        merged.values(),
+        key=lambda item: (
+            -item["score"],
+            -item.get("lexical_score", 0.0),
+            item.get("distance", math.inf),
+            str(item["id"]),
+        ),
+    )
     candidates = _deduplicate(ranked, pool_size)
     return rerank(query, candidates, limit)
 
