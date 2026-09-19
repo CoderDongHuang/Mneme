@@ -58,7 +58,12 @@ def wait_http(url: str, timeout: int = 240) -> None:
         try:
             request_json(url)
             return
-        except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        except (
+            OSError,
+            urllib.error.URLError,
+            json.JSONDecodeError,
+            VerificationError,
+        ):
             time.sleep(2)
     raise VerificationError(f"service did not become ready: {url}")
 

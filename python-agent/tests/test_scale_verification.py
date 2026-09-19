@@ -21,6 +21,26 @@ def test_jaeger_traces_rejects_malformed_payload():
     assert scale_verification._jaeger_traces(None) == []
 
 
+def test_wait_http_retries_transient_readiness_failure(monkeypatch):
+    attempts = []
+
+    def request_json(url):
+        attempts.append(url)
+        if len(attempts) == 1:
+            raise scale_verification.VerificationError("HTTP 503: degraded")
+        return {"status": "ready"}
+
+    monkeypatch.setattr(scale_verification, "request_json", request_json)
+    monkeypatch.setattr(scale_verification.time, "sleep", lambda _seconds: None)
+
+    scale_verification.wait_http("http://agent/health/ready", timeout=1)
+
+    assert attempts == [
+        "http://agent/health/ready",
+        "http://agent/health/ready",
+    ]
+
+
 def test_restart_vector_shard_recreates_container_and_waits_for_readiness(monkeypatch):
     calls = []
     monkeypatch.setattr(
