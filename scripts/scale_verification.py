@@ -80,6 +80,11 @@ def compose(*args: str) -> str:
     return result.stdout
 
 
+def _restart_vector_shard(service: str = "chroma-2", agent_port: int = 8002) -> None:
+    compose("up", "-d", "--force-recreate", service)
+    wait_http(f"http://127.0.0.1:{agent_port}/health/ready")
+
+
 def _jaeger_traces(response: object) -> list[dict]:
     if isinstance(response, dict):
         response = response.get("data", [])
@@ -135,8 +140,7 @@ def distributed_vectors(user_id: str) -> list[str]:
     })
     if not agent(f"/api/v1/knowledge/search?{healthy_query}", port=8002)["chunks"]:
         raise VerificationError("healthy shard stopped serving during peer failure")
-    compose("start", "chroma-2")
-    wait_http("http://127.0.0.1:8002/health")
+    _restart_vector_shard()
     recovery_query = urllib.parse.urlencode({
         "user_id": user_id, "kb_id": failed_kb, "query": "QZ-7294", "top_k": 3,
     })
