@@ -1,0 +1,13 @@
+{
+  "dataset": {
+    "path": "target_domain_rag_cases.json",
+    "version": "2026.09.20-v1"
+  },
+  "recall@5": 1.0,
+  "mrr": 1.0,
+  "faithfulness_proxy": 1.0,
+  "citation_precision": 0.8333,
+  "citation_recall": 1.0,
+  "abstention_proxy": 1.0,
+  "failed_examples": []
+}

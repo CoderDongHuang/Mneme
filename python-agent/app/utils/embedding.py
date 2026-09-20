@@ -36,6 +36,8 @@ class DashScopeEmbeddingFunction(EmbeddingFunction):
         return "mneme-dashscope-embedding"
 
     def _should_use_offline(self) -> bool:
+        if os.getenv("MNEME_REQUIRE_REAL_EMBEDDINGS", "").lower() == "true":
+            return False
         key = settings.dashscope_api_key
         return (
             not key
@@ -63,6 +65,12 @@ class DashScopeEmbeddingFunction(EmbeddingFunction):
 
     def __call__(self, input: Documents) -> Embeddings:
         texts = [str(item) for item in input]
+        strict_real = os.getenv("MNEME_REQUIRE_REAL_EMBEDDINGS", "").lower() == "true"
+        if strict_real and (
+            not settings.dashscope_api_key
+            or settings.dashscope_api_key.startswith("ci-dummy")
+        ):
+            raise RuntimeError("真实 Embedding 评测需要有效 DASHSCOPE_API_KEY")
         if self._should_use_offline():
             if not self._warned_offline:
                 logger.warning(
@@ -73,6 +81,8 @@ class DashScopeEmbeddingFunction(EmbeddingFunction):
         try:
             return self._call_dashscope(texts)
         except Exception as error:
+            if strict_real:
+                raise RuntimeError("真实 Embedding API 调用失败") from error
             logger.warning("DashScope Embedding 调用失败，降级本地向量: %s", error)
             return [_offline_embedding(text) for text in texts]
 

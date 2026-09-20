@@ -113,6 +113,12 @@ python scripts/evaluate_quiz_quality.py evaluation/external_quiz_workspace.json 
 
 `.github/workflows/model-quality.yml` 每周运行真实 OCR、多模态、RAG 和测验抽检，也支持手动触发。预算守卫会在每次模型调用前预留最坏情况下的输出成本；脱敏扫描发现邮箱、手机号、身份证号或 API Key 形态时会在发送前失败。真实模型报告保留 30 天，并包含失败样例和评审理由。
 
+目标领域评测集由 `evaluation/target_domain_manifest.json` 统一声明版本、数据分类、来源和样本下限。周期任务额外抽检真实 Embedding 的语义对间隔，并设置 `MNEME_REQUIRE_REAL_EMBEDDINGS=true`，API 失败时不会降级成本地向量。RAG 报告通过 `compare_quality_reports.py` 与提交基线比较，退化超过允许幅度会保留失败样例并阻断任务。
+
+## 容量与组合故障测试
+
+`.github/workflows/capacity.yml` 每周运行，也支持通过手动参数扩大请求数、持续时间和故障轮数。默认在双节点拓扑中写入小/中/大三档共 61 份文档，对真实检索执行 600 请求、24 并发和 120 秒负载窗口，然后连续执行 3 轮 Chroma 与 Redis 联合中断、恢复及逐库检索复查。结果和完整服务日志保留 30 天。
+
 当前测试结果以 [GitHub Actions](https://github.com/CoderDongHuang/Mneme/actions) 和对应运行的 artifact 为准，不在说明文档中维护固定通过数量。
 
 ## 全链路冒烟

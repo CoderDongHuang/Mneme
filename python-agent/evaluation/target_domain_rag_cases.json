@@ -1,0 +1,14 @@
+[
+  {"question":"学习路线分成哪四个阶段？","expected_source":"evaluation/fixtures/learning-roadmap.md","expected_terms":["输入","理解","练习","复盘"],"category":"roadmap"},
+  {"question":"低评分卡片何时再次出现？","expected_source":"evaluation/fixtures/learning-roadmap.md","expected_terms":["一天后"],"category":"roadmap"},
+  {"question":"一个可执行的学习目标需要哪些字段？","expected_source":"evaluation/fixtures/learning-roadmap.md","expected_terms":["主题","完成条件","截止日期","验证方式"],"category":"roadmap"},
+  {"question":"Recall@5 的定义是什么？","expected_source":"evaluation/fixtures/retrieval-metrics.csv","expected_terms":["Recall@5","相关证据"],"category":"metrics"},
+  {"question":"MRR 主要关注什么？","expected_source":"evaluation/fixtures/retrieval-metrics.csv","expected_terms":["第一个相关片段","倒数平均值"],"category":"metrics"},
+  {"question":"工作记忆保存什么内容？","expected_source":"evaluation/fixtures/memory-model.md","expected_terms":["当前对话窗口"],"category":"memory"},
+  {"question":"确认后的薄弱点属于哪一级记忆？","expected_source":"evaluation/fixtures/memory-model.md","expected_terms":["长期记忆"],"category":"memory"},
+  {"question":"冻结记忆会发生什么？","expected_source":"evaluation/fixtures/memory-model.md","expected_terms":["仍保留","不会被检索"],"category":"memory"},
+  {"question":"PDF 文本页采用什么处理方式？","expected_source":"evaluation/fixtures/document-policy.html","expected_terms":["布局排序"],"category":"parser"},
+  {"question":"扫描页缺少文本时采用什么方案？","expected_source":"evaluation/fixtures/document-policy.html","expected_terms":["OCR"],"category":"parser"},
+  {"question":"资料中是否说明了火星基地的开放日期？","fixture":"evaluation/fixtures/learning-roadmap.md","source_name":"evaluation/fixtures/learning-roadmap.md","expected_sources":[],"expected_terms":[],"answerable":false,"category":"unanswerable"},
+  {"question":"资料是否给出了银行卡密码？","fixture":"evaluation/fixtures/memory-model.md","source_name":"evaluation/fixtures/memory-model.md","expected_sources":[],"expected_terms":[],"answerable":false,"category":"unanswerable"}
+]

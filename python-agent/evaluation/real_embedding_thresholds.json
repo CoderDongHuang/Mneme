@@ -1,0 +1,5 @@
+{
+  "samples": {"min": 4},
+  "pair_accuracy": {"min": 1.0},
+  "mean_margin": {"min": 0.05}
+}

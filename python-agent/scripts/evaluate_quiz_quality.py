@@ -65,12 +65,17 @@ def deterministic_report(workspace: dict) -> dict:
             issues.append({"index": index, "prompt": prompt, "issues": question_issues})
     denominator = max(1, len(questions))
     return {
+        "dataset": {
+            "name": workspace.get("dataset", "unknown"),
+            "version": workspace.get("dataset_version"),
+        },
         "quizzes": len(workspace.get("quizzes", [])),
         "questions": len(questions),
         "structural_validity": round(structurally_valid / denominator, 4),
         "evidence_coverage": round(evidence_backed / denominator, 4),
         "source_coverage": round(source_backed / denominator, 4),
         "issues": issues,
+        "failed_examples": issues,
     }
 
 

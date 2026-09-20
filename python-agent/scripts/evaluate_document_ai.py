@@ -62,14 +62,26 @@ def _vision_fixture() -> bytes:
     return output.getvalue()
 
 
-def evaluate(require_multimodal: bool) -> dict:
+def evaluate(require_multimodal: bool, dataset_path: Path | None = None) -> dict:
+    cases = (
+        json.loads(dataset_path.read_text(encoding="utf-8"))
+        if dataset_path
+        else [
+            {"id": "ocr-default", "kind": "ocr", "expected_terms": ["MNEME", "7294", "42", "记忆", "质量"]},
+            {"id": "vision-default", "kind": "multimodal", "expected_terms": ["MNEME-VISION-7294", "2024", "40", "2025", "80", "2x", "3"]},
+        ]
+    )
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("文档 AI 评测集必须是非空 JSON 数组")
     with tempfile.TemporaryDirectory(prefix="mneme-document-ai-") as temporary:
         pdf_path = Path(temporary) / "ocr-quality.pdf"
         _ocr_fixture(pdf_path)
         documents = parse_document(str(pdf_path), source_name="ocr-quality.pdf")
     ocr_text = "\n".join(item.page_content for item in documents)
-    ocr_terms = ["MNEME", "7294", "42", "记忆", "质量"]
-    ocr_recall, ocr_missing = _term_recall(ocr_text, ocr_terms)
+    ocr_samples = []
+    for case in [item for item in cases if item.get("kind") == "ocr"]:
+        recall, missing = _term_recall(ocr_text, case.get("expected_terms", []))
+        ocr_samples.append({"id": case.get("id", "ocr"), "term_recall": round(recall, 4), "missing_terms": missing})
     confidences = [
         float(item.metadata["ocr_confidence"])
         for item in documents
@@ -78,28 +90,31 @@ def evaluate(require_multimodal: bool) -> dict:
     report = {
         "ocr": {
             "languages": os.getenv("OCR_LANGUAGES", "chi_sim+eng"),
-            "term_recall": round(ocr_recall, 4),
+            "term_recall": round(min((item["term_recall"] for item in ocr_samples), default=0.0), 4),
             "minimum_confidence": round(min(confidences), 4) if confidences else 0.0,
-            "missing_terms": ocr_missing,
+            "missing_terms": sorted({term for item in ocr_samples for term in item["missing_terms"]}),
+            "samples": ocr_samples,
             "status": "passed"
-            if ocr_recall >= 0.8 and confidences and min(confidences) >= 0.5
+            if ocr_samples and all(item["term_recall"] >= 0.8 for item in ocr_samples) and confidences and min(confidences) >= 0.5
             else "failed",
         },
         "multimodal": {"status": "disabled"},
     }
     if require_multimodal:
-        response = describe_image(
-            _vision_fixture(),
-            "quality fixture; preserve identifiers, chart values, years, and formula exactly",
-        )
-        expected = ["MNEME-VISION-7294", "2024", "40", "2025", "80", "2x", "3"]
-        recall, missing = _term_recall(response, expected)
+        vision_samples = []
+        for case in [item for item in cases if item.get("kind") == "multimodal"]:
+            response = describe_image(
+                _vision_fixture(),
+                "quality fixture; preserve identifiers, chart values, years, and formula exactly",
+            )
+            recall, missing = _term_recall(response, case.get("expected_terms", []))
+            vision_samples.append({"id": case.get("id", "multimodal"), "term_recall": round(recall, 4), "missing_terms": missing, "response": response})
         report["multimodal"] = {
             "model": os.getenv("MULTIMODAL_MODEL", "qwen-vl-plus"),
-            "term_recall": round(recall, 4),
-            "missing_terms": missing,
-            "response": response,
-            "status": "passed" if recall >= 0.85 else "failed",
+            "term_recall": round(min((item["term_recall"] for item in vision_samples), default=0.0), 4),
+            "missing_terms": sorted({term for item in vision_samples for term in item["missing_terms"]}),
+            "samples": vision_samples,
+            "status": "passed" if vision_samples and all(item["term_recall"] >= 0.85 for item in vision_samples) else "failed",
         }
     report["status"] = (
         "passed"
@@ -107,6 +122,13 @@ def evaluate(require_multimodal: bool) -> dict:
         and (not require_multimodal or report["multimodal"]["status"] == "passed")
         else "failed"
     )
+    report["dataset"] = {"path": dataset_path.name if dataset_path else "built-in"}
+    report["failed_examples"] = [
+        sample
+        for group in (report["ocr"].get("samples", []), report["multimodal"].get("samples", []))
+        for sample in group
+        if sample.get("missing_terms")
+    ]
     return report
 
 
@@ -114,8 +136,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Mneme OCR and multimodal quality gate")
     parser.add_argument("--require-multimodal", action="store_true")
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--dataset", type=Path)
     args = parser.parse_args()
-    report = evaluate(args.require_multimodal)
+    report = evaluate(args.require_multimodal, args.dataset)
     output = json.dumps(report, ensure_ascii=False, indent=2)
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)

@@ -254,6 +254,7 @@ def evaluate(
                 "citations": len(final_citations),
                 "relevant_citations": len(relevant_citations),
                 "latency_ms": round(latency_ms, 2),
+                "passed": bool(rank) if answerable else not relevant_ranks,
             }
         )
         if answerable and chunks and len(llm_details) < max(0, llm_sample_size):
@@ -279,6 +280,7 @@ def evaluate(
         + llm_output_tokens / 1_000_000 * max(0.0, output_cost_per_million)
     )
     report = {
+        "dataset": {"path": dataset_path.name},
         "cases": len(cases),
         "answerable_cases": answerable_count,
         "unanswerable_cases": unanswerable_count,
@@ -307,6 +309,7 @@ def evaluate(
         "cost_assumption_usd_per_million_input_tokens": input_cost_per_million,
         "category_stats": category_stats,
         "details": details,
+        "failed_examples": [item for item in details if not item["passed"]],
         "real_llm_evaluation": {
             "status": "completed" if llm_details else "disabled",
             "samples": len(llm_details),
@@ -389,6 +392,7 @@ def main() -> None:
     parser.add_argument("--max-estimated-cost", type=float, default=0.0)
     parser.add_argument("--require-sanitized", action="store_true")
     parser.add_argument("--real-llm-thresholds", type=Path)
+    parser.add_argument("--dataset-version")
     arguments = parser.parse_args()
     report = evaluate(
                 arguments.dataset,
@@ -400,6 +404,8 @@ def main() -> None:
                 arguments.max_estimated_cost,
                 arguments.require_sanitized,
             )
+    if arguments.dataset_version:
+        report["dataset"]["version"] = arguments.dataset_version
     thresholds = json.loads(arguments.thresholds.read_text(encoding="utf-8"))
     failures = apply_thresholds(report, thresholds)
     if arguments.real_llm_thresholds:

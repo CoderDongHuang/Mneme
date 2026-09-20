@@ -1,0 +1,22 @@
+{
+  "dataset": "mneme-learning-assistant-target-domain",
+  "dataset_version": "2026.09.20-v1",
+  "quizzes": [
+    {
+      "title": "学习路线抽检",
+      "questions_json": [
+        {"type":"choice","prompt":"学习路线的复盘阶段使用哪种安排？","options":["间隔重复","随机跳过","只读一次"],"answer":"间隔重复","evidence":"复盘阶段根据间隔重复安排回顾，低评分卡片一天后再次出现。","source":{"document_id":"learning-roadmap","page":1}},
+        {"type":"short","prompt":"一个可执行学习目标应包含哪些要素？","answer":"主题、完成条件、截止日期和验证方式。","key_points":["主题","完成条件","截止日期","验证方式"],"evidence":"可执行目标包含主题、完成条件、截止日期和验证方式。","source":{"document_id":"learning-roadmap","page":1}},
+        {"type":"choice","prompt":"学习路线的第一阶段是什么？","options":["输入","复盘","冻结"],"answer":"输入","evidence":"学习路线依次包含输入、理解、练习和复盘四个阶段。","source":{"document_id":"learning-roadmap","page":1}}
+      ]
+    },
+    {
+      "title": "检索与记忆抽检",
+      "questions_json": [
+        {"type":"choice","prompt":"Recall@5 衡量的是什么？","options":["前五个结果是否包含相关证据","回答字数","模型调用次数"],"answer":"前五个结果是否包含相关证据","evidence":"Recall@5 表示前五个检索结果是否覆盖相关证据。","source":{"document_id":"retrieval-metrics","page":1}},
+        {"type":"short","prompt":"为什么回答需要携带来源？","answer":"让学习者能够核验答案依据并返回原文。","key_points":["核验","答案依据","原文"],"evidence":"引用记录文档、页码和原文位置，用于核验回答依据。","source":{"document_id":"document-policy","page":2}},
+        {"type":"choice","prompt":"确认后的薄弱点保存在哪一级记忆？","options":["工作记忆","短期记忆","长期记忆"],"answer":"长期记忆","evidence":"确认后的薄弱点进入长期记忆，冻结后仍保留但不会被检索。","source":{"document_id":"memory-model","page":1}}
+      ]
+    }
+  ]
+}

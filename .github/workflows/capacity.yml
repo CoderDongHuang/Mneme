@@ -1,0 +1,74 @@
+name: Capacity and resilience
+
+on:
+  workflow_dispatch:
+    inputs:
+      requests:
+        description: Total requests in the load phase
+        required: false
+        default: "600"
+      duration_seconds:
+        description: Maximum load phase duration
+        required: false
+        default: "120"
+      fault_rounds:
+        description: Number of combined Chroma and Redis fault rounds
+        required: false
+        default: "3"
+  schedule:
+    - cron: "41 3 * * 6"
+
+permissions:
+  contents: read
+
+jobs:
+  capacity:
+    name: Long-duration capacity and multi-fault recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Validate topology
+        run: |
+          docker compose -f docker-compose.scale-ci.yml config --quiet
+          docker compose -f docker-compose.scale-ci.yml build
+          docker compose -f docker-compose.scale-ci.yml up -d java-gateway-1
+          for attempt in {1..80}; do
+            if curl --fail --silent http://127.0.0.1:8080/actuator/health > /dev/null; then break; fi
+            if [ "$attempt" -eq 80 ]; then exit 1; fi
+            sleep 3
+          done
+          docker compose -f docker-compose.scale-ci.yml up -d java-gateway-2
+      - name: Run long-duration load and fault matrix
+        run: >-
+          python scripts/capacity_verification.py
+          --compose-file docker-compose.scale-ci.yml
+          --requests "${{ inputs.requests || '600' }}"
+          --duration-seconds "${{ inputs.duration_seconds || '120' }}"
+          --fault-rounds "${{ inputs.fault_rounds || '3' }}"
+          --concurrency 24
+          --max-errors 0
+          --max-p95-ms 2000
+          --data-profile small,medium,large
+          --report artifacts/capacity-report.json
+      - name: Collect capacity evidence
+        if: always()
+        run: |
+          docker compose -f docker-compose.scale-ci.yml ps --all > capacity-services.log
+          docker compose -f docker-compose.scale-ci.yml logs --no-color >> capacity-services.log
+      - name: Upload capacity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capacity-and-resilience
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            artifacts/capacity-report.json
+            capacity-services.log
+      - name: Stop topology
+        if: always()
+        run: docker compose -f docker-compose.scale-ci.yml down --volumes --remove-orphans

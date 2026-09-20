@@ -1,0 +1,5 @@
+[
+  {"id":"ocr-learning-roadmap","kind":"ocr","expected_terms":["MNEME","7294","42","记忆","质量"]},
+  {"id":"vision-chart-values","kind":"multimodal","expected_terms":["MNEME-VISION-7294","2024","40","2025","80"]},
+  {"id":"vision-formula","kind":"multimodal","expected_terms":["MNEME-VISION-7294","2x","3","quality"]}
+]

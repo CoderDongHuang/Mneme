@@ -1,0 +1,23 @@
+{
+  "dataset_id": "mneme-learning-assistant-target-domain",
+  "version": "2026.09.20-v1",
+  "domain": "learning-assistant",
+  "data_classification": "deidentified_benchmark",
+  "provenance": "curated product-domain seed; contains no user records or secrets",
+  "sanitized": true,
+  "rag_dataset": "target_domain_rag_cases.json",
+  "quiz_dataset": "target_domain_quiz_workspace.json",
+  "document_ai_dataset": "target_domain_document_ai_cases.json",
+  "minimum_samples": {
+    "rag": 12,
+    "quiz": 6,
+    "document_ai": 3,
+    "embedding": 4
+  },
+  "embedding_cases": [
+    {"id": "embedding-roadmap-01", "anchor": "间隔重复帮助学习者安排复习。", "positive": "复习计划按照间隔重复决定下一次学习时间。", "negative": "向量数据库使用分片保存文档片段。"},
+    {"id": "embedding-retrieval-01", "anchor": "Recall@5 衡量前五个结果是否覆盖相关证据。", "positive": "前五条检索结果出现相关内容时召回成功。", "negative": "测验题需要包含答案和来源。"},
+    {"id": "embedding-memory-01", "anchor": "确认后的薄弱点进入长期记忆。", "positive": "用户确认的学习弱项会保存到长期记忆。", "negative": "OCR 会识别扫描 PDF 中的文字。"},
+    {"id": "embedding-parser-01", "anchor": "扫描页使用 OCR 并保留页码与置信度。", "positive": "光学字符识别结果记录所在页面和识别置信度。", "negative": "低评分卡片一天后再次出现。"}
+  ]
+}

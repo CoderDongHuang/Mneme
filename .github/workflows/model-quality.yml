@@ -29,6 +29,9 @@ jobs:
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
         run: test -n "$DASHSCOPE_API_KEY"
+      - name: Validate versioned target-domain dataset
+        working-directory: python-agent
+        run: python scripts/validate_evaluation_dataset.py evaluation/target_domain_manifest.json
       - name: Run real document AI quality gate
         working-directory: python-agent
         env:
@@ -38,7 +41,11 @@ jobs:
           MULTIMODAL_MAX_IMAGES: "1"
           OCR_ENABLED: "true"
           OCR_LANGUAGES: chi_sim+eng
-        run: python scripts/evaluate_document_ai.py --require-multimodal --report ../artifacts/document-ai-external-report.json
+        run: >-
+          python scripts/evaluate_document_ai.py
+          --require-multimodal
+          --dataset evaluation/target_domain_document_ai_cases.json
+          --report ../artifacts/document-ai-external-report.json
       - name: Upload external quality evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -64,7 +71,12 @@ jobs:
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
         run: test -n "$DASHSCOPE_API_KEY"
+      - name: Validate versioned target-domain dataset
+        working-directory: python-agent
+        run: python scripts/validate_evaluation_dataset.py evaluation/target_domain_manifest.json
       - name: Run budgeted real RAG quality gate
+        id: rag_quality
+        continue-on-error: true
         working-directory: python-agent
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
@@ -72,8 +84,9 @@ jobs:
           MNEME_OFFLINE_EMBEDDINGS: "true"
         run: >-
           python scripts/evaluate_rag.py
-          --dataset evaluation/external_rag_cases.json
-          --llm-sample-size 5
+          --dataset evaluation/target_domain_rag_cases.json
+          --dataset-version 2026.09.20-v1
+          --llm-sample-size 8
           --require-sanitized
           --input-cost-per-million 0.30
           --output-cost-per-million 0.60
@@ -81,19 +94,45 @@ jobs:
           --real-llm-thresholds evaluation/real_rag_thresholds.json
           --report ../artifacts/real-rag-quality-report.json
       - name: Run budgeted real quiz quality gate
+        id: quiz_quality
+        continue-on-error: true
         working-directory: python-agent
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           LLM_FALLBACK_ENABLED: "true"
         run: >-
-          python scripts/evaluate_quiz_quality.py evaluation/external_quiz_workspace.json
-          --llm-sample-size 4
+          python scripts/evaluate_quiz_quality.py evaluation/target_domain_quiz_workspace.json
+          --llm-sample-size 6
           --require-sanitized
           --input-cost-per-million 0.30
           --output-cost-per-million 0.60
           --max-estimated-cost 0.02
           --thresholds evaluation/real_quiz_thresholds.json
           --report ../artifacts/real-quiz-quality-report.json
+      - name: Run budgeted real embedding quality gate
+        id: embedding_quality
+        continue-on-error: true
+        working-directory: python-agent
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          MNEME_REQUIRE_REAL_EMBEDDINGS: "true"
+        run: >-
+          python scripts/evaluate_embedding_quality.py
+          --manifest evaluation/target_domain_manifest.json
+          --thresholds evaluation/real_embedding_thresholds.json
+          --input-cost-per-million 0.30
+          --max-estimated-cost 0.01
+          --report ../artifacts/real-embedding-quality-report.json
+      - name: Compare target-domain reports with baseline
+        id: regression
+        if: always()
+        continue-on-error: true
+        working-directory: python-agent
+        run: |
+          python scripts/compare_quality_reports.py \
+            --baseline evaluation/baselines/target_domain_rag_v1.json \
+            --candidate ../artifacts/real-rag-quality-report.json \
+            --report ../artifacts/target-domain-regression.json
       - name: Upload text quality evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -104,3 +143,17 @@ jobs:
           path: |
             artifacts/real-rag-quality-report.json
             artifacts/real-quiz-quality-report.json
+            artifacts/real-embedding-quality-report.json
+            artifacts/target-domain-regression.json
+      - name: Enforce all real model quality gates
+        if: always()
+        env:
+          RAG_QUALITY: ${{ steps.rag_quality.outcome }}
+          QUIZ_QUALITY: ${{ steps.quiz_quality.outcome }}
+          EMBEDDING_QUALITY: ${{ steps.embedding_quality.outcome }}
+          REGRESSION: ${{ steps.regression.outcome }}
+        run: |
+          test "$RAG_QUALITY" = success
+          test "$QUIZ_QUALITY" = success
+          test "$EMBEDDING_QUALITY" = success
+          test "$REGRESSION" = success
