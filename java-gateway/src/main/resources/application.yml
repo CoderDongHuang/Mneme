@@ -47,6 +47,10 @@ management:
     health:
       probes:
         enabled: true
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
 
 mneme:
   python-agent-url: ${PYTHON_AGENT_URL:http://localhost:8001}

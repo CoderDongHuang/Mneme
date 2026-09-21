@@ -47,6 +47,16 @@ class Settings:
     redis_password: str = os.getenv("REDIS_PASSWORD", "")
     session_ttl_hours: int = int(os.getenv("SESSION_TTL_HOURS", "24"))
 
+    # Shared auxiliary state is used by horizontally scaled agents. SQLite remains
+    # the explicit local-development fallback and is never selected implicitly in
+    # production compose files.
+    auxiliary_store_backend: str = os.getenv("AUXILIARY_STORE_BACKEND", "sqlite").lower()
+    mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
+    mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))
+    mysql_database: str = os.getenv("MYSQL_DATABASE", "mneme")
+    mysql_user: str = os.getenv("MYSQL_USER", "root")
+    mysql_password: str = os.getenv("MYSQL_PASSWORD", os.getenv("SPRING_DATASOURCE_PASSWORD", ""))
+
     working_memory_window_size: int = int(os.getenv("WORKING_MEMORY_WINDOW_SIZE", "12"))
     working_memory_max_tokens: int = int(os.getenv("WORKING_MEMORY_MAX_TOKENS", "5000"))
     retriever_top_k: int = int(os.getenv("RETRIEVER_TOP_K", "6"))
@@ -92,10 +102,13 @@ class Settings:
     )
     internal_service_token: str = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
     internal_service_token_previous: str = os.getenv("INTERNAL_SERVICE_TOKEN_PREVIOUS", "").strip()
+    admin_api_token: str = os.getenv("ADMIN_API_TOKEN", "").strip()
     skip_internal_auth: bool = _bool("SKIP_INTERNAL_AUTH", False)
     secret_rotation_due: bool = _bool("SECRET_ROTATION_DUE", False)
     agent_tool_timeout_seconds: float = float(os.getenv("AGENT_TOOL_TIMEOUT_SECONDS", "8"))
     agent_tool_max_attempts: int = max(1, int(os.getenv("AGENT_TOOL_MAX_ATTEMPTS", "2")))
+    agent_tool_daily_quota: int = max(1, int(os.getenv("AGENT_TOOL_DAILY_QUOTA", "1000")))
+    agent_tool_approval_ttl_seconds: int = max(60, int(os.getenv("AGENT_TOOL_APPROVAL_TTL_SECONDS", "3600")))
     agent_trace_redact_fields: str = os.getenv(
         "AGENT_TRACE_REDACT_FIELDS",
         "content,message,query,question,answer,prompt,token,password,secret,api_key",

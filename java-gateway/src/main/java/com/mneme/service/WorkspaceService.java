@@ -219,9 +219,39 @@ public class WorkspaceService {
         result.put("reviews", reviewMetrics);
         result.put("quizzes", quizMetrics);
         result.put("mistakes", mistakeMetrics);
+        result.put("learning_effect", learningEffectMetrics(userId));
         saveMetricSnapshot(userId, planMetrics, reviewMetrics, quizMetrics, mistakeMetrics);
         result.put("history", metricHistory(userId, 30));
         return result;
+    }
+
+    public List<Map<String, Object>> learningOutcomes(Long userId, int limit) {
+        return rows("SELECT id,event_type,topic,score,success,source_id,created_at FROM learning_outcome_event WHERE user_id=? ORDER BY created_at DESC LIMIT ?", userId, Math.max(1, Math.min(limit, 200)));
+    }
+
+    private Map<String, Object> learningEffectMetrics(Long userId) {
+        List<Map<String, Object>> events = rows("SELECT score,success,created_at FROM learning_outcome_event WHERE user_id=? ORDER BY created_at ASC", userId);
+        if (events.isEmpty()) {
+            return Map.of("observations", 0, "status", "insufficient_data", "signal", "observed_outcome");
+        }
+        double average = events.stream().mapToDouble(item -> ((Number) item.get("score")).doubleValue()).average().orElse(0);
+        int split = Math.max(1, events.size() / 2);
+        double early = events.subList(0, split).stream().mapToDouble(item -> ((Number) item.get("score")).doubleValue()).average().orElse(0);
+        double recent = events.subList(split, events.size()).stream().mapToDouble(item -> ((Number) item.get("score")).doubleValue()).average().orElse(early);
+        long successful = events.stream().filter(item -> Boolean.TRUE.equals(item.get("success")) || "1".equals(String.valueOf(item.get("success")))).count();
+        double retention = successful / (double) events.size();
+        double multiplier = retention < 0.6 ? 0.8 : retention > 0.85 ? 1.15 : 1.0;
+        return Map.of(
+            "observations", events.size(),
+            "average_score", Math.round(average * 100.0) / 100.0,
+            "early_score", Math.round(early * 100.0) / 100.0,
+            "recent_score", Math.round(recent * 100.0) / 100.0,
+            "score_delta", Math.round((recent - early) * 100.0) / 100.0,
+            "retention_rate", Math.round(retention * 10000.0) / 10000.0,
+            "review_interval_multiplier", multiplier,
+            "signal", "observed_outcome",
+            "status", events.size() < 4 ? "early_signal" : "calibrated"
+        );
     }
 
     public List<Map<String, Object>> metricHistory(Long userId, int days) {
@@ -271,9 +301,9 @@ public class WorkspaceService {
         Long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         String[] prompts = {"用自己的话说明：" + goal, "列出核心概念：" + goal, "举一个实际例子：" + goal};
         for (int index = 0; index < prompts.length; index++) {
-            jdbc.update("INSERT INTO review_card(user_id,plan_id,prompt,answer,due_at,origin) VALUES(?,?,?,?,?,?)",
+            jdbc.update("INSERT INTO review_card(user_id,plan_id,prompt,answer,due_at,origin,topic) VALUES(?,?,?,?,?,?,?)",
                 userId, id, prompts[index], "完成学习后补充你的答案",
-                Timestamp.valueOf(LocalDateTime.now().plusDays(index)), "plan");
+                Timestamp.valueOf(LocalDateTime.now().plusDays(index)), "plan", abbreviate(goal, 200));
         }
         return one("SELECT * FROM learning_plan WHERE id=? AND user_id=?", id, userId);
     }
@@ -288,12 +318,16 @@ public class WorkspaceService {
         int oldInterval = ((Number) card.get("interval_days")).intValue();
         double oldEase = ((Number) card.get("ease_factor")).doubleValue();
         int normalized = Math.max(0, Math.min(rating, 5));
-        int interval = normalized < 3 ? 1 : Math.max(1, (int) Math.round(oldInterval * oldEase));
+        String topic = String.valueOf(card.getOrDefault("topic", ""));
+        double outcomeMultiplier = reviewIntervalMultiplier(userId, topic);
+        int interval = normalized < 3 ? 1 : Math.max(1, (int) Math.round(oldInterval * oldEase * outcomeMultiplier));
         double ease = Math.max(1.3, oldEase + (0.1 - (5 - normalized) * (0.08 + (5 - normalized) * 0.02)));
         jdbc.update("""
             UPDATE review_card SET interval_days=?,ease_factor=?,due_at=?,last_rating=?,review_count=review_count+1
             WHERE id=? AND user_id=?
             """, interval, ease, Timestamp.valueOf(LocalDateTime.now().plusDays(interval)), normalized, cardId, userId);
+        jdbc.update("INSERT INTO learning_outcome_event(user_id,event_type,topic,score,success,source_id) SELECT ?,?,?,?,?,id FROM review_card WHERE id=? AND user_id=?",
+            userId, "review", topic, normalized * 20.0, normalized >= 3, cardId, userId);
         return one("SELECT * FROM review_card WHERE id=?", cardId);
     }
 
@@ -360,9 +394,12 @@ public class WorkspaceService {
             if (!ok) createMistakeReview(userId, String.valueOf(question.get("prompt")), expected, String.valueOf(quiz.get("topic")));
         }
         int score = questions.isEmpty() ? 0 : correct * 100 / questions.size();
+        int calibratedScore = Math.max(0, Math.min(100, (int) Math.round(score + quizCalibrationBias(userId, String.valueOf(quiz.get("topic"))))));
         jdbc.update("INSERT INTO quiz_attempt(quiz_id,user_id,answers_json,score,feedback_json) VALUES(?,?,CAST(? AS JSON),?,CAST(? AS JSON))",
-            quizId, userId, mapper.writeValueAsString(answers), score, mapper.writeValueAsString(feedback));
-        return Map.of("score", score, "feedback", feedback);
+            quizId, userId, mapper.writeValueAsString(answers), calibratedScore, mapper.writeValueAsString(feedback));
+        jdbc.update("INSERT INTO learning_outcome_event(user_id,event_type,topic,score,success,source_id) VALUES(?,?,?,?,?,?)",
+            userId, "quiz", String.valueOf(quiz.get("topic")), score, score >= 70, quizId);
+        return Map.of("score", calibratedScore, "raw_score", score, "feedback", feedback);
     }
 
     public List<Map<String, Object>> branches(Long userId) {
@@ -419,6 +456,7 @@ public class WorkspaceService {
         data.put("reviews", reviews(userId));
         data.put("quizzes", quizzes(userId));
         data.put("quiz_attempts", rows("SELECT a.id,a.quiz_id,a.answers_json,a.score,a.feedback_json,a.created_at FROM quiz_attempt a WHERE a.user_id=? ORDER BY a.created_at", userId));
+        data.put("learning_outcomes", rows("SELECT event_type,topic,score,success,created_at FROM learning_outcome_event WHERE user_id=? ORDER BY created_at", userId));
         data.put("branches", branches(userId));
         data.put("scope", Map.of("relational_data", true, "original_files", false, "vector_index", false));
         return data;
@@ -679,6 +717,7 @@ public class WorkspaceService {
         importReviews(userId, items(payload, "reviews"), planIds, counts);
         Map<Long, Long> quizIds = importQuizzes(userId, items(payload, "quizzes"), kbIds, counts);
         importAttempts(userId, items(payload, "quiz_attempts"), quizIds, counts);
+        importLearningOutcomes(userId, items(payload, "learning_outcomes"), counts);
         importBranches(userId, items(payload, "branches"), sessionIds, messageIds, counts);
         Map<String, Object> response = Map.of(
             "status", "imported", "version", version, "counts", counts);
@@ -773,12 +812,13 @@ public class WorkspaceService {
     }
 
     private void createMistakeReview(Long userId, String prompt, String answer, String topic) {
-        jdbc.update("INSERT INTO review_card(user_id,prompt,answer,due_at,origin) VALUES(?,?,?,NOW(),?)",
-            userId, prompt, answer, "quiz_mistake");
+        jdbc.update("INSERT INTO review_card(user_id,prompt,answer,due_at,origin,topic) VALUES(?,?,?,NOW(),?,?)",
+            userId, prompt, answer, "quiz_mistake", abbreviate(topic, 200));
+        double confidence = weakPointConfidence(userId, topic);
         jdbc.update("""
             INSERT INTO pending_memory(memory_id,user_id,category,content,topic,confidence,status)
-            VALUES(?,?, 'weak_point', ?, ?, 0.8500, 'pending')
-            """, UUID.randomUUID().toString(), userId, "测验错题：" + prompt, abbreviate(topic, 255));
+            VALUES(?,?, 'weak_point', ?, ?, ?, 'pending')
+            """, UUID.randomUUID().toString(), userId, "测验错题：" + prompt, abbreviate(topic, 255), confidence);
     }
 
     private Map<Long, Long> importKnowledgeBases(Long userId, List<Map<String, Object>> source, Map<String, Integer> counts) {
@@ -873,6 +913,21 @@ public class WorkspaceService {
         counts.put("quiz_attempts", imported);
     }
 
+    private void importLearningOutcomes(Long userId, List<Map<String, Object>> source, Map<String, Integer> counts) {
+        for (Map<String, Object> item : source) {
+            double score = Math.max(0.0, Math.min(100.0, decimal(item.get("score"), 0.0)));
+            Object successValue = item.get("success");
+            boolean success = Boolean.TRUE.equals(successValue) || "1".equals(String.valueOf(successValue))
+                || "true".equalsIgnoreCase(String.valueOf(successValue));
+            jdbc.update("""
+                INSERT INTO learning_outcome_event(user_id,event_type,topic,score,success,created_at)
+                VALUES(?,?,?,?,?,COALESCE(?,NOW()))
+                """, userId, safeStatus(item, "event_type", "imported"),
+                limited(item, "topic", "", 200), score, success, parseTimestamp(item.get("created_at")));
+        }
+        counts.put("learning_outcomes", source.size());
+    }
+
     private void importBranches(Long userId, List<Map<String, Object>> source, Map<Long, Long> sessions,
                                 Map<Long, Long> messages, Map<String, Integer> counts) {
         int imported = 0;
@@ -928,6 +983,26 @@ public class WorkspaceService {
     private double average(String sql, Object... args) {
         Double value = jdbc.queryForObject(sql, Double.class, args);
         return value == null ? 0.0 : Math.round(value * 100.0) / 100.0;
+    }
+    private double reviewIntervalMultiplier(Long userId, String topic) {
+        long observations = count("SELECT COUNT(*) FROM learning_outcome_event WHERE user_id=? AND topic=?", userId, topic);
+        if (observations < 4) return 1.0;
+        double successRate = average("SELECT AVG(CASE WHEN success THEN 1.0 ELSE 0.0 END) FROM learning_outcome_event WHERE user_id=? AND topic=?", userId, topic);
+        return successRate < 0.6 ? 0.8 : successRate > 0.85 ? 1.15 : 1.0;
+    }
+    private double quizCalibrationBias(Long userId, String topic) {
+        long reviewObservations = count("SELECT COUNT(*) FROM learning_outcome_event WHERE user_id=? AND topic=? AND event_type='review'", userId, topic);
+        long quizObservations = count("SELECT COUNT(*) FROM learning_outcome_event WHERE user_id=? AND topic=? AND event_type='quiz'", userId, topic);
+        if (reviewObservations < 2 || quizObservations < 2) return 0.0;
+        double reviewScore = average("SELECT AVG(score) FROM learning_outcome_event WHERE user_id=? AND topic=? AND event_type='review'", userId, topic);
+        double quizScore = average("SELECT AVG(score) FROM learning_outcome_event WHERE user_id=? AND topic=? AND event_type='quiz'", userId, topic);
+        return Math.max(-10.0, Math.min(10.0, reviewScore - quizScore));
+    }
+    private double weakPointConfidence(Long userId, String topic) {
+        long observations = count("SELECT COUNT(*) FROM learning_outcome_event WHERE user_id=? AND topic=?", userId, topic);
+        if (observations < 2) return 0.85;
+        double score = average("SELECT AVG(score) FROM learning_outcome_event WHERE user_id=? AND topic=?", userId, topic);
+        return Math.round(Math.max(0.55, Math.min(0.95, 0.55 + (100.0 - score) / 250.0)) * 10000.0) / 10000.0;
     }
     private double ratio(long numerator, long denominator) {
         return denominator == 0 ? 0.0 : Math.round((double) numerator / denominator * 10000.0) / 10000.0;

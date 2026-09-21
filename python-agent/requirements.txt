@@ -36,6 +36,7 @@ Pillow>=10.4.0
 # Memory and scheduling
 apscheduler==3.10.4
 redis==5.0.1
+mysql-connector-python==9.4.0
 
 # Internal JWT validation utilities
 PyJWT>=2.9.0

@@ -60,6 +60,14 @@ npm run test:e2e:real
 
 完整 CI 栈启动后，可运行 MySQL、Redis、Chroma、MinIO 和 SQLite 辅助状态联合清理及故障注入：
 
+生产/双节点验收将 `AUXILIARY_STORE_BACKEND=mysql` 打开，确认轨迹和记忆版本不依赖单个 Python 容器的本地 SQLite；本地单元测试默认仍使用临时 SQLite。
+
+SLO 快照可在服务运行时执行：
+
+```powershell
+python scripts/slo_verification.py --url http://127.0.0.1:8001/metrics --duration-seconds 30 --report artifacts/slo-report.json
+```
+
 ```bash
 python scripts/full_stack_verification.py deletion \
   --compose-file docker-compose.yml \

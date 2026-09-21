@@ -67,6 +67,7 @@ services:
       - MNEME_DETERMINISTIC_TEST_LLM=${MNEME_DETERMINISTIC_TEST_LLM:-false}
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
       - INTERNAL_SERVICE_TOKEN_PREVIOUS=${INTERNAL_SERVICE_TOKEN_PREVIOUS:-}
+      - ADMIN_API_TOKEN=${ADMIN_API_TOKEN:-}
       - CHROMA_MODE=http
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
@@ -80,6 +81,12 @@ services:
       - REDIS_DB=${REDIS_DB:-0}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-24}
+      - AUXILIARY_STORE_BACKEND=${AUXILIARY_STORE_BACKEND:-sqlite}
+      - MYSQL_HOST=${MYSQL_HOST:-mysql}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-mneme}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-${MYSQL_ROOT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - SKIP_INTERNAL_AUTH=false
       - WORKING_MEMORY_WINDOW_SIZE=${WORKING_MEMORY_WINDOW_SIZE:-10}
@@ -103,6 +110,8 @@ services:
       - ./data:/data
       - ./python-agent:/app
     depends_on:
+      mysql:
+        condition: service_healthy
       chroma:
         condition: service_healthy
 

@@ -1,0 +1,59 @@
+name: Disaster recovery and SLO evidence
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 1 * *"
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    name: Monthly isolated backup and restore drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MYSQL_ROOT_PASSWORD: ci-database-password
+      SPRING_DATASOURCE_PASSWORD: ci-database-password
+      JWT_SECRET: ci-jwt-secret-at-least-32-characters-long
+      INTERNAL_SERVICE_TOKEN: ci-internal-token-at-least-32-characters
+      DEEPSEEK_API_KEY: ci-dummy-key
+      DASHSCOPE_API_KEY: ci-dummy-key
+      MNEME_OFFLINE_EMBEDDINGS: "true"
+      MNEME_DETERMINISTIC_TEST_LLM: "true"
+      AUXILIARY_STORE_BACKEND: mysql
+      ADMIN_API_TOKEN: ci-admin-token-at-least-32-characters
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Prepare writable data mounts
+        run: mkdir -p data/files data/avatars data/chroma data/minio python-agent/data
+      - name: Start isolated stack
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml up -d --build
+          for attempt in {1..90}; do
+            if curl --fail --silent http://127.0.0.1:8080/actuator/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Run backup restore and measure RPO/RTO
+        run: |
+          python scripts/full_stack_verification.py backup-restore \
+            --compose-file docker-compose.yml \
+            --compose-file docker-compose.selfhost.yml \
+            --compose-file docker-compose.ci.yml
+          test -s backups/ci/restore-report.json
+          python -c "import json; r=json.load(open('backups/ci/restore-report.json')); assert 0 <= r['rpo_seconds'] <= 86400 and 0 <= r['rto_seconds'] <= 3600"
+      - name: Upload recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: disaster-recovery-evidence
+          retention-days: 90
+          path: backups/ci/
+      - name: Stop isolated stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml down --volumes --remove-orphans

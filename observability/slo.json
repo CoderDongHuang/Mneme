@@ -1,0 +1,16 @@
+{
+  "version": "2026-09-21-v1",
+  "window": "30d",
+  "targets": {
+    "availability": 0.995,
+    "http_p95_seconds": 2.0,
+    "backup_rpo_hours": 24,
+    "restore_rto_minutes": 60,
+    "capacity_error_rate": 0.0
+  },
+  "evidence": {
+    "metrics": "/metrics and /actuator/prometheus",
+    "alerts": "observability/prometheus/rules/mneme-slo.yml",
+    "recovery": ".github/workflows/disaster-recovery.yml"
+  }
+}

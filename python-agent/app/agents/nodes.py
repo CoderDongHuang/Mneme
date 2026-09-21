@@ -146,6 +146,7 @@ def knowledge_retrieval_node(state: dict) -> dict:
                 },
                 trace_user_id=state["user_id"],
                 trace_session_id=state["session_id"],
+                principal_scopes={"knowledge.read"},
             )
         )
     chunks.sort(key=lambda item: item.get("score", 0.0), reverse=True)

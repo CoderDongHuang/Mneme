@@ -7,6 +7,7 @@
 - MySQL、Redis 和 Chroma 应使用独立托管实例或持久化卷，定期做快照。
 - 多主机部署时，`FILE_STORAGE_PATH` 必须指向所有 Java 和 Python 实例都可访问的共享卷，例如 NFS、云文件系统或挂载后的对象存储网关。
 - Java 限流状态存储在 Redis，可以水平扩展；Python 会话存储使用 Redis，向量服务使用独立 Chroma HTTP 服务。
+- Python 轨迹和记忆版本的辅助状态使用 `AUXILIARY_STORE_BACKEND=mysql` 写入共享 MySQL；SQLite 仅用于单机开发和迁移兼容。SQLite 词法索引是可重建的派生数据，多实例部署应使用一致的共享索引卷或在发布后重建。
 - 文件处理任务具有幂等键，可启动多个任务消费者，但同一文档只允许一个任务成功提交。
 
 ## 安全
@@ -31,3 +32,9 @@ PowerShell 可继续使用 `scripts/backup-data.ps1` 和 `scripts/restore-data.p
 执行恢复的系统用户必须对 `data/files`、`data/avatars`、`data/chroma`、`data/minio` 和 `python-agent/data` 拥有读写权限。Linux 部署应让容器与备份进程使用一致 UID/GID，或由受控的运维账号执行恢复；不要长期将数据目录设为全局可写。
 
 每天创建备份并同步到异地不可变存储；每月至少在隔离环境恢复一次。`restore-report.json` 记录本次 RPO（备份创建至恢复完成的时间）和 RTO（恢复执行耗时），应纳入 SLO 审查。使用外部 S3 而非内置 MinIO 时，还必须通过供应商快照或版本化复制独立备份对象桶；本工具只能直接归档本机 `data/minio`。
+
+## SLO、告警与灾备演练
+
+Prometheus 和 Alertmanager 可通过 `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.observability.yml up -d` 启动。目标值、记录规则和告警位于 `observability/slo.json` 与 `observability/prometheus/`；应用错误率、可用性和 p95 延迟进入统一告警。默认接收器在 Alertmanager 中保留告警状态；正式部署必须在 `observability/alertmanager.yml` 增加组织实际使用的邮件、Webhook 或值班平台接收器。
+
+每月 GitHub Actions 会在隔离栈执行备份、删除、恢复和恢复后 RAG 验证，上传 90 天证据。变更前也可手动运行 `Disaster recovery and SLO evidence`，不能以“备份文件存在”替代恢复演练。

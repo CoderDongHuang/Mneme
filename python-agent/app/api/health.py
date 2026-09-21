@@ -51,6 +51,7 @@ async def config_status() -> dict:
             "multimodal_enabled": settings.multimodal_enabled,
             "offline_embeddings": settings.offline_embeddings,
             "agent_trace_store": bool(settings.agent_trace_store_path),
+            "auxiliary_store_backend": settings.auxiliary_store_backend,
             "memory_version_store": bool(settings.memory_version_store_path),
             "agent_trace_retention_days": settings.agent_trace_retention_days,
             "memory_version_retention_days": settings.memory_version_retention_days,
@@ -58,6 +59,7 @@ async def config_status() -> dict:
             "vector_shard_id": settings.vector_shard_id,
             "vector_shard_clients": len(vector_store.clients),
             "agent_tool_timeout_seconds": settings.agent_tool_timeout_seconds,
+            "agent_tool_daily_quota": settings.agent_tool_daily_quota,
             "agent_trace_redaction": bool(settings.agent_trace_redact_fields),
         },
     }

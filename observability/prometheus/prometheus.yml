@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/mneme-slo.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: [alertmanager:9093]
+
+scrape_configs:
+  - job_name: mneme-python-agent
+    static_configs:
+      - targets: [python-agent:8001]
+  - job_name: mneme-java-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [java-gateway:8080]

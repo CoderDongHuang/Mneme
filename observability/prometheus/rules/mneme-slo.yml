@@ -1,0 +1,50 @@
+groups:
+  - name: mneme-slo
+    interval: 30s
+    rules:
+      - record: mneme:http_availability:rate5m
+        expr: sum(rate(mneme_python_http_requests_total{status=~"2.."}[5m])) / clamp_min(sum(rate(mneme_python_http_requests_total[5m])), 0.001)
+      - record: mneme:http_error_rate:rate5m
+        expr: sum(rate(mneme_python_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(mneme_python_http_requests_total[5m])), 0.001)
+      - record: mneme:http_latency_p95:rate5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(mneme_python_http_request_duration_seconds_bucket[5m])))
+      - record: mneme:gateway_availability:rate5m
+        expr: sum(rate(http_server_requests_seconds_count{status=~"2..|3.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 0.001)
+      - record: mneme:gateway_latency_p95:rate5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket[5m])))
+      - alert: MnemeAvailabilityBudgetBurn
+        expr: mneme:http_availability:rate5m < 0.995
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Mneme availability is below the SLO
+          description: Five-minute availability is below 99.5% for ten minutes.
+      - alert: MnemeErrorRateCritical
+        expr: mneme:http_error_rate:rate5m > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Mneme server error rate is above 1%
+      - alert: MnemeLatencyBudgetBurn
+        expr: mneme:http_latency_p95:rate5m > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Mneme p95 latency is above 2 seconds
+      - alert: MnemeGatewayAvailabilityBudgetBurn
+        expr: mneme:gateway_availability:rate5m < 0.995
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Mneme gateway availability is below the SLO
+      - alert: MnemeGatewayLatencyBudgetBurn
+        expr: mneme:gateway_latency_p95:rate5m > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Mneme gateway p95 latency is above 2 seconds

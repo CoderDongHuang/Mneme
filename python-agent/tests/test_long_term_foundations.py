@@ -1,5 +1,7 @@
 import asyncio
+from datetime import datetime, timezone
 from contextvars import ContextVar
+import sys
 
 import pytest
 
@@ -12,8 +14,9 @@ from app.api.knowledge import document_report
 from app.memory.version_store import MemoryVersionStore
 from app.memory.session_persistence import SessionPersistence
 from app.memory.session_store import SessionStore
-from app.tools.registry import ToolRegistry, ToolSpec, tool_registry
+from app.tools.registry import SubprocessTool, ToolRegistry, ToolSpec, tool_registry
 from app.core.internal_tokens import InternalTokenState
+from app.core.config import settings
 from app.memory.distillation import apply_distilled_entries
 from unittest.mock import patch
 
@@ -229,6 +232,69 @@ def test_tool_registry_propagates_request_context_to_worker_thread():
         assert registry.execute("context.read", {}) == "trace-context"
     finally:
         request_context.reset(token)
+
+
+def test_tool_registry_enforces_scope_quota_and_approval(monkeypatch):
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            "plugin.export",
+            "export",
+            {"user_id": "string"},
+            "plugin-owner",
+            required_scopes=frozenset({"export.read"}),
+            quota_units=2,
+            requires_approval=True,
+        ),
+        lambda user_id: user_id,
+    )
+    with pytest.raises(PermissionError, match="缺少权限范围"):
+        registry.execute("plugin.export", {"user_id": "u1"}, trace_user_id="u1", principal_scopes=set())
+    with pytest.raises(PermissionError, match="需要管理员审批"):
+        registry.execute("plugin.export", {"user_id": "u1"}, trace_user_id="u1", principal_scopes={"export.read"})
+    token = registry.approve("plugin.export", "u1", "admin")
+    assert registry.execute(
+        "plugin.export", {"user_id": "u1"}, trace_user_id="u1",
+        principal_scopes={"export.read"}, approval_token=token,
+    ) == "u1"
+    day = datetime.now(timezone.utc).date().isoformat()
+    registry._usage[("u1", day)] = (day, settings.agent_tool_daily_quota - 1)
+    with pytest.raises(RuntimeError, match="配额已用尽"):
+        registry.execute(
+            "plugin.export", {"user_id": "u1"}, trace_user_id="u1",
+            principal_scopes={"export.read"}, approval_token=token,
+        )
+
+
+def test_tool_registry_executes_subprocess_tools_with_json_contract():
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            "plugin.isolated",
+            "isolated",
+            {"value": "integer"},
+            "plugin-owner",
+            isolation_profile="subprocess",
+        ),
+        SubprocessTool((
+            sys.executable,
+            "-c",
+            "import json,sys; value=json.load(sys.stdin); print(json.dumps({'value': value['value'] * 2}))",
+        )),
+    )
+    assert registry.execute("plugin.isolated", {"value": 4}) == {"value": 8}
+
+
+def test_tool_registry_deletes_local_user_governance_state():
+    registry = ToolRegistry()
+    registry.register(ToolSpec("plugin.read", "read", {}, "owner"), lambda: True)
+    token = registry.approve("plugin.read", "u1", "admin")
+    day = datetime.now(timezone.utc).date().isoformat()
+    registry._usage[("u1", day)] = (day, 3)
+
+    assert registry.delete_user_governance("u1") == 2
+    assert token not in registry._approvals
+    assert ("u1", day) not in registry._usage
 
 
 def test_trace_store_redacts_sensitive_tool_arguments(tmp_path):

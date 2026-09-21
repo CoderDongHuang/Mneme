@@ -1,0 +1,8 @@
+route:
+  receiver: mneme-default
+  group_by: [alertname, severity]
+  group_wait: 30s
+  repeat_interval: 4h
+receivers:
+  - name: mneme-default
+    # Configure email, webhook, or PagerDuty in the deployment overlay.

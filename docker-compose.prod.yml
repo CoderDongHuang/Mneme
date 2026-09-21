@@ -17,6 +17,13 @@ services:
     restart: unless-stopped
   python-agent:
     restart: unless-stopped
+    environment:
+      AUXILIARY_STORE_BACKEND: ${AUXILIARY_STORE_BACKEND:-mysql}
+      MYSQL_HOST: ${MYSQL_HOST:-mysql}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-mneme}
+      MYSQL_USER: ${MYSQL_USER:-root}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-${MYSQL_ROOT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}}
   java-gateway:
     restart: unless-stopped
     environment:

@@ -56,6 +56,10 @@ public class WorkspaceController {
         @RequestAttribute("userId") Long userId,
         @RequestParam(defaultValue = "30") int days
     ) { return Result.success(workspace.metricHistory(userId, days)); }
+    @GetMapping("/outcomes") public Result<List<Map<String, Object>>> outcomes(
+        @RequestAttribute("userId") Long userId,
+        @RequestParam(defaultValue = "50") int limit
+    ) { return Result.success(workspace.learningOutcomes(userId, limit)); }
     @PostMapping("/plans") public Result<Map<String, Object>> plan(@RequestAttribute("userId") Long userId, @RequestBody Map<String, Object> body) { return Result.success(workspace.createPlan(userId, body)); }
     @GetMapping("/reviews") public Result<List<Map<String, Object>>> reviews(@RequestAttribute("userId") Long userId) { return Result.success(workspace.reviews(userId)); }
     @PostMapping("/reviews/{id}") public Result<Map<String, Object>> review(@RequestAttribute("userId") Long userId, @PathVariable Long id, @RequestBody Map<String, Object> body) { return Result.success(workspace.review(userId, id, Integer.parseInt(String.valueOf(body.getOrDefault("rating", 3))))); }

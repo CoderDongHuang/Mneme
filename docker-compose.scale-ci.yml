@@ -47,6 +47,7 @@ services:
       - "127.0.0.1:8001:8001"
     environment: &agent-environment
       INTERNAL_SERVICE_TOKEN: ci-internal-token-at-least-32-characters
+      ADMIN_API_TOKEN: ci-admin-token-at-least-32-characters
       DEEPSEEK_API_KEY: ci-dummy-key
       DASHSCOPE_API_KEY: ci-dummy-key
       MNEME_OFFLINE_EMBEDDINGS: "true"
@@ -54,6 +55,12 @@ services:
       VECTOR_SHARD_COUNT: "2"
       VECTOR_SHARD_URLS: http://chroma-1:8000,http://chroma-2:8000
       REDIS_HOST: redis
+      AUXILIARY_STORE_BACKEND: mysql
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: mneme
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ci-database-password
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       OTEL_TRACES_SAMPLER_ARG: "1.0"
       OTEL_SERVICE_NAME: mneme-python-agent-1
@@ -61,6 +68,8 @@ services:
       - ./test-fixtures:/test-fixtures:ro
       - scale-agent-1:/app/data
     depends_on:
+      mysql:
+        condition: service_healthy
       chroma-1:
         condition: service_healthy
       chroma-2:
@@ -81,6 +90,8 @@ services:
       - ./test-fixtures:/test-fixtures:ro
       - scale-agent-2:/app/data
     depends_on:
+      mysql:
+        condition: service_healthy
       chroma-1:
         condition: service_healthy
       chroma-2:

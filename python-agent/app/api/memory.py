@@ -90,7 +90,10 @@ async def restore_memory(memory_id: str, request: MemoryRestoreRequest):
 async def delete_user_memories(user_id: str):
     memory_store.delete_user_memories(user_id)
     versions = memory_version_store.delete_user(user_id)
-    return {"status": "deleted", "user_id": user_id, "versions": versions}
+    from app.tools.registry import tool_registry
+
+    governance = tool_registry.delete_user_governance(user_id)
+    return {"status": "deleted", "user_id": user_id, "versions": versions, "tool_governance": governance}
 
 
 @router.post(
