@@ -90,6 +90,7 @@ class MemoryVersionStore:
                     return version
                 finally:
                     cursor.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
+                    cursor.fetchone()
                     cursor.close()
         with self._connect() as connection:
             current = connection.execute(

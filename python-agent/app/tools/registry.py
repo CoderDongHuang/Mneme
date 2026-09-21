@@ -239,6 +239,7 @@ class ToolRegistry:
                     return
                 finally:
                     cursor.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
+                    cursor.fetchone()
                     cursor.close()
         key = (user_id, day)
         with self._lock:
