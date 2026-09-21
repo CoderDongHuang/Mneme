@@ -30,7 +30,10 @@ jobs:
         with:
           python-version: "3.11"
       - name: Prepare writable data mounts
-        run: mkdir -p data/files data/avatars data/chroma data/minio python-agent/data
+        run: |
+          mkdir -p data/files data/avatars data/chroma data/minio python-agent/data
+          echo "MNEME_CI_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "MNEME_CI_GID=$(id -g)" >> "$GITHUB_ENV"
       - name: Start isolated stack
         run: |
           docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml up -d --build
@@ -47,13 +50,19 @@ jobs:
             --compose-file docker-compose.ci.yml
           test -s backups/ci/restore-report.json
           python -c "import json; r=json.load(open('backups/ci/restore-report.json')); assert 0 <= r['rpo_seconds'] <= 86400 and 0 <= r['rto_seconds'] <= 3600"
+      - name: Collect recovery logs
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml logs --no-color > disaster-recovery-services.log
       - name: Upload recovery evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: disaster-recovery-evidence
           retention-days: 90
-          path: backups/ci/
+          if-no-files-found: warn
+          path: |
+            backups/ci/
+            disaster-recovery-services.log
       - name: Stop isolated stack
         if: always()
         run: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml down --volumes --remove-orphans

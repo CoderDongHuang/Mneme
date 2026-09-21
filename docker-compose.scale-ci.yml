@@ -5,7 +5,7 @@ services:
       MYSQL_ROOT_PASSWORD: ci-database-password
       MYSQL_DATABASE: mneme
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -pci-database-password"]
+      test: ["CMD-SHELL", "mysql --protocol=TCP -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent --skip-column-names -e 'SELECT 1 FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME=\"mneme\"' | grep -q 1"]
       interval: 3s
       timeout: 3s
       retries: 40
