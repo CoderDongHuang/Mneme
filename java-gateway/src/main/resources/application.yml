@@ -24,7 +24,7 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
-    baseline-version: 1
+    baseline-version: 0
 
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml

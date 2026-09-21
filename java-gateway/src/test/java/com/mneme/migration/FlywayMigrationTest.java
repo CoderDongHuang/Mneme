@@ -30,10 +30,23 @@ class FlywayMigrationTest {
         .withPassword("mneme-test-password");
 
     @Test
-    void appliesAllMigrationsToAnEmptyDatabase() throws Exception {
+    void appliesAllMigrationsWhenAuxiliaryStateAlreadyExists() throws Exception {
+        Flyway.configure()
+            .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+            .cleanDisabled(false)
+            .load()
+            .clean();
+        try (var connection = DriverManager.getConnection(
+            MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword()
+        ); var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE agent_trace (id BIGINT PRIMARY KEY)");
+        }
+
         Flyway.configure()
             .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
             .locations("classpath:db/migration")
+            .baselineOnMigrate(true)
+            .baselineVersion("0")
             .load()
             .migrate();
 
