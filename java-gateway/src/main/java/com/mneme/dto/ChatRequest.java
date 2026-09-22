@@ -6,7 +6,6 @@ import jakarta.validation.constraints.NotBlank;
 
 public class ChatRequest {
     @com.fasterxml.jackson.annotation.JsonProperty("request_id")
-    @NotBlank
     @jakarta.validation.constraints.Size(max = 64)
     private String requestId;
     @com.fasterxml.jackson.annotation.JsonProperty("user_id")
