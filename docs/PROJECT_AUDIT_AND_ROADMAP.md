@@ -10,7 +10,7 @@
 
 Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记忆、学习计划、复习、测验、导入导出和自托管部署均有真实实现。本轮重新审计发现的 P1 安全性与一致性问题已经修复并通过本地自动化测试；当前没有已知 P0 或 P1 遗留。
 
-项目仍定位为 Beta。外部模型质量、真实生产流量、不同代理拓扑和长期灾备效果不能由一次本地测试完全证明；真实 MySQL 迁移测试依赖 Docker，本机 Docker 不可用时由 Testcontainers 自动跳过，必须继续由 GitHub Actions 的真实基础设施作业验证。
+项目仍定位为 Beta。外部模型质量、真实生产流量、不同代理拓扑和长期灾备效果不能由一次验收完全证明；本机因 Docker 不可用而跳过的 MySQL/Testcontainers 路径已由 GitHub Actions 的真实基础设施作业补充验证。
 
 ## 2. P1 修复结果
 
@@ -65,8 +65,9 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 | Docker Compose | 通过 | 基础、selfhost、production 和 security profile 均可解析 |
 | npm audit | 通过 | 0 vulnerabilities |
 | Git diff 检查 | 通过 | 无空白错误 |
+| GitHub Actions | 通过 | 运行 `35703983277` 的 7 个作业全部成功 |
 
-本地测试通过表示已覆盖路径没有发现回归，不表示外部模型、所有文档类型、生产代理拓扑和大规模并发均已得到证明。V14 Flyway 迁移和真实基础设施流程仍由 CI 的 MySQL/Testcontainers 与全栈作业复验。
+本地测试通过表示已覆盖路径没有发现回归，不表示外部模型、所有文档类型、生产代理拓扑和大规模并发均已得到证明。V14 Flyway 迁移、真实基础设施、跨存储删除、备份恢复和双节点 Trace 已由 [GitHub Actions #35703983277](https://github.com/CoderDongHuang/Mneme/actions/runs/35703983277) 验证通过。
 
 ## 4. 当前 P2
 
