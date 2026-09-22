@@ -18,6 +18,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Value;
 import com.mneme.service.ProfileService;
 import com.mneme.service.PasswordResetDelivery;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -42,7 +44,8 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<Result<AuthResponse>> login(@Valid @RequestBody AuthRequest request) {
-        return authenticated(authService.login(request.getUsername(), request.getPassword()), Boolean.TRUE.equals(request.getRemember()));
+        boolean remember = Boolean.TRUE.equals(request.getRemember());
+        return authenticated(authService.login(request.getUsername(), request.getPassword(), remember), remember);
     }
 
     @PostMapping("/reset-password")
@@ -65,18 +68,30 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Result<Void>> logout() {
+    public ResponseEntity<Result<Void>> logout(HttpServletRequest request) {
+        authService.revokeToken(token(request));
         ResponseCookie cookie = ResponseCookie.from("mneme_session", "")
             .httpOnly(true).secure(secureCookies).sameSite("Strict").path("/").maxAge(0).build();
         return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, cookie.toString()).body(Result.success(null));
     }
 
     private ResponseEntity<Result<AuthResponse>> authenticated(AuthResponse session, boolean remember) {
-        ResponseCookie cookie = ResponseCookie.from("mneme_session", session.token())
-            .httpOnly(true).secure(secureCookies).sameSite("Strict").path("/")
-            .maxAge(remember ? java.time.Duration.ofDays(30) : java.time.Duration.ofDays(1)).build();
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from("mneme_session", session.token())
+            .httpOnly(true).secure(secureCookies).sameSite("Strict").path("/");
+        if (remember) builder.maxAge(java.time.Duration.ofSeconds(session.maxAgeSeconds()));
+        ResponseCookie cookie = builder.build();
         return ResponseEntity.ok()
             .header(HttpHeaders.SET_COOKIE, cookie.toString())
             .body(Result.success(session));
+    }
+
+    private String token(HttpServletRequest request) {
+        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (authorization != null && authorization.startsWith("Bearer ")) return authorization.substring(7);
+        if (request.getCookies() == null) return null;
+        for (Cookie cookie : request.getCookies()) {
+            if ("mneme_session".equals(cookie.getName())) return cookie.getValue();
+        }
+        return null;
     }
 }

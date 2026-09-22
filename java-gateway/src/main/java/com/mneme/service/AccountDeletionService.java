@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import java.nio.file.Files;
@@ -54,12 +55,16 @@ public class AccountDeletionService {
         this.storage = storage;
     }
 
+    @Transactional
     public String enqueue(Long userId) {
+        List<Long> locked = jdbc.queryForList(
+            "SELECT id FROM user WHERE id=? FOR UPDATE", Long.class, userId);
+        if (locked.isEmpty()) return "";
         User user = users.selectById(userId);
         if (user == null) return "";
         List<Map<String, Object>> existing = jdbc.queryForList("""
             SELECT operation_id FROM account_deletion_task
-            WHERE user_id=? AND status IN ('pending','retry','processing')
+            WHERE user_id=?
             ORDER BY id DESC LIMIT 1
             """, userId);
         if (!existing.isEmpty()) return String.valueOf(existing.get(0).get("operation_id"));

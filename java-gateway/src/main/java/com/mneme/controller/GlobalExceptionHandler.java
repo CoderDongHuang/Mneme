@@ -9,6 +9,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.mneme.exception.RequestInProgressException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -24,6 +25,12 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Result<Void> badRequest(Exception exception) {
         return Result.error(400, exception.getMessage());
+    }
+
+    @ExceptionHandler(RequestInProgressException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Result<Void> conflict(RequestInProgressException exception) {
+        return Result.error(409, exception.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

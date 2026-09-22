@@ -53,10 +53,15 @@ public class ChatService {
 
     public ChatResponse chat(Long userId, ChatRequest request) {
         Long sessionId = parseSessionId(request.getSessionId());
-        sessionService.appendMessage(userId, sessionId, request.getRequestId(), "user", request.getMessage(), "completed");
-        ChatMessage assistant = sessionService.appendMessage(
-            userId, sessionId, request.getRequestId(), "assistant", "", "processing"
+        ChatSessionService.Exchange exchange = sessionService.prepareExchange(
+            userId, sessionId, request.getRequestId(), request.getMessage()
         );
+        ChatMessage assistant = exchange.assistantMessage();
+        if (exchange.completed()) {
+            ChatResponse replay = new ChatResponse();
+            replay.setAnswer(assistant.getContent());
+            return replay;
+        }
         ChatResponse response;
         try {
             response = restTemplate.postForObject(
@@ -81,11 +86,21 @@ public class ChatService {
 
     public StreamingResponseBody stream(Long userId, ChatRequest request) {
         Long sessionId = parseSessionId(request.getSessionId());
-        sessionService.appendMessage(userId, sessionId, request.getRequestId(), "user", request.getMessage(), "completed");
-        ChatMessage assistant = sessionService.appendMessage(
-            userId, sessionId, request.getRequestId(), "assistant", "", "processing"
+        ChatSessionService.Exchange exchange = sessionService.prepareExchange(
+            userId, sessionId, request.getRequestId(), request.getMessage()
         );
+        ChatMessage assistant = exchange.assistantMessage();
+        if (exchange.completed()) {
+            return output -> replayStream(assistant.getContent(), output);
+        }
         return output -> proxyStream(userId, sessionId, assistant.getId(), request, output);
+    }
+
+    private void replayStream(String answer, OutputStream output) throws java.io.IOException {
+        String token = objectMapper.writeValueAsString(java.util.Map.of("content", answer));
+        output.write(("event: token\ndata: " + token + "\n\n").getBytes(StandardCharsets.UTF_8));
+        output.write("event: done\ndata: {\"ok\":true,\"replayed\":true}\n\n".getBytes(StandardCharsets.UTF_8));
+        output.flush();
     }
 
     private void proxyStream(Long userId, Long sessionId, Long assistantMessageId, ChatRequest request, OutputStream output) {

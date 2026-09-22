@@ -20,6 +20,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers(disabledWithoutDocker = true)
 class FlywayMigrationTest {
@@ -162,6 +163,62 @@ class FlywayMigrationTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void chatRequestIdIsScopedToItsSession() {
+        Flyway.configure().dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+            .locations("classpath:db/migration").load().migrate();
+        var dataSource = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+        var jdbc = new JdbcTemplate(dataSource);
+        jdbc.update("INSERT INTO user(username,password_hash) VALUES('idempotency-user','hash')");
+        Long userId = jdbc.queryForObject(
+            "SELECT id FROM user WHERE username='idempotency-user'", Long.class);
+        jdbc.update("INSERT INTO chat_session(user_id,title) VALUES(?, 'one'),(?, 'two')", userId, userId);
+        var sessions = jdbc.queryForList(
+            "SELECT id FROM chat_session WHERE user_id=? ORDER BY id", Long.class, userId);
+
+        jdbc.update("INSERT INTO chat_message(session_id,request_id,role,content) VALUES(?, 'same-id', 'user', 'one')", sessions.get(0));
+        jdbc.update("INSERT INTO chat_message(session_id,request_id,role,content) VALUES(?, 'same-id', 'user', 'two')", sessions.get(1));
+
+        assertThatThrownBy(() -> jdbc.update(
+            "INSERT INTO chat_message(session_id,request_id,role,content) VALUES(?, 'same-id', 'user', 'duplicate')",
+            sessions.get(0)
+        )).isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
+    }
+
+    @Test
+    void migrationKeepsOneDeletionTaskWhenLegacyDataContainsDuplicates() {
+        Flyway flyway = Flyway.configure()
+            .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+            .locations("classpath:db/migration")
+            .cleanDisabled(false)
+            .target("13")
+            .load();
+        flyway.clean();
+        flyway.migrate();
+        var dataSource = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+        var jdbc = new JdbcTemplate(dataSource);
+        jdbc.update("INSERT INTO user(username,password_hash) VALUES('duplicate-delete-user','hash')");
+        Long userId = jdbc.queryForObject(
+            "SELECT id FROM user WHERE username='duplicate-delete-user'", Long.class);
+        jdbc.update("""
+            INSERT INTO account_deletion_task(operation_id,user_id,status,next_attempt_at)
+            VALUES('delete-first',?,'pending',NOW()),('delete-second',?,'pending',NOW())
+            """, userId, userId);
+
+        Flyway.configure()
+            .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+            .locations("classpath:db/migration")
+            .load()
+            .migrate();
+
+        assertThat(jdbc.queryForObject(
+            "SELECT COUNT(*) FROM account_deletion_task WHERE user_id=?", Integer.class, userId))
+            .isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+            "SELECT operation_id FROM account_deletion_task WHERE user_id=?", String.class, userId))
+            .isEqualTo("delete-first");
     }
 
     @Test

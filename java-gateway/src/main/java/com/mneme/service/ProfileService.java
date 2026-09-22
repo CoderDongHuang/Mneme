@@ -23,18 +23,21 @@ public class ProfileService {
     private static final Set<String> IMAGE_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private final UserMapper users;
     private final AccountDeletionService accountDeletions;
+    private final AuthSessionService sessions;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
     private final Path avatarRoot;
 
     public ProfileService(
         UserMapper users,
         AccountDeletionService accountDeletions,
+        AuthSessionService sessions,
         @Value("${mneme.avatar-storage-path:${mneme.file-storage-path:../data/files}/avatars}") String avatarStoragePath,
         @Value("${mneme.python-agent-url}") String ignoredPythonAgentUrl,
         @Value("${mneme.file-storage-path:../data/files}") String ignoredFileStoragePath
     ) {
         this.users = users;
         this.accountDeletions = accountDeletions;
+        this.sessions = sessions;
         this.avatarRoot = Path.of(avatarStoragePath).toAbsolutePath().normalize();
     }
 
@@ -94,6 +97,7 @@ public class ProfileService {
         if (!encoder.matches(request.currentPassword(), user.getPasswordHash())) throw new IllegalArgumentException("当前密码不正确");
         user.setPasswordHash(encoder.encode(request.newPassword()));
         users.updateById(user);
+        sessions.revokeAll(userId);
     }
 
     public void resetPassword(String username, String email, String password) {
@@ -102,6 +106,7 @@ public class ProfileService {
         if (user == null) throw new IllegalArgumentException("用户名与绑定邮箱不匹配");
         user.setPasswordHash(encoder.encode(password));
         users.updateById(user);
+        sessions.revokeAll(user.getId());
     }
 
     public String deleteAccount(Long userId) {

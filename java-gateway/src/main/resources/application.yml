@@ -56,6 +56,7 @@ mneme:
   python-agent-url: ${PYTHON_AGENT_URL:http://localhost:8001}
   jwt-secret: ${JWT_SECRET}
   jwt-expiration: ${JWT_EXPIRATION:86400000}
+  jwt-remember-expiration: ${JWT_REMEMBER_EXPIRATION:2592000000}
   file-storage-path: ${FILE_STORAGE_PATH:../data/files}
   storage-backend: ${STORAGE_BACKEND:local}
   object-storage-endpoint: ${OBJECT_STORAGE_ENDPOINT:}
@@ -68,6 +69,7 @@ mneme:
   internal-service-token: ${INTERNAL_SERVICE_TOKEN}
   internal-service-token-previous: ${INTERNAL_SERVICE_TOKEN_PREVIOUS:}
   cors-origins: ${CORS_ORIGINS:http://localhost:5173}
+  trusted-proxies: ${TRUSTED_PROXIES:}
   secure-cookies: ${SECURE_COOKIES:true}
   password-reset-from: ${PASSWORD_RESET_FROM:}
   admin-api-token: ${ADMIN_API_TOKEN:}
