@@ -43,4 +43,18 @@ class InternalContractTest {
                 .anyMatch(violation -> violation.getPropertyPath().toString().equals("requestId"));
         }
     }
+
+    @Test
+    void chatRequestBoundsPayloadFields() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            var validator = factory.getValidator();
+            ChatRequest request = new ChatRequest();
+            request.setSessionId("s".repeat(129));
+            request.setMessage("m".repeat(8001));
+            request.setKnowledgeBaseIds(java.util.Collections.nCopies(21, "kb"));
+
+            var violations = validator.validate(request);
+            assertThat(violations).hasSize(3);
+        }
+    }
 }

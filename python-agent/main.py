@@ -30,6 +30,16 @@ REQUEST_DURATION = Histogram(
     "HTTP request latency",
     ["method", "path"],
 )
+CHAT_REQUEST_MAX_BYTES = 64 * 1024
+
+
+def metric_path(request: Request) -> str:
+    """Use the Starlette route template so IDs never become metric labels."""
+    route = request.scope.get("route")
+    template = getattr(route, "path", None)
+    if template:
+        return template
+    return "unmatched"
 
 
 @asynccontextmanager
@@ -73,10 +83,9 @@ class TraceAndLoggingMiddleware(BaseHTTPMiddleware):
             duration_ms = (time.perf_counter() - started) * 1000
             logger.info("%s %s (%.0fms)", request.method, request.url.path, duration_ms)
             trace_id_var.reset(token)
-        REQUEST_COUNT.labels(
-            request.method, request.url.path, response.status_code
-        ).inc()
-        REQUEST_DURATION.labels(request.method, request.url.path).observe(
+        path = metric_path(request)
+        REQUEST_COUNT.labels(request.method, path, response.status_code).inc()
+        REQUEST_DURATION.labels(request.method, path).observe(
             duration_ms / 1000
         )
         response.headers["X-Trace-Id"] = trace_id
@@ -90,6 +99,65 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
+
+
+class ChatRequestSizeMiddleware:
+    """Bound the complete JSON body, including ignored or malformed fields."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("path") not in {
+            "/api/v1/chat",
+            "/api/v1/chat/stream",
+        }:
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", []))
+        content_length = headers.get(b"content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > CHAT_REQUEST_MAX_BYTES:
+                    await self._reject(send)
+                    return
+            except ValueError:
+                await self._reject(send)
+                return
+
+        messages = []
+        total = 0
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                break
+            total += len(message.get("body", b""))
+            if total > CHAT_REQUEST_MAX_BYTES:
+                await self._reject(send)
+                return
+            messages.append(message)
+            if not message.get("more_body", False):
+                break
+
+        async def replay():
+            if messages:
+                return messages.pop(0)
+            return await receive()
+
+        await self.app(scope, replay, send)
+
+    @staticmethod
+    async def _reject(send):
+        body = b'{"error":{"code":"REQUEST_TOO_LARGE","message":"Chat request body exceeds 65536 bytes"}}'
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
 
 
 _rate_limit_store: dict[str, dict[str, float]] = defaultdict(
@@ -144,6 +212,7 @@ class InternalServiceAuthMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(ChatRequestSizeMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(InternalServiceAuthMiddleware)
 app.add_middleware(TraceAndLoggingMiddleware)

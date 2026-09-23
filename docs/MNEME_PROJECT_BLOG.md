@@ -214,7 +214,7 @@ async def astream(self, messages, **kwargs):
 
 真实 E2E 第一次运行时，注册请求经 `http://localhost:3000/api/...` 返回 405。Java 和 Python 都正常，问题出在 Caddy：SPA 的 `try_files` 先把 `/api/*` 重写成 `/index.html`，POST 最终落到静态文件处理器。
 
-修复方式是用互斥 `handle` 明确 API、WebSocket 和 SPA 的优先边界：
+修复方式是用互斥 `handle` 明确 API、SSE 和 SPA 的优先边界：
 
 ```caddy
 handle /api/* {
@@ -361,7 +361,7 @@ Mneme 当前应标记为 **Beta 开源项目**，不能宣传为完整生产级�
 | 层次 | 技术 |
 |---|---|
 | 前端 | React 19、Vite、React Router、React Markdown、Lucide、Vitest、Playwright |
-| Java 网关 | Java 17、Spring Boot 3.2、MyBatis-Plus、Flyway、JWT、SSE、WebSocket |
+| Java 网关 | Java 17、Spring Boot 3.2、MyBatis-Plus、Flyway、JWT、SSE |
 | Python Agent | Python 3.11、FastAPI、LangGraph、LangChain、Pydantic、APScheduler |
 | 文档处理 | PyMuPDF、pdfplumber、Tesseract OCR、python-docx、python-pptx、openpyxl |
 | AI 与检索 | DeepSeek、Qwen、DashScope Embedding、Chroma |

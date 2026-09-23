@@ -85,6 +85,9 @@ class Settings:
     memory_reflection_every_sessions: int = int(
         os.getenv("MEMORY_REFLECTION_EVERY_SESSIONS", "5")
     )
+    memory_reflection_lease_seconds: int = int(
+        os.getenv("MEMORY_REFLECTION_LEASE_SECONDS", "900")
+    )
 
     upload_max_mb: int = int(os.getenv("UPLOAD_MAX_MB", "30"))
     upload_dir: str = os.getenv(

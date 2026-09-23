@@ -4,8 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import hmac
+import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -16,10 +20,15 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.exceptions import InvalidTag
+from dotenv import load_dotenv
+
 
 FORMAT = "mneme-backup"
-VERSION = 1
+VERSION = 2
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(PROJECT_ROOT / ".env")
 DATA_SOURCES = {
     "payload/data/files": PROJECT_ROOT / "data" / "files",
     "payload/data/avatars": PROJECT_ROOT / "data" / "avatars",
@@ -36,6 +45,52 @@ START_ORDER = ("chroma", "minio", "python-agent", "java-gateway")
 
 class BackupError(RuntimeError):
     pass
+
+
+def _secret_bytes(value: str | bytes | None, name: str) -> bytes | None:
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        raw = value
+    else:
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        except ValueError:
+            raw = value.encode("utf-8")
+    if len(raw) < 16:
+        raise BackupError(f"{name} must contain at least 16 bytes")
+    return hashlib.sha256(raw).digest()
+
+
+def _security_keys(
+    encryption_key: str | bytes | None = None,
+    signing_key: str | bytes | None = None,
+) -> tuple[bytes | None, bytes | None]:
+    encryption = _secret_bytes(
+        encryption_key if encryption_key is not None else os.getenv("BACKUP_ENCRYPTION_KEY"),
+        "BACKUP_ENCRYPTION_KEY",
+    )
+    signing = _secret_bytes(
+        signing_key if signing_key is not None else os.getenv("BACKUP_SIGNING_KEY"),
+        "BACKUP_SIGNING_KEY",
+    )
+    if os.getenv("BACKUP_REQUIRE_PROTECTION", "false").lower() in {"1", "true", "yes", "on"}:
+        if encryption is None or signing is None:
+            raise BackupError(
+                "BACKUP_REQUIRE_PROTECTION requires BACKUP_ENCRYPTION_KEY and BACKUP_SIGNING_KEY"
+            )
+    return encryption, signing
+
+
+def _signed_manifest(manifest: dict) -> bytes:
+    copy = json.loads(json.dumps(manifest))
+    security = copy.get("security", {})
+    security.pop("signature", None)
+    copy["security"] = security
+    return json.dumps(copy, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
 
 
 def utc_now() -> str:
@@ -103,7 +158,14 @@ def copy_tree(source: Path, destination: Path) -> None:
         shutil.copytree(source, destination, copy_function=shutil.copy2)
 
 
-def create_archive(staging: Path, archive: Path, metadata: dict | None = None) -> dict:
+def create_archive(
+    staging: Path,
+    archive: Path,
+    metadata: dict | None = None,
+    encryption_key: str | bytes | None = None,
+    signing_key: str | bytes | None = None,
+) -> dict:
+    encryption_secret, signing_secret = _security_keys(encryption_key, signing_key)
     payload = staging / "payload"
     if not (payload / "mysql.sql").is_file():
         raise BackupError("backup payload is missing mysql.sql")
@@ -112,14 +174,38 @@ def create_archive(staging: Path, archive: Path, metadata: dict | None = None) -
         relative = path.relative_to(staging).as_posix()
         if not relative.startswith(ALLOWED_FILE_PREFIXES):
             raise BackupError(f"backup payload contains an unsupported file: {relative}")
-        files.append({"path": relative, "size": path.stat().st_size, "sha256": sha256_file(path)})
+        plaintext_digest = sha256_file(path)
+        if encryption_secret:
+            plaintext = path.read_bytes()
+            nonce = os.urandom(12)
+            ciphertext = AESGCM(encryption_secret).encrypt(
+                nonce, plaintext, relative.encode()
+            )
+            path.write_bytes(nonce + ciphertext)
+        files.append(
+            {
+                "path": relative,
+                "size": path.stat().st_size,
+                "sha256": sha256_file(path),
+                **({"plaintext_sha256": plaintext_digest} if encryption_secret else {}),
+            }
+        )
     manifest = {
         "format": FORMAT,
         "version": VERSION,
         "created_at": utc_now(),
         "files": files,
         "metadata": metadata or {},
+        "security": {
+            "encrypted": encryption_secret is not None,
+            "signed": signing_secret is not None,
+            "key_version": os.getenv("BACKUP_KEY_VERSION", "v1"),
+        },
     }
+    if signing_secret:
+        manifest["security"]["signature"] = hmac.new(
+            signing_secret, _signed_manifest(manifest), hashlib.sha256
+        ).hexdigest()
     manifest_path = staging / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
@@ -159,8 +245,19 @@ def verify_archive(archive: Path) -> dict:
             if manifest_stream is None:
                 raise BackupError("backup manifest cannot be read")
             manifest = json.load(manifest_stream)
-            if manifest.get("format") != FORMAT or manifest.get("version") != VERSION:
+            if manifest.get("format") != FORMAT or manifest.get("version") not in {1, VERSION}:
                 raise BackupError("unsupported backup format or version")
+            security = manifest.get("security", {}) if manifest.get("version") >= 2 else {}
+            if security.get("signed"):
+                _, signing_secret = _security_keys(signing_key=os.getenv("BACKUP_SIGNING_KEY"))
+                signature = security.get("signature")
+                if not signing_secret or not isinstance(signature, str):
+                    raise BackupError("signed backup requires BACKUP_SIGNING_KEY")
+                expected = hmac.new(
+                    signing_secret, _signed_manifest(manifest), hashlib.sha256
+                ).hexdigest()
+                if not hmac.compare_digest(signature, expected):
+                    raise BackupError("backup manifest signature mismatch")
             entries = manifest.get("files")
             if not isinstance(entries, list) or not entries:
                 raise BackupError("backup manifest has no file inventory")
@@ -206,8 +303,23 @@ def extract_verified(archive: Path, destination: Path) -> dict:
             stream = bundle.extractfile(bundle.getmember(name))
             if stream is None:
                 raise BackupError(f"archive file cannot be read: {name}")
+            data = stream.read()
+            if manifest.get("security", {}).get("encrypted"):
+                encryption_secret, _ = _security_keys()
+                if encryption_secret is None:
+                    raise BackupError("encrypted backup requires BACKUP_ENCRYPTION_KEY")
+                if len(data) < 12:
+                    raise BackupError(f"encrypted archive file is truncated: {name}")
+                try:
+                    data = AESGCM(encryption_secret).decrypt(
+                        data[:12], data[12:], name.encode()
+                    )
+                except InvalidTag as error:
+                    raise BackupError(f"backup decryption authentication failed: {name}") from error
+                if sha256_stream(io.BytesIO(data)) != entry.get("plaintext_sha256"):
+                    raise BackupError(f"plaintext checksum mismatch: {name}")
             with target.open("wb") as output:
-                shutil.copyfileobj(stream, output)
+                output.write(data)
     return manifest
 
 

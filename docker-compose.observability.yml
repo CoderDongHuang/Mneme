@@ -20,9 +20,13 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:9093:9093"
+    environment:
+      ALERTMANAGER_WEBHOOK_URL: ${ALERTMANAGER_WEBHOOK_URL:-}
     volumes:
       - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-    command: --config.file=/etc/alertmanager/alertmanager.yml
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --config.expand-env
 
 volumes:
   prometheus-data:

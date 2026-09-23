@@ -19,12 +19,12 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: python-agent/requirements.txt
+          cache-dependency-path: python-agent/requirements.lock
       - name: Install OCR runtime and Python dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng fonts-noto-cjk
-          pip install -r python-agent/requirements.txt
+          pip install --require-hashes -r python-agent/requirements.lock
       - name: Require model credentials
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
@@ -64,9 +64,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: python-agent/requirements.txt
+          cache-dependency-path: python-agent/requirements.lock
       - name: Install Python dependencies
-        run: pip install -r python-agent/requirements.txt
+        run: pip install --require-hashes -r python-agent/requirements.lock
       - name: Require model credentials
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}

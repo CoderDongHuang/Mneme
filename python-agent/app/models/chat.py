@@ -15,7 +15,7 @@ class ChatRequest(BaseModel):
     user_id: str = Field(min_length=1, max_length=64)
     session_id: str = Field(min_length=1, max_length=128)
     message: str = Field(min_length=1, max_length=8000)
-    knowledge_base_ids: list[str] = Field(default_factory=list)
+    knowledge_base_ids: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("user_id", "session_id", "message")
     @classmethod
@@ -24,6 +24,17 @@ class ChatRequest(BaseModel):
         if not value:
             raise ValueError("value cannot be blank")
         return value
+
+    @field_validator("knowledge_base_ids")
+    @classmethod
+    def validate_knowledge_base_ids(cls, values: list[str]) -> list[str]:
+        cleaned = []
+        for value in values:
+            value = value.strip()
+            if not value or len(value) > 128:
+                raise ValueError("knowledge base ids must be non-blank and <= 128 characters")
+            cleaned.append(value)
+        return cleaned
 
 
 class Source(BaseModel):

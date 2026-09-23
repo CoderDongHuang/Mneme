@@ -3,6 +3,8 @@ package com.mneme.dto;
 import java.util.List;
 import java.util.ArrayList;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 public class ChatRequest {
     @com.fasterxml.jackson.annotation.JsonProperty("request_id")
@@ -12,11 +14,15 @@ public class ChatRequest {
     private String userId;
     @com.fasterxml.jackson.annotation.JsonProperty("session_id")
     @NotBlank
+    @Size(max = 128)
     private String sessionId;
     @NotBlank
+    @Size(max = 8000)
     private String message;
     @com.fasterxml.jackson.annotation.JsonProperty("knowledge_base_ids")
-    private List<String> knowledgeBaseIds = new ArrayList<>();
+    @NotNull
+    @Size(max = 20)
+    private List<@Size(max = 128) String> knowledgeBaseIds = new ArrayList<>();
 
     // getters and setters
     public String getUserId() { return userId; }

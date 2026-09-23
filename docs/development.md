@@ -13,6 +13,8 @@
 cd python-agent
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+# CI/Docker Linux CPython 3.11 lock; Windows local development uses the
+# exact direct pins in requirements.txt because wheel hashes are platform-specific.
 pip install -r requirements.txt
 
 cd ..\java-gateway
@@ -37,4 +39,4 @@ npm install
 - Java 启动失败：先确认 MySQL 已创建 `mneme` 数据库，密码与 `.env`/环境变量一致。
 - Redis 认证失败：配置 `REDIS_PASSWORD`；Redis 是可选依赖，失败不会阻止 Python 启动。
 - PDF 无内容：扫描件需要系统安装 Tesseract，并设置 `OCR_ENABLED=true`。
-- 依赖冲突：必须在独立虚拟环境安装 `python-agent/requirements.txt`，不要复用装有其他 AI 项目的全局 Python。
+- 依赖冲突：必须在独立虚拟环境安装依赖，不要复用装有其他 AI 项目的全局 Python。CI/Docker 使用 Linux CPython 3.11 的 `requirements.lock`；升级依赖时先修改 `requirements.txt`，重新生成并验证对应平台锁文件。

@@ -9,9 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements.lock .
 ARG PIP_INDEX_URL=https://pypi.org/simple
-RUN pip install --no-cache-dir -r requirements.txt --index-url "$PIP_INDEX_URL" \
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock --index-url "$PIP_INDEX_URL" \
     && pip uninstall -y setuptools wheel jaraco.context \
     && rm -rf /root/.cache/pip
 

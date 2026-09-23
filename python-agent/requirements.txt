@@ -14,24 +14,24 @@ opentelemetry-instrumentation-fastapi==0.65b0
 langchain==1.3.9
 langgraph==1.2.11
 langchain-deepseek==1.1.0
-langchain-openai>=0.3.0
+langchain-openai==1.6.2
 dashscope==1.25.21
 
 # Vector store. Chroma 0.5 uses the pre-v6 PostHog API.
 chromadb==0.5.3
-posthog<6
+posthog==5.4.0
 
 # Structured document parsing
 pypdf==6.16.1
-pdfplumber>=0.11.0
-python-docx>=1.1.2
-python-pptx>=1.0.2
-openpyxl>=3.1.5
+pdfplumber==0.11.10
+python-docx==1.2.0
+python-pptx==1.0.2
+openpyxl==3.1.5
 
 # Optional scanned-PDF OCR runtime (Tesseract must also be installed)
-PyMuPDF>=1.24.0
-pytesseract>=0.3.13
-Pillow>=10.4.0
+PyMuPDF==1.26.0
+pytesseract==0.3.13
+Pillow==12.2.0
 
 # Memory and scheduling
 apscheduler==3.10.4
@@ -39,4 +39,5 @@ redis==5.0.1
 mysql-connector-python==9.4.0
 
 # Internal JWT validation utilities
-PyJWT>=2.9.0
+PyJWT==2.14.0
+cryptography==50.0.1
