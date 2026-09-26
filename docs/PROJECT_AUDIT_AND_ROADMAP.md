@@ -65,9 +65,9 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 | Docker Compose | 通过 | 基础、selfhost、production 和 security profile 均可解析 |
 | npm audit | 通过 | 0 vulnerabilities |
 | Git diff 检查 | 通过 | 无空白错误 |
-| GitHub Actions | 部分通过 | Run `36244980305` 中对象存储已启动，浏览器和跨存储删除步骤成功；备份恢复演练失败，Full-stack 作业和整体 CI 均未通过 |
+| GitHub Actions | 通过 | Run `36247024726` 的 7 个必需作业全部成功，包含依赖哈希安装、供应链、Python、Java、前端、真实 OCR、Distributed 和 Full-stack 备份恢复验收 |
 
-本地测试通过表示已覆盖路径没有发现回归，不表示外部模型、所有文档类型、生产代理拓扑和大规模并发均已得到证明。V14 Flyway 迁移和双节点 Trace 已由此前的 GitHub Actions 作业验证；本轮 Full-stack 仍需在宿主机备份依赖修复后重新验收。
+本地测试通过表示已覆盖路径没有发现回归，不表示外部模型、所有文档类型、生产代理拓扑和大规模并发均已得到证明。V14 Flyway 迁移、双节点 Trace、对象存储故障注入和备份恢复已由 GitHub Actions 的真实基础设施作业验证。
 
 ## 4. P2 修复结果
 
@@ -109,19 +109,19 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 
 ## 7. 最新 CI 追踪
 
-旧的通过记录不能代表当前提交状态。提交 `0ea7339` 对应的 GitHub Actions Run `36239564024` 已确认：
+旧的通过记录不能代表当前提交状态。当前提交 `8566dfa` 对应的 GitHub Actions Run `36247024726` 已确认：
 
 - `pip install --require-hashes -r python-agent/requirements.lock`、Python、前端、Java 和真实 OCR 作业通过。
 - 供应链作业已通过，包含依赖安装、`pip-audit`、镜像漏洞扫描、密钥扫描和 SBOM 策略。
 - Python、Java、前端、真实 OCR 和 Distributed 作业已通过。
-- Full-stack 作业因 CI 覆盖层使用的 Quay MinIO 镜像返回 `unauthorized`，在完整栈启动前失败。
+- Full-stack 作业的完整栈启动、真实浏览器、跨存储删除和备份恢复演练全部通过。
 
-上述两个依赖已升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希；`uvloop==0.22.1` 也已补齐版本与 Linux CPython 3.11 wheel 哈希，且在 Run `36243477072` 的 `pip install --require-hashes` 作业中成功安装。原 MinIO 镜像在 GitHub Runner 上返回 `pull access denied`，CI 覆盖层已切换为固定版本 `rustfs/rustfs:1.0.0`。Run `36244980305` 确认完整栈启动、浏览器流程和跨存储删除成功，但备份恢复步骤失败。该工作流和月度灾备工作流此前没有在宿主机安装备份脚本所需的 `cryptography`、`python-dotenv`；现已添加带哈希锁文件安装和显式导入检查，仍须等待新的 CI 运行验证，不能据此宣称修复完成。
+上述两个依赖已升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希；`uvloop==0.22.1` 已补齐版本和哈希并通过 `--require-hashes` 安装。CI 使用固定版本 `rustfs/rustfs:1.0.0`，Run `36247024726` 已实际完成镜像下载、服务启动和完整栈验收，因此本轮 CI 不再保留待验证项。
 
 ### 本轮隐患核验
 
 - ✅ `python-agent/requirements.lock` 的 `uvloop` 版本与哈希已核实，GitHub Actions 安装作业成功。
 - ✅ 依赖审计范围已固定为带哈希锁文件，`pip-audit --requirement python-agent/requirements.lock` 已成功。
-- ✅ 对象存储下载与启动：Run `36244980305` 的 RustFS 完整栈启动及浏览器、删除演练步骤成功。
-- ⏳ 备份恢复演练：Run `36244980305` 失败；宿主机依赖安装已补齐，等待新 Run 验证实际根因是否消除。
-- ⏳ 在 Full-stack 成功前，不宣称 P0/全量 CI 验收完成。
+- ✅ 对象存储下载与启动：Run `36247024726` 的 RustFS 完整栈启动及浏览器、删除演练步骤成功。
+- ✅ 备份恢复演练：Run `36247024726` 在宿主机安装锁定依赖后通过，恢复报告和 RPO/RTO 检查均通过。
+- ✅ Full-stack 与全量 CI 验收：Run `36247024726` 的 7 个必需作业全部成功，本轮 P0/CI 验收完成。
