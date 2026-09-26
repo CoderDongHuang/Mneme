@@ -20,7 +20,7 @@ jobs:
       - name: Install OCR runtime
         run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng fonts-noto-cjk
       - run: pip install --require-hashes -r python-agent/requirements.lock
-      - run: pip install pytest==8.3.2 "ruff==0.15.17"
+      - run: pip install pytest==9.0.3 "ruff==0.15.17"
       - run: ruff check python-agent/
       - name: Run Python tests
         working-directory: python-agent
@@ -279,7 +279,7 @@ jobs:
           pip install --require-hashes -r python-agent/requirements.lock
           pip install pip-audit==2.9.0
           for attempt in 1 2 3; do
-            if pip-audit --local --timeout 60 \
+            if pip-audit --requirement python-agent/requirements.lock --timeout 60 \
               --ignore-vuln PYSEC-2026-3813 \
               --ignore-vuln PYSEC-2026-3814 \
               --ignore-vuln PYSEC-2026-3815 \
