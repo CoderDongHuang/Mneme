@@ -101,6 +101,8 @@ uuid_utils==0.17.1 \
     --hash=sha256:3404d50a60ec74642fd590b9d639d98770022f4b1ff8a4055b3c70742c85f096
 uvicorn[standard]==0.30.6 \
     --hash=sha256:65fd46fe3fda5bdc1b03b94eb634923ff18cd35b2f084813ea79d1f103f711b5
+uvloop==0.22.1 \
+    --hash=sha256:56a2d1fae65fd82197cb8c53c367310b3eabe1bbb9fb5a04d28e3e3520e4f702
 pypdf==6.16.1 \
     --hash=sha256:63fec31c4092ae50b6729beedcb469055b60d20c834bde1c402df241f371f644
 opentelemetry-instrumentation-asgi==0.65b0 \
