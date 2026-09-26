@@ -147,6 +147,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python-agent/requirements.lock
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -157,6 +159,10 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
+      - name: Install host backup dependencies
+        run: |
+          python -m pip install --require-hashes -r python-agent/requirements.lock
+          python -c "import cryptography, dotenv"
       - name: Prepare writable bind mounts
         run: |
           mkdir -p data/files data/avatars data/chroma data/minio python-agent/data
