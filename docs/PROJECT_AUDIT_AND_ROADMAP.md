@@ -106,3 +106,13 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 下一次发布前必须满足：PR CI 全部通过；V14 在真实 MySQL 上迁移成功；安全扫描没有未解释的 high/critical；真实栈注册、上传、解析、检索、流式回答、登出、密码重置和账号删除流程通过；失败报告与测试 artifact 可追踪。
 
 在生产代表性验证持续积累前，项目说明应继续使用“Beta”和“本地自托管”，不使用“生产级”“完全准确”或“支持任意复杂文档”。
+
+## 7. 最新 CI 追踪
+
+旧的通过记录不能代表当前提交状态。提交 `79dd66a` 对应的 GitHub Actions Run `36238097156` 已确认：
+
+- `pip install --require-hashes -r python-agent/requirements.lock`、Python、前端、Java 和真实 OCR 作业通过。
+- 供应链作业仍因旧锁文件中的 `Pillow==12.2.0` 报告漏洞而失败。
+- Full-stack 与 Distributed 作业仍因旧锁文件中的 `onnxruntime==1.16.3` 在 Runner 上无法加载而失败。
+
+上述两个依赖已在后续本地修复中分别升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希；在新的 GitHub Actions Run 明确成功前，本项目不能标记为 CI 全部通过。

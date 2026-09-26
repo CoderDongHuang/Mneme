@@ -31,7 +31,7 @@ openpyxl==3.1.5
 # Optional scanned-PDF OCR runtime (Tesseract must also be installed)
 PyMuPDF==1.26.0
 pytesseract==0.3.13
-Pillow==12.2.0
+Pillow==12.3.0
 
 # Memory and scheduling
 apscheduler==3.10.4
