@@ -65,9 +65,9 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 | Docker Compose | 通过 | 基础、selfhost、production 和 security profile 均可解析 |
 | npm audit | 通过 | 0 vulnerabilities |
 | Git diff 检查 | 通过 | 无空白错误 |
-| GitHub Actions | 通过 | 运行 `35703983277` 的 7 个作业全部成功 |
+| GitHub Actions | 部分通过 | 最新 Run `36243477072` 的依赖安装、Python、Java、前端、真实 OCR、Distributed 和供应链作业成功；Full-stack 因对象存储镜像无法拉取失败 |
 
-本地测试通过表示已覆盖路径没有发现回归，不表示外部模型、所有文档类型、生产代理拓扑和大规模并发均已得到证明。V14 Flyway 迁移、真实基础设施、跨存储删除、备份恢复和双节点 Trace 已由 [GitHub Actions #35703983277](https://github.com/CoderDongHuang/Mneme/actions/runs/35703983277) 验证通过。
+本地测试通过表示已覆盖路径没有发现回归，不表示外部模型、所有文档类型、生产代理拓扑和大规模并发均已得到证明。V14 Flyway 迁移和双节点 Trace 已由此前的 GitHub Actions 作业验证；本轮 Full-stack 仍需在对象存储镜像修复后重新验收。
 
 ## 4. P2 修复结果
 
@@ -116,4 +116,11 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 - Python、Java、前端、真实 OCR 和 Distributed 作业已通过。
 - Full-stack 作业因 CI 覆盖层使用的 Quay MinIO 镜像返回 `unauthorized`，在完整栈启动前失败。
 
-上述两个依赖已升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希。本次又将 CI MinIO 镜像切换为已验证可下载的固定 Docker Hub tag `minio/minio:RELEASE.2025-04-22T22-12-26Z`；在新的 GitHub Actions Run 明确成功前，本项目不能标记为 CI 全部通过。
+上述两个依赖已升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希；`uvloop==0.22.1` 也已补齐版本与 Linux CPython 3.11 wheel 哈希，且在 Run `36243477072` 的 `pip install --require-hashes` 作业中成功安装。原 MinIO 镜像在 GitHub Runner 上返回 `pull access denied`，因此本次将 CI 覆盖层切换为官方固定版本 `rustfs/rustfs:1.0.0`，使用兼容 S3 的 `9000` 端口和 `/health` 检查。RustFS 镜像必须经过新的 GitHub Actions Full-stack 作业实际拉取并启动成功；在此之前，本项目不能标记为 CI 全部通过。
+
+### 本轮隐患核验
+
+- ✅ `python-agent/requirements.lock` 的 `uvloop` 版本与哈希已核实，GitHub Actions 安装作业成功。
+- ✅ 依赖审计范围已固定为带哈希锁文件，`pip-audit --requirement python-agent/requirements.lock` 已成功。
+- ⏳ 对象存储下载与 Full-stack 验收：原 MinIO 下载失败，已改为 RustFS `1.0.0`，等待新的 GitHub Actions Run 明确成功。
+- ⏳ 在 Full-stack 成功前，不宣称 P0/全量 CI 验收完成。
