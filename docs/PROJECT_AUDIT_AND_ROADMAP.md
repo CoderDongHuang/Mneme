@@ -109,10 +109,11 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 
 ## 7. 最新 CI 追踪
 
-旧的通过记录不能代表当前提交状态。提交 `79dd66a` 对应的 GitHub Actions Run `36238097156` 已确认：
+旧的通过记录不能代表当前提交状态。提交 `0ea7339` 对应的 GitHub Actions Run `36239564024` 已确认：
 
 - `pip install --require-hashes -r python-agent/requirements.lock`、Python、前端、Java 和真实 OCR 作业通过。
-- 供应链作业仍因旧锁文件中的 `Pillow==12.2.0` 报告漏洞而失败。
-- Full-stack 与 Distributed 作业仍因旧锁文件中的 `onnxruntime==1.16.3` 在 Runner 上无法加载而失败。
+- 供应链作业已通过，包含依赖安装、`pip-audit`、镜像漏洞扫描、密钥扫描和 SBOM 策略。
+- Python、Java、前端、真实 OCR 和 Distributed 作业已通过。
+- Full-stack 作业因 CI 覆盖层使用的 Quay MinIO 镜像返回 `unauthorized`，在完整栈启动前失败。
 
-上述两个依赖已在后续本地修复中分别升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希；在新的 GitHub Actions Run 明确成功前，本项目不能标记为 CI 全部通过。
+上述两个依赖已升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希。本次又将 CI MinIO 镜像切换为已验证可下载的固定 Docker Hub tag `minio/minio:RELEASE.2025-04-22T22-12-26Z`；在新的 GitHub Actions Run 明确成功前，本项目不能标记为 CI 全部通过。
