@@ -83,7 +83,8 @@ INTERNAL_SERVICE_TOKEN=另一个至少32字节随机字符串
 docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d --build
 ```
 
-打开 <http://localhost:3000>，注册账号后即可创建资料库、上传资料并开始对话。
+启动完成且 `frontend`、`java-gateway` 均为 `running` 后，打开 <http://localhost:3000>。
+这是本机地址，不是公网演示站；若浏览器打不开，请先确认 Docker Desktop 已启动，并运行下面的状态检查命令。
 
 密码重置邮件保存在本机 Mailpit，访问 <http://localhost:8025> 查看，无需配置公网 SMTP。
 

@@ -28,7 +28,14 @@ jobs:
           DEEPSEEK_API_KEY: ci-dummy-key
           DASHSCOPE_API_KEY: ci-dummy-key
           MNEME_OFFLINE_EMBEDDINGS: "true"
-        run: python -m pytest tests/ -q
+        run: python -m pytest tests/ -q --maxfail=1
+      - name: Collect Python test diagnostics
+        if: failure()
+        working-directory: python-agent
+        run: |
+          python --version
+          python -m pip freeze
+          python -m pytest tests/ -x -vv --tb=long
       - name: Run offline RAG baseline
         working-directory: python-agent
         env:
