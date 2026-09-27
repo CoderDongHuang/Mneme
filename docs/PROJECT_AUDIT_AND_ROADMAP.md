@@ -91,9 +91,9 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 
 ### 中期
 
-1. 将反思执行从线程池迁移到共享可靠任务队列，保留 Redis 租约作为过渡和故障接管机制。
-2. 为 Alertmanager 执行真实通知渠道的静默、抑制、升级和 receiver 故障演练，并将结果作为发布 artifact。
-3. 为备份密钥轮换、旧密钥恢复和跨环境恢复建立自动化演练。
+1. ✅ 已将反思执行迁移到 Redis Streams 共享可靠任务队列，consumer group 负责消费，`XAUTOCLAIM` 接管崩溃消费者的 pending 任务，Redis 租约继续防止同一用户重复执行。
+2. ✅ 已加入 `scripts/alertmanager_drill.py`：灾备 CI 连接真实 Alertmanager API 验证 firing/resolved 与 silence API，另测 receiver 故障探测并输出 JSON 证据；本地 deterministic 模式会明确标出验证范围。
+3. ✅ 已加入 `scripts/backup_key_rotation_drill.py`，验证 v1 旧密钥恢复、v2 新密钥归档、旧密钥退役拒绝和隔离目录跨环境恢复。
 
 ### 长期
 

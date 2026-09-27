@@ -8,6 +8,8 @@ class FakeRedis:
         self.values = {}
         self.leases = {}
         self.states = {}
+        self.stream = []
+        self.acked = []
 
     def incr(self, key):
         self.values[key] = int(self.values.get(key, 0)) + 1
@@ -53,6 +55,23 @@ class FakeRedis:
         self.states[state] = "completed"
         return 1
 
+    def xgroup_create(self, *_args, **_kwargs):
+        return True
+
+    def xadd(self, _key, values):
+        self.stream.append((b"1-0", values))
+        return b"1-0"
+
+    def xreadgroup(self, *_args, **_kwargs):
+        return []
+
+    def xautoclaim(self, *_args, **_kwargs):
+        return (b"0-0", [], [])
+
+    def xack(self, _key, _group, message_id):
+        self.acked.append(message_id)
+        return 1
+
 
 class QueueExecutor:
     def __init__(self):
@@ -64,6 +83,18 @@ class QueueExecutor:
     def run_next(self):
         function, args = self.jobs.pop(0)
         return function(*args)
+
+
+def test_reflection_is_persisted_to_stream_before_execution(monkeypatch):
+    fake = FakeRedis()
+    monkeypatch.setattr(
+        module,
+        "settings",
+        SimpleNamespace(memory_reflection_every_sessions=1, memory_reflection_lease_seconds=60),
+    )
+    scheduler = module.ReflectionScheduler(redis_client=fake, executor=QueueExecutor())
+    scheduler.record_session("u")
+    assert scheduler.check_and_trigger("u") is True
 
 
 def test_only_one_node_claims_shared_reflection(monkeypatch):
@@ -82,8 +113,9 @@ def test_only_one_node_claims_shared_reflection(monkeypatch):
     second.record_session("u")
     assert first.check_and_trigger("u") is True
     assert second.check_and_trigger("u") is False
-    assert len(executor.jobs) == 1
-    executor.run_next()
+    assert len(fake.stream) == 1
+    first._run_queued_reflection(*fake.stream[0])
+    assert fake.acked == [b"1-0"]
     assert fake.values == {}
 
 
@@ -106,9 +138,11 @@ def test_failed_reflection_keeps_count_for_retry(monkeypatch):
     scheduler = module.ReflectionScheduler(redis_client=fake, executor=executor)
     scheduler.record_session("u")
     assert scheduler.check_and_trigger("u") is True
-    executor.run_next()
-    assert scheduler.check_and_trigger("u") is True
-    executor.run_next()
+    scheduler._run_queued_reflection(*fake.stream[0])
+    assert scheduler.check_and_trigger("u") is False
+    fake.leases.clear()
+    scheduler._run_queued_reflection(*fake.stream[0])
+    assert fake.acked == [b"1-0"]
     assert fake.values == {}
 
 

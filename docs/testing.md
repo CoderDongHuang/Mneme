@@ -58,6 +58,23 @@ npm run test:e2e:real
 
 ## 跨存储删除与恢复演练
 
+### 中期可靠性演练
+
+反思任务使用 Redis Streams consumer group 持久化；消费者崩溃后由 `XAUTOCLAIM` 接管超时 pending 任务。备份密钥轮换可独立执行。Alertmanager 的完整 API 演练要求服务已启动；单独运行无 `--url` 时只验证本地 receiver 行为：
+
+```bash
+python scripts/alertmanager_drill.py --report artifacts/alertmanager-drill.json
+python scripts/backup_key_rotation_drill.py --report artifacts/backup-key-rotation-drill.json
+```
+
+真实 Alertmanager API（含 silence API）验证：
+
+```bash
+python scripts/alertmanager_drill.py --url http://127.0.0.1:9093 --report artifacts/alertmanager-drill.json
+```
+
+两个脚本均返回非零表示演练失败，并生成可上传的 JSON 证据。
+
 完整 CI 栈启动后，可运行 MySQL、Redis、Chroma、MinIO 和 SQLite 辅助状态联合清理及故障注入：
 
 生产/双节点验收将 `AUXILIARY_STORE_BACKEND=mysql` 打开，确认轨迹和记忆版本不依赖单个 Python 容器的本地 SQLite；本地单元测试默认仍使用临时 SQLite。

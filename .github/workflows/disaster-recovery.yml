@@ -24,6 +24,7 @@ jobs:
       MNEME_DETERMINISTIC_TEST_LLM: "true"
       AUXILIARY_STORE_BACKEND: mysql
       ADMIN_API_TOKEN: ci-admin-token-at-least-32-characters
+      ALERTMANAGER_WEBHOOK_URL: http://host.docker.internal:18080
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -63,6 +64,12 @@ jobs:
             --samples 3 \
             --interval 2 \
             --report artifacts/operational-trends.json
+      - name: Run Alertmanager configuration drill
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml -f docker-compose.observability.yml up -d alertmanager
+          python scripts/alertmanager_drill.py --url http://127.0.0.1:9093 --receiver-port 18080 --report artifacts/alertmanager-drill.json
+      - name: Run backup key rotation drill
+        run: python scripts/backup_key_rotation_drill.py --report artifacts/backup-key-rotation-drill.json
       - name: Collect recovery logs
         if: failure()
         run: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml logs --no-color > disaster-recovery-services.log
@@ -76,6 +83,8 @@ jobs:
           path: |
             backups/ci/
             artifacts/operational-trends.json
+            artifacts/alertmanager-drill.json
+            artifacts/backup-key-rotation-drill.json
             disaster-recovery-services.log
       - name: Stop isolated stack
         if: always()

@@ -85,6 +85,28 @@ def _security_keys(
     return encryption, signing
 
 
+def _versioned_secret(name: str, version: str | None) -> str | None:
+    """Prefer the archive key version, then fall back to the active key."""
+    if version:
+        candidate = os.getenv(f"{name}_{version.upper().replace('-', '_')}")
+        if candidate:
+            return candidate
+    return os.getenv(name)
+
+
+def _security_keys_for_version(
+    version: str | None,
+    encryption_key: str | bytes | None = None,
+    signing_key: str | bytes | None = None,
+) -> tuple[bytes | None, bytes | None]:
+    if encryption_key is not None or signing_key is not None:
+        return _security_keys(encryption_key, signing_key)
+    return _security_keys(
+        _versioned_secret("BACKUP_ENCRYPTION_KEY", version),
+        _versioned_secret("BACKUP_SIGNING_KEY", version),
+    )
+
+
 def _signed_manifest(manifest: dict) -> bytes:
     copy = json.loads(json.dumps(manifest))
     security = copy.get("security", {})
@@ -249,7 +271,7 @@ def verify_archive(archive: Path) -> dict:
                 raise BackupError("unsupported backup format or version")
             security = manifest.get("security", {}) if manifest.get("version") >= 2 else {}
             if security.get("signed"):
-                _, signing_secret = _security_keys(signing_key=os.getenv("BACKUP_SIGNING_KEY"))
+                _, signing_secret = _security_keys_for_version(security.get("key_version"))
                 signature = security.get("signature")
                 if not signing_secret or not isinstance(signature, str):
                     raise BackupError("signed backup requires BACKUP_SIGNING_KEY")
@@ -305,7 +327,9 @@ def extract_verified(archive: Path, destination: Path) -> dict:
                 raise BackupError(f"archive file cannot be read: {name}")
             data = stream.read()
             if manifest.get("security", {}).get("encrypted"):
-                encryption_secret, _ = _security_keys()
+                encryption_secret, _ = _security_keys_for_version(
+                    manifest.get("security", {}).get("key_version")
+                )
                 if encryption_secret is None:
                     raise BackupError("encrypted backup requires BACKUP_ENCRYPTION_KEY")
                 if len(data) < 12:
