@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import settings
+from app.core.metrics import INPUT_REJECTIONS
 from app.core.logging import setup_logger
 from app.knowledge.ingestion import SUPPORTED_EXTENSIONS, ingest_document
 from app.knowledge.retriever import retrieve
@@ -109,13 +110,16 @@ async def upload_file(
     filename = Path(file.filename or "upload.tmp").name
     extension = Path(filename).suffix.lower()
     if extension not in SUPPORTED_EXTENSIONS:
+        INPUT_REJECTIONS.labels("document_upload", "unsupported_extension").inc()
         raise HTTPException(status_code=415, detail=f"不支持的文件格式: {extension}")
     content = await file.read(settings.upload_max_mb * 1024 * 1024 + 1)
     if len(content) > settings.upload_max_mb * 1024 * 1024:
+        INPUT_REJECTIONS.labels("document_upload", "file_too_large").inc()
         raise HTTPException(
             status_code=413, detail=f"文件不能超过 {settings.upload_max_mb} MB"
         )
     if not content:
+        INPUT_REJECTIONS.labels("document_upload", "empty_file").inc()
         raise HTTPException(status_code=400, detail="上传文件为空")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as temporary:

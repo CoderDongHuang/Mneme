@@ -11,7 +11,7 @@ permissions:
 jobs:
   document-ai:
     name: Real OCR and Qwen-VL quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -48,7 +48,7 @@ jobs:
           --report ../artifacts/document-ai-external-report.json
       - name: Upload external quality evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: document-ai-external-quality
           if-no-files-found: error
@@ -56,7 +56,7 @@ jobs:
 
   text-and-quiz-quality:
     name: Real RAG and quiz quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -135,7 +135,7 @@ jobs:
             --report ../artifacts/target-domain-regression.json
       - name: Upload text quality evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: real-text-and-quiz-quality
           if-no-files-found: error

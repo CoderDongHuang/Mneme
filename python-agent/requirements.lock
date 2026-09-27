@@ -199,8 +199,8 @@ dashscope==1.25.21 \
     --hash=sha256:a730b3e9e41fb4261ab89192f667964aee2057779d87c26beaa9889aa07afbb9
 tqdm==4.70.1 \
     --hash=sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73
-chromadb==0.5.3 \
-    --hash=sha256:b3874f08356e291c68c6d2e177db472cd51f22f3af7b9746215b748fd1e29982
+chromadb==0.6.3 \
+    --hash=sha256:4851258489a3612b558488d98d09ae0fe0a28d5cad6bd1ba64b96fdc419dc0e5
 langsmith==0.14.0 \
     --hash=sha256:1a89e52c24edd6f4c24d8cfb32857814ceb5b9bec344a2850e86ab38475de362
 python-multipart==0.0.31 \
@@ -255,8 +255,8 @@ PyPika==0.51.1 \
     --hash=sha256:77985b4d7ce71b9905255bf12468cf598349e98837c037541cfc240e528aec46
 ormsgpack==1.12.2 \
     --hash=sha256:43013a3f3e2e902e1d05e72c0f1aeb5bedbb8e09240b51e26792a3c89267e181
-chroma-hnswlib==0.7.3 \
-    --hash=sha256:368e57fe9ebae05ee5844840fa588028a023d1182b0cfdb1d13f607c9ea05756
+chroma-hnswlib==0.7.6 \
+    --hash=sha256:5c093f07a010b499c00a15bc9376036ee4800d335360570b14f7fe92badcdcf9
 watchfiles==1.3.0 \
     --hash=sha256:b5768b49e426fd5b550b012c866db347cdf15c398ef98dc557b6e6b72fa74cd1
 numpy==1.26.4 \

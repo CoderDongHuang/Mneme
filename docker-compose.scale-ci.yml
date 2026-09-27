@@ -14,7 +14,7 @@ services:
     image: redis:7-alpine
 
   chroma-1:
-    image: chromadb/chroma:0.5.3
+    image: chromadb/chroma:0.6.3
     environment: &chroma-environment
       IS_PERSISTENT: "TRUE"
       PERSIST_DIRECTORY: /chroma/data
@@ -28,7 +28,7 @@ services:
       retries: 40
 
   chroma-2:
-    image: chromadb/chroma:0.5.3
+    image: chromadb/chroma:0.6.3
     environment: *chroma-environment
     volumes:
       - scale-chroma-2:/chroma/data

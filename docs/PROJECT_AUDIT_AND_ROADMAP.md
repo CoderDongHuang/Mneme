@@ -79,15 +79,15 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 4. ✅ **WebSocket 边界收敛。** 前端和 API 实际使用 SSE，已移除未使用的 Spring WebSocket 依赖、配置、握手鉴权器和进程内连接处理器，并更新相关架构文档。
 5. ✅ **备份机密性与来源验证。** 新版本备份支持 AES-GCM 文件加密、HMAC-SHA256 manifest 签名、密钥版本和生产强制保护；恢复会验证签名、密文校验和及解密后的明文校验和，并兼容 v1 未保护归档。
 6. ✅ **告警通知落地。** Alertmanager 已提供 webhook receiver、critical/warning 分级路由、critical 抑制 warning 和 resolved 通知；部署通过 `ALERTMANAGER_WEBHOOK_URL` 注入真实通知地址，并启用环境变量展开。
-7. ✅ **Python 依赖可重现性。** 直接依赖已固定版本，维护带哈希的 `python-agent/requirements.lock`，Docker 与 CI 使用 `--require-hashes` 安装；Chroma 0.5.3 的例外仍保留并要求在 2026-10-18 前复核。
+7. ✅ **Python 依赖可重现性。** 直接依赖已固定版本，维护带哈希的 `python-agent/requirements.lock`，Docker 与 CI 使用 `--require-hashes` 安装；Chroma 已升级到 `0.6.3`，原安全例外关闭。
 
 ## 5. 新的后续实施顺序
 
 ### 近期
 
-1. 在 GitHub Actions 上确认本轮锁文件安装、Alertmanager 配置和备份保护在真实 Linux 环境验收。
-2. 在 2026-10-18 前完成 Chroma 0.5.3 安全例外复核，优先升级到兼容且无例外的版本。
-3. 为输入拒绝率、Prometheus 标签数量和反思租约接管增加持续趋势报告。
+1. ✅ 在 GitHub Actions 上确认本轮锁文件安装、Alertmanager 配置和备份保护在真实 Linux 环境验收。Run `36247706959` 的全部作业已通过。
+2. ✅ 完成 Chroma 0.5.3 安全例外复核并升级到兼容的 `0.6.3`；同时修复 Chroma 0.6 集合名称 API 变化，CI 审计不再忽略原例外编号。
+3. ✅ 为输入拒绝率、Prometheus 标签数量和反思租约接管增加低基数指标、趋势报告和 CI artifact；Full-stack 与灾备工作流均采集 `operational-trends.json`。
 
 ### 中期
 
@@ -109,14 +109,14 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 
 ## 7. 最新 CI 追踪
 
-旧的通过记录不能代表当前提交状态。当前提交 `8566dfa` 对应的 GitHub Actions Run `36247024726` 已确认：
+旧的通过记录不能代表当前提交状态。上一轮提交 `8e87667` 对应的 GitHub Actions Run `36247706959` 已确认；本轮升级后的状态以新提交触发的 Run 为准：
 
 - `pip install --require-hashes -r python-agent/requirements.lock`、Python、前端、Java 和真实 OCR 作业通过。
-- 供应链作业已通过，包含依赖安装、`pip-audit`、镜像漏洞扫描、密钥扫描和 SBOM 策略。
+- 供应链作业已通过，包含依赖安装、`pip-audit`、镜像漏洞扫描、密钥扫描和 SBOM 策略；本轮升级后仍需以新提交触发的 Run 为准。
 - Python、Java、前端、真实 OCR 和 Distributed 作业已通过。
 - Full-stack 作业的完整栈启动、真实浏览器、跨存储删除和备份恢复演练全部通过。
 
-上述两个依赖已升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希；`uvloop==0.22.1` 已补齐版本和哈希并通过 `--require-hashes` 安装。CI 使用固定版本 `rustfs/rustfs:1.0.0`，Run `36247024726` 已实际完成镜像下载、服务启动和完整栈验收，因此本轮 CI 不再保留待验证项。
+上述两个依赖已升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希；`uvloop==0.22.1` 已补齐版本和哈希并通过 `--require-hashes` 安装。Chroma Python 包和服务镜像现为 `0.6.3`，`chroma-hnswlib==0.7.6` 已补齐 Linux wheel 哈希。CI 使用固定版本 `rustfs/rustfs:1.0.0`；本段旧 Run 只记录上一轮证据，本轮升级后的最终状态必须由新 Run 覆盖。
 
 ### 本轮隐患核验
 

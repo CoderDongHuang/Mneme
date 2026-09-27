@@ -37,4 +37,14 @@ PowerShell 可继续使用 `scripts/backup-data.ps1` 和 `scripts/restore-data.p
 
 Prometheus 和 Alertmanager 可通过 `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.observability.yml up -d` 启动。目标值、记录规则和告警位于 `observability/slo.json` 与 `observability/prometheus/`；应用错误率、可用性和 p95 延迟进入统一告警。默认接收器在 Alertmanager 中保留告警状态；正式部署必须在 `observability/alertmanager.yml` 增加组织实际使用的邮件、Webhook 或值班平台接收器。
 
+### Chroma 升级
+
+当前 Python 依赖和 Chroma 服务镜像固定为 `0.6.3`。从 `0.5.3` 升级现有持久化目录前，先完成一次可验证备份并停止读写，再在维护窗口运行一次数据库整理：
+
+```bash
+docker compose run --rm chroma chroma utils vacuum --path /chroma/data --force
+```
+
+`vacuum` 会阻塞该 Chroma 数据目录的读写，完成后再启动完整栈并执行检索回归。新部署无需单独执行；若升级前无法停机，应先在隔离副本完成恢复和检索验证。
+
 每月 GitHub Actions 会在隔离栈执行备份、删除、恢复和恢复后 RAG 验证，上传 90 天证据。变更前也可手动运行 `Disaster recovery and SLO evidence`，不能以“备份文件存在”替代恢复演练。

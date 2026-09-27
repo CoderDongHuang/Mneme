@@ -24,7 +24,7 @@ permissions:
 jobs:
   capacity:
     name: Long-duration capacity and multi-fault recovery
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
@@ -61,7 +61,7 @@ jobs:
           docker compose -f docker-compose.scale-ci.yml logs --no-color >> capacity-services.log
       - name: Upload capacity evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: capacity-and-resilience
           if-no-files-found: warn

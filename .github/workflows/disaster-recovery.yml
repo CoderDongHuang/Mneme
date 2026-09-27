@@ -11,7 +11,7 @@ permissions:
 jobs:
   recovery:
     name: Monthly isolated backup and restore drill
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       MYSQL_ROOT_PASSWORD: ci-database-password
@@ -56,18 +56,26 @@ jobs:
             --compose-file docker-compose.ci.yml
           test -s backups/ci/restore-report.json
           python -c "import json; r=json.load(open('backups/ci/restore-report.json')); assert 0 <= r['rpo_seconds'] <= 86400 and 0 <= r['rto_seconds'] <= 3600"
+      - name: Collect operational trend report
+        run: |
+          python scripts/collect_operational_trends.py \
+            --url http://127.0.0.1:8001/metrics \
+            --samples 3 \
+            --interval 2 \
+            --report artifacts/operational-trends.json
       - name: Collect recovery logs
         if: failure()
         run: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml logs --no-color > disaster-recovery-services.log
       - name: Upload recovery evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: disaster-recovery-evidence
           retention-days: 90
           if-no-files-found: warn
           path: |
             backups/ci/
+            artifacts/operational-trends.json
             disaster-recovery-services.log
       - name: Stop isolated stack
         if: always()

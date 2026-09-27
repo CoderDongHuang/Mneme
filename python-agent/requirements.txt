@@ -17,8 +17,8 @@ langchain-deepseek==1.1.0
 langchain-openai==1.6.2
 dashscope==1.25.21
 
-# Vector store. Chroma 0.5 uses the pre-v6 PostHog API.
-chromadb==0.5.3
+# Vector store. 0.6.3 includes the current single-node API and security fixes.
+chromadb==0.6.3
 posthog==5.4.0
 
 # Structured document parsing

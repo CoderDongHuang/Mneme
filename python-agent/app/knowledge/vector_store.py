@@ -86,6 +86,21 @@ class VectorStore:
     def _client_for(self, user_id: str, kb_id: str) -> Any:
         return self.clients[resolve_vector_shard(user_id, kb_id) % len(self.clients)]
 
+    @staticmethod
+    def _collection_name(item: Any) -> str:
+        """Normalize Chroma 0.5 collection objects and 0.6 name objects."""
+        return str(item) if type(item).__name__ == "CollectionName" else item.name
+
+    @classmethod
+    def _collections_for_client(cls, client: Any) -> list[Any]:
+        collections = []
+        for item in client.list_collections():
+            if type(item).__name__ == "CollectionName" or isinstance(item, str):
+                collections.append(client.get_collection(name=str(item)))
+            else:
+                collections.append(item)
+        return collections
+
     def heartbeat(self) -> bool:
         for client in self.clients:
             client.heartbeat()
@@ -158,7 +173,7 @@ class VectorStore:
         collections = [
             collection
             for client in self.clients
-            for collection in client.list_collections()
+            for collection in self._collections_for_client(client)
         ]
         return [
             collection
@@ -187,7 +202,7 @@ class VectorStore:
         by_shard = []
         collections = []
         for shard_id, client in enumerate(self.clients):
-            shard_collections = client.list_collections()
+            shard_collections = self._collections_for_client(client)
             collections.extend(shard_collections)
             by_shard.append({
                 "shard_id": shard_id,
@@ -197,7 +212,7 @@ class VectorStore:
         return {
             "total_collections": len(collections),
             "total_chunks": sum(collection.count() for collection in collections),
-            "collection_names": [collection.name for collection in collections],
+            "collection_names": [self._collection_name(collection) for collection in collections],
             "vector_shard_id": settings.vector_shard_id,
             "vector_shard_count": settings.vector_shard_count,
             "active_shard_clients": len(self.clients),
@@ -207,7 +222,7 @@ class VectorStore:
     def delete_user_collections(self, user_id: str) -> int:
         deleted = 0
         for client in self.clients:
-            for collection in client.list_collections():
+            for collection in self._collections_for_client(client):
                 metadata = collection.metadata or {}
                 if metadata.get("user_id") == user_id or collection.name.startswith(
                     f"user_{_safe(user_id)}_kb_"
@@ -224,7 +239,7 @@ class VectorStore:
         kept: list[str] = []
         errors: list[dict[str, str]] = []
         for client in self.clients:
-            for collection in client.list_collections():
+            for collection in self._collections_for_client(client):
                 metadata = collection.metadata or {}
                 user_id = str(metadata.get("user_id", ""))
                 kb_id = str(metadata.get("kb_id", ""))

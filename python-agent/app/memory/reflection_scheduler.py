@@ -9,6 +9,11 @@ from app.memory.long_term_memory import long_term_memory
 from app.memory.memory_store import memory_store
 from app.core.logging import setup_logger
 from app.core.config import settings
+from app.core.metrics import (
+    REFLECTION_LEASE_ACQUISITIONS,
+    REFLECTION_LEASE_CONTENTIONS,
+    REFLECTION_LEASE_TAKEOVERS,
+)
 
 logger = setup_logger("reflection_scheduler")
 
@@ -21,6 +26,14 @@ _reflection_executor = ThreadPoolExecutor(
 
 _COUNTER_PREFIX = "mneme:reflection:sessions:"
 _LEASE_PREFIX = "mneme:reflection:lease:"
+_LEASE_STATE_PREFIX = "mneme:reflection:lease-state:"
+_ACQUIRE_SCRIPT = """
+if redis.call('exists', KEYS[1]) == 1 then return 0 end
+local previous = redis.call('get', KEYS[2]) or ''
+redis.call('set', KEYS[1], ARGV[1], 'EX', ARGV[2])
+redis.call('set', KEYS[2], 'active')
+if previous == 'active' then return 2 else return 1 end
+"""
 _COMPLETE_SCRIPT = """
 if redis.call('get', KEYS[2]) ~= ARGV[1] then return 0 end
 local current = tonumber(redis.call('get', KEYS[1]) or '0')
@@ -28,10 +41,17 @@ local claimed = tonumber(ARGV[2])
 local remaining = current - claimed
 if remaining > 0 then redis.call('set', KEYS[1], remaining) else redis.call('del', KEYS[1]) end
 redis.call('del', KEYS[2])
+redis.call('set', KEYS[3], 'completed')
 return 1
 """
 _RELEASE_SCRIPT = """
-if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end
+if redis.call('get', KEYS[1]) == ARGV[1] then
+  redis.call('del', KEYS[1])
+  redis.call('set', KEYS[2], 'released')
+  return 1
+else
+  return 0
+end
 """
 
 
@@ -59,6 +79,28 @@ class ReflectionScheduler:
     def _lease_key(self, user_id: str) -> str:
         return f"{_LEASE_PREFIX}{user_id}"
 
+    def _lease_state_key(self, user_id: str) -> str:
+        return f"{_LEASE_STATE_PREFIX}{user_id}"
+
+    def _acquire_shared_lease(self, user_id: str, token: str) -> bool:
+        result = int(
+            self._redis.eval(
+                _ACQUIRE_SCRIPT,
+                2,
+                self._lease_key(user_id),
+                self._lease_state_key(user_id),
+                token,
+                max(60, settings.memory_reflection_lease_seconds),
+            )
+        )
+        if result == 0:
+            REFLECTION_LEASE_CONTENTIONS.inc()
+            return False
+        REFLECTION_LEASE_ACQUISITIONS.labels("redis").inc()
+        if result == 2:
+            REFLECTION_LEASE_TAKEOVERS.inc()
+        return True
+
     def record_session(self, user_id: str) -> int:
         """Increment shared state atomically, falling back only for local development."""
         try:
@@ -81,13 +123,7 @@ class ReflectionScheduler:
             if count < threshold:
                 return False
             lease_token = uuid.uuid4().hex
-            acquired = self._redis.set(
-                self._lease_key(user_id),
-                lease_token,
-                nx=True,
-                ex=max(60, settings.memory_reflection_lease_seconds),
-            )
-            if not acquired:
+            if not self._acquire_shared_lease(user_id, lease_token):
                 return False
             shared = True
         except redis.RedisError:
@@ -97,6 +133,7 @@ class ReflectionScheduler:
                 return False
             lease_token = "local"
             self._local_leases.add(user_id)
+            REFLECTION_LEASE_ACQUISITIONS.labels("local").inc()
             shared = False
         logger.info("触发用户 %s 的记忆反思（异步）", user_id)
         self._executor.submit(
@@ -128,16 +165,23 @@ class ReflectionScheduler:
     def _complete_shared(self, user_id: str, claimed_count: int, lease_token: str) -> None:
         self._redis.eval(
             _COMPLETE_SCRIPT,
-            2,
+            3,
             self._counter_key(user_id),
             self._lease_key(user_id),
+            self._lease_state_key(user_id),
             lease_token,
             claimed_count,
         )
 
     def _release_shared(self, user_id: str, lease_token: str) -> None:
         try:
-            self._redis.eval(_RELEASE_SCRIPT, 1, self._lease_key(user_id), lease_token)
+            self._redis.eval(
+                _RELEASE_SCRIPT,
+                2,
+                self._lease_key(user_id),
+                self._lease_state_key(user_id),
+                lease_token,
+            )
         except redis.RedisError:
             logger.warning("释放用户 %s 的反思租约失败", user_id, exc_info=True)
 

@@ -7,6 +7,7 @@ class FakeRedis:
     def __init__(self):
         self.values = {}
         self.leases = {}
+        self.states = {}
 
     def incr(self, key):
         self.values[key] = int(self.values.get(key, 0)) + 1
@@ -16,7 +17,7 @@ class FakeRedis:
         return True
 
     def get(self, key):
-        return self.leases.get(key, self.values.get(key))
+        return self.leases.get(key, self.states.get(key, self.values.get(key)))
 
     def set(self, key, value, nx=False, ex=None):
         if nx and key in self.leases:
@@ -25,13 +26,22 @@ class FakeRedis:
         return True
 
     def eval(self, script, key_count, *args):
-        if key_count == 1:
-            key, token = args
+        if key_count == 2 and len(args) == 4:
+            lease, state, token, _ttl = args
+            if lease in self.leases:
+                return 0
+            takeover = self.states.get(state) == "active"
+            self.leases[lease] = token
+            self.states[state] = "active"
+            return 2 if takeover else 1
+        if key_count == 2:
+            key, state, token = args
             if self.leases.get(key) == token:
                 del self.leases[key]
+                self.states[state] = "released"
                 return 1
             return 0
-        counter, lease, token, claimed = args
+        counter, lease, state, token, claimed = args
         if self.leases.get(lease) != token:
             return 0
         remaining = int(self.values.get(counter, 0)) - int(claimed)
@@ -40,6 +50,7 @@ class FakeRedis:
         else:
             self.values.pop(counter, None)
         self.leases.pop(lease, None)
+        self.states[state] = "completed"
         return 1
 
 
@@ -99,3 +110,19 @@ def test_failed_reflection_keeps_count_for_retry(monkeypatch):
     assert scheduler.check_and_trigger("u") is True
     executor.run_next()
     assert fake.values == {}
+
+
+def test_expired_shared_lease_is_counted_as_takeover(monkeypatch):
+    fake = FakeRedis()
+    monkeypatch.setattr(
+        module,
+        "settings",
+        SimpleNamespace(memory_reflection_every_sessions=1, memory_reflection_lease_seconds=60),
+    )
+    first = module.ReflectionScheduler(redis_client=fake, executor=QueueExecutor())
+    first.record_session("u")
+    assert first.check_and_trigger("u") is True
+    fake.leases.clear()
+
+    second = module.ReflectionScheduler(redis_client=fake, executor=QueueExecutor())
+    assert second.check_and_trigger("u") is True

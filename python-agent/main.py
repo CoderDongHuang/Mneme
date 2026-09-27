@@ -4,6 +4,8 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -12,6 +14,7 @@ from fastapi.responses import Response
 
 from app.api import agent, chat, chat_stream, health, knowledge, memory
 from app.core.config import settings
+from app.core.metrics import INPUT_REJECTIONS
 from app.core.logging import setup_logger, trace_id_var
 from app.memory.reflection_scheduler import reflection_scheduler
 from app.core.internal_tokens import internal_tokens
@@ -120,10 +123,10 @@ class ChatRequestSizeMiddleware:
         if content_length is not None:
             try:
                 if int(content_length) > CHAT_REQUEST_MAX_BYTES:
-                    await self._reject(send)
+                    await self._reject(send, "content_length")
                     return
             except ValueError:
-                await self._reject(send)
+                await self._reject(send, "content_length")
                 return
 
         messages = []
@@ -134,7 +137,7 @@ class ChatRequestSizeMiddleware:
                 break
             total += len(message.get("body", b""))
             if total > CHAT_REQUEST_MAX_BYTES:
-                await self._reject(send)
+                await self._reject(send, "body_size")
                 return
             messages.append(message)
             if not message.get("more_body", False):
@@ -148,7 +151,8 @@ class ChatRequestSizeMiddleware:
         await self.app(scope, replay, send)
 
     @staticmethod
-    async def _reject(send):
+    async def _reject(send, reason: str):
+        INPUT_REJECTIONS.labels("chat_body", reason).inc()
         body = b'{"error":{"code":"REQUEST_TOO_LARGE","message":"Chat request body exceeds 65536 bytes"}}'
         await send(
             {
@@ -227,6 +231,12 @@ async def global_exception_handler(request: Request, exc: Exception):
             "error": {"code": "INTERNAL_ERROR", "message": "服务暂时无法处理该请求"}
         },
     )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    INPUT_REJECTIONS.labels("request_validation", "schema").inc()
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
 
 
 app.include_router(chat.router)

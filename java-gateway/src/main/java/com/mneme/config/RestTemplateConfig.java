@@ -19,8 +19,11 @@ public class RestTemplateConfig {
         InternalServiceTokenProvider tokens,
         Tracer tracer
     ) {
+        var requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(30));
+        requestFactory.setReadTimeout(Duration.ofSeconds(120));
         return builder
-            .requestFactory(SimpleClientHttpRequestFactory::new)
+            .requestFactory(() -> requestFactory)
             .additionalInterceptors((request, body, execution) -> {
                 request.getHeaders().set("X-Internal-Service-Token", tokens.current());
                 var span = tracer.currentSpan();
@@ -34,8 +37,6 @@ public class RestTemplateConfig {
                 }
                 return execution.execute(request, body);
             })
-            .setConnectTimeout(Duration.ofSeconds(30))
-            .setReadTimeout(Duration.ofSeconds(120))
             .build();
     }
 }
