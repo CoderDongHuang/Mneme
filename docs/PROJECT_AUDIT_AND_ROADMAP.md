@@ -1,6 +1,6 @@
 # Mneme 项目审计与新路线图
 
-> 重新审计日期：2026-09-23
+> 重新审计日期：2026-09-27
 > 审计基线：`main` 分支
 > 当前定位：个人与小规模团队本地自托管的 Beta 学习助手
 
@@ -65,7 +65,7 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 | Docker Compose | 通过 | 基础、selfhost、production 和 security profile 均可解析 |
 | npm audit | 通过 | 0 vulnerabilities |
 | Git diff 检查 | 通过 | 无空白错误 |
-| GitHub Actions | 通过 | Run `36247024726` 的 7 个必需作业全部成功，包含依赖哈希安装、供应链、Python、Java、前端、真实 OCR、Distributed 和 Full-stack 备份恢复验收 |
+| GitHub Actions | 通过 | Run `36318284964` 的 7 个必需作业全部成功，包含依赖哈希安装、供应链、Python、Java、前端、真实 OCR、Distributed 和 Full-stack 备份恢复验收 |
 
 本地测试通过表示已覆盖路径没有发现回归，不表示外部模型、所有文档类型、生产代理拓扑和大规模并发均已得到证明。V14 Flyway 迁移、双节点 Trace、对象存储故障注入和备份恢复已由 GitHub Actions 的真实基础设施作业验证。
 
@@ -85,7 +85,7 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 
 ### 近期
 
-1. ✅ 在 GitHub Actions 上确认本轮锁文件安装、Alertmanager 配置和备份保护在真实 Linux 环境验收。Run `36247706959` 的全部作业已通过。
+1. ✅ 在 GitHub Actions 上确认本轮锁文件安装、Alertmanager 配置和备份保护在真实 Linux 环境验收。Run `36318284964` 的全部作业已通过。
 2. ✅ 完成 Chroma 0.5.3 安全例外复核并升级到兼容的 `0.6.3`；同时修复 Chroma 0.6 集合名称 API 变化。OSV 确认修复版本尚未发布，例外继续由 CI 精确限定为三个编号并保留到期日。
 3. ✅ 为输入拒绝率、Prometheus 标签数量和反思租约接管增加低基数指标、趋势报告和 CI artifact；Full-stack 与灾备工作流均采集 `operational-trends.json`。
 
@@ -109,19 +109,19 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 
 ## 7. 最新 CI 追踪
 
-旧的通过记录不能代表当前提交状态。上一轮提交 `8e87667` 对应的 GitHub Actions Run `36247706959` 已确认；本轮升级后的状态以新提交触发的 Run 为准：
+旧的通过记录不能代表当前提交状态。本轮提交 `d4f6a87` 对应的 GitHub Actions Run `36318284964` 已确认，结论为 `success`：
 
 - `pip install --require-hashes -r python-agent/requirements.lock`、Python、前端、Java 和真实 OCR 作业通过。
-- 供应链作业已通过，包含依赖安装、`pip-audit`、镜像漏洞扫描、密钥扫描和 SBOM 策略；本轮升级后仍需以新提交触发的 Run 为准。
+- 供应链作业已通过，包含依赖安装、`pip-audit`、镜像漏洞扫描、密钥扫描和 SBOM 策略。
 - Python、Java、前端、真实 OCR 和 Distributed 作业已通过。
 - Full-stack 作业的完整栈启动、真实浏览器、跨存储删除和备份恢复演练全部通过。
 
-上述两个依赖已升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希；`uvloop==0.22.1` 已补齐版本和哈希并通过 `--require-hashes` 安装。Chroma Python 包和服务镜像现为 `0.6.3`，`chroma-hnswlib==0.7.6` 已补齐 Linux wheel 哈希。CI 使用固定版本 `rustfs/rustfs:1.0.0`；本段旧 Run 只记录上一轮证据，本轮升级后的最终状态必须由新 Run 覆盖。
+上述两个依赖已升级到 `Pillow==12.3.0` 和 `onnxruntime==1.23.2`，并更新 Linux CPython 3.11 wheel 哈希；`uvloop==0.22.1` 已补齐版本和哈希并通过 `--require-hashes` 安装。Chroma Python 包和服务镜像现为 `0.6.3`，`chroma-hnswlib==0.7.6` 已补齐 Linux wheel 哈希。CI 使用固定版本 `rustfs/rustfs:1.0.0`。
 
 ### 本轮隐患核验
 
 - ✅ `python-agent/requirements.lock` 的 `uvloop` 版本与哈希已核实，GitHub Actions 安装作业成功。
 - ✅ 依赖审计范围已固定为带哈希锁文件，`pip-audit --requirement python-agent/requirements.lock` 已成功。
-- ✅ 对象存储下载与启动：Run `36247024726` 的 RustFS 完整栈启动及浏览器、删除演练步骤成功。
-- ✅ 备份恢复演练：Run `36247024726` 在宿主机安装锁定依赖后通过，恢复报告和 RPO/RTO 检查均通过。
-- ✅ Full-stack 与全量 CI 验收：Run `36247024726` 的 7 个必需作业全部成功，本轮 P0/CI 验收完成。
+- ✅ 对象存储下载与启动：Run `36318284964` 的 RustFS 完整栈启动及浏览器、删除演练步骤成功。
+- ✅ 备份恢复演练：Run `36318284964` 在宿主机安装锁定依赖后通过，恢复报告和 RPO/RTO 检查均通过。
+- ✅ Full-stack 与全量 CI 验收：Run `36318284964` 的 7 个必需作业全部成功，本轮 P0/CI 验收完成。
