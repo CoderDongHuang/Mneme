@@ -1,12 +1,21 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_alertmanager_drill_generates_evidence(tmp_path):
     report = tmp_path / "alert.json"
     result = subprocess.run(
-        [sys.executable, "scripts/alertmanager_drill.py", "--report", str(report)],
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "alertmanager_drill.py"),
+            "--report",
+            str(report),
+        ],
         check=True,
         capture_output=True,
         text=True,

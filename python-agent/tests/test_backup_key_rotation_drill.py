@@ -1,12 +1,21 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_backup_key_rotation_drill(tmp_path):
     report = tmp_path / "rotation.json"
     subprocess.run(
-        [sys.executable, "scripts/backup_key_rotation_drill.py", "--report", str(report)],
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "backup_key_rotation_drill.py"),
+            "--report",
+            str(report),
+        ],
         check=True,
         capture_output=True,
         text=True,
