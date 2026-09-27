@@ -190,7 +190,8 @@ jobs:
       - name: Exercise input rejection metrics
         run: |
           status=$(head -c 70000 /dev/zero | curl --silent --output /dev/null --write-out '%{http_code}' \
-            --request POST --header 'Content-Type: application/json' --data-binary @- \
+            --request POST --header 'Content-Type: application/json' \
+            --header "X-Internal-Service-Token: $INTERNAL_SERVICE_TOKEN" --data-binary @- \
             http://127.0.0.1:8001/api/v1/chat)
           test "$status" = 413
       - name: Collect operational trend report
