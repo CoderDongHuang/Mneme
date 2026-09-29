@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -176,6 +177,10 @@ def main() -> None:
         else None
     )
     report = deterministic_report(workspace)
+    report["dataset"] = {
+        "name": arguments.workspace.name,
+        "sha256": hashlib.sha256(arguments.workspace.read_bytes()).hexdigest(),
+    }
     report["real_llm_evaluation"] = llm_sample_report(
         workspace, arguments.llm_sample_size, budget
     )

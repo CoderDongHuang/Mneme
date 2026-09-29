@@ -55,6 +55,11 @@ async def config_status() -> dict:
             "memory_version_store": bool(settings.memory_version_store_path),
             "agent_trace_retention_days": settings.agent_trace_retention_days,
             "memory_version_retention_days": settings.memory_version_retention_days,
+            "llm_budget": llm.budget_status(),
+            "llm_cost_rates_configured": bool(
+                getattr(settings, "llm_primary_input_cost_per_million", 0)
+                or getattr(settings, "llm_fallback_input_cost_per_million", 0)
+            ),
             "vector_shard_count": settings.vector_shard_count,
             "vector_shard_id": settings.vector_shard_id,
             "vector_shard_clients": len(vector_store.clients),

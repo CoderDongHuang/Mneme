@@ -118,3 +118,30 @@ def test_encrypted_archive_rejects_wrong_encryption_key(tmp_path, monkeypatch):
     destination = tmp_path / "restored"
     with pytest.raises(BackupError, match="decryption authentication failed"):
         extract_verified(archive, destination)
+
+
+def test_envelope_archive_uses_external_key_provider(tmp_path, monkeypatch):
+    staging = tmp_path / "staging"
+    (staging / "payload/data/files").mkdir(parents=True)
+    (staging / "payload/mysql.sql").write_text("sql", encoding="utf-8")
+    provider = Path(__file__).parents[2] / "scripts" / "backup_key_provider.py"
+    monkeypatch.setenv("BACKUP_KMS_COMMAND", f'"{sys.executable}" "{provider}"')
+    monkeypatch.setenv("MNEME_DRILL_MASTER_KEY", "master-key-for-envelope-test")
+    monkeypatch.setenv("BACKUP_KEY_VERSION", "test-v1")
+    monkeypatch.setenv("BACKUP_SIGNING_KEY", "signing-secret-for-tests-5678")
+    archive = tmp_path / "envelope.tar.gz"
+    manifest = create_archive(staging, archive)
+    assert manifest["security"]["envelope_encrypted"] is True
+    assert manifest["security"]["key_provider"] == "external-command"
+    monkeypatch.delenv("BACKUP_KMS_COMMAND")
+    with pytest.raises(BackupError, match="BACKUP_KMS_COMMAND"):
+        extract_verified(archive, tmp_path / "without-provider")
+    monkeypatch.setenv("BACKUP_KMS_COMMAND", f'"{sys.executable}" "{provider}"')
+    extract_verified(archive, tmp_path / "with-provider")
+
+
+def test_production_restore_rejects_unprotected_archive(tmp_path, monkeypatch):
+    archive = make_archive(tmp_path)
+    monkeypatch.setenv("BACKUP_REQUIRE_PROTECTION", "true")
+    with pytest.raises(BackupError, match="protected restore"):
+        verify_archive(archive)

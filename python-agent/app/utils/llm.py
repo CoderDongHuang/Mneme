@@ -1,13 +1,22 @@
 import threading
 import time
 from collections import deque
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 
 from app.core.config import settings
 from app.core.logging import setup_logger
-from app.core.metrics import LLM_ACTIVE, LLM_FALLBACKS, LLM_REQUESTS
+from app.core.metrics import (
+    LLM_ACTIVE,
+    LLM_BUDGET_BLOCKS,
+    LLM_ESTIMATED_COST,
+    LLM_FALLBACKS,
+    LLM_INPUT_TOKENS,
+    LLM_OUTPUT_TOKENS,
+    LLM_REQUESTS,
+)
 
 
 logger = setup_logger("llm")
@@ -52,6 +61,9 @@ class FallbackLLM:
         self._failure_count = 0
         self._circuit_opened_at = 0.0
         self._request_times = deque()
+        self._budget_day = ""
+        self._daily_cost = 0.0
+        self._budget_redis: Any | None = None
 
     @property
     def configured(self) -> bool:
@@ -162,7 +174,7 @@ class FallbackLLM:
         return self._get_primary(), False
 
     def _acquire_quota(self) -> None:
-        limit = settings.llm_hourly_limit
+        limit = getattr(settings, "llm_hourly_limit", 0)
         if not limit:
             return
         now = time.monotonic()
@@ -173,8 +185,112 @@ class FallbackLLM:
                 raise RuntimeError("模型调用额度已用尽，请稍后再试")
             self._request_times.append(now)
 
+    @staticmethod
+    def _message_tokens(messages: Any) -> int:
+        text = "\n".join(str(getattr(message, "content", message)) for message in messages)
+        return max(1, len(text) // 4)
+
+    def _reserve_budget(self, messages: Any, kwargs: dict[str, Any], using_fallback: bool) -> None:
+        budget = max(0.0, float(getattr(settings, "llm_daily_budget_usd", 0)))
+        if not budget or getattr(settings, "deterministic_test_llm", False):
+            return
+        provider = "fallback" if using_fallback else "primary"
+        input_price = float(getattr(settings, f"llm_{provider}_input_cost_per_million", 0))
+        output_price = float(getattr(settings, f"llm_{provider}_output_cost_per_million", 0))
+        input_tokens = self._message_tokens(messages)
+        output_tokens = max(
+            1,
+            int(kwargs.get("max_tokens") or kwargs.get("max_completion_tokens") or getattr(
+                settings, "llm_default_max_output_tokens", 1024
+            )),
+        )
+        if input_price <= 0 or output_price <= 0:
+            raise RuntimeError("启用模型日预算时必须配置正数的输入和输出单价")
+        estimated = input_tokens / 1_000_000 * input_price + output_tokens / 1_000_000 * output_price
+        day = datetime.now(timezone.utc).date().isoformat()
+        with self._lock:
+            if day != self._budget_day:
+                self._budget_day = day
+                self._daily_cost = 0.0
+            if getattr(settings, "redis_host", ""):
+                try:
+                    if self._budget_redis is None:
+                        from redis import Redis
+
+                        self._budget_redis = Redis(
+                            host=settings.redis_host,
+                            port=getattr(settings, "redis_port", 6379),
+                            db=getattr(settings, "redis_db", 0),
+                            password=getattr(settings, "redis_password", "") or None,
+                            socket_timeout=2,
+                        )
+                    total = float(self._budget_redis.eval(
+                        "local spent=tonumber(redis.call('GET',KEYS[1]) or '0') "
+                        "local charge=tonumber(ARGV[1]) "
+                        "if spent+charge>tonumber(ARGV[2]) then return '-1' end "
+                        "local total=redis.call('INCRBYFLOAT',KEYS[1],ARGV[1]) "
+                        "redis.call('EXPIRE',KEYS[1],172800) return total",
+                        1,
+                        f"mneme:llm:cost:{day}",
+                        estimated,
+                        budget,
+                    ))
+                except Exception as error:
+                    raise RuntimeError("模型预算计数服务不可用，调用已拒绝") from error
+                if total < 0:
+                    LLM_BUDGET_BLOCKS.inc()
+                    raise RuntimeError("模型调用将超过当日成本预算，请稍后再试")
+                self._daily_cost = total
+            else:
+                if self._daily_cost + estimated > budget:
+                    LLM_BUDGET_BLOCKS.inc()
+                    raise RuntimeError("模型调用将超过当日成本预算，请稍后再试")
+                self._daily_cost += estimated
+        LLM_INPUT_TOKENS.labels(provider).inc(input_tokens)
+        LLM_OUTPUT_TOKENS.labels(provider).inc(output_tokens)
+        LLM_ESTIMATED_COST.labels(provider).inc(estimated)
+
+    def budget_status(self) -> dict[str, object]:
+        budget = max(0.0, float(getattr(settings, "llm_daily_budget_usd", 0)))
+        with self._lock:
+            day = datetime.now(timezone.utc).date().isoformat()
+            if day != self._budget_day:
+                self._budget_day = day
+                self._daily_cost = 0.0
+            if budget and getattr(settings, "redis_host", ""):
+                try:
+                    if self._budget_redis is None:
+                        from redis import Redis
+
+                        self._budget_redis = Redis(
+                            host=settings.redis_host,
+                            port=getattr(settings, "redis_port", 6379),
+                            db=getattr(settings, "redis_db", 0),
+                            password=getattr(settings, "redis_password", "") or None,
+                            socket_timeout=2,
+                        )
+                    self._daily_cost = float(
+                        self._budget_redis.get(f"mneme:llm:cost:{day}") or 0
+                    )
+                except Exception:
+                    return {
+                        "daily_budget_usd": budget,
+                        "daily_spend_usd": None,
+                        "remaining_usd": None,
+                        "enabled": True,
+                        "status": "unavailable",
+                    }
+            return {
+                "daily_budget_usd": budget,
+                "daily_spend_usd": round(self._daily_cost, 8),
+                "remaining_usd": round(max(0.0, budget - self._daily_cost), 8) if budget else None,
+                "enabled": bool(budget),
+                "status": "ready" if budget else "disabled",
+            }
+
     def invoke(self, messages: Any, **kwargs: Any) -> Any:
         model, using_fallback = self._selected()
+        self._reserve_budget(messages, kwargs, using_fallback)
         try:
             result = model.invoke(messages, **kwargs)
             if not using_fallback:
@@ -193,6 +309,7 @@ class FallbackLLM:
             fallback = self._get_fallback()
             if fallback is None:
                 raise
+            self._reserve_budget(messages, kwargs, True)
             logger.info("当前请求切换至备用模型 %s", settings.fallback_model)
             LLM_FALLBACKS.labels("sync").inc()
             result = fallback.invoke(messages, **kwargs)
@@ -201,6 +318,7 @@ class FallbackLLM:
 
     async def ainvoke(self, messages: Any, **kwargs: Any) -> Any:
         model, using_fallback = self._selected()
+        self._reserve_budget(messages, kwargs, using_fallback)
         try:
             result = await model.ainvoke(messages, **kwargs)
             if not using_fallback:
@@ -219,6 +337,7 @@ class FallbackLLM:
             fallback = self._get_fallback()
             if fallback is None:
                 raise
+            self._reserve_budget(messages, kwargs, True)
             logger.info("当前异步请求切换至备用模型 %s", settings.fallback_model)
             LLM_FALLBACKS.labels("async").inc()
             result = await fallback.ainvoke(messages, **kwargs)
@@ -228,32 +347,35 @@ class FallbackLLM:
     async def astream(self, messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
         self._acquire_quota()
         LLM_ACTIVE.inc()
-        model, using_fallback = self._selected()
         emitted = False
         try:
-            async for chunk in model.astream(messages, **kwargs):
-                emitted = True
-                yield chunk
-            if not using_fallback:
-                self._record_success()
-            LLM_REQUESTS.labels(
-                "stream", "fallback" if using_fallback else "primary", "success"
-            ).inc()
-        except Exception as error:
-            LLM_REQUESTS.labels(
-                "stream", "fallback" if using_fallback else "primary", "failure"
-            ).inc()
-            if using_fallback or emitted:
-                raise
-            self._record_failure(error)
-            fallback = self._get_fallback()
-            if fallback is None:
-                raise
-            logger.info("流式请求切换至备用模型 %s", settings.fallback_model)
-            LLM_FALLBACKS.labels("stream").inc()
-            async for chunk in fallback.astream(messages, **kwargs):
-                yield chunk
-            LLM_REQUESTS.labels("stream", "fallback", "success").inc()
+            model, using_fallback = self._selected()
+            self._reserve_budget(messages, kwargs, using_fallback)
+            try:
+                async for chunk in model.astream(messages, **kwargs):
+                    emitted = True
+                    yield chunk
+                if not using_fallback:
+                    self._record_success()
+                LLM_REQUESTS.labels(
+                    "stream", "fallback" if using_fallback else "primary", "success"
+                ).inc()
+            except Exception as error:
+                LLM_REQUESTS.labels(
+                    "stream", "fallback" if using_fallback else "primary", "failure"
+                ).inc()
+                if using_fallback or emitted:
+                    raise
+                self._record_failure(error)
+                fallback = self._get_fallback()
+                if fallback is None:
+                    raise
+                self._reserve_budget(messages, kwargs, True)
+                logger.info("流式请求切换至备用模型 %s", settings.fallback_model)
+                LLM_FALLBACKS.labels("stream").inc()
+                async for chunk in fallback.astream(messages, **kwargs):
+                    yield chunk
+                LLM_REQUESTS.labels("stream", "fallback", "success").inc()
         finally:
             LLM_ACTIVE.dec()
 

@@ -156,16 +156,18 @@ def recover_faults(
     agent_urls: list[str],
     probe_urls: list[str],
     rounds: int,
+    fault_matrix: list[list[str]] | None = None,
 ) -> list[dict]:
     results = []
     for round_number in range(1, rounds + 1):
+        selected_services = (fault_matrix or [services])[((round_number - 1) % len(fault_matrix or [services]))]
         stopped_at = time.perf_counter()
-        for service in services:
+        for service in selected_services:
             compose(compose_files, "stop", service)
         for agent_url in agent_urls:
             if not request_json(f"{agent_url}/health").get("status") == "ok":
                 raise CapacityVerificationError(f"healthy agent unavailable during fault round {round_number}")
-        for service in services:
+        for service in selected_services:
             compose(compose_files, "up", "-d", "--force-recreate", service)
         for agent_url in agent_urls:
             wait_http(f"{agent_url}/health/ready")
@@ -175,7 +177,7 @@ def recover_faults(
                 raise CapacityVerificationError(
                     f"retrieval probe failed after fault round {round_number}: {probe_url}"
                 )
-        results.append({"round": round_number, "services": services, "recovery_seconds": round(time.perf_counter() - stopped_at, 2)})
+        results.append({"round": round_number, "services": selected_services, "recovery_seconds": round(time.perf_counter() - stopped_at, 2)})
     return results
 
 
@@ -196,6 +198,7 @@ def run(args: argparse.Namespace) -> dict:
         [args.agent_url, args.agent_url_2],
         load_urls,
         args.fault_rounds,
+        getattr(args, "fault_matrix", None),
     )
     failures = []
     if load["completed"] != load["requested"]:
@@ -215,6 +218,7 @@ def run(args: argparse.Namespace) -> dict:
         "knowledge_bases": knowledge_bases,
         "load": load,
         "fault_recovery": faults,
+        "fault_matrix": getattr(args, "fault_matrix", None),
         "quality_gate": {
             "max_errors": args.max_errors,
             "max_p95_ms": args.max_p95_ms,
@@ -235,6 +239,11 @@ def main() -> None:
     parser.add_argument("--max-errors", type=int, default=0)
     parser.add_argument("--max-p95-ms", type=float, default=2000.0)
     parser.add_argument("--fault-services", default="chroma-2,redis", type=lambda value: [item for item in value.split(",") if item])
+    parser.add_argument(
+        "--fault-matrix",
+        default="chroma-2+redis,chroma-1+redis",
+        type=lambda value: [[item for item in group.split("+") if item] for group in value.split(",") if group],
+    )
     parser.add_argument("--data-profile", default="small,medium,large")
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()

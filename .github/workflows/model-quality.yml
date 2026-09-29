@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   document-ai:
@@ -133,6 +134,43 @@ jobs:
             --baseline evaluation/baselines/target_domain_rag_v1.json \
             --candidate ../artifacts/real-rag-quality-report.json \
             --report ../artifacts/target-domain-regression.json
+      - name: Evaluate real model trends
+        id: trends
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous_run=""
+          for run in $(gh run list --workflow model-quality.yml --status completed --limit 10 --json databaseId --jq '.[].databaseId'); do
+            if [ "$run" != "${{ github.run_id }}" ]; then
+              mkdir -p "prior-model/$run"
+              if gh run download "$run" -n real-text-and-quiz-quality -D "prior-model/$run" \
+                && test -s "prior-model/$run/real-rag-quality-report.json" \
+                && test -s "prior-model/$run/real-quiz-quality-report.json" \
+                && test -s "prior-model/$run/real-embedding-quality-report.json"; then
+                previous_run="$run"
+                break
+              fi
+            fi
+          done
+          status=0
+          for kind in rag quiz embedding; do
+            case "$kind" in
+              rag) name=real-rag-quality-report.json ;;
+              quiz) name=real-quiz-quality-report.json ;;
+              embedding) name=real-embedding-quality-report.json ;;
+            esac
+            if [ -n "$previous_run" ]; then
+              python scripts/quality_trend.py --kind "$kind" \
+                --reports "prior-model/$previous_run/$name" "artifacts/$name" \
+                --report "artifacts/$kind-trend.json" || status=1
+            else
+              python scripts/quality_trend.py --kind "$kind" --allow-single \
+                --reports "artifacts/$name" --report "artifacts/$kind-trend.json" || status=1
+            fi
+          done
+          exit "$status"
       - name: Upload text quality evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -145,6 +183,7 @@ jobs:
             artifacts/real-quiz-quality-report.json
             artifacts/real-embedding-quality-report.json
             artifacts/target-domain-regression.json
+            artifacts/*-trend.json
       - name: Enforce all real model quality gates
         if: always()
         env:
@@ -152,8 +191,10 @@ jobs:
           QUIZ_QUALITY: ${{ steps.quiz_quality.outcome }}
           EMBEDDING_QUALITY: ${{ steps.embedding_quality.outcome }}
           REGRESSION: ${{ steps.regression.outcome }}
+          TRENDS: ${{ steps.trends.outcome }}
         run: |
           test "$RAG_QUALITY" = success
           test "$QUIZ_QUALITY" = success
           test "$EMBEDDING_QUALITY" = success
           test "$REGRESSION" = success
+          test "$TRENDS" = success

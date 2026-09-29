@@ -30,6 +30,22 @@ class Settings:
     circuit_recovery_seconds: int = int(os.getenv("LLM_CIRCUIT_RECOVERY_SECONDS", "60"))
     stream_timeout_seconds: int = int(os.getenv("LLM_STREAM_TIMEOUT_SECONDS", "20"))
     llm_hourly_limit: int = int(os.getenv("LLM_HOURLY_LIMIT", "0"))
+    llm_daily_budget_usd: float = float(os.getenv("LLM_DAILY_BUDGET_USD", "0"))
+    llm_primary_input_cost_per_million: float = float(
+        os.getenv("LLM_PRIMARY_INPUT_COST_PER_MILLION", "0")
+    )
+    llm_primary_output_cost_per_million: float = float(
+        os.getenv("LLM_PRIMARY_OUTPUT_COST_PER_MILLION", "0")
+    )
+    llm_fallback_input_cost_per_million: float = float(
+        os.getenv("LLM_FALLBACK_INPUT_COST_PER_MILLION", "0")
+    )
+    llm_fallback_output_cost_per_million: float = float(
+        os.getenv("LLM_FALLBACK_OUTPUT_COST_PER_MILLION", "0")
+    )
+    llm_default_max_output_tokens: int = max(
+        1, int(os.getenv("LLM_DEFAULT_MAX_OUTPUT_TOKENS", "1024"))
+    )
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
     offline_embeddings: bool = _bool("MNEME_OFFLINE_EMBEDDINGS", False)
     deterministic_test_llm: bool = _bool("MNEME_DETERMINISTIC_TEST_LLM", False)

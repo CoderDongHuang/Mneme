@@ -1,4 +1,7 @@
 import importlib.util
+import json
+
+import numpy as np
 from pathlib import Path
 
 from scripts.quality_policy import CostBudget
@@ -26,6 +29,7 @@ def test_embedding_report_scores_pair_separation(monkeypatch):
     assert report["samples"] == 1
     assert report["pair_accuracy"] == 1.0
     assert report["mean_margin"] > 0
+    json.dumps(report)
 
 
 def test_embedding_thresholds_report_regression():
@@ -33,3 +37,19 @@ def test_embedding_thresholds_report_regression():
         {"pair_accuracy": 0.5}, {"pair_accuracy": {"min": 1.0}}
     )
     assert failures == ["pair_accuracy=0.5 is below 1.0"]
+
+
+def test_numpy_embedding_results_are_json_serializable(monkeypatch):
+    monkeypatch.setattr(
+        MODULE, "embeddings", lambda _texts: [
+            np.array([1.0, 0.0]), np.array([0.9, 0.1]), np.array([0.0, 1.0])
+        ]
+    )
+    manifest = {
+        "dataset_id": "test",
+        "version": "v1",
+        "embedding_cases": [{"id": "one", "anchor": "a", "positive": "b", "negative": "c"}],
+    }
+    report = MODULE.evaluate(manifest, CostBudget(0.01, 0.3, 0.0))
+    assert report["details"][0]["passed"] is True
+    json.dumps(report)

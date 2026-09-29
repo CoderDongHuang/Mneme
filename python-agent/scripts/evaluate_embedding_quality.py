@@ -44,7 +44,7 @@ def evaluate(manifest: dict, budget: CostBudget) -> dict:
                 "positive_similarity": round(positive_similarity, 4),
                 "negative_similarity": round(negative_similarity, 4),
                 "margin": round(margin, 4),
-                "passed": margin > 0,
+                "passed": bool(margin > 0),
             }
         )
     return {

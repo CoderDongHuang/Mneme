@@ -11,6 +11,7 @@ import io
 import json
 import os
 import shutil
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -78,11 +79,38 @@ def _security_keys(
         "BACKUP_SIGNING_KEY",
     )
     if os.getenv("BACKUP_REQUIRE_PROTECTION", "false").lower() in {"1", "true", "yes", "on"}:
-        if encryption is None or signing is None:
+        if (encryption is None and not os.getenv("BACKUP_KMS_COMMAND")) or signing is None:
             raise BackupError(
-                "BACKUP_REQUIRE_PROTECTION requires BACKUP_ENCRYPTION_KEY and BACKUP_SIGNING_KEY"
+                "BACKUP_REQUIRE_PROTECTION requires BACKUP_KMS_COMMAND (or BACKUP_ENCRYPTION_KEY) and BACKUP_SIGNING_KEY"
             )
     return encryption, signing
+
+
+def _key_provider(action: str, version: str, value: bytes) -> bytes:
+    command = os.getenv("BACKUP_KMS_COMMAND", "").strip()
+    if not command:
+        raise BackupError("envelope-encrypted backup requires BACKUP_KMS_COMMAND")
+    try:
+        result = subprocess.run(
+            [*shlex.split(command), action, version],
+            input=base64.b64encode(value),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise BackupError(f"backup key provider {action} failed: {error}") from error
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace")[-500:]
+        raise BackupError(f"backup key provider {action} failed: {detail}")
+    try:
+        output = base64.b64decode(result.stdout.strip(), validate=True)
+    except ValueError as error:
+        raise BackupError(f"backup key provider {action} returned invalid base64") from error
+    if not output:
+        raise BackupError(f"backup key provider {action} returned an empty key")
+    return output
 
 
 def _versioned_secret(name: str, version: str | None) -> str | None:
@@ -188,6 +216,11 @@ def create_archive(
     signing_key: str | bytes | None = None,
 ) -> dict:
     encryption_secret, signing_secret = _security_keys(encryption_key, signing_key)
+    provider_command = os.getenv("BACKUP_KMS_COMMAND", "").strip()
+    use_envelope = bool(provider_command and encryption_key is None)
+    data_key = os.urandom(32) if use_envelope else encryption_secret
+    key_version = os.getenv("BACKUP_KEY_VERSION", "v1")
+    wrapped_data_key = _key_provider("wrap", key_version, data_key) if use_envelope else None
     payload = staging / "payload"
     if not (payload / "mysql.sql").is_file():
         raise BackupError("backup payload is missing mysql.sql")
@@ -197,10 +230,10 @@ def create_archive(
         if not relative.startswith(ALLOWED_FILE_PREFIXES):
             raise BackupError(f"backup payload contains an unsupported file: {relative}")
         plaintext_digest = sha256_file(path)
-        if encryption_secret:
+        if data_key:
             plaintext = path.read_bytes()
             nonce = os.urandom(12)
-            ciphertext = AESGCM(encryption_secret).encrypt(
+            ciphertext = AESGCM(data_key).encrypt(
                 nonce, plaintext, relative.encode()
             )
             path.write_bytes(nonce + ciphertext)
@@ -209,7 +242,7 @@ def create_archive(
                 "path": relative,
                 "size": path.stat().st_size,
                 "sha256": sha256_file(path),
-                **({"plaintext_sha256": plaintext_digest} if encryption_secret else {}),
+                **({"plaintext_sha256": plaintext_digest} if data_key else {}),
             }
         )
     manifest = {
@@ -219,9 +252,18 @@ def create_archive(
         "files": files,
         "metadata": metadata or {},
         "security": {
-            "encrypted": encryption_secret is not None,
+            "encrypted": data_key is not None,
             "signed": signing_secret is not None,
-            "key_version": os.getenv("BACKUP_KEY_VERSION", "v1"),
+            "key_version": key_version,
+            **(
+                {
+                    "envelope_encrypted": True,
+                    "key_provider": os.getenv("BACKUP_KEY_PROVIDER", "external-command"),
+                    "wrapped_data_key": base64.b64encode(wrapped_data_key).decode("ascii"),
+                }
+                if wrapped_data_key is not None
+                else {"envelope_encrypted": False}
+            ),
         },
     }
     if signing_secret:
@@ -270,6 +312,19 @@ def verify_archive(archive: Path) -> dict:
             if manifest.get("format") != FORMAT or manifest.get("version") not in {1, VERSION}:
                 raise BackupError("unsupported backup format or version")
             security = manifest.get("security", {}) if manifest.get("version") >= 2 else {}
+            if os.getenv("BACKUP_REQUIRE_PROTECTION", "false").lower() in {"1", "true", "yes", "on"}:
+                if not security.get("encrypted") or not security.get("signed"):
+                    raise BackupError("protected restore requires an encrypted and signed backup")
+            if security.get("envelope_encrypted") and not security.get("encrypted"):
+                raise BackupError("envelope-encrypted backup must declare encrypted payload")
+            if security.get("envelope_encrypted"):
+                wrapped = security.get("wrapped_data_key")
+                if not isinstance(wrapped, str) or not security.get("key_provider"):
+                    raise BackupError("envelope-encrypted backup has invalid key metadata")
+                try:
+                    base64.b64decode(wrapped, validate=True)
+                except ValueError as error:
+                    raise BackupError("wrapped data key is invalid") from error
             if security.get("signed"):
                 _, signing_secret = _security_keys_for_version(security.get("key_version"))
                 signature = security.get("signature")
@@ -316,6 +371,18 @@ def verify_archive(archive: Path) -> dict:
 
 def extract_verified(archive: Path, destination: Path) -> dict:
     manifest = verify_archive(archive)
+    security = manifest.get("security", {})
+    encryption_secret = None
+    if security.get("encrypted"):
+        if security.get("envelope_encrypted"):
+            wrapped = base64.b64decode(security["wrapped_data_key"], validate=True)
+            encryption_secret = _key_provider("unwrap", security["key_version"], wrapped)
+            if len(encryption_secret) != 32:
+                raise BackupError("backup key provider returned a data key with invalid length")
+        else:
+            encryption_secret, _ = _security_keys_for_version(security.get("key_version"))
+        if encryption_secret is None:
+            raise BackupError("encrypted backup requires BACKUP_ENCRYPTION_KEY")
     destination.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive, "r:gz") as bundle:
         for entry in manifest["files"]:
@@ -326,12 +393,7 @@ def extract_verified(archive: Path, destination: Path) -> dict:
             if stream is None:
                 raise BackupError(f"archive file cannot be read: {name}")
             data = stream.read()
-            if manifest.get("security", {}).get("encrypted"):
-                encryption_secret, _ = _security_keys_for_version(
-                    manifest.get("security", {}).get("key_version")
-                )
-                if encryption_secret is None:
-                    raise BackupError("encrypted backup requires BACKUP_ENCRYPTION_KEY")
+            if security.get("encrypted"):
                 if len(data) < 12:
                     raise BackupError(f"encrypted archive file is truncated: {name}")
                 try:
