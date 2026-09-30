@@ -161,13 +161,13 @@ jobs:
               quiz) name=real-quiz-quality-report.json ;;
               embedding) name=real-embedding-quality-report.json ;;
             esac
-            if [ -n "$previous_run" ]; then
+            if [ -z "$previous_run" ]; then
+              echo "No previous $kind quality artifact found; trend evidence is insufficient."
+              status=1
+            else
               python scripts/quality_trend.py --kind "$kind" \
                 --reports "prior-model/$previous_run/$name" "artifacts/$name" \
                 --report "artifacts/$kind-trend.json" || status=1
-            else
-              python scripts/quality_trend.py --kind "$kind" --allow-single \
-                --reports "artifacts/$name" --report "artifacts/$kind-trend.json" || status=1
             fi
           done
           exit "$status"

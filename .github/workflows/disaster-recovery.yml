@@ -70,6 +70,15 @@ jobs:
           python scripts/alertmanager_drill.py --url http://127.0.0.1:9093 --receiver-port 18080 --report artifacts/alertmanager-drill.json
       - name: Run backup key rotation drill
         run: python scripts/backup_key_rotation_drill.py --report artifacts/backup-key-rotation-drill.json
+      - name: Run geo-copy protocol drill
+        env:
+          BACKUP_GEO_COPY_COMMAND: python scripts/backup_local_geo_adapter.py copy
+          BACKUP_GEO_VERIFY_COMMAND: python scripts/backup_local_geo_adapter.py verify
+          BACKUP_GEO_FETCH_COMMAND: python scripts/backup_local_geo_adapter.py fetch
+        run: >-
+          python scripts/backup_geo_recovery_drill.py
+          --require-remote
+          --report artifacts/backup-geo-recovery-protocol.json
       - name: Collect recovery logs
         if: failure()
         run: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml logs --no-color > disaster-recovery-services.log
@@ -85,6 +94,7 @@ jobs:
             artifacts/operational-trends.json
             artifacts/alertmanager-drill.json
             artifacts/backup-key-rotation-drill.json
+            artifacts/backup-geo-recovery-protocol.json
             disaster-recovery-services.log
       - name: Stop isolated stack
         if: always()

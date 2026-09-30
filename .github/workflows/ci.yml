@@ -208,6 +208,17 @@ jobs:
             --samples 3 \
             --interval 2 \
             --report artifacts/operational-trends.json
+      - name: Collect measured usage policy evidence
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ env.MYSQL_ROOT_PASSWORD }}
+        run: |
+          python scripts/collect_usage_policy_snapshot.py \
+            --usage-report artifacts/usage-policy-snapshot.json \
+            --config-report artifacts/usage-policy-config.json
+          python scripts/usage_policy_report.py \
+            --usage artifacts/usage-policy-snapshot.json \
+            --config artifacts/usage-policy-config.json \
+            --report artifacts/usage-policy-report.json
       - name: Run cross-storage deletion fault injection
         run: >-
           python scripts/full_stack_verification.py deletion
@@ -235,6 +246,9 @@ jobs:
             docs/images/mneme-*.png
             backups/ci/
             artifacts/operational-trends.json
+            artifacts/usage-policy-snapshot.json
+            artifacts/usage-policy-config.json
+            artifacts/usage-policy-report.json
             full-stack-services.log
       - name: Stop full stack
         if: always()

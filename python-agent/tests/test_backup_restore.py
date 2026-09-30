@@ -1,5 +1,6 @@
 import io
 import json
+import subprocess
 import sys
 import tarfile
 from pathlib import Path
@@ -145,3 +146,66 @@ def test_production_restore_rejects_unprotected_archive(tmp_path, monkeypatch):
     monkeypatch.setenv("BACKUP_REQUIRE_PROTECTION", "true")
     with pytest.raises(BackupError, match="protected restore"):
         verify_archive(archive)
+
+
+def test_geo_protocol_requires_independent_readback_verification(tmp_path, monkeypatch):
+    drill = Path(__file__).parents[2] / "scripts" / "backup_geo_recovery_drill.py"
+    adapter = Path(__file__).parents[2] / "scripts" / "backup_local_geo_adapter.py"
+    monkeypatch.setenv("BACKUP_GEO_COPY_COMMAND", f'"{sys.executable}" "{adapter}" copy')
+    monkeypatch.setenv("BACKUP_GEO_VERIFY_COMMAND", f'"{sys.executable}" "{adapter}" verify')
+    monkeypatch.setenv("BACKUP_GEO_FETCH_COMMAND", f'"{sys.executable}" "{adapter}" fetch')
+    report = tmp_path / "geo.json"
+    result = subprocess.run(
+        [sys.executable, str(drill), "--require-remote", "--report", str(report)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    data = json.loads(report.read_text(encoding="utf-8"))
+    assert data["remote_copy_verified"] is True
+    assert data["source_sha256"] == data["remote_sha256"]
+
+
+def test_geo_protocol_requires_fetch_command(tmp_path, monkeypatch):
+    drill = Path(__file__).parents[2] / "scripts" / "backup_geo_recovery_drill.py"
+    adapter = Path(__file__).parents[2] / "scripts" / "backup_local_geo_adapter.py"
+    monkeypatch.setenv("BACKUP_GEO_COPY_COMMAND", f'"{sys.executable}" "{adapter}" copy')
+    monkeypatch.setenv("BACKUP_GEO_VERIFY_COMMAND", f'"{sys.executable}" "{adapter}" verify')
+    monkeypatch.delenv("BACKUP_GEO_FETCH_COMMAND", raising=False)
+    result = subprocess.run(
+        [sys.executable, str(drill), "--require-remote", "--report", str(tmp_path / "geo.json")],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "BACKUP_GEO_FETCH_COMMAND" in result.stderr
+
+
+def test_geo_protocol_rejects_remote_digest_mismatch(tmp_path, monkeypatch):
+    drill = Path(__file__).parents[2] / "scripts" / "backup_geo_recovery_drill.py"
+    adapter = Path(__file__).parents[2] / "scripts" / "backup_local_geo_adapter.py"
+    wrong_digest = "0" * 64
+    verifier = tmp_path / "wrong_verifier.py"
+    verifier.write_text(f'print("{wrong_digest}")\n', encoding="utf-8")
+    monkeypatch.setenv("BACKUP_GEO_COPY_COMMAND", f'"{sys.executable}" "{adapter}" copy')
+    monkeypatch.setenv("BACKUP_GEO_VERIFY_COMMAND", f'"{sys.executable}" "{verifier}"')
+    monkeypatch.setenv("BACKUP_GEO_FETCH_COMMAND", f'"{sys.executable}" "{adapter}" fetch')
+    result = subprocess.run(
+        [sys.executable, str(drill), "--require-remote", "--report", str(tmp_path / "geo.json")],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "remote backup digest mismatch" in result.stderr
+
+
+def test_geo_protocol_preserves_windows_command_paths(monkeypatch):
+    from scripts import backup_geo_recovery_drill
+
+    monkeypatch.setattr(backup_geo_recovery_drill.os, "name", "nt")
+    assert backup_geo_recovery_drill._split_command(
+        '"C:\\Program Files\\Python\\python.exe" scripts\\adapter.py copy'
+    ) == ["C:\\Program Files\\Python\\python.exe", "scripts\\adapter.py", "copy"]

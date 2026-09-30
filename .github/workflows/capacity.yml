@@ -77,15 +77,13 @@ jobs:
                 fi
               fi
             done
-            if [ -n "$previous_run" ]; then
-              python scripts/quality_trend.py \
-                --reports "prior-capacity/$previous_run/capacity-report.json" artifacts/capacity-report.json \
-                --report artifacts/capacity-trend.json
-            else
-              python scripts/quality_trend.py \
-                --allow-single --reports artifacts/capacity-report.json \
-                --report artifacts/capacity-trend.json
+            if [ -z "$previous_run" ]; then
+              echo "No previous capacity artifact found; trend evidence is insufficient and the gate must fail."
+              exit 1
             fi
+            python scripts/quality_trend.py \
+              --reports "prior-capacity/$previous_run/capacity-report.json" artifacts/capacity-report.json \
+              --report artifacts/capacity-trend.json
           fi
       - name: Upload capacity evidence
         if: always()

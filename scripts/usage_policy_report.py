@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta, timezone
 import json
 import sys
 from pathlib import Path
@@ -12,11 +13,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-agent"))
 from app.core.usage_policy import recommend_policy  # noqa: E402
 
 
-def run(usage: dict, config: dict) -> dict:
+def run(usage: dict, config: dict, now: datetime | None = None) -> dict:
     required = {"captured_at", "llm_daily_cost_usd", "storage_usage_ratio", "trace_usage_ratio", "session_idle_ratio", "knowledge_base_usage_ratio", "learning_observations", "retention_rate"}
     missing = required - usage.keys()
     if missing:
         raise ValueError(f"usage snapshot is missing measured fields: {sorted(missing)}")
+    try:
+        captured_at = datetime.fromisoformat(str(usage["captured_at"]).replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("captured_at must be an ISO-8601 timestamp") from error
+    if captured_at.tzinfo is None:
+        raise ValueError("captured_at must include a timezone")
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        raise ValueError("current time must include a timezone")
+    if captured_at > current + timedelta(minutes=5):
+        raise ValueError("usage snapshot captured_at is in the future")
+    if int(usage.get("sample_count", 0)) < 1:
+        raise ValueError("usage snapshot must contain a positive sample_count")
+    if float(usage.get("measurement_window_seconds", 0)) <= 0:
+        raise ValueError("usage snapshot must contain a positive measurement_window_seconds")
+    window_seconds = float(usage["measurement_window_seconds"])
+    if current - captured_at > timedelta(seconds=window_seconds + 300):
+        raise ValueError("usage snapshot is older than its measurement window")
+    evidence = usage.get("evidence")
+    if not isinstance(evidence, dict) or not evidence:
+        raise ValueError("usage snapshot must identify measured evidence sources")
     if not 0 <= float(usage["retention_rate"]) <= 1:
         raise ValueError("retention_rate must be within [0, 1]")
     for field in ("storage_usage_ratio", "trace_usage_ratio", "session_idle_ratio", "knowledge_base_usage_ratio"):
@@ -24,6 +46,9 @@ def run(usage: dict, config: dict) -> dict:
             raise ValueError(f"{field} must be within [0, 1]")
     return {
         "captured_at": usage["captured_at"],
+        "sample_count": int(usage["sample_count"]),
+        "measurement_window_seconds": window_seconds,
+        "evidence": evidence,
         "source": usage.get("source", "operator-measured-snapshot"),
         "policy": recommend_policy(usage, config),
         "current_settings": {
