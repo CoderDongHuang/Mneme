@@ -202,6 +202,22 @@ def test_geo_protocol_rejects_remote_digest_mismatch(tmp_path, monkeypatch):
     assert "remote backup digest mismatch" in result.stderr
 
 
+def test_geo_protocol_rejects_partial_remote_configuration(tmp_path, monkeypatch):
+    drill = Path(__file__).parents[2] / "scripts" / "backup_geo_recovery_drill.py"
+    adapter = Path(__file__).parents[2] / "scripts" / "backup_local_geo_adapter.py"
+    monkeypatch.setenv("BACKUP_GEO_COPY_COMMAND", f'"{sys.executable}" "{adapter}" copy')
+    monkeypatch.delenv("BACKUP_GEO_VERIFY_COMMAND", raising=False)
+    monkeypatch.setenv("BACKUP_GEO_FETCH_COMMAND", f'"{sys.executable}" "{adapter}" fetch')
+    result = subprocess.run(
+        [sys.executable, str(drill), "--report", str(tmp_path / "geo.json")],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "must be configured together" in result.stderr
+
+
 def test_geo_protocol_preserves_windows_command_paths(monkeypatch):
     from scripts import backup_geo_recovery_drill
 

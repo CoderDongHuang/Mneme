@@ -5,11 +5,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 
 def _number(value: object) -> float | None:
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        number = float(value)
+        return number if math.isfinite(number) else None
+    return None
 
 
 MODEL_METRICS = {
