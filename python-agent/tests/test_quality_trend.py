@@ -49,6 +49,16 @@ def test_trend_rejects_missing_required_metric():
     assert "required metric p95_latency_ms is missing" in result["failures"]
 
 
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -float("inf")])
+def test_trend_rejects_non_finite_metrics(invalid):
+    result = MODULE.evaluate(
+        [report(100, 10), report(invalid, 10)],
+        {"p95_latency_ms": 25, "max_recovery_seconds": 10, "errors": 0},
+    )
+    assert result["status"] == "failed"
+    assert "required metric p95_latency_ms is missing" in result["failures"]
+
+
 def test_real_model_trend_requires_same_dataset_and_actual_scores():
     base = {"dataset": {"version": "v1"}, "quality_gate": {"status": "passed"},
             "real_llm_evaluation": {"status": "completed", "faithfulness": 0.9, "answer_relevance": 0.9}}

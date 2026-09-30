@@ -35,6 +35,49 @@ def test_build_snapshot_uses_aggregate_ratios_and_evidence():
     assert result["evidence"]["mysql"]["aggregates_only"] is True
 
 
+def test_build_snapshot_does_not_count_registered_users_as_usage():
+    aggregates = {
+        "users": 12,
+        "active_sessions": 0,
+        "traces": 0,
+        "learning_observations": 0,
+        "llm_request_series": 0,
+        "llm_daily_cost_usd": 0,
+        "max_storage_bytes": 0,
+        "max_knowledge_bases": 0,
+        "idle_sessions": 0,
+        "retention_rate": 0,
+        "llm_cost_key": "mneme:llm:cost:2026-09-30",
+        "llm_cost_present": False,
+    }
+    with pytest.raises(ValueError, match="no measurable samples"):
+        MODULE.build_snapshot(
+            aggregates,
+            {
+                "tenant_storage_quota_bytes": 1024,
+                "tenant_knowledge_base_quota": 10,
+                "trace_row_quota": 100,
+                "measurement_window_seconds": 60,
+                "metrics_url": "http://metrics",
+            },
+            "2026-09-30T00:00:00+00:00",
+        )
+
+
+def test_build_snapshot_does_not_count_cumulative_request_series_as_windowed_usage():
+    aggregates = {
+        "users": 12, "active_sessions": 0, "traces": 0, "learning_observations": 0,
+        "llm_request_series": 3, "llm_daily_cost_usd": 1, "max_storage_bytes": 0,
+        "max_knowledge_bases": 0, "idle_sessions": 0, "retention_rate": 0,
+        "llm_cost_key": "key", "llm_cost_present": True,
+    }
+    with pytest.raises(ValueError, match="no measurable samples"):
+        MODULE.build_snapshot(aggregates, {
+            "tenant_storage_quota_bytes": 1, "tenant_knowledge_base_quota": 1,
+            "trace_row_quota": 1, "measurement_window_seconds": 60, "metrics_url": "x",
+        }, "2026-09-30T00:00:00+00:00")
+
+
 def test_build_snapshot_rejects_empty_observation_set():
     aggregates = {
         "users": 0, "active_sessions": 0, "idle_sessions": 0, "max_storage_bytes": 0,

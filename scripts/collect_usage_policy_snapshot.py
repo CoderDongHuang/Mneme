@@ -19,7 +19,9 @@ def build_snapshot(aggregates: dict[str, float], settings: dict[str, float], cap
     active_sessions = int(aggregates["active_sessions"])
     traces = int(aggregates["traces"])
     observations = int(aggregates["learning_observations"])
-    sample_count = max(users, active_sessions, traces, observations)
+    # Only windowed observations support a windowed policy recommendation.
+    # Prometheus request counters are cumulative since process start.
+    sample_count = max(active_sessions, traces, observations)
     if sample_count < 1:
         raise ValueError("usage collection found no measurable samples")
     storage_quota = max(1.0, settings["tenant_storage_quota_bytes"])
@@ -87,14 +89,15 @@ def collect(args: argparse.Namespace) -> tuple[dict, dict]:
         users = query_scalar(cursor, "SELECT COUNT(*) FROM user")
         active_sessions = query_scalar(
             cursor,
-            "SELECT COUNT(*) FROM auth_session WHERE revoked_at IS NULL AND expires_at > %s",
-            (captured.replace(tzinfo=None),),
+            "SELECT COUNT(*) FROM auth_session WHERE revoked_at IS NULL AND expires_at > %s "
+            "AND last_seen_at >= %s",
+            (captured.replace(tzinfo=None), window_start),
         )
         idle_sessions = query_scalar(
             cursor,
             "SELECT COUNT(*) FROM auth_session WHERE revoked_at IS NULL AND expires_at > %s "
-            "AND last_seen_at < %s",
-            (captured.replace(tzinfo=None), idle_before),
+            "AND last_seen_at >= %s AND last_seen_at < %s",
+            (captured.replace(tzinfo=None), window_start, idle_before),
         )
         max_storage = query_scalar(
             cursor,
@@ -138,7 +141,9 @@ def collect(args: argparse.Namespace) -> tuple[dict, dict]:
     with urlopen(args.metrics_url, timeout=10) as response:
         families = list(text_string_to_metric_families(response.read().decode("utf-8")))
     llm_request_series = sum(
-        len(family.samples) for family in families if family.name == "mneme_llm_requests"
+        1 for family in families if family.name == "mneme_llm_requests"
+        for sample in family.samples
+        if sample.name == "mneme_llm_requests_total" and sample.value > 0
     )
     aggregates = {
         "users": users, "active_sessions": active_sessions, "idle_sessions": idle_sessions,

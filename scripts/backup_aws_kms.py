@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 
 def main() -> int:
@@ -20,28 +21,40 @@ def main() -> int:
         print(f"BACKUP_KMS_KEY_ID_{version.upper().replace('-', '_')} is required", file=sys.stderr)
         return 2
     payload = base64.b64decode(sys.stdin.buffer.read(), validate=True)
-    command = [
-        "aws", "kms", "encrypt" if action == "wrap" else "decrypt",
-        "--key-id", key_id,
-        "--cli-binary-format", "raw-in-base64-out",
-        "--plaintext" if action == "wrap" else "--ciphertext-blob",
-        "fileb:///dev/stdin",
-        "--output", "json",
-    ]
-    result = subprocess.run(
-        command, input=payload, capture_output=True, check=False, timeout=30
-    )
-    if result.returncode:
-        print(result.stderr.decode(errors="replace")[-500:], file=sys.stderr)
-        return result.returncode
-    field = "CiphertextBlob" if action == "wrap" else "Plaintext"
-    data = json.loads(result.stdout)
-    output = data.get(field)
-    if not isinstance(output, str):
-        print(f"KMS did not return {field}", file=sys.stderr)
-        return 2
-    sys.stdout.write(output)
-    return 0
+    # Use a temporary file instead of /dev/stdin so the adapter works on
+    # Windows as well as Unix hosts. The file is removed before returning.
+    with tempfile.NamedTemporaryFile(prefix="mneme-kms-", suffix=".bin", delete=False) as handle:
+        handle.write(payload)
+        input_path = handle.name
+    try:
+        command = [
+            "aws", "kms", "encrypt" if action == "wrap" else "decrypt",
+            "--key-id", key_id,
+            "--cli-binary-format", "raw-in-base64-out",
+            "--plaintext" if action == "wrap" else "--ciphertext-blob",
+            f"fileb://{input_path}",
+            "--output", "json",
+        ]
+        result = subprocess.run(command, capture_output=True, check=False, timeout=30)
+        if result.returncode:
+            print(result.stderr.decode(errors="replace")[-500:], file=sys.stderr)
+            return result.returncode
+        field = "CiphertextBlob" if action == "wrap" else "Plaintext"
+        data = json.loads(result.stdout)
+        output = data.get(field)
+        if not isinstance(output, str):
+            print(f"KMS did not return {field}", file=sys.stderr)
+            return 2
+        sys.stdout.write(output)
+        return 0
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
+        print(f"KMS command failed: {error}", file=sys.stderr)
+        return 1
+    finally:
+        try:
+            os.unlink(input_path)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

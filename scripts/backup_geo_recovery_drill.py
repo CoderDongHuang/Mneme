@@ -85,6 +85,12 @@ def main() -> int:
         parser.error("--require-remote requires BACKUP_GEO_VERIFY_COMMAND")
     if args.require_remote and not fetch_command:
         parser.error("--require-remote requires BACKUP_GEO_FETCH_COMMAND")
+    configured_remote = [copy_command, verify_command, fetch_command]
+    if any(configured_remote) and not all(configured_remote):
+        parser.error(
+            "BACKUP_GEO_COPY_COMMAND, BACKUP_GEO_VERIFY_COMMAND, and "
+            "BACKUP_GEO_FETCH_COMMAND must be configured together"
+        )
 
     with tempfile.TemporaryDirectory(prefix="mneme-geo-recovery-") as temporary:
         root = Path(temporary)
