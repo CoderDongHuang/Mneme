@@ -89,13 +89,15 @@ jobs:
             mode=--bootstrap
             echo "Collecting verified capacity baseline; trend status remains insufficient_history."
           else
-            runs=$(gh run list --workflow capacity.yml --branch "$HISTORY_BRANCH" --status completed --limit 30 --json databaseId --jq '.[].databaseId')
+            runs=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/capacity.yml/runs" \
+              -f branch="$HISTORY_BRANCH" -f status=completed -f per_page=30 --jq '.workflow_runs[].id')
+            echo "Completed capacity history run IDs: $runs"
             for run in $runs; do
               if [ "$run" = "$GITHUB_RUN_ID" ]; then continue; fi
               mkdir -p "prior-capacity/$run"
               if gh run download "$run" -n capacity-and-resilience -D "prior-capacity/$run" \
-                && test -s "prior-capacity/$run/capacity-report.json"; then
-                reports+=("prior-capacity/$run/capacity-report.json")
+                && test -s "prior-capacity/$run/artifacts/capacity-report.json"; then
+                reports+=("prior-capacity/$run/artifacts/capacity-report.json")
               fi
             done
           fi

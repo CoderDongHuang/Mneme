@@ -165,7 +165,7 @@ class ChatRequestSizeMiddleware:
 
 
 _rate_limit_store: dict[str, dict[str, float]] = defaultdict(
-    lambda: {"tokens": 60.0, "last": time.monotonic()}
+    lambda: {"tokens": settings.internal_rate_limit_burst, "last": time.monotonic()}
 )
 
 
@@ -176,7 +176,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         client = request.client.host if request.client else "unknown"
         bucket = _rate_limit_store[client]
         now = time.monotonic()
-        bucket["tokens"] = min(60.0, bucket["tokens"] + (now - bucket["last"]))
+        bucket["tokens"] = min(
+            settings.internal_rate_limit_burst,
+            bucket["tokens"] + (now - bucket["last"]) * settings.internal_rate_limit_per_second,
+        )
         bucket["last"] = now
         if bucket["tokens"] < 1:
             return JSONResponse(

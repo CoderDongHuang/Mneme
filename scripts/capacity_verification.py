@@ -150,6 +150,7 @@ def load_test(urls: list[str], requests: int, concurrency: int, duration_seconds
     started = time.monotonic()
     latencies: list[float] = []
     errors = 0
+    error_samples: list[str] = []
 
     def one(index: int) -> float:
         request_started = time.perf_counter()
@@ -159,29 +160,43 @@ def load_test(urls: list[str], requests: int, concurrency: int, duration_seconds
             raise CapacityVerificationError(f"retrieval returned no chunks: {url}")
         return (time.perf_counter() - request_started) * 1000
 
-    submitted = 0
-    batches = max(1, math.ceil(requests / (concurrency * 2)))
-    batch_interval = max(0.0, duration_seconds / batches)
+    def collect(futures):
+        nonlocal errors
+        for future in futures:
+            try:
+                latencies.append(future.result())
+            except Exception as error:
+                errors += 1
+                if len(error_samples) < 10:
+                    error_samples.append(str(error))
+
+    interval = duration_seconds / requests
     with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
-        while submitted < requests:
-            batch_started = time.monotonic()
-            batch_size = min(concurrency * 2, requests - submitted)
-            futures = [pool.submit(one, submitted + index) for index in range(batch_size)]
-            submitted += batch_size
-            for future in futures:
-                try:
-                    latencies.append(future.result())
-                except Exception:
-                    errors += 1
-            remaining = batch_interval - (time.monotonic() - batch_started)
+        pending = set()
+        for index in range(requests):
+            remaining = started + index * interval - time.monotonic()
             if remaining > 0:
                 pause(remaining)
+            if len(pending) >= concurrency:
+                done, pending = concurrent.futures.wait(
+                    pending, timeout=remaining_timeout(30),
+                    return_when=concurrent.futures.FIRST_COMPLETED,
+                )
+                if not done:
+                    raise CapacityVerificationError("load workers did not complete within the request timeout")
+                collect(done)
+            pending.add(pool.submit(one, index))
+        collect(pending)
+        remaining = started + duration_seconds - time.monotonic()
+        if remaining > 0:
+            pause(remaining)
     if not latencies:
         raise CapacityVerificationError("load test produced no successful requests")
     return {
         "requested": requests,
         "completed": len(latencies),
         "errors": errors,
+        "error_samples": error_samples,
         "concurrency": concurrency,
         "target_duration_seconds": duration_seconds,
         "duration_seconds": round(time.monotonic() - started, 2),
@@ -282,6 +297,8 @@ def run(args: argparse.Namespace) -> dict:
         "runtime_timeout_seconds": runtime_timeout,
         "inputs": {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
                    for path in [*args.compose_file, "scripts/capacity_verification.py",
+                                "python-agent/app/api/knowledge.py", "python-agent/main.py",
+                                "python-agent/app/core/config.py",
                                 *(f"test-fixtures/{name}" for name in
                                   ("rag-fixture.txt", "rag-fixture.md", "rag-fixture.docx"))]},
     }

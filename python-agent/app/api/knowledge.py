@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.metrics import INPUT_REJECTIONS
@@ -196,7 +197,8 @@ async def task_status(task_id: str) -> dict:
 async def search(
     query: str, user_id: str, kb_id: str, top_k: int = 5
 ) -> RetrieverResult:
-    return RetrieverResult(chunks=retrieve(user_id, kb_id, query, top_k), query=query)
+    chunks = await run_in_threadpool(retrieve, user_id, kb_id, query, top_k)
+    return RetrieverResult(chunks=chunks, query=query)
 
 
 @router.post("/quiz/generate")

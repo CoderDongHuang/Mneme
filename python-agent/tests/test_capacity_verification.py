@@ -31,6 +31,26 @@ def test_percentile_is_deterministic():
     assert MODULE.percentile([10, 20, 30, 40], 0.95) == 40
 
 
+def test_load_paces_individual_requests_and_retains_errors(monkeypatch):
+    import time
+
+    starts = []
+
+    def request(_url):
+        starts.append(time.monotonic())
+        if len(starts) == 2:
+            raise MODULE.CapacityVerificationError("HTTP 429")
+        return {"chunks": [1]}
+
+    monkeypatch.setattr(MODULE, "request_json", request)
+    result = MODULE.load_test(["http://one"], 3, 2, 0.15)
+    assert result["completed"] == 2
+    assert result["errors"] == 1
+    assert result["error_samples"] == ["HTTP 429"]
+    assert starts[-1] - starts[0] >= 0.08
+    assert result["duration_seconds"] >= 0.15
+
+
 def test_run_fails_capacity_thresholds(monkeypatch):
     monkeypatch.setattr(MODULE, "wait_http", lambda *_args: None)
     monkeypatch.setattr(MODULE.Path, "read_bytes", lambda *_args: b"fixture")

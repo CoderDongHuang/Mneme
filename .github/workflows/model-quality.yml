@@ -156,7 +156,9 @@ jobs:
         run: |
           history=()
           if [ "$BOOTSTRAP_BASELINE" != true ]; then
-            runs=$(gh run list --workflow model-quality.yml --branch "$HISTORY_BRANCH" --status completed --limit 30 --json databaseId --jq '.[].databaseId')
+            runs=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/model-quality.yml/runs" \
+              -f branch="$HISTORY_BRANCH" -f status=completed -f per_page=30 --jq '.workflow_runs[].id')
+            echo "Completed model history run IDs: $runs"
             for run in $runs; do
               if [ "$run" = "$GITHUB_RUN_ID" ]; then continue; fi
               mkdir -p "prior-model/$run"
