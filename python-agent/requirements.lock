@@ -103,8 +103,8 @@ uvicorn[standard]==0.30.6 \
     --hash=sha256:65fd46fe3fda5bdc1b03b94eb634923ff18cd35b2f084813ea79d1f103f711b5
 uvloop==0.22.1 \
     --hash=sha256:56a2d1fae65fd82197cb8c53c367310b3eabe1bbb9fb5a04d28e3e3520e4f702
-pypdf==6.16.1 \
-    --hash=sha256:63fec31c4092ae50b6729beedcb469055b60d20c834bde1c402df241f371f644
+pypdf==6.19.0 \
+    --hash=sha256:7e5d6e730e7dae87d560a2cee218b852f6498c8be61966f3cd02ead971e48d14
 opentelemetry-instrumentation-asgi==0.65b0 \
     --hash=sha256:3a845a8ebd1c4ef0d8263401e6545f5b219b2feee612090d50f578a87e71fd65
 PyMuPDF==1.26.0 \
