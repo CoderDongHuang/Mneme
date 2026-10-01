@@ -39,5 +39,5 @@ redis==5.0.1
 mysql-connector-python==9.4.0
 
 # Internal JWT validation utilities
-PyJWT==2.14.0
+PyJWT==2.15.0
 cryptography==50.0.1

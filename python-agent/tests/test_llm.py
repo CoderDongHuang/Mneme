@@ -176,3 +176,67 @@ def test_budget_status_reads_shared_counter_and_reports_outage(monkeypatch):
     client._budget_redis = Down()
     assert client.budget_status()["status"] == "unavailable"
     assert client.budget_status()["daily_spend_usd"] is None
+
+
+@pytest.mark.parametrize("mode", ["sync", "async", "stream"])
+def test_budget_output_limit_is_forwarded_to_provider(monkeypatch, mode):
+    monkeypatch.setattr(llm_module, "settings", SimpleNamespace(
+        deterministic_test_llm=False, llm_daily_budget_usd=1.0,
+        llm_primary_input_cost_per_million=1.0,
+        llm_primary_output_cost_per_million=1.0,
+        llm_default_max_output_tokens=123,
+    ))
+    received = []
+
+    class Provider:
+        def invoke(self, messages, **kwargs):
+            received.append(kwargs)
+            return "answer"
+
+        async def ainvoke(self, messages, **kwargs):
+            return self.invoke(messages, **kwargs)
+
+        async def astream(self, messages, **kwargs):
+            yield self.invoke(messages, **kwargs)
+
+    client = llm_module.FallbackLLM()
+    monkeypatch.setattr(client, "_selected", lambda: (Provider(), False))
+    if mode == "sync":
+        assert client.invoke(["hello"]) == "answer"
+    elif mode == "async":
+        assert asyncio.run(client.ainvoke(["hello"])) == "answer"
+    else:
+        async def collect():
+            return [chunk async for chunk in client.astream(["hello"])]
+        assert asyncio.run(collect()) == ["answer"]
+    assert received == [{"max_tokens": 123}]
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -1])
+def test_budget_rejects_invalid_limit(monkeypatch, value):
+    monkeypatch.setattr(llm_module, "settings", SimpleNamespace(llm_daily_budget_usd=value))
+    with pytest.raises(RuntimeError, match="finite and nonnegative"):
+        llm_module.FallbackLLM()._reserve_budget(["hello"], {}, False)
+
+
+def test_budget_rejects_nonfinite_prices_and_counter(monkeypatch):
+    monkeypatch.setattr(llm_module, "settings", SimpleNamespace(
+        llm_daily_budget_usd=1.0, llm_primary_input_cost_per_million=float("nan"),
+        llm_primary_output_cost_per_million=1.0, redis_host="redis",
+    ))
+    client = llm_module.FallbackLLM()
+    with pytest.raises(RuntimeError):
+        client._reserve_budget(["hello"], {}, False)
+    llm_module.settings.llm_primary_input_cost_per_million = 1.0
+
+    class InvalidCounter:
+        def eval(self, *args):
+            return "nan"
+
+        def get(self, *args):
+            return "nan"
+
+    client._budget_redis = InvalidCounter()
+    with pytest.raises(RuntimeError):
+        client._reserve_budget(["hello"], {}, False)
+    assert client.budget_status()["status"] == "unavailable"

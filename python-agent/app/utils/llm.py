@@ -1,3 +1,4 @@
+import math
 import threading
 import time
 from collections import deque
@@ -190,21 +191,30 @@ class FallbackLLM:
         text = "\n".join(str(getattr(message, "content", message)) for message in messages)
         return max(1, len(text) // 4)
 
+    @staticmethod
+    def _budget_limit() -> float:
+        budget = float(getattr(settings, "llm_daily_budget_usd", 0))
+        if not math.isfinite(budget) or budget < 0:
+            raise RuntimeError("LLM daily budget must be finite and nonnegative")
+        return budget
+
     def _reserve_budget(self, messages: Any, kwargs: dict[str, Any], using_fallback: bool) -> None:
-        budget = max(0.0, float(getattr(settings, "llm_daily_budget_usd", 0)))
+        budget = self._budget_limit()
         if not budget or getattr(settings, "deterministic_test_llm", False):
             return
         provider = "fallback" if using_fallback else "primary"
         input_price = float(getattr(settings, f"llm_{provider}_input_cost_per_million", 0))
         output_price = float(getattr(settings, f"llm_{provider}_output_cost_per_million", 0))
         input_tokens = self._message_tokens(messages)
-        output_tokens = max(
-            1,
-            int(kwargs.get("max_tokens") or kwargs.get("max_completion_tokens") or getattr(
-                settings, "llm_default_max_output_tokens", 1024
-            )),
-        )
-        if input_price <= 0 or output_price <= 0:
+        if "max_tokens" in kwargs and "max_completion_tokens" in kwargs:
+            raise RuntimeError("configure only one output token limit")
+        token_key = "max_completion_tokens" if "max_completion_tokens" in kwargs else "max_tokens"
+        output_tokens = kwargs.get(token_key, getattr(settings, "llm_default_max_output_tokens", 1024))
+        if isinstance(output_tokens, bool) or not isinstance(output_tokens, int) or output_tokens < 1:
+            raise RuntimeError("LLM output token limit must be a positive integer")
+        # Forward the same limit reserved here to sync, async and streaming providers.
+        kwargs[token_key] = output_tokens
+        if not all(math.isfinite(price) and price > 0 for price in (input_price, output_price)):
             raise RuntimeError("启用模型日预算时必须配置正数的输入和输出单价")
         estimated = input_tokens / 1_000_000 * input_price + output_tokens / 1_000_000 * output_price
         day = datetime.now(timezone.utc).date().isoformat()
@@ -235,6 +245,8 @@ class FallbackLLM:
                         estimated,
                         budget,
                     ))
+                    if not math.isfinite(total):
+                        raise ValueError("budget counter is not finite")
                 except Exception as error:
                     raise RuntimeError("模型预算计数服务不可用，调用已拒绝") from error
                 if total < 0:
@@ -251,7 +263,7 @@ class FallbackLLM:
         LLM_ESTIMATED_COST.labels(provider).inc(estimated)
 
     def budget_status(self) -> dict[str, object]:
-        budget = max(0.0, float(getattr(settings, "llm_daily_budget_usd", 0)))
+        budget = self._budget_limit()
         with self._lock:
             day = datetime.now(timezone.utc).date().isoformat()
             if day != self._budget_day:
@@ -272,6 +284,8 @@ class FallbackLLM:
                     self._daily_cost = float(
                         self._budget_redis.get(f"mneme:llm:cost:{day}") or 0
                     )
+                    if not math.isfinite(self._daily_cost) or self._daily_cost < 0:
+                        raise ValueError("budget counter is invalid")
                 except Exception:
                     return {
                         "daily_budget_usd": budget,
@@ -283,6 +297,7 @@ class FallbackLLM:
             return {
                 "daily_budget_usd": budget,
                 "daily_spend_usd": round(self._daily_cost, 8),
+                "cost_basis": "reservation_estimate",
                 "remaining_usd": round(max(0.0, budget - self._daily_cost), 8) if budget else None,
                 "enabled": bool(budget),
                 "status": "ready" if budget else "disabled",

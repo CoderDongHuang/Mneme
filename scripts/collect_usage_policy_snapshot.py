@@ -6,57 +6,88 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.request import urlopen
 
-def clamp_ratio(value: float) -> float:
-    return round(max(0.0, min(1.0, value)), 6)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-agent"))
+from app.core.usage_policy import finite_number, recommend_policy  # noqa: E402
 
 
-def build_snapshot(aggregates: dict[str, float], settings: dict[str, float], captured_at: str) -> dict:
-    users = int(aggregates["users"])
-    active_sessions = int(aggregates["active_sessions"])
-    traces = int(aggregates["traces"])
-    observations = int(aggregates["learning_observations"])
+def build_snapshot(aggregates: dict, settings: dict, captured_at: str) -> dict:
+    counts = {
+        field: int(finite_number(aggregates[field], field, integer=True))
+        for field in (
+            "users", "active_sessions", "idle_sessions", "trace_rows_total",
+            "trace_rows_window", "learning_observations", "max_knowledge_bases", "llm_request_series",
+        )
+    }
+    users = counts["users"]
+    active_sessions = counts["active_sessions"]
+    traces = counts["trace_rows_window"]
+    observations = counts["learning_observations"]
+    if counts["idle_sessions"] > active_sessions:
+        raise ValueError("idle_sessions cannot exceed active_sessions")
+    if traces > counts["trace_rows_total"]:
+        raise ValueError("trace_rows_window cannot exceed trace_rows_total")
+    storage_bytes = finite_number(aggregates["max_storage_bytes"], "max_storage_bytes")
+    cost = finite_number(aggregates["llm_daily_cost_usd"], "llm_daily_cost_usd")
+    retention = finite_number(aggregates["retention_rate"], "retention_rate", maximum=1)
+    if not isinstance(aggregates["llm_cost_present"], bool):
+        raise ValueError("llm_cost_present must be a boolean")
+    if not aggregates["llm_cost_present"] and cost:
+        raise ValueError("nonzero LLM cost requires a present cost counter")
+    storage_quota = finite_number(settings["tenant_storage_quota_bytes"], "tenant_storage_quota_bytes", minimum=1)
+    kb_quota = finite_number(settings["tenant_knowledge_base_quota"], "tenant_knowledge_base_quota", minimum=1, integer=True)
+    trace_quota = finite_number(settings["trace_row_quota"], "trace_row_quota", minimum=1, integer=True)
+    window = int(finite_number(settings["measurement_window_seconds"], "measurement_window_seconds", minimum=1, integer=True))
     # Only windowed observations support a windowed policy recommendation.
     # Prometheus request counters are cumulative since process start.
     sample_count = max(active_sessions, traces, observations)
     if sample_count < 1:
         raise ValueError("usage collection found no measurable samples")
-    storage_quota = max(1.0, settings["tenant_storage_quota_bytes"])
-    kb_quota = max(1.0, settings["tenant_knowledge_base_quota"])
-    trace_quota = max(1.0, settings["trace_row_quota"])
     return {
         "captured_at": captured_at,
         "source": "mneme-aggregate-collector",
         "sample_count": sample_count,
-        "measurement_window_seconds": int(settings["measurement_window_seconds"]),
-        "llm_daily_cost_usd": round(float(aggregates["llm_daily_cost_usd"]), 8),
-        "storage_usage_ratio": clamp_ratio(float(aggregates["max_storage_bytes"]) / storage_quota),
-        "trace_usage_ratio": clamp_ratio(traces / trace_quota),
-        "session_idle_ratio": clamp_ratio(
-            float(aggregates["idle_sessions"]) / active_sessions if active_sessions else 0.0
+        "measurement_window_seconds": window,
+        "environment": settings.get("environment", "unspecified"),
+        "cost_scope": settings.get("cost_scope"),
+        "cost_period_start": aggregates.get("cost_period_start"),
+        "cost_period_end": aggregates.get("cost_period_end"),
+        "llm_daily_cost_usd": cost,
+        "storage_usage_ratio": round(storage_bytes / storage_quota, 6),
+        "trace_usage_ratio": round(counts["trace_rows_total"] / trace_quota, 6),
+        "session_idle_ratio": round(
+            counts["idle_sessions"] / active_sessions if active_sessions else 0.0, 6,
         ),
-        "knowledge_base_usage_ratio": clamp_ratio(
-            float(aggregates["max_knowledge_bases"]) / kb_quota
+        "knowledge_base_usage_ratio": round(
+            counts["max_knowledge_bases"] / kb_quota, 6,
         ),
         "learning_observations": observations,
-        "retention_rate": clamp_ratio(float(aggregates["retention_rate"])),
+        "retention_rate": retention,
         "evidence": {
             "mysql": {
                 "aggregates_only": True,
                 "users": users,
                 "active_sessions": active_sessions,
-                "trace_rows": traces,
+                "trace_rows": counts["trace_rows_total"],
+                "trace_rows_total": counts["trace_rows_total"],
+                "trace_rows_window": traces,
+                "idle_sessions": counts["idle_sessions"],
+                "learning_observations": observations,
+                "trace_row_quota": trace_quota,
+                "trace_occupancy_basis": "all_retained_rows",
             },
             "redis": {
                 "daily_cost_key": aggregates["llm_cost_key"],
-                "value_present": bool(aggregates["llm_cost_present"]),
+                "value_present": aggregates["llm_cost_present"],
+                "cost_basis": "reservation_estimate",
             },
             "prometheus": {
                 "scrape_url": settings["metrics_url"],
-                "llm_request_series": int(aggregates["llm_request_series"]),
+                "llm_request_series": counts["llm_request_series"],
             },
         },
     }
@@ -69,13 +100,29 @@ def query_scalar(cursor, sql: str, params: tuple = ()) -> float:
 
 
 def collect(args: argparse.Namespace) -> tuple[dict, dict]:
+    # Validate operator settings before opening any external connections.
+    window_seconds = int(finite_number(args.window_seconds, "window_seconds", minimum=1, integer=True))
+    idle_seconds = finite_number(args.idle_seconds, "idle_seconds", minimum=1, maximum=window_seconds)
+    finite_number(args.trace_row_quota, "trace_row_quota", minimum=1, integer=True)
+    config = {
+        "session_ttl_hours": args.session_ttl_hours,
+        "agent_trace_retention_days": args.trace_retention_days,
+        "tenant_storage_quota_mb": args.tenant_storage_quota_mb,
+        "tenant_knowledge_base_quota": args.tenant_knowledge_base_quota,
+        "llm_daily_budget_usd": args.llm_daily_budget_usd,
+    }
+    recommend_policy({}, config)
+    captured = datetime.now(timezone.utc)
+    try:
+        window_start = (captured - timedelta(seconds=window_seconds)).replace(tzinfo=None)
+        idle_before = (captured - timedelta(seconds=idle_seconds)).replace(tzinfo=None)
+    except OverflowError as error:
+        raise ValueError("window_seconds is too large for a timestamp interval") from error
+
     import mysql.connector
     from prometheus_client.parser import text_string_to_metric_families
     from redis import Redis
 
-    captured = datetime.now(timezone.utc)
-    window_start = (captured - timedelta(seconds=args.window_seconds)).replace(tzinfo=None)
-    idle_before = (captured - timedelta(seconds=args.idle_seconds)).replace(tzinfo=None)
     connection = mysql.connector.connect(
         host=args.mysql_host,
         port=args.mysql_port,
@@ -90,8 +137,8 @@ def collect(args: argparse.Namespace) -> tuple[dict, dict]:
         active_sessions = query_scalar(
             cursor,
             "SELECT COUNT(*) FROM auth_session WHERE revoked_at IS NULL AND expires_at > %s "
-            "AND last_seen_at >= %s",
-            (captured.replace(tzinfo=None), window_start),
+            "AND last_seen_at >= %s AND last_seen_at < %s",
+            (captured.replace(tzinfo=None), window_start, captured.replace(tzinfo=None)),
         )
         idle_sessions = query_scalar(
             cursor,
@@ -111,19 +158,21 @@ def collect(args: argparse.Namespace) -> tuple[dict, dict]:
             "SELECT COALESCE(MAX(total_kbs),0) FROM (SELECT user_id, COUNT(*) total_kbs "
             "FROM knowledge_base WHERE status='active' GROUP BY user_id) kb_by_user",
         )
-        traces = query_scalar(
-            cursor, "SELECT COUNT(*) FROM agent_trace WHERE created_at >= %s", (window_start,)
+        trace_rows_window = query_scalar(
+            cursor, "SELECT COUNT(*) FROM agent_trace WHERE created_at >= %s AND created_at < %s",
+            (window_start, captured.replace(tzinfo=None)),
         )
+        trace_rows_total = query_scalar(cursor, "SELECT COUNT(*) FROM agent_trace")
         observations = query_scalar(
             cursor,
-            "SELECT COUNT(*) FROM learning_outcome_event WHERE created_at >= %s",
-            (window_start,),
+            "SELECT COUNT(*) FROM learning_outcome_event WHERE created_at >= %s AND created_at < %s",
+            (window_start, captured.replace(tzinfo=None)),
         )
         retention = query_scalar(
             cursor,
             "SELECT COALESCE(AVG(CASE WHEN success THEN 1.0 ELSE 0.0 END),0) "
-            "FROM learning_outcome_event WHERE created_at >= %s",
-            (window_start,),
+            "FROM learning_outcome_event WHERE created_at >= %s AND created_at < %s",
+            (window_start, captured.replace(tzinfo=None)),
         )
         cursor.close()
     finally:
@@ -135,8 +184,14 @@ def collect(args: argparse.Namespace) -> tuple[dict, dict]:
         host=args.redis_host, port=args.redis_port, db=args.redis_db,
         password=args.redis_password or None, socket_timeout=5, decode_responses=True,
     )
-    redis.ping()
-    raw_cost = redis.get(cost_key)
+    try:
+        redis.ping()
+        raw_cost = redis.get(cost_key)
+        cost_captured = datetime.now(timezone.utc)
+    finally:
+        redis.close()
+    if cost_captured.date() != captured.date():
+        raise ValueError("UTC day changed during collection; retry for a consistent cost interval")
 
     with urlopen(args.metrics_url, timeout=10) as response:
         families = list(text_string_to_metric_families(response.read().decode("utf-8")))
@@ -147,17 +202,14 @@ def collect(args: argparse.Namespace) -> tuple[dict, dict]:
     )
     aggregates = {
         "users": users, "active_sessions": active_sessions, "idle_sessions": idle_sessions,
-        "max_storage_bytes": max_storage, "max_knowledge_bases": max_kbs, "traces": traces,
+        "max_storage_bytes": max_storage, "max_knowledge_bases": max_kbs,
+        "trace_rows_total": trace_rows_total, "trace_rows_window": trace_rows_window,
         "learning_observations": observations, "retention_rate": retention,
-        "llm_daily_cost_usd": float(raw_cost or 0), "llm_cost_present": raw_cost is not None,
+        "llm_daily_cost_usd": finite_number(raw_cost if raw_cost is not None else 0, "llm_daily_cost_usd"),
+        "llm_cost_present": raw_cost is not None,
         "llm_cost_key": cost_key, "llm_request_series": llm_request_series,
-    }
-    config = {
-        "session_ttl_hours": args.session_ttl_hours,
-        "agent_trace_retention_days": args.trace_retention_days,
-        "tenant_storage_quota_mb": args.tenant_storage_quota_mb,
-        "tenant_knowledge_base_quota": args.tenant_knowledge_base_quota,
-        "llm_daily_budget_usd": args.llm_daily_budget_usd,
+        "cost_period_start": captured.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(),
+        "cost_period_end": cost_captured.isoformat(),
     }
     snapshot = build_snapshot(aggregates, {
         "tenant_storage_quota_bytes": args.tenant_storage_quota_mb * 1024 * 1024,
@@ -165,7 +217,11 @@ def collect(args: argparse.Namespace) -> tuple[dict, dict]:
         "trace_row_quota": args.trace_row_quota,
         "measurement_window_seconds": args.window_seconds,
         "metrics_url": args.metrics_url,
-    }, captured.isoformat())
+        "environment": args.environment,
+        "cost_scope": args.cost_scope,
+    }, cost_captured.isoformat())
+    snapshot["measurement_window_start"] = window_start.replace(tzinfo=timezone.utc).isoformat()
+    snapshot["measurement_window_end"] = captured.isoformat()
     return snapshot, config
 
 
@@ -173,6 +229,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--usage-report", type=Path, required=True)
     parser.add_argument("--config-report", type=Path, required=True)
+    parser.add_argument("--environment", choices=("production", "staging", "test", "unspecified"), default="unspecified")
+    parser.add_argument("--cost-scope", help="deployment/account/provider scope covered by the shared Redis cost key")
     parser.add_argument("--mysql-host", default=os.getenv("MYSQL_HOST", "127.0.0.1"))
     parser.add_argument("--mysql-port", type=int, default=int(os.getenv("MYSQL_PORT", "3306")))
     parser.add_argument("--mysql-database", default=os.getenv("MYSQL_DATABASE", "mneme"))
@@ -196,10 +254,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.usage_report.resolve() == args.config_report.resolve():
+        raise ValueError("usage-report and config-report must be different files")
     usage, config = collect(args)
     for path, payload in ((args.usage_report, usage), (args.config_report, config)):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     print(json.dumps({"usage_report": str(args.usage_report), "config_report": str(args.config_report), "sample_count": usage["sample_count"]}))
     return 0
 

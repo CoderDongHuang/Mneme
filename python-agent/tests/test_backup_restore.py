@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import subprocess
 import sys
 import tarfile
@@ -225,3 +226,70 @@ def test_geo_protocol_preserves_windows_command_paths(monkeypatch):
     assert backup_geo_recovery_drill._split_command(
         '"C:\\Program Files\\Python\\python.exe" scripts\\adapter.py copy'
     ) == ["C:\\Program Files\\Python\\python.exe", "scripts\\adapter.py", "copy"]
+
+
+@pytest.mark.parametrize("name", [
+    "C:/escape", "C:escape", "//server/share/file", "payload/data/files/file:stream",
+    "payload/data/files/CON.txt", "payload/data/files/aux", "payload/data/files/LPT1.log",
+    "payload/data/files/name.", "payload/data/files/name ", "payload/data/files/a\\..\\escape",
+    "payload/data/files/./file", "payload//data/files/file", "payload/data/files/evil?name",
+])
+def test_archive_rejects_unsafe_windows_and_ambiguous_paths(tmp_path, name):
+    archive = tmp_path / "unsafe.tar.gz"
+    write_raw_archive(archive, {name: b"bad", "manifest.json": b"{}"})
+    with pytest.raises(BackupError, match="unsafe archive path"):
+        verify_archive(archive)
+
+
+def test_extraction_refuses_existing_contents_without_overwriting(tmp_path):
+    archive = make_archive(tmp_path)
+    destination = tmp_path / "restored"
+    (destination / "payload/data/files").mkdir(parents=True)
+    victim = destination / "payload/data/files/note.txt"
+    victim.write_bytes(b"user data")
+    with pytest.raises(BackupError, match="empty isolated directory"):
+        extract_verified(archive, destination)
+    assert victim.read_bytes() == b"user data"
+    assert not (destination / "payload/mysql.sql").exists()
+
+
+def directory_link(link, target):
+    if os.name == "nt":
+        # Junction creation does not require the Windows symlink privilege.
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], check=True, capture_output=True)
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+@pytest.mark.parametrize("ancestor", [False, True])
+def test_extraction_rejects_destination_links_and_junction_ancestors(tmp_path, ancestor):
+    archive = make_archive(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = tmp_path / "linked"
+    directory_link(link, outside)
+    destination = link / "restore" if ancestor else link
+    with pytest.raises(BackupError, match="symlink or reparse point"):
+        extract_verified(archive, destination)
+    assert not list(outside.iterdir())
+
+
+def test_extraction_rejects_preexisting_nested_escape(tmp_path):
+    archive = make_archive(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    destination = tmp_path / "restore"
+    (destination / "payload/data").mkdir(parents=True)
+    directory_link(destination / "payload/data/files", outside)
+    with pytest.raises(BackupError, match="empty isolated directory"):
+        extract_verified(archive, destination)
+    assert not list(outside.iterdir())
+
+
+def test_restore_provider_preserves_windows_command_paths(monkeypatch):
+    from scripts import backup_restore
+
+    monkeypatch.setattr(backup_restore.os, "name", "nt")
+    assert backup_restore.split_command(
+        '"C:\\Program Files\\Python\\python.exe" "D:\\Backup Tools\\provider.py" unwrap v1'
+    ) == ["C:\\Program Files\\Python\\python.exe", "D:\\Backup Tools\\provider.py", "unwrap", "v1"]

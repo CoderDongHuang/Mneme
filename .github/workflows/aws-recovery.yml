@@ -1,0 +1,138 @@
+name: AWS envelope and geo recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      data_mode:
+        description: Recovery data (synthetic is a controlled fixture, archive is supplied backup data)
+        type: choice
+        options:
+          - controlled-synthetic
+          - actual-archive
+        default: controlled-synthetic
+        required: true
+      archive_uri:
+        description: Existing S3 backup object URI (required for actual-archive)
+        type: string
+        required: false
+      archive_version_id:
+        description: Existing S3 object version (required for actual-archive)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    name: AWS recovery (${{ inputs.data_mode }})
+    environment: aws-recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      BACKUP_PRIMARY_REGION: ${{ vars.BACKUP_PRIMARY_REGION }}
+      BACKUP_RECOVERY_REGION: ${{ vars.BACKUP_RECOVERY_REGION }}
+      BACKUP_KEY_VERSION: ${{ vars.BACKUP_KEY_VERSION }}
+      RECOVERY_KMS_KEY_ID: ${{ vars.BACKUP_RECOVERY_KMS_KEY_ID }}
+      RECOVERY_S3_PREFIX: ${{ vars.BACKUP_RECOVERY_S3_PREFIX }}
+      BACKUP_SIGNING_KEY: ${{ secrets.BACKUP_SIGNING_KEY }}
+      DATA_MODE: ${{ inputs.data_mode }}
+      ARCHIVE_URI: ${{ inputs.archive_uri }}
+      ARCHIVE_VERSION_ID: ${{ inputs.archive_version_id }}
+      AWS_PAGER: ""
+      AWS_EC2_METADATA_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python-agent/requirements.lock
+      - name: Validate explicit configuration and data selection
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in BACKUP_PRIMARY_REGION BACKUP_RECOVERY_REGION BACKUP_KEY_VERSION RECOVERY_KMS_KEY_ID RECOVERY_S3_PREFIX BACKUP_SIGNING_KEY; do
+            test -n "${!name}" || { echo "Missing $name" >&2; exit 1; }
+          done
+          test "$BACKUP_PRIMARY_REGION" != "$BACKUP_RECOVERY_REGION"
+          if [[ "$DATA_MODE" == actual-archive ]]; then
+            test -n "$ARCHIVE_URI" && test -n "$ARCHIVE_VERSION_ID"
+          elif [[ "$DATA_MODE" != controlled-synthetic || -n "$ARCHIVE_URI" || -n "$ARCHIVE_VERSION_ID" ]]; then
+            echo "Synthetic runs must not supply archive inputs" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import os, re
+          version = os.environ['BACKUP_KEY_VERSION']
+          if not re.fullmatch(r'[A-Za-z0-9_-]+', version):
+              raise SystemExit('Invalid BACKUP_KEY_VERSION')
+          name = 'BACKUP_KMS_KEY_ID_' + version.upper().replace('-', '_')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              output.write(f"{name}={os.environ['RECOVERY_KMS_KEY_ID']}\n")
+          PY
+      - name: Assume recovery role through OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_RECOVERY_ROLE_ARN }}
+          aws-region: ${{ vars.BACKUP_RECOVERY_REGION }}
+          role-session-name: mneme-recovery-${{ github.run_id }}
+      - name: Install backup dependencies
+        run: |
+          python -m pip install --require-hashes -r python-agent/requirements.lock
+          aws --version
+      - name: Fetch the selected real archive version
+        if: inputs.data_mode == 'actual-archive'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/mneme-recovery-input"
+          python - <<'PY'
+          import os, subprocess
+          from urllib.parse import urlsplit
+          from scripts.backup_aws_preflight import s3_bucket
+          uri = os.environ['ARCHIVE_URI']
+          bucket = s3_bucket(uri)
+          key = urlsplit(uri).path.lstrip('/')
+          subprocess.run([
+              'aws', 's3api', 'get-object', '--bucket', bucket, '--key', key,
+              '--version-id', os.environ['ARCHIVE_VERSION_ID'],
+              '--region', os.environ['BACKUP_PRIMARY_REGION'],
+              os.path.join(os.environ['RUNNER_TEMP'], 'mneme-recovery-input', 'backup.tar.gz'),
+          ], check=True)
+          PY
+      - name: Verify envelope and all recovered plaintext (${{ inputs.data_mode }})
+        shell: bash
+        run: |
+          set -euo pipefail
+          destination="${RECOVERY_S3_PREFIX%/}/${DATA_MODE}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/backup.tar.gz"
+          arguments=(--require-cloud --destination "$destination" --report artifacts/aws-recovery.json)
+          if [[ "$DATA_MODE" == actual-archive ]]; then
+            arguments+=(--archive "$RUNNER_TEMP/mneme-recovery-input/backup.tar.gz")
+          fi
+          python scripts/backup_geo_recovery_drill.py "${arguments[@]}"
+          python - <<'PY'
+          import json, os
+          with open('artifacts/aws-recovery.json', encoding='utf-8') as source:
+              report = json.load(source)
+          assert report['data_mode'] == os.environ['DATA_MODE']
+          assert report['cloud_verified'] and report['all_plaintext_digests_verified']
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as output:
+              output.write(f"AWS recovery data: {report['data_mode']}\n\n")
+              output.write(f"Verified {report['restored_file_count']} plaintext files in isolated extraction.\n")
+          PY
+      - name: Upload recovery evidence (${{ inputs.data_mode }})
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: aws-recovery-${{ inputs.data_mode }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/aws-recovery.json
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Remove runner input archive
+        if: always()
+        shell: bash
+        run: rm -f -- "$RUNNER_TEMP/mneme-recovery-input/backup.tar.gz"

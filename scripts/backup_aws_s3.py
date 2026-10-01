@@ -9,10 +9,15 @@ import sys
 import tempfile
 from pathlib import Path
 
+if __package__:
+    from .backup_aws_preflight import region_arguments
+else:
+    from backup_aws_preflight import region_arguments
+
 
 def _aws_copy(source: str, destination: str) -> None:
     result = subprocess.run(
-        ["aws", "s3", "cp", source, destination, "--only-show-errors"],
+        ["aws", "s3", "cp", source, destination, "--only-show-errors", *region_arguments()],
         check=False,
         capture_output=True,
         text=True,

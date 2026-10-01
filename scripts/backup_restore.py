@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import shlex
+import stat
 import subprocess
 import sys
 import tarfile
@@ -46,6 +47,13 @@ START_ORDER = ("chroma", "minio", "python-agent", "java-gateway")
 
 class BackupError(RuntimeError):
     pass
+
+
+def split_command(command: str) -> list[str]:
+    """Preserve quoted executable paths and backslashes on Windows."""
+    if os.name == "nt":
+        return [part.strip('"') for part in shlex.split(command, posix=False)]
+    return shlex.split(command)
 
 
 def _secret_bytes(value: str | bytes | None, name: str) -> bytes | None:
@@ -92,7 +100,7 @@ def _key_provider(action: str, version: str, value: bytes) -> bytes:
         raise BackupError("envelope-encrypted backup requires BACKUP_KMS_COMMAND")
     try:
         result = subprocess.run(
-            [*shlex.split(command), action, version],
+            [*split_command(command), action, version],
             input=base64.b64encode(value),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -282,9 +290,19 @@ def create_archive(
 
 
 def _validated_name(member: tarfile.TarInfo) -> str:
-    name = member.name.replace("\\", "/")
+    name = member.name.rstrip("/") if member.isdir() else member.name
     path = PurePosixPath(name)
-    if not name or path.is_absolute() or ".." in path.parts:
+    parts = name.split("/")
+    reserved = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    reserved.update(f"{prefix}{number}" for prefix in ("COM", "LPT") for number in "123456789\u00b9\u00b2\u00b3")
+    if (
+        not name or path.is_absolute()
+        or any(part in {"", ".", ".."} for part in parts)
+        or any(character in name for character in '\\<>:"|?*')
+        or any(ord(character) < 32 for character in name)
+        or any(part.endswith((".", " ")) for part in parts)
+        or any(part.split(".", 1)[0].upper() in reserved for part in parts)
+    ):
         raise BackupError(f"unsafe archive path: {member.name}")
     if member.issym() or member.islnk() or not (member.isfile() or member.isdir()):
         raise BackupError(f"unsupported archive member: {member.name}")
@@ -319,7 +337,11 @@ def verify_archive(archive: Path) -> dict:
                 raise BackupError("envelope-encrypted backup must declare encrypted payload")
             if security.get("envelope_encrypted"):
                 wrapped = security.get("wrapped_data_key")
-                if not isinstance(wrapped, str) or not security.get("key_provider"):
+                if (
+                    not isinstance(wrapped, str) or not wrapped
+                    or not isinstance(security.get("key_version"), str) or not security["key_version"]
+                    or not security.get("key_provider")
+                ):
                     raise BackupError("envelope-encrypted backup has invalid key metadata")
                 try:
                     base64.b64decode(wrapped, validate=True)
@@ -343,6 +365,7 @@ def verify_archive(archive: Path) -> dict:
                 if not isinstance(entry, dict):
                     raise BackupError("invalid backup manifest entry")
                 name = str(entry.get("path", ""))
+                _validated_name(tarfile.TarInfo(name))
                 if name in declared:
                     raise BackupError(f"duplicate manifest entry: {name}")
                 if not name.startswith(ALLOWED_FILE_PREFIXES):
@@ -369,8 +392,27 @@ def verify_archive(archive: Path) -> dict:
         raise BackupError(f"invalid backup archive: {error}") from error
 
 
+def _empty_isolated_destination(destination: Path) -> Path:
+    destination = destination.absolute()
+    # Check ancestors before resolving: resolution would hide existing links/junctions.
+    for path in (*reversed(destination.parents), destination):
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise BackupError(f"restore destination has a symlink or reparse point: {path}")
+        if not stat.S_ISDIR(info.st_mode):
+            raise BackupError(f"restore destination is not a directory: {path}")
+    if destination.exists() and any(destination.iterdir()):
+        raise BackupError("restore destination must be an empty isolated directory")
+    destination.mkdir(parents=True, exist_ok=True)
+    return destination
+
+
 def extract_verified(archive: Path, destination: Path) -> dict:
     manifest = verify_archive(archive)
+    destination = _empty_isolated_destination(destination)
     security = manifest.get("security", {})
     encryption_secret = None
     if security.get("encrypted"):
@@ -383,7 +425,6 @@ def extract_verified(archive: Path, destination: Path) -> dict:
             encryption_secret, _ = _security_keys_for_version(security.get("key_version"))
         if encryption_secret is None:
             raise BackupError("encrypted backup requires BACKUP_ENCRYPTION_KEY")
-    destination.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive, "r:gz") as bundle:
         for entry in manifest["files"]:
             name = entry["path"]
@@ -404,7 +445,7 @@ def extract_verified(archive: Path, destination: Path) -> dict:
                     raise BackupError(f"backup decryption authentication failed: {name}") from error
                 if sha256_stream(io.BytesIO(data)) != entry.get("plaintext_sha256"):
                     raise BackupError(f"plaintext checksum mismatch: {name}")
-            with target.open("wb") as output:
+            with target.open("xb") as output:
                 output.write(data)
     return manifest
 

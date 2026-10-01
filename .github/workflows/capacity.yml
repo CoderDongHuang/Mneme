@@ -3,18 +3,22 @@ name: Capacity and resilience
 on:
   workflow_dispatch:
     inputs:
+      bootstrap_baseline:
+        description: Collect a verified capacity baseline without passing a trend
+        type: boolean
+        default: false
       requests:
         description: Total requests in the load phase
         required: false
         default: "600"
       duration_seconds:
-        description: Maximum load phase duration
+        description: Minimum paced load phase duration
         required: false
         default: "120"
       fault_rounds:
-        description: Number of combined Chroma and Redis fault rounds
+        description: Fault rounds covering all five single and combined fault groups
         required: false
-        default: "3"
+        default: "5"
   schedule:
     - cron: "41 3 * * 6"
 
@@ -33,6 +37,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Validate topology
+        timeout-minutes: 12
         run: |
           docker compose -f docker-compose.scale-ci.yml config --quiet
           docker compose -f docker-compose.scale-ci.yml build
@@ -44,53 +49,65 @@ jobs:
           done
           docker compose -f docker-compose.scale-ci.yml up -d java-gateway-2
       - name: Run long-duration load and fault matrix
+        id: capacity_verification
+        continue-on-error: true
+        timeout-minutes: 22
         run: >-
           python scripts/capacity_verification.py
           --compose-file docker-compose.scale-ci.yml
           --requests "${{ inputs.requests || '600' }}"
           --duration-seconds "${{ inputs.duration_seconds || '120' }}"
-          --fault-rounds "${{ inputs.fault_rounds || '3' }}"
+          --fault-rounds "${{ inputs.fault_rounds || '5' }}"
+          --fault-matrix redis,chroma-1,chroma-2,chroma-1+redis,chroma-2+redis
           --concurrency 24
           --max-errors 0
           --max-p95-ms 2000
+          --max-recovery-seconds 240
+          --runtime-timeout-seconds 1200
           --data-profile small,medium,large
           --report artifacts/capacity-report.json
       - name: Collect capacity evidence
         if: always()
+        timeout-minutes: 1
         run: |
           docker compose -f docker-compose.scale-ci.yml ps --all > capacity-services.log
           docker compose -f docker-compose.scale-ci.yml logs --no-color >> capacity-services.log
       - name: Evaluate capacity trend
+        id: trend
         if: always()
+        continue-on-error: true
+        timeout-minutes: 3
         env:
           GH_TOKEN: ${{ github.token }}
+          HISTORY_BRANCH: ${{ github.ref_name }}
+          BOOTSTRAP_BASELINE: ${{ inputs.bootstrap_baseline || false }}
         run: |
-          if [ -f artifacts/capacity-report.json ]; then
-            previous_run=""
-            for run in $(gh run list --workflow capacity.yml --status completed --limit 10 --json databaseId --jq '.[].databaseId'); do
-              if [ "$run" != "${{ github.run_id }}" ]; then
-                mkdir -p "prior-capacity/$run"
-                if gh run download "$run" -n capacity-and-resilience -D "prior-capacity/$run" \
-                  && test -s "prior-capacity/$run/capacity-report.json"; then
-                  previous_run="$run"
-                  break
-                fi
+          test -s artifacts/capacity-report.json
+          reports=()
+          mode=--select-history
+          if [ "$BOOTSTRAP_BASELINE" = true ]; then
+            mode=--bootstrap
+            echo "Collecting verified capacity baseline; trend status remains insufficient_history."
+          else
+            runs=$(gh run list --workflow capacity.yml --branch "$HISTORY_BRANCH" --status completed --limit 30 --json databaseId --jq '.[].databaseId')
+            for run in $runs; do
+              if [ "$run" = "$GITHUB_RUN_ID" ]; then continue; fi
+              mkdir -p "prior-capacity/$run"
+              if gh run download "$run" -n capacity-and-resilience -D "prior-capacity/$run" \
+                && test -s "prior-capacity/$run/capacity-report.json"; then
+                reports+=("prior-capacity/$run/capacity-report.json")
               fi
             done
-            if [ -z "$previous_run" ]; then
-              echo "No previous capacity artifact found; trend evidence is insufficient and the gate must fail."
-              exit 1
-            fi
-            python scripts/quality_trend.py \
-              --reports "prior-capacity/$previous_run/capacity-report.json" artifacts/capacity-report.json \
-              --report artifacts/capacity-trend.json
           fi
+          python scripts/quality_trend.py "$mode" \
+            --reports "${reports[@]}" artifacts/capacity-report.json \
+            --report artifacts/capacity-trend.json
       - name: Upload capacity evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: capacity-and-resilience
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
           path: |
             artifacts/capacity-report.json
@@ -98,4 +115,13 @@ jobs:
             capacity-services.log
       - name: Stop topology
         if: always()
+        timeout-minutes: 3
         run: docker compose -f docker-compose.scale-ci.yml down --volumes --remove-orphans
+      - name: Enforce capacity and trend gates
+        if: always()
+        env:
+          CAPACITY: ${{ steps.capacity_verification.outcome }}
+          TREND: ${{ steps.trend.outcome }}
+        run: |
+          test "$CAPACITY" = success
+          test "$TREND" = success
