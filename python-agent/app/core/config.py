@@ -1,3 +1,4 @@
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,8 +18,17 @@ def _bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _positive_float(name: str, default: float) -> float:
+    value = float(os.getenv(name, str(default)))
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be finite and positive")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
+    internal_rate_limit_burst: float = _positive_float("INTERNAL_RATE_LIMIT_BURST", 60)
+    internal_rate_limit_per_second: float = _positive_float("INTERNAL_RATE_LIMIT_PER_SECOND", 1)
     deepseek_api_key: str = os.getenv("DEEPSEEK_API_KEY", "").strip()
     dashscope_api_key: str = os.getenv("DASHSCOPE_API_KEY", "").strip()
     deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")

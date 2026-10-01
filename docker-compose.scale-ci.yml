@@ -52,6 +52,8 @@ services:
       DASHSCOPE_API_KEY: ci-dummy-key
       MNEME_OFFLINE_EMBEDDINGS: "true"
       MNEME_DETERMINISTIC_TEST_LLM: "true"
+      INTERNAL_RATE_LIMIT_PER_SECOND: "10"
+      INTERNAL_RATE_LIMIT_BURST: "60"
       VECTOR_SHARD_COUNT: "2"
       VECTOR_SHARD_URLS: http://chroma-1:8000,http://chroma-2:8000
       REDIS_HOST: redis

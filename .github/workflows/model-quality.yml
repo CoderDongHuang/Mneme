@@ -2,6 +2,11 @@ name: External model quality
 
 on:
   workflow_dispatch:
+    inputs:
+      bootstrap_baseline:
+        description: Collect a real baseline with insufficient history (does not pass a trend)
+        type: boolean
+        default: false
   schedule:
     - cron: "17 2 * * 1"
 
@@ -59,6 +64,12 @@ jobs:
     name: Real RAG and quiz quality
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      DEEPSEEK_API_KEY: ""
+      MNEME_DETERMINISTIC_TEST_LLM: "false"
+      MNEME_OFFLINE_EMBEDDINGS: "false"
+      LLM_FALLBACK_MODEL: qwen-plus
+      EMBEDDING_MODEL: text-embedding-v3
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -140,35 +151,65 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          HISTORY_BRANCH: ${{ github.ref_name }}
+          BOOTSTRAP_BASELINE: ${{ inputs.bootstrap_baseline || false }}
         run: |
-          previous_run=""
-          for run in $(gh run list --workflow model-quality.yml --status completed --limit 10 --json databaseId --jq '.[].databaseId'); do
-            if [ "$run" != "${{ github.run_id }}" ]; then
+          history=()
+          if [ "$BOOTSTRAP_BASELINE" != true ]; then
+            runs=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/model-quality.yml/runs" \
+              -f branch="$HISTORY_BRANCH" -f status=completed -f per_page=30 --jq '.workflow_runs[].id')
+            echo "Completed model history run IDs: $runs"
+            for run in $runs; do
+              if [ "$run" = "$GITHUB_RUN_ID" ]; then continue; fi
               mkdir -p "prior-model/$run"
               if gh run download "$run" -n real-text-and-quiz-quality -D "prior-model/$run" \
                 && test -s "prior-model/$run/real-rag-quality-report.json" \
                 && test -s "prior-model/$run/real-quiz-quality-report.json" \
                 && test -s "prior-model/$run/real-embedding-quality-report.json"; then
-                previous_run="$run"
-                break
+                history+=("prior-model/$run")
               fi
-            fi
-          done
+            done
+          fi
           status=0
           for kind in rag quiz embedding; do
             case "$kind" in
-              rag) name=real-rag-quality-report.json ;;
-              quiz) name=real-quiz-quality-report.json ;;
-              embedding) name=real-embedding-quality-report.json ;;
+              rag)
+                name=real-rag-quality-report.json
+                dataset=python-agent/evaluation/target_domain_rag_cases.json
+                evaluator=python-agent/scripts/evaluate_rag.py
+                thresholds=python-agent/evaluation/real_rag_thresholds.json
+                configuration='{"model":"qwen-plus","samples":8,"embeddings":"offline","top_k":5,"max_cost":0.03,"input_cost_per_million":0.30,"output_cost_per_million":0.60}' ;;
+              quiz)
+                name=real-quiz-quality-report.json
+                dataset=python-agent/evaluation/target_domain_quiz_workspace.json
+                evaluator=python-agent/scripts/evaluate_quiz_quality.py
+                thresholds=python-agent/evaluation/real_quiz_thresholds.json
+                configuration='{"model":"qwen-plus","samples":6,"max_cost":0.02,"input_cost_per_million":0.30,"output_cost_per_million":0.60}' ;;
+              embedding)
+                name=real-embedding-quality-report.json
+                dataset=python-agent/evaluation/target_domain_manifest.json
+                evaluator=python-agent/scripts/evaluate_embedding_quality.py
+                thresholds=python-agent/evaluation/real_embedding_thresholds.json
+                configuration='{"model":"text-embedding-v3","require_real":true,"max_cost":0.01,"input_cost_per_million":0.30}' ;;
             esac
-            if [ -z "$previous_run" ]; then
-              echo "No previous $kind quality artifact found; trend evidence is insufficient."
+            if ! python scripts/quality_trend.py --kind "$kind" --record-provenance \
+              --reports "artifacts/$name" --configuration "$configuration" \
+              --provenance-input "$dataset" --provenance-input "$evaluator" \
+              --provenance-input "$thresholds" --provenance-input python-agent/requirements.lock \
+              --provenance-input python-agent/scripts/quality_policy.py; then
               status=1
-            else
-              python scripts/quality_trend.py --kind "$kind" \
-                --reports "prior-model/$previous_run/$name" "artifacts/$name" \
-                --report "artifacts/$kind-trend.json" || status=1
+              continue
             fi
+            reports=()
+            for directory in "${history[@]}"; do reports+=("$directory/$name"); done
+            mode=--select-history
+            if [ "$BOOTSTRAP_BASELINE" = true ]; then
+              mode=--bootstrap
+              echo "Collecting real $kind baseline; trend status remains insufficient_history."
+            fi
+            python scripts/quality_trend.py --kind "$kind" "$mode" \
+              --reports "${reports[@]}" "artifacts/$name" \
+              --report "artifacts/$kind-trend.json" || status=1
           done
           exit "$status"
       - name: Upload text quality evidence
