@@ -92,17 +92,21 @@ jobs:
           mkdir -p "$RUNNER_TEMP/mneme-recovery-input"
           python - <<'PY'
           import os, subprocess
-          from urllib.parse import urlsplit
-          from scripts.backup_aws_preflight import s3_bucket
+          from scripts.backup_aws_preflight import s3_object
           uri = os.environ['ARCHIVE_URI']
-          bucket = s3_bucket(uri)
-          key = urlsplit(uri).path.lstrip('/')
-          subprocess.run([
+          bucket, key = s3_object(uri)
+          command = [
               'aws', 's3api', 'get-object', '--bucket', bucket, '--key', key,
               '--version-id', os.environ['ARCHIVE_VERSION_ID'],
               '--region', os.environ['BACKUP_PRIMARY_REGION'],
+              '--no-cli-pager',
               os.path.join(os.environ['RUNNER_TEMP'], 'mneme-recovery-input', 'backup.tar.gz'),
-          ], check=True)
+          ]
+          result = subprocess.run(command, check=False, capture_output=True, text=True)
+          if result.returncode:
+              raise SystemExit(result.stderr[-1000:])
+          if not os.path.exists(command[-1]) or os.path.getsize(command[-1]) == 0:
+              raise SystemExit('selected S3 object version produced an empty archive')
           PY
       - name: Verify envelope and all recovered plaintext (${{ inputs.data_mode }})
         shell: bash

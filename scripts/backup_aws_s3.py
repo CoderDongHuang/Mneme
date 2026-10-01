@@ -10,12 +10,16 @@ import tempfile
 from pathlib import Path
 
 if __package__:
-    from .backup_aws_preflight import region_arguments
+    from .backup_aws_preflight import region_arguments, s3_object
 else:
-    from backup_aws_preflight import region_arguments
+    from backup_aws_preflight import region_arguments, s3_object
 
 
 def _aws_copy(source: str, destination: str) -> None:
+    if source.startswith("s3://"):
+        s3_object(source)
+    if destination.startswith("s3://"):
+        s3_object(destination)
     result = subprocess.run(
         ["aws", "s3", "cp", source, destination, "--only-show-errors", *region_arguments()],
         check=False,
@@ -45,6 +49,10 @@ def main(argv: list[str]) -> int:
         _aws_copy(argv[2], str(destination))
         return 0
     if len(argv) == 4 and argv[1] == "verify":
+        s3_object(argv[2])
+        if len(argv[3]) != 64 or any(char not in "0123456789abcdef" for char in argv[3].lower()):
+            print("expected SHA-256 digest must be 64 hexadecimal characters", file=sys.stderr)
+            return 2
         with tempfile.TemporaryDirectory(prefix="mneme-s3-readback-") as temporary:
             local = Path(temporary) / "backup.tar.gz"
             _aws_copy(argv[2], str(local))

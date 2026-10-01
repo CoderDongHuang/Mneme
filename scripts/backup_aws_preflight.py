@@ -30,6 +30,21 @@ def s3_bucket(destination: str) -> str:
     return parsed.netloc
 
 
+def s3_object(uri: str) -> tuple[str, str]:
+    """Return a validated bucket/key pair for an object URI."""
+    parsed = urlsplit(uri)
+    if (
+        parsed.scheme != "s3"
+        or not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", parsed.netloc)
+        or not parsed.path.lstrip("/")
+        or parsed.path.endswith("/")
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise CloudPreflightError("S3 object URI must be an explicit s3://bucket/object")
+    return parsed.netloc, parsed.path.lstrip("/")
+
+
 def kms_key_id(version: str) -> str:
     name = f"BACKUP_KMS_KEY_ID_{version.upper().replace('-', '_')}"
     key = os.getenv(name, "").strip()

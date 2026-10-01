@@ -1,0 +1,117 @@
+name: Production usage policy calibration
+
+on:
+  workflow_dispatch:
+    inputs:
+      window_seconds:
+        description: Measurement window in seconds
+        required: false
+        default: "86400"
+      idle_seconds:
+        description: Idle-session threshold in seconds
+        required: false
+        default: "43200"
+
+permissions:
+  contents: read
+
+jobs:
+  calibrate:
+    name: Collect and reconcile production usage
+    environment: usage-policy-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      ENVIRONMENT: production
+      MYSQL_HOST: ${{ vars.MYSQL_HOST }}
+      MYSQL_PORT: ${{ vars.MYSQL_PORT || '3306' }}
+      MYSQL_DATABASE: ${{ vars.MYSQL_DATABASE }}
+      MYSQL_USER: ${{ vars.MYSQL_USER }}
+      MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+      REDIS_HOST: ${{ vars.REDIS_HOST }}
+      REDIS_PORT: ${{ vars.REDIS_PORT || '6379' }}
+      REDIS_DB: ${{ vars.REDIS_DB || '0' }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+      METRICS_URL: ${{ vars.METRICS_URL }}
+      COST_SCOPE: ${{ vars.COST_SCOPE }}
+      PROVIDER_BILLING_JSON: ${{ secrets.PROVIDER_BILLING_JSON }}
+      AGENT_TRACE_ROW_QUOTA: ${{ vars.AGENT_TRACE_ROW_QUOTA || '100000' }}
+      SESSION_TTL_HOURS: ${{ vars.SESSION_TTL_HOURS || '24' }}
+      AGENT_TRACE_RETENTION_DAYS: ${{ vars.AGENT_TRACE_RETENTION_DAYS || '30' }}
+      TENANT_STORAGE_QUOTA_MB: ${{ vars.TENANT_STORAGE_QUOTA_MB || '2048' }}
+      TENANT_KNOWLEDGE_BASE_QUOTA: ${{ vars.TENANT_KNOWLEDGE_BASE_QUOTA || '100' }}
+      LLM_DAILY_BUDGET_USD: ${{ vars.LLM_DAILY_BUDGET_USD || '0' }}
+      WINDOW_SECONDS: ${{ inputs.window_seconds || '86400' }}
+      IDLE_SECONDS: ${{ inputs.idle_seconds || '43200' }}
+      AWS_EC2_METADATA_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python-agent/requirements.lock
+      - name: Validate protected production configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in MYSQL_HOST MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD REDIS_HOST METRICS_URL COST_SCOPE PROVIDER_BILLING_JSON; do
+            test -n "${!name}" || { echo "Missing protected configuration: $name" >&2; exit 1; }
+          done
+          python - <<'PY'
+          import json
+          import os
+          json.loads(os.environ["PROVIDER_BILLING_JSON"])
+          if os.environ["ENVIRONMENT"] != "production":
+              raise SystemExit("production workflow must use production environment")
+          PY
+      - name: Install locked dependencies
+        run: python -m pip install --require-hashes -r python-agent/requirements.lock
+      - name: Collect bounded aggregate snapshot
+        run: |
+          mkdir -p artifacts/usage-policy-history
+          python scripts/collect_usage_policy_snapshot.py \
+            --usage-report artifacts/usage-policy-snapshot.json \
+            --config-report artifacts/usage-policy-config.json \
+            --environment production \
+            --cost-scope "$COST_SCOPE" \
+            --metrics-url "$METRICS_URL" \
+            --window-seconds "$WINDOW_SECONDS" \
+            --idle-seconds "$IDLE_SECONDS"
+      - name: Reconcile the exact provider billing interval
+        shell: bash
+        run: |
+          set -euo pipefail
+          billing="$RUNNER_TEMP/provider-billing-normalized.json"
+          BILLING_PATH="$billing" python -c 'import os, pathlib; pathlib.Path(os.environ["BILLING_PATH"]).write_text(os.environ["PROVIDER_BILLING_JSON"] + "\n", encoding="utf-8")'
+          python scripts/usage_policy_report.py \
+            --usage artifacts/usage-policy-snapshot.json \
+            --config artifacts/usage-policy-config.json \
+            --billing "$billing" \
+            --report artifacts/usage-policy-report.json \
+            --history-dir artifacts/usage-policy-history
+          python - <<'PY'
+          import json
+          report = json.load(open("artifacts/usage-policy-report.json", encoding="utf-8"))
+          reconciliation = report["billing_reconciliation"]
+          if reconciliation["status"] != "calibrated":
+              raise SystemExit(f"billing reconciliation is {reconciliation['status']}: {reconciliation['reasons']}")
+          if report["production_policy_verified"] or report["configuration_changed"]:
+              raise SystemExit("calibration must not claim policy approval or mutate configuration")
+          PY
+      - name: Upload redacted calibration evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-usage-policy-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            artifacts/usage-policy-snapshot.json
+            artifacts/usage-policy-config.json
+            artifacts/usage-policy-report.json
+            artifacts/usage-policy-history/
+      - name: Remove billing export
+        if: always()
+        shell: bash
+        run: rm -f -- "$RUNNER_TEMP/provider-billing-normalized.json"

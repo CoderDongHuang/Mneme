@@ -162,10 +162,13 @@ Never substitute this document's example JSON for actual charges.
 
 Production scheduling is intentionally not enabled by these scripts. The current
 repository CI usage job runs against its test stack and is not a production data
-source. No AWS secrets or repository variables are required or configured for
-this feature. A safe opt-in schedule belongs on a separately provisioned
-production host using its existing scheduler, after all of these prerequisites
-have been met:
+source. The repository now also provides the manually triggered,
+environment-protected `.github/workflows/usage-policy-production.yml` workflow.
+It requires the same production connections and normalized provider export
+described above, fails unless the exact interval reconciles as `calibrated`, and
+never changes policy settings. A safe recurring schedule still belongs on a
+separately provisioned production host using its existing scheduler, after all
+of these prerequisites have been met:
 
 1. Read-only production database access, protected Redis/metrics access, and
    explicit `--environment production` / matching `--cost-scope` are available.

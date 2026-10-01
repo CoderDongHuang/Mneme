@@ -118,6 +118,19 @@ def test_cloud_rejects_non_object_destinations(uri):
         cloud.s3_bucket(uri)
 
 
+def test_s3_object_returns_bucket_and_key():
+    assert cloud.s3_object("s3://mneme-recovery/drills/backup.tar.gz") == (
+        "mneme-recovery",
+        "drills/backup.tar.gz",
+    )
+
+
+@pytest.mark.parametrize("uri", ["s3://bucket/", "s3://bucket", "s3://bucket/key?x=1", "s3://bucket/key#part"])
+def test_s3_object_rejects_ambiguous_uri(uri):
+    with pytest.raises(cloud.CloudPreflightError, match="object"):
+        cloud.s3_object(uri)
+
+
 def test_cloud_does_not_invent_a_kms_key(aws, monkeypatch):
     monkeypatch.delenv("BACKUP_KMS_KEY_ID_V1")
     with pytest.raises(cloud.CloudPreflightError, match="BACKUP_KMS_KEY_ID_V1"):
