@@ -22,7 +22,7 @@ chromadb==0.6.3
 posthog==5.4.0
 
 # Structured document parsing
-pypdf==6.16.1
+pypdf==6.19.0
 pdfplumber==0.11.10
 python-docx==1.2.0
 python-pptx==1.0.2

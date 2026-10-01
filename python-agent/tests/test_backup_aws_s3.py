@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts import backup_aws_s3 as MODULE
@@ -49,3 +51,9 @@ def test_verify_rejects_wrong_digest(monkeypatch, capsys):
     monkeypatch.setattr(MODULE, "_aws_copy", lambda source, destination: Path(destination).write_bytes(b"wrong"))
     assert MODULE.main(["adapter", "verify", "s3://backups/backup.tar.gz", "0" * 64]) == 1
     assert capsys.readouterr().out.strip() != "0" * 64
+
+
+def test_verify_rejects_invalid_digest(monkeypatch, capsys):
+    monkeypatch.setattr(MODULE, "_aws_copy", lambda source, destination: pytest.fail("must not download"))
+    assert MODULE.main(["adapter", "verify", "s3://backups/backup.tar.gz", "not-a-digest"]) == 2
+    assert "64 hexadecimal" in capsys.readouterr().err
