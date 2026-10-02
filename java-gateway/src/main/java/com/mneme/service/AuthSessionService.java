@@ -29,7 +29,7 @@ public class AuthSessionService {
         Long count = jdbc.queryForObject("""
             SELECT COUNT(*) FROM auth_session
             WHERE session_id=? AND user_id=? AND revoked_at IS NULL AND expires_at>NOW()
-            """, Long.class, sessionId, userId);
+            """, (rs, rowNum) -> rs.getLong(1), sessionId, userId);
         if (count != null && count == 1) {
             jdbc.update("UPDATE auth_session SET last_seen_at=NOW() WHERE session_id=?", sessionId);
             return true;

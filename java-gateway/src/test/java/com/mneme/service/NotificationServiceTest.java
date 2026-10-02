@@ -57,7 +57,7 @@ class NotificationServiceTest {
     @Test
     void publishPersistsTaskPayloadEvenWithoutSubscribers() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.queryForObject(anyString(), eq(Long.class), anyLong())).thenReturn(0L);
+        when(jdbc.queryForObject(anyString(), any(org.springframework.jdbc.core.RowMapper.class), anyLong())).thenReturn(0L);
         ProcessingTask task = new ProcessingTask();
         task.setUserId(7L);
         task.setTaskId("task_1");
@@ -76,7 +76,7 @@ class NotificationServiceTest {
     @Test
     void publishBroadcastsPersistedEventWhenRedisIsEnabled() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.queryForObject(anyString(), eq(Long.class), anyLong())).thenReturn(12L);
+        when(jdbc.queryForObject(anyString(), any(org.springframework.jdbc.core.RowMapper.class), anyLong())).thenReturn(12L);
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         NotificationService service = new NotificationService(jdbc, new ObjectMapper());
         ReflectionTestUtils.setField(service, "redisEnabled", true);
