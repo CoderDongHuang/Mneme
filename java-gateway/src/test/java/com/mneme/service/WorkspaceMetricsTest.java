@@ -22,20 +22,16 @@ class WorkspaceMetricsTest {
     void returnsUserScopedLearningMetricsAndEmptyDefaults() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         List<String> queries = new ArrayList<>();
-        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class)))
+        when(jdbc.queryForObject(anyString(), any(org.springframework.jdbc.core.RowMapper.class), any(Object[].class)))
             .thenAnswer(invocation -> {
                 String sql = invocation.getArgument(0);
                 queries.add(sql);
+                if (sql.contains("AVG(")) return 2.5;
                 if (sql.contains("status='completed'")) return 1L;
                 if (sql.contains("review_count>0")) return 2L;
                 if (sql.contains("due_at")) return 0L;
                 if (sql.contains("quiz_mistake")) return 1L;
                 return 3L;
-            });
-        when(jdbc.queryForObject(anyString(), eq(Double.class), any(Object[].class)))
-            .thenAnswer(invocation -> {
-                queries.add(invocation.getArgument(0));
-                return 2.5;
             });
 
         WorkspaceService service = new WorkspaceService(

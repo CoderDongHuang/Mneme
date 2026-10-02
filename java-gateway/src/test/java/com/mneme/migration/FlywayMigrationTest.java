@@ -96,19 +96,20 @@ class FlywayMigrationTest {
         var dataSource = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
         var jdbc = new JdbcTemplate(dataSource);
         jdbc.update("INSERT INTO user(username,password_hash) VALUES('export-user','hash'),('import-user','hash')");
-        Long sourceUser = jdbc.queryForObject("SELECT id FROM user WHERE username='export-user'", Long.class);
-        Long targetUser = jdbc.queryForObject("SELECT id FROM user WHERE username='import-user'", Long.class);
+        Long sourceUser = value(jdbc, "SELECT id FROM user WHERE username='export-user'", Long.class);
+        Long targetUser = value(jdbc, "SELECT id FROM user WHERE username='import-user'", Long.class);
         jdbc.update("INSERT INTO knowledge_base(user_id,name,status) VALUES(?, '课程资料', 'active')", sourceUser);
-        Long kb = jdbc.queryForObject("SELECT id FROM knowledge_base WHERE user_id=? AND name='课程资料'", Long.class, sourceUser);
+        Long kb = value(jdbc, "SELECT id FROM knowledge_base WHERE user_id=? AND name='课程资料'", Long.class, sourceUser);
         jdbc.update("INSERT INTO chat_session(user_id,title) VALUES(?, '原会话'),(?, '分支会话')", sourceUser, sourceUser);
-        var sessions = jdbc.queryForList("SELECT id FROM chat_session WHERE user_id=? ORDER BY id", Long.class, sourceUser);
+        var sessions = jdbc.query("SELECT id FROM chat_session WHERE user_id=? ORDER BY id",
+            (rs, rowNum) -> rs.getLong(1), sourceUser);
         jdbc.update("INSERT INTO chat_message(session_id,role,content) VALUES(?, 'user', '解释链式法则')", sessions.get(0));
-        Long message = jdbc.queryForObject("SELECT id FROM chat_message WHERE session_id=?", Long.class, sessions.get(0));
+        Long message = value(jdbc, "SELECT id FROM chat_message WHERE session_id=?", Long.class, sessions.get(0));
         jdbc.update("INSERT INTO learning_plan(user_id,title,goal) VALUES(?, '学习计划', '掌握反向传播')", sourceUser);
-        Long plan = jdbc.queryForObject("SELECT id FROM learning_plan WHERE user_id=?", Long.class, sourceUser);
+        Long plan = value(jdbc, "SELECT id FROM learning_plan WHERE user_id=?", Long.class, sourceUser);
         jdbc.update("INSERT INTO review_card(user_id,plan_id,prompt,answer,origin) VALUES(?,?, '什么是链式法则', '复合函数求导规则', 'quiz_mistake')", sourceUser, plan);
         jdbc.update("INSERT INTO knowledge_quiz(user_id,kb_id,title,topic,questions_json) VALUES(?,?, '测验', '反向传播', JSON_ARRAY())", sourceUser, kb);
-        Long quiz = jdbc.queryForObject("SELECT id FROM knowledge_quiz WHERE user_id=?", Long.class, sourceUser);
+        Long quiz = value(jdbc, "SELECT id FROM knowledge_quiz WHERE user_id=?", Long.class, sourceUser);
         jdbc.update("INSERT INTO quiz_attempt(quiz_id,user_id,answers_json,score,feedback_json) VALUES(?,?,JSON_ARRAY(),80,JSON_ARRAY())", quiz, sourceUser);
         jdbc.update("INSERT INTO chat_branch(user_id,source_session_id,source_message_id,branch_session_id,label) VALUES(?,?,?,?, '另一种解释')",
             sourceUser, sessions.get(0), message, sessions.get(1));
@@ -131,9 +132,9 @@ class FlywayMigrationTest {
         assertThat(counts).containsEntry("knowledge_bases", 1).containsEntry("sessions", 2)
             .containsEntry("messages", 1).containsEntry("plans", 1).containsEntry("reviews", 1)
             .containsEntry("quizzes", 1).containsEntry("quiz_attempts", 1).containsEntry("branches", 1);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM chat_branch WHERE user_id=?", Integer.class, targetUser)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM quiz_attempt WHERE user_id=?", Integer.class, targetUser)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT origin FROM review_card WHERE user_id=?", String.class, targetUser))
+        assertThat(value(jdbc, "SELECT COUNT(*) FROM chat_branch WHERE user_id=?", Integer.class, targetUser)).isEqualTo(1);
+        assertThat(value(jdbc, "SELECT COUNT(*) FROM quiz_attempt WHERE user_id=?", Integer.class, targetUser)).isEqualTo(1);
+        assertThat(value(jdbc, "SELECT origin FROM review_card WHERE user_id=?", String.class, targetUser))
             .isEqualTo("quiz_mistake");
     }
 
@@ -144,12 +145,12 @@ class FlywayMigrationTest {
         var dataSource = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
         var jdbc = new JdbcTemplate(dataSource);
         jdbc.update("INSERT INTO user(username,password_hash,status) VALUES('claim-user','hash','deleting')");
-        Long userId = jdbc.queryForObject("SELECT id FROM user WHERE username='claim-user'", Long.class);
+        Long userId = value(jdbc, "SELECT id FROM user WHERE username='claim-user'", Long.class);
         jdbc.update("""
             INSERT INTO account_deletion_task(operation_id,user_id,status,next_attempt_at)
             VALUES('claim-op',?,'pending',?)
             """, userId, LocalDateTime.now());
-        Long taskId = jdbc.queryForObject(
+        Long taskId = value(jdbc,
             "SELECT id FROM account_deletion_task WHERE operation_id='claim-op'", Long.class);
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -172,11 +173,11 @@ class FlywayMigrationTest {
         var dataSource = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
         var jdbc = new JdbcTemplate(dataSource);
         jdbc.update("INSERT INTO user(username,password_hash) VALUES('idempotency-user','hash')");
-        Long userId = jdbc.queryForObject(
+        Long userId = value(jdbc,
             "SELECT id FROM user WHERE username='idempotency-user'", Long.class);
         jdbc.update("INSERT INTO chat_session(user_id,title) VALUES(?, 'one'),(?, 'two')", userId, userId);
-        var sessions = jdbc.queryForList(
-            "SELECT id FROM chat_session WHERE user_id=? ORDER BY id", Long.class, userId);
+        var sessions = jdbc.query("SELECT id FROM chat_session WHERE user_id=? ORDER BY id",
+            (rs, rowNum) -> rs.getLong(1), userId);
 
         jdbc.update("INSERT INTO chat_message(session_id,request_id,role,content) VALUES(?, 'same-id', 'user', 'one')", sessions.get(0));
         jdbc.update("INSERT INTO chat_message(session_id,request_id,role,content) VALUES(?, 'same-id', 'user', 'two')", sessions.get(1));
@@ -200,7 +201,7 @@ class FlywayMigrationTest {
         var dataSource = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
         var jdbc = new JdbcTemplate(dataSource);
         jdbc.update("INSERT INTO user(username,password_hash) VALUES('duplicate-delete-user','hash')");
-        Long userId = jdbc.queryForObject(
+        Long userId = value(jdbc,
             "SELECT id FROM user WHERE username='duplicate-delete-user'", Long.class);
         jdbc.update("""
             INSERT INTO account_deletion_task(operation_id,user_id,status,next_attempt_at)
@@ -213,10 +214,10 @@ class FlywayMigrationTest {
             .load()
             .migrate();
 
-        assertThat(jdbc.queryForObject(
+        assertThat(value(jdbc,
             "SELECT COUNT(*) FROM account_deletion_task WHERE user_id=?", Integer.class, userId))
             .isEqualTo(1);
-        assertThat(jdbc.queryForObject(
+        assertThat(value(jdbc,
             "SELECT operation_id FROM account_deletion_task WHERE user_id=?", String.class, userId))
             .isEqualTo("delete-first");
     }
@@ -228,11 +229,11 @@ class FlywayMigrationTest {
         var dataSource = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
         var jdbc = new JdbcTemplate(dataSource);
         jdbc.update("INSERT INTO user(username,password_hash) VALUES('branch-user','hash')");
-        Long userId = jdbc.queryForObject("SELECT id FROM user WHERE username='branch-user'", Long.class);
+        Long userId = value(jdbc, "SELECT id FROM user WHERE username='branch-user'", Long.class);
         jdbc.update("INSERT INTO chat_session(user_id,title) VALUES(?, 'source')", userId);
-        Long sessionId = jdbc.queryForObject("SELECT id FROM chat_session WHERE user_id=?", Long.class, userId);
+        Long sessionId = value(jdbc, "SELECT id FROM chat_session WHERE user_id=?", Long.class, userId);
         jdbc.update("INSERT INTO chat_message(session_id,role,content) VALUES(?, 'user', 'source question')", sessionId);
-        Long messageId = jdbc.queryForObject("SELECT id FROM chat_message WHERE session_id=?", Long.class, sessionId);
+        Long messageId = value(jdbc, "SELECT id FROM chat_message WHERE session_id=?", Long.class, sessionId);
         WorkspaceService service = new WorkspaceService(
             jdbc, new ObjectMapper().findAndRegisterModules(), new RestTemplate());
         var transactionManager = new DataSourceTransactionManager(dataSource);
@@ -252,9 +253,9 @@ class FlywayMigrationTest {
             start.countDown();
             first.get();
             second.get();
-            assertThat(jdbc.queryForObject(
+            assertThat(value(jdbc,
                 "SELECT COUNT(*) FROM chat_branch WHERE user_id=?", Integer.class, userId)).isEqualTo(2);
-            assertThat(jdbc.queryForObject("""
+            assertThat(value(jdbc, """
                 SELECT COUNT(*) FROM chat_message m JOIN chat_branch b ON b.branch_session_id=m.session_id
                 WHERE b.user_id=? AND m.content='source question'
                 """, Integer.class, userId)).isEqualTo(2);
@@ -280,6 +281,14 @@ class FlywayMigrationTest {
             "source_message_id", messageId,
             "label", label
         )));
+    }
+
+    private <T> T value(JdbcTemplate jdbc, String sql, Class<T> type, Object... args) {
+        return jdbc.queryForObject(sql, (rs, rowNum) -> {
+            Object value = type == Long.class ? rs.getLong(1)
+                : type == Integer.class ? rs.getInt(1) : rs.getString(1);
+            return rs.wasNull() ? null : type.cast(value);
+        }, args);
     }
 
     private int claim(JdbcTemplate jdbc, Long taskId, String instance, CountDownLatch ready, CountDownLatch start)

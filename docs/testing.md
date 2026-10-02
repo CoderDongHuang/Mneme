@@ -3,6 +3,9 @@
 ## Python
 
 ```powershell
+$env:MNEME_OFFLINE_EMBEDDINGS='true'
+cd ..
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_environment.ps1 -SkipDocker
 cd python-agent
 ruff check .
 $env:MNEME_OFFLINE_EMBEDDINGS='true'
@@ -11,14 +14,25 @@ python -m pytest tests -q
 
 测试环境使用确定性本地向量，不发送 Embedding API 请求。
 
+Windows CPython 3.11 依赖安装和审计：
+
+```powershell
+cd ..
+python -m pip install --require-hashes -r python-agent/requirements.windows.lock
+python -m pip install pip-audit==2.9.0
+pip-audit --requirement python-agent/requirements.windows.lock
+```
+
+Linux/Docker 使用 `python-agent/requirements.lock`。两个锁文件均由官方兼容 wheel 的 SHA-256 固定，Windows 锁文件不安装 Linux 专用 `uvloop`。
+
 ## Java
 
 ```powershell
 cd java-gateway
-mvn test
+mvn --batch-mode -s target/maven-settings.xml test
 ```
 
-Maven 构建会同时验证 Flyway 迁移资源、Spring 类型和 Java 17 编译。
+Surefire 将测试临时目录固定到项目 `target`，避免 Windows 隔离环境无法清理用户临时目录导致误报。Maven 构建会同时验证 Flyway 迁移资源、Spring 类型和 Java 17 编译；需要真实 MySQL 迁移测试时必须让 Docker Engine 可用。
 
 ## 前端
 
@@ -38,13 +52,13 @@ npm run build
 
 `frontend/e2e/real-stack.spec.js` 覆盖真实注册、创建资料库、上传、任务轮询、Embedding、RAG、流式回答、引用、多轮对话和刷新恢复。常规 CI 使用显式启用的确定性验收模型，MySQL、Redis、Chroma、MinIO、Java、Python、Caddy 和浏览器仍为真实组件，不访问付费模型：
 
-```bash
-export MNEME_OFFLINE_EMBEDDINGS=true
-export MNEME_DETERMINISTIC_TEST_LLM=true
-docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml up -d --build
-cd frontend
-MNEME_REAL_E2E=true MNEME_E2E_BASE_URL=http://127.0.0.1:3000 npm run test:e2e:real
+```powershell
+$env:MNEME_OFFLINE_EMBEDDINGS='true'
+$env:MNEME_DETERMINISTIC_TEST_LLM='true'
+python scripts/run_real_stack_e2e.py
 ```
+
+Linux/macOS 使用同一个入口：`MNEME_OFFLINE_EMBEDDINGS=true MNEME_DETERMINISTIC_TEST_LLM=true python scripts/run_real_stack_e2e.py`。配置检查可单独运行 `python scripts/run_real_stack_e2e.py --config-only`；默认失败会收集 `docker compose ps` 和完整服务日志后执行 `down --volumes --remove-orphans`，需要保留容器排查时加 `--keep`。
 
 `MNEME_DETERMINISTIC_TEST_LLM` 只能用于验收环境，不能用于生产。验证外部模型质量和供应商连通性时不要设置该变量，并显式设置：
 

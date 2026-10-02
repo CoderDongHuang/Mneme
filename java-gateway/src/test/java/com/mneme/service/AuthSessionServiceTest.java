@@ -13,7 +13,7 @@ class AuthSessionServiceTest {
     @Test
     void createsAndValidatesSession() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.queryForObject(contains("FROM auth_session"), eq(Long.class), anyString(), eq(7L)))
+        when(jdbc.queryForObject(contains("FROM auth_session"), any(org.springframework.jdbc.core.RowMapper.class), anyString(), eq(7L)))
             .thenReturn(1L);
         AuthSessionService service = new AuthSessionService(jdbc);
 
