@@ -40,7 +40,7 @@ class KnowledgeServiceSecurityTest {
             return 1;
         }).when(fixture.documents).insert(any(KnowledgeDocument.class));
         when(fixture.jdbc.queryForObject(
-            contains("MAX(version_number)"), eq(Integer.class), eq(42L))).thenReturn(1);
+            contains("MAX(version_number)"), any(org.springframework.jdbc.core.RowMapper.class), eq(42L))).thenReturn(1);
         MockMultipartFile file = new MockMultipartFile(
             "file", "notes.txt", "text/plain", "hello".getBytes());
 
@@ -61,7 +61,7 @@ class KnowledgeServiceSecurityTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         KnowledgeBase base = new KnowledgeBase(); base.setId(3L); base.setUserId(7L); base.setStatus("active");
         when(bases.selectById(3L)).thenReturn(base);
-        when(jdbc.queryForObject(contains("SUM(v.size_bytes)"), eq(Long.class), eq(7L))).thenReturn(0L);
+        when(jdbc.queryForObject(contains("SUM(v.size_bytes)"), any(org.springframework.jdbc.core.RowMapper.class), eq(7L))).thenReturn(0L);
         ObjectStorageService storage = new ObjectStorageService(
             "local", root.toString(), "", "", "", "mneme");
         KnowledgeService service = new KnowledgeService(

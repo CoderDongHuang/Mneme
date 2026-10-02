@@ -977,11 +977,14 @@ public class WorkspaceService {
     }
     private List<Map<String, Object>> rows(String sql, Object... args) { return jdbc.queryForList(sql, args); }
     private long count(String sql, Object... args) {
-        Long value = jdbc.queryForObject(sql, Long.class, args);
+        Long value = jdbc.queryForObject(sql, (rs, rowNum) -> rs.getLong(1), args);
         return value == null ? 0 : value;
     }
     private double average(String sql, Object... args) {
-        Double value = jdbc.queryForObject(sql, Double.class, args);
+        Double value = jdbc.queryForObject(sql, (rs, rowNum) -> {
+            double result = rs.getDouble(1);
+            return rs.wasNull() ? null : result;
+        }, args);
         return value == null ? 0.0 : Math.round(value * 100.0) / 100.0;
     }
     private double reviewIntervalMultiplier(Long userId, String topic) {

@@ -56,6 +56,40 @@ jobs:
             artifacts/rag-quality-report.json
             artifacts/document-ai-ocr-report.json
 
+  python-windows:
+    name: Python Agent Windows lock and audit
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python-agent/requirements.windows.lock
+      - name: Install Windows locked dependencies
+        run: python -m pip install --require-hashes -r python-agent/requirements.windows.lock
+      - name: Install test and audit tools
+        run: python -m pip install pytest==9.0.3 "ruff==0.15.17" pip-audit==2.9.0
+      - name: Run Windows lint and tests
+        env:
+          DEEPSEEK_API_KEY: ci-dummy-key
+          DASHSCOPE_API_KEY: ci-dummy-key
+          MNEME_OFFLINE_EMBEDDINGS: "true"
+          SESSION_DATA_PATH: ${{ runner.temp }}\\mneme-sessions
+          CHROMA_PATH: ${{ runner.temp }}\\mneme-chroma
+          LEXICAL_INDEX_PATH: ${{ runner.temp }}\\mneme-lexical.sqlite3
+          MEMORY_VERSION_STORE_PATH: ${{ runner.temp }}\\mneme-versions.sqlite3
+          AGENT_TRACE_STORE_PATH: ${{ runner.temp }}\\mneme-traces.sqlite3
+        run: |
+          python -m ruff check python-agent/
+          python -m pytest python-agent/tests -q --maxfail=1 --tb=long
+      - name: Audit Windows locked dependencies
+        run: >-
+          pip-audit --requirement python-agent/requirements.windows.lock --timeout 60
+          --ignore-vuln PYSEC-2026-3813
+          --ignore-vuln PYSEC-2026-3814
+          --ignore-vuln PYSEC-2026-3815
+
   java:
     name: Java Gateway
     runs-on: ubuntu-24.04

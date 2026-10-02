@@ -72,7 +72,8 @@ public class KnowledgeService {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("知识库名称不能为空");
         }
-        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_base WHERE user_id=?", Long.class, userId);
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_base WHERE user_id=?",
+            (rs, rowNum) -> rs.getLong(1), userId);
         if (count != null && count >= tenantKnowledgeBaseQuota) {
             throw new IllegalArgumentException("知识库数量已达到租户配额");
         }
@@ -232,7 +233,7 @@ public class KnowledgeService {
         try {
             Integer next = jdbc.queryForObject(
                 "SELECT COALESCE(MAX(version_number),0)+1 FROM knowledge_document_version WHERE document_id=?",
-                Integer.class, document.getId());
+                (rs, rowNum) -> rs.getInt(1), document.getId());
             jdbc.update("""
                 INSERT INTO knowledge_document_version(document_id,version_number,file_name,file_path,sha256,size_bytes)
                 VALUES(?,?,?,?,?,?)
@@ -306,7 +307,7 @@ public class KnowledgeService {
             JOIN knowledge_document d ON d.id=v.document_id
             JOIN knowledge_base k ON k.id=d.kb_id
             WHERE k.user_id=?
-            """, Long.class, userId);
+            """, (rs, rowNum) -> rs.getLong(1), userId);
         long limit = Math.max(1, tenantStorageQuotaMb) * 1024L * 1024L;
         if ((used == null ? 0 : used) + incomingBytes > limit) {
             throw new IllegalArgumentException("文档存储量已达到租户配额");

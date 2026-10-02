@@ -178,7 +178,7 @@ public class NotificationService {
     private long latestId(Long userId) {
         Long id = jdbc.queryForObject(
             "SELECT COALESCE(MAX(id),0) FROM notification_event WHERE user_id=?",
-            Long.class,
+            (rs, rowNum) -> rs.getLong(1),
             userId
         );
         return id == null ? 0L : id;

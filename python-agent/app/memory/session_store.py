@@ -17,11 +17,12 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 
 from app.core.logging import setup_logger
+from app.core.config import settings
 
 logger = setup_logger("session_store")
 
 # 数据文件路径
-DATA_DIR = "./data/sessions"
+DATA_DIR = settings.session_data_path
 SESSION_TTL_DAYS = 30  # 会话保留天数
 
 
