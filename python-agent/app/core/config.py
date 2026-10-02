@@ -66,6 +66,9 @@ class Settings:
     chroma_path: str = os.getenv(
         "CHROMA_PATH", str(PYTHON_AGENT_DIR / "data" / "chroma")
     )
+    session_data_path: str = os.getenv(
+        "SESSION_DATA_PATH", str(PYTHON_AGENT_DIR / "data" / "sessions")
+    )
 
     redis_host: str = os.getenv("REDIS_HOST", "localhost")
     redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
