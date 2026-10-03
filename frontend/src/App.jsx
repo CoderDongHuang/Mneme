@@ -1,23 +1,24 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import AppShell from './components/AppShell'
 import ProtectedRoute from './components/ProtectedRoute'
-import AuthPage from './pages/AuthPage'
-import ChatPage from './pages/ChatPage'
-import KnowledgePage from './pages/KnowledgePage'
-import MemoryPage from './pages/MemoryPage'
-import WorkspacePage from './pages/WorkspacePage'
-import ProfilePage from './pages/ProfilePage'
-import LegalPage from './pages/LegalPage'
-import SettingsPage from './pages/SettingsPage'
-import TasksPage from './pages/TasksPage'
-import RecoveryPage from './pages/RecoveryPage'
-import PrivacyPage from './pages/PrivacyPage'
-import OperationsPage from './pages/OperationsPage'
-import AnalyticsPage from './pages/AnalyticsPage'
+const AuthPage = lazy(() => import('./pages/AuthPage'))
+const ChatPage = lazy(() => import('./pages/ChatPage'))
+const KnowledgePage = lazy(() => import('./pages/KnowledgePage'))
+const MemoryPage = lazy(() => import('./pages/MemoryPage'))
+const WorkspacePage = lazy(() => import('./pages/WorkspacePage'))
+const ProfilePage = lazy(() => import('./pages/ProfilePage'))
+const LegalPage = lazy(() => import('./pages/LegalPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const TasksPage = lazy(() => import('./pages/TasksPage'))
+const RecoveryPage = lazy(() => import('./pages/RecoveryPage'))
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'))
+const OperationsPage = lazy(() => import('./pages/OperationsPage'))
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
 
 export default function App() {
   return (
-    <Routes>
+    <Suspense fallback={<p className="loading-state" role="status">加载中...</p>}><Routes>
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/legal/:document" element={<LegalPage />} />
       <Route element={<ProtectedRoute />}>
@@ -36,6 +37,6 @@ export default function App() {
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/chat" replace />} />
-    </Routes>
+    </Routes></Suspense>
   )
 }
