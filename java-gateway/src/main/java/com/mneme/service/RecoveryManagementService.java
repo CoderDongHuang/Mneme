@@ -1,6 +1,7 @@
 package com.mneme.service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -13,7 +14,7 @@ public class RecoveryManagementService {
     private final String token;
     private final OperationLogService operations;
     private static final String WORKFLOW = "disaster-recovery.yml";
-    public RecoveryManagementService(RestTemplate http, OperationLogService operations,
+    public RecoveryManagementService(@Qualifier("recoveryHttp") RestTemplate http, OperationLogService operations,
         @Value("${mneme.recovery-github-repository:}") String repository,
         @Value("${mneme.recovery-github-token:}") String token) {
         this.http = http; this.operations = operations; this.repository = repository; this.token = token;
