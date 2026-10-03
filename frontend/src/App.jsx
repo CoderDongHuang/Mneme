@@ -13,6 +13,7 @@ import TasksPage from './pages/TasksPage'
 import RecoveryPage from './pages/RecoveryPage'
 import PrivacyPage from './pages/PrivacyPage'
 import OperationsPage from './pages/OperationsPage'
+import AnalyticsPage from './pages/AnalyticsPage'
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/recovery" element={<RecoveryPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/operations" element={<OperationsPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

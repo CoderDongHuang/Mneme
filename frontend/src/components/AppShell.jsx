@@ -14,6 +14,7 @@ const navItems = [
   { to: '/recovery', label: '备份恢复', icon: ArchiveRestore },
   { to: '/privacy', label: '数据与隐私', icon: ShieldCheck },
   { to: '/operations', label: '管理员运维', icon: Activity },
+  { to: '/analytics', label: '学习分析', icon: Activity },
   { to: '/settings', label: '服务配置', icon: Settings },
 ]
 

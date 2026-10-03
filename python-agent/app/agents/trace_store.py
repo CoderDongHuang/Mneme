@@ -2,6 +2,7 @@ import json
 import sqlite3
 import time
 import hashlib
+import math
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -247,6 +248,46 @@ class AgentTraceStore:
             cursor = conn.execute("DELETE FROM agent_trace WHERE user_id=? AND created_at < datetime('now', ?)", (str(user_id), f"-{days} days"))
             return max(0, cursor.rowcount)
 
+
+    def quality_summary(self, user_id: str, days: int = 30) -> dict:
+        retention = privacy_store.get(user_id)["trace_days"]
+        window = max(1, min(int(days), 90, retention))
+        self.prune_user(user_id, retention)
+        if self.shared:
+            with mysql_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT node,status,payload_json FROM agent_trace WHERE user_id=%s AND created_at>=DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY) ORDER BY id DESC LIMIT 5001", (str(user_id), window))
+                rows = cursor.fetchall()
+                cursor.close()
+        else:
+            with self._connect() as conn:
+                rows = conn.execute("SELECT node,status,payload_json FROM agent_trace WHERE user_id=? AND created_at>=datetime('now',?) ORDER BY id DESC LIMIT 5001", (str(user_id), f"-{window} days")).fetchall()
+        counts = {"classified": 0, "low_intent_confidence": 0, "retrievals": 0,
+                  "empty_retrievals": 0, "errors": 0, "invalid_payloads": 0}
+        for row in rows[:5000]:
+            if row["status"] == "error":
+                counts["errors"] += 1
+            try:
+                payload = row["payload_json"]
+                payload = json.loads(payload) if isinstance(payload, str) else payload
+                if not isinstance(payload, dict):
+                    raise ValueError("invalid payload")
+                if row["node"] == "pre_llm.complete":
+                    confidence = payload.get("confidence")
+                    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not math.isfinite(confidence) or not 0 <= confidence <= 1:
+                        raise ValueError("invalid confidence")
+                    counts["classified"] += 1
+                    counts["low_intent_confidence"] += int(confidence < 0.5)
+                elif row["node"] == "knowledge_retrieval.result":
+                    chunks = payload.get("chunk_count")
+                    if isinstance(chunks, bool) or not isinstance(chunks, int) or chunks < 0:
+                        raise ValueError("invalid chunk count")
+                    counts["retrievals"] += 1
+                    counts["empty_retrievals"] += int(chunks == 0)
+            except (ValueError, TypeError):
+                counts["invalid_payloads"] += 1
+        return {"status": "available" if rows else "insufficient_data", "window_days": window,
+                "sampled_trace_rows": min(len(rows), 5000), "truncated": len(rows) > 5000, **counts}
 
     def prune_policies(self) -> int:
         count = self.prune(settings.agent_trace_retention_days)

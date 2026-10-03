@@ -2,6 +2,7 @@ package com.mneme.migration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mneme.service.WorkspaceService;
+import com.mneme.service.LearningAnalyticsService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -262,6 +263,33 @@ class FlywayMigrationTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void feedbackIsOwnedIdempotentAndCascadesWithAnswerDeletion() {
+        Flyway.configure().dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+            .locations("classpath:db/migration").load().migrate();
+        var jdbc = new JdbcTemplate(new DriverManagerDataSource(
+            MYSQL.getJdbcUrl() + (MYSQL.getJdbcUrl().contains("?") ? "&" : "?") + "useAffectedRows=true",
+            MYSQL.getUsername(), MYSQL.getPassword()));
+        jdbc.update("INSERT INTO user(username,password_hash) VALUES('feedback-owner','hash'),('feedback-other','hash')");
+        Long owner = value(jdbc, "SELECT id FROM user WHERE username='feedback-owner'", Long.class);
+        Long other = value(jdbc, "SELECT id FROM user WHERE username='feedback-other'", Long.class);
+        jdbc.update("INSERT INTO chat_session(user_id,title) VALUES(?,'quality')", owner);
+        Long session = value(jdbc, "SELECT id FROM chat_session WHERE user_id=?", Long.class, owner);
+        jdbc.update("INSERT INTO chat_message(session_id,role,content,status) VALUES(?,'assistant','answer','completed')", session);
+        Long message = value(jdbc, "SELECT id FROM chat_message WHERE session_id=?", Long.class, session);
+        var service = new LearningAnalyticsService(jdbc, new RestTemplate(), "http://unused");
+        assertThatThrownBy(() -> service.feedback(other, message, "helpful", "correct", "none", ""))
+            .isInstanceOf(IllegalArgumentException.class);
+        service.feedback(owner, message, "helpful", "correct", "none", "");
+        service.feedback(owner, message, "helpful", "correct", "none", "");
+        service.feedback(owner, message, "incorrect", "incorrect", "irrelevant_sources", "check source");
+        assertThat(value(jdbc, "SELECT COUNT(*) FROM rag_quality_feedback WHERE user_id=?", Integer.class, owner)).isEqualTo(1);
+        Long feedback = value(jdbc, "SELECT id FROM rag_quality_feedback WHERE user_id=?", Long.class, owner);
+        assertThatThrownBy(() -> service.deleteFeedback(other, feedback)).isInstanceOf(IllegalArgumentException.class);
+        jdbc.update("DELETE FROM chat_message WHERE id=?", message);
+        assertThat(value(jdbc, "SELECT COUNT(*) FROM rag_quality_feedback WHERE user_id=?", Integer.class, owner)).isZero();
     }
 
     private void createBranch(

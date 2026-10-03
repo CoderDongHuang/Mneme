@@ -59,3 +59,33 @@ test('文档版本历史可查看且当前版本不可重复恢复', async ({ pa
   const dimensions = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }))
   expect(dimensions.scroll).toBe(dimensions.client)
 })
+
+test('学习分析反馈可保存和删除且空数据不伪造', async ({ page }) => {
+  let feedback = []
+  await page.route('**/api/v1/analytics?days=*', route => route.fulfill(ok({
+    topics: [], daily: [], feedback_summary: [], feedback,
+    answers: [{ id: 44, excerpt: '可评价的回答' }], trace_quality: { status: 'unavailable' },
+  })))
+  await page.route('**/api/v1/analytics/feedback', async route => {
+    const body = route.request().postDataJSON()
+    expect(body.message_id).toBe(44)
+    feedback = [{ ...body, id: 7 }]
+    await route.fulfill(ok({ status: 'saved' }))
+  })
+  await page.route('**/api/v1/analytics/feedback/7', async route => {
+    expect(route.request().method()).toBe('DELETE')
+    feedback = []
+    await route.fulfill(ok({ status: 'deleted' }))
+  })
+  await page.goto('/analytics')
+  await expect(page.getByText('Trace 数据源不可用')).toBeVisible()
+  await page.getByLabel('回答', { exact: true }).selectOption('44')
+  await page.getByLabel('回答评价', { exact: true }).selectOption('refusal')
+  await page.getByLabel('原因', { exact: true }).selectOption('no_evidence')
+  await page.getByRole('button', { name: '保存反馈' }).click()
+  await expect(page.getByText('反馈已保存')).toBeVisible()
+  await page.getByTitle('删除反馈 7').click()
+  await expect(page.getByText('反馈已删除')).toBeVisible()
+  const dimensions = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }))
+  expect(dimensions.scroll).toBe(dimensions.client)
+})
