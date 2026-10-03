@@ -1,4 +1,7 @@
 services:
+  java-gateway:
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
   prometheus:
     image: prom/prometheus:v3.5.0
     restart: unless-stopped

@@ -13,6 +13,9 @@
 .center-page p, .center-page dd, .center-page strong { overflow-wrap: anywhere; }
 .center-page dl { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 3fr); gap: 12px; }
 .center-page dd { margin: 0; }
+.center-metric { display: contents; }
+.center-page pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.center-page button:disabled { opacity: .6; cursor: not-allowed; }
 .center-page section { padding: 12px 0; }
 .center-table { overflow-x: auto; }
 .center-page table { width: 100%; border-collapse: collapse; }

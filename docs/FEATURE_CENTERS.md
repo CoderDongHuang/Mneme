@@ -25,3 +25,11 @@
 - 为兼容已有账号，初始授权延续原行为；用户可立即关闭。后台每小时执行按用户的保留期清理，读取时也先清理，不能读取已过期 Trace。
 - Trace 删除仅影响当前用户，需输入 `DELETE TRACES`。账号删除沿用跨存储 Saga，运维中心可查逐步进度。
 - 已增加授权撤销、存储失败关闭、保留期和跨用户隔离测试，以及 Java 登录用户作用域测试。
+
+## 4. 管理员运维中心
+
+- `/operations` 受 active admin + 管理令牌双重保护，凭证不进入浏览器存储。
+- Prometheus 固定查询现有 5 分钟 SLO recording rules，显示实际可用率、P95、pending/firing 告警；未配置或无样本不伪造数值。
+- 展示网关本地磁盘容量（不是 S3 配额）、共享限流策略、MySQL/Redis/Agent/Chroma/模型依赖健康、失败任务和删除 Saga 逐步状态。
+- 单独运行需设置 `PROMETHEUS_URL`；使用 observability Compose 覆盖时自动接入 Prometheus。
+- 页面只读，不提供跳过删除步骤、修改用户角色或未经确认的生产恢复按钮。
