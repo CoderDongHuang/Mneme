@@ -9,3 +9,11 @@
 - Java 权限/并发条件测试和前端交互测试纳入回归。
 - 解析和向量化由同步 Agent 调用完成，页面显示合并阶段，不伪造百分比。
 - 原 JSON/归档导入为同步原子接口，其历史由工作台操作日志记录，不包装成不存在的后台任务。
+
+## 2. 备份恢复管理
+
+- 已实现 `/recovery`，列出既有 `disaster-recovery.yml` 工作流历史、校验/恢复步骤结果、附件状态和 GitHub 报告下载入口。
+- 只有 active admin + X-Admin-Token 可读取或发起。凭证仅留在页面内存，锁定/离开即丢弃，不写浏览器存储。
+- 发起必须输入 `ISOLATED DRILL`，固定 main/ref 和固定工作流，只运行合成数据隔离演练，不提供生产覆盖接口。
+- 部署需设置 `RECOVERY_GITHUB_REPOSITORY=owner/repo`、`RECOVERY_GITHUB_TOKEN`（该仓库 Actions 读写权限的细粒度令牌）。不向浏览器返回此令牌。
+- 此页面展示演练所生成备份和恢复历史，不冒充生产 S3 备份清单。生产 S3 归档继续通过 AWS recovery 审批工作流执行。
