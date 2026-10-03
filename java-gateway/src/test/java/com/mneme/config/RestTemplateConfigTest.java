@@ -23,6 +23,18 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class RestTemplateConfigTest {
 
     @Test
+    void externalClientDoesNotCarryInternalCredentials() {
+        RestTemplate template = new RestTemplateConfig().recoveryHttp();
+        assertThat(template.getInterceptors()).isEmpty();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(template).build();
+        server.expect(requestTo("https://api.github.com/repos/test/repo/actions/runs"))
+            .andExpect(request -> assertThat(request.getHeaders()).doesNotContainKey("X-Internal-Service-Token"))
+            .andRespond(withSuccess());
+        template.getForObject("https://api.github.com/repos/test/repo/actions/runs", String.class);
+        server.verify();
+    }
+
+    @Test
     void usesHttp11CompatibleRequestFactoryForPythonAgent() {
         Tracer tracer = mock(Tracer.class);
         var template = new RestTemplateConfig().restTemplate(
