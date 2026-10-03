@@ -225,6 +225,11 @@ app.add_middleware(InternalServiceAuthMiddleware)
 app.add_middleware(TraceAndLoggingMiddleware)
 
 
+@app.exception_handler(PermissionError)
+async def privacy_exception_handler(request: Request, exc: PermissionError):
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception("未处理异常 [%s %s]: %s", request.method, request.url.path, exc)

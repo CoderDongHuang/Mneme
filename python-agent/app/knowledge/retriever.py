@@ -3,6 +3,7 @@ import re
 from collections import Counter
 
 from app.core.config import settings
+from app.core.privacy import require_cloud_processing
 from app.core.logging import setup_logger
 from app.core.telemetry import tracer
 from app.knowledge.lexical_index import lexical_index
@@ -240,6 +241,7 @@ def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) ->
 
 
 def retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> list[dict]:
+    require_cloud_processing(user_id)
     with tracer.start_as_current_span("mneme.retrieval") as span:
         span.set_attribute("mneme.knowledge_base_id", kb_id)
         span.set_attribute("mneme.retrieval.top_k", top_k or settings.retriever_top_k)

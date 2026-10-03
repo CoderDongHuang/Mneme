@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS user_privacy (
+    user_id VARCHAR(128) PRIMARY KEY,
+    cloud_allowed BOOLEAN NOT NULL DEFAULT TRUE,
+    trace_days INT NOT NULL DEFAULT 30
+);

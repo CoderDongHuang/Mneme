@@ -11,6 +11,7 @@ import json
 import hashlib
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.utils.llm import llm
+from app.core.privacy import require_cloud_processing
 from app.memory.long_term_memory import long_term_memory
 from app.core.logging import setup_logger
 
@@ -54,6 +55,7 @@ def distill_conversation(user_id: str, session_id: str, conversation: list) -> l
     Returns:
         提取的记忆条目列表（已过滤低置信度）
     """
+    require_cloud_processing(user_id)
     if not conversation:
         return []
 
