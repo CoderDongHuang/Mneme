@@ -53,6 +53,8 @@ management:
         http.server.requests: true
 
 mneme:
+  recovery-github-repository: ${RECOVERY_GITHUB_REPOSITORY:}
+  recovery-github-token: ${RECOVERY_GITHUB_TOKEN:}
   python-agent-url: ${PYTHON_AGENT_URL:http://localhost:8001}
   jwt-secret: ${JWT_SECRET}
   jwt-expiration: ${JWT_EXPIRATION:86400000}

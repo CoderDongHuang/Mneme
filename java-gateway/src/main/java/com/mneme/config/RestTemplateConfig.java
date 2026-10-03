@@ -3,6 +3,7 @@ package com.mneme.config;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import com.mneme.service.InternalServiceTokenProvider;
 import io.micrometer.tracing.Tracer;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -14,6 +15,7 @@ import java.time.Duration;
 public class RestTemplateConfig {
 
     @Bean
+    @Primary
     public RestTemplate restTemplate(
         RestTemplateBuilder builder,
         InternalServiceTokenProvider tokens,
@@ -38,5 +40,13 @@ public class RestTemplateConfig {
                 return execution.execute(request, body);
             })
             .build();
+    }
+
+    @Bean("recoveryHttp")
+    public RestTemplate recoveryHttp() {
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(15));
+        factory.setReadTimeout(Duration.ofSeconds(30));
+        return new RestTemplate(factory);
     }
 }
