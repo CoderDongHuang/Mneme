@@ -10,6 +10,7 @@ import ProfilePage from './pages/ProfilePage'
 import LegalPage from './pages/LegalPage'
 import SettingsPage from './pages/SettingsPage'
 import TasksPage from './pages/TasksPage'
+import RecoveryPage from './pages/RecoveryPage'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/workspace" element={<WorkspacePage />} />
           <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/recovery" element={<RecoveryPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
