@@ -20,6 +20,10 @@
 .center-table { overflow-x: auto; }
 .center-page table { width: 100%; border-collapse: collapse; }
 .center-page th, .center-page td { padding: 12px; border-bottom: 1px solid #c7d1cc; text-align: left; }
+.center-page .analytics-table { min-width: 600px; }
+.analytics-table th { white-space: nowrap; }
+.analytics-table td { min-width: 80px; overflow-wrap: anywhere; }
+.analytics-table td:first-child { min-width: 140px; }
 .center-page fieldset { border: 1px solid #c7d1cc; margin: 16px 0; padding: 16px; }
 .center-feedback { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .center-feedback label { min-width: 0; flex-direction: column; align-items: stretch; }

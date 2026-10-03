@@ -8,7 +8,7 @@ const citations = { correct: '引用正确', incorrect: '引用错误', unclear:
 const reasons = { none: '无', no_evidence: '资料不足', irrelevant_sources: '引用不相关', unsafe_content: '安全限制', other: '其他' }
 const score = v => v == null ? '暂无样本' : Number(v).toFixed(1)
 function Table({ rows = [], columns, label }) {
-  return rows.length ? <div className="center-table"><table><caption>{label}</caption><thead><tr>{columns.map(([key, title]) => <th scope="col" key={key}>{title}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={i}>{columns.map(([key]) => <td key={key}>{row[key] ?? '-'}</td>)}</tr>)}</tbody></table></div> : <p>暂无样本</p>
+  return rows.length ? <div className="center-table" tabIndex={0} role="region" aria-label={label}><table className="analytics-table"><caption>{label}</caption><thead><tr>{columns.map(([key, title]) => <th scope="col" key={key}>{title}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={i}>{columns.map(([key]) => <td key={key}>{row[key] ?? '-'}</td>)}</tr>)}</tbody></table></div> : <p>暂无样本</p>
 }
 
 export default function AnalyticsPage() {
@@ -36,8 +36,8 @@ export default function AnalyticsPage() {
   const field = key => ({ value: form[key], onChange: e => setForm(v => ({ ...v, [key]: e.target.value })) })
   const quality = data?.trace_quality
   return <div className="center-page">
-    <header className="center-head"><h1>学习分析</h1><button title="刷新学习分析" onClick={() => setRefresh(v => v + 1)}><RefreshCw size={18} /></button></header>
-    <div className="center-toolbar"><label>时间窗口<select value={days} onChange={e => setDays(Number(e.target.value))}>{[7, 30, 90].map(d => <option key={d} value={d}>{d} 天</option>)}</select></label></div>
+    <header className="center-head"><h1>学习分析</h1><button title="刷新学习分析" aria-label="刷新学习分析" onClick={() => setRefresh(v => v + 1)}><RefreshCw size={18} /></button></header>
+    <div className="center-toolbar"><label>时间窗口<select aria-label="时间窗口" value={days} onChange={e => setDays(Number(e.target.value))}>{[7, 30, 90].map(d => <option key={d} value={d}>{d} 天</option>)}</select></label></div>
     {error && <p role="alert" className="page-error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {!data && !error && <p role="status">加载中...</p>}
     {data && <>
@@ -51,7 +51,7 @@ export default function AnalyticsPage() {
         <label>引用评价<select aria-label="引用评价" {...field('citation_rating')}>{Object.entries(citations).map(([key, title]) => <option key={key} value={key}>{title}</option>)}</select></label>
         <label>原因<select aria-label="原因" {...field('reason')}>{Object.entries(reasons).map(([key, title]) => <option key={key} value={key}>{title}</option>)}</select></label>
         <label>备注<textarea rows={3} maxLength={1000} {...field('note')} /></label><button disabled={busy || !form.message_id}><Save size={18} />保存反馈</button>
-      </form><ul className="center-list">{data.feedback.map(item => <li key={item.id}><div className="center-row"><span>回答 #{item.message_id} · {outcomes[item.outcome]} · {citations[item.citation_rating]} · {reasons[item.reason]}</span><button disabled={busy} title={`删除反馈 ${item.id}`} onClick={() => remove(item.id)}><Trash2 size={18} /></button></div><p>{item.note}</p></li>)}</ul></section>
+      </form><ul className="center-list">{data.feedback.map(item => <li key={item.id}><div className="center-row"><span>回答 #{item.message_id} · {outcomes[item.outcome]} · {citations[item.citation_rating]} · {reasons[item.reason]}</span><button disabled={busy} title={`删除反馈 ${item.id}`} aria-label={`删除反馈 ${item.id}`} onClick={() => remove(item.id)}><Trash2 size={18} /></button></div><p>{item.note}</p></li>)}</ul></section>
     </>}
   </div>
 }

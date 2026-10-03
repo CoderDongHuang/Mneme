@@ -31,6 +31,25 @@ export default function ChatPage() {
   const [error, setError] = useState('')
   const abortRef = useRef(null)
   const bottomRef = useRef(null)
+  const drawerRef = useRef(null)
+  useEffect(() => {
+    if (!sourceDrawer) return
+    const previous = document.activeElement
+    const drawer = drawerRef.current
+    drawer.querySelector('button')?.focus()
+    function keydown(event) {
+      if (event.key === 'Escape') { event.preventDefault(); setSourceDrawer(null) }
+      if (event.key !== 'Tab') return
+      const items = [...drawer.querySelectorAll('button:not(:disabled),a[href]')]
+      const index = items.indexOf(document.activeElement)
+      if (index < 0 || (event.shiftKey && index === 0) || (!event.shiftKey && index === items.length - 1)) {
+        event.preventDefault()
+        items[event.shiftKey ? items.length - 1 : 0]?.focus()
+      }
+    }
+    drawer.addEventListener('keydown', keydown)
+    return () => { drawer.removeEventListener('keydown', keydown); if (previous?.isConnected) previous.focus() }
+  }, [sourceDrawer])
   function openSource(source) {
     const documentId = String(source.document_id || '').replace(/^doc_/, '')
     if (!/^\d+$/.test(documentId)) return
@@ -140,9 +159,11 @@ export default function ChatPage() {
 
   async function removeSession(event, session) {
     event.stopPropagation()
-    await endpoints.deleteSession(session.id)
-    setSessions((current) => current.filter((item) => item.id !== session.id))
-    if (activeSession?.id === session.id) newChat()
+    try {
+      await endpoints.deleteSession(session.id)
+      setSessions((current) => current.filter((item) => item.id !== session.id))
+      if (activeSession?.id === session.id) newChat()
+    } catch (requestError) { setError(requestError.message) }
   }
 
   async function resolveMemory(messageId, memory, action) {
@@ -162,25 +183,25 @@ export default function ChatPage() {
 
   return (
     <div className={`chat-page ${sidebarOpen ? '' : 'sidebar-collapsed'}`}>
-      <aside className="chat-history">
+      <aside className="chat-history" inert={!sidebarOpen || !!sourceDrawer} aria-label="对话记录">
         <div className="history-head">
           <div><span>学习空间</span><strong>对话记录</strong></div>
-          <button onClick={newChat} title="新对话"><MessageSquarePlus size={19} /></button>
+          <button onClick={newChat} title="新对话" aria-label="新对话"><MessageSquarePlus size={19} /></button>
         </div>
         <div className="history-list">
           {loading ? <LoadingState /> : sessions.length ? sessions.map((session) => (
-            <button key={session.id} className={activeSession?.id === session.id ? 'active' : ''} onClick={() => chooseSession(session)}>
-              <span><strong>{session.title || '新对话'}</strong><small>{formatTime(session.updatedAt || session.createdAt)}</small></span>
-              <Trash2 className="delete-session" size={15} onClick={(event) => removeSession(event, session)} />
-            </button>
+            <div key={session.id} className={`history-item ${activeSession?.id === session.id ? 'active' : ''}`}>
+              <button className="session-open" onClick={() => chooseSession(session)}><strong>{session.title || '新对话'}</strong><small>{formatTime(session.updatedAt || session.createdAt)}</small></button>
+              <button className="delete-session" title={`删除对话：${session.title || '新对话'}`} aria-label={`删除对话：${session.title || '新对话'}`} onClick={(event) => removeSession(event, session)}><Trash2 size={15} /></button>
+            </div>
           )) : <p className="history-empty">还没有历史对话</p>}
         </div>
         <div className="history-foot"><Sparkles size={16} /><span>忆知会从对话中形成学习画像</span></div>
       </aside>
 
-      <section className="chat-workspace">
+      <section className="chat-workspace" inert={!!sourceDrawer}>
         <header className="chat-toolbar">
-          <button className="collapse-history" onClick={() => setSidebarOpen((value) => !value)} title="切换会话栏">
+          <button className="collapse-history" onClick={() => setSidebarOpen((value) => !value)} title="切换会话栏" aria-label="切换会话栏" aria-expanded={sidebarOpen}>
             {sidebarOpen ? <PanelLeftClose size={19} /> : <PanelLeftOpen size={19} />}
           </button>
           <div className="chat-heading">
@@ -188,10 +209,10 @@ export default function ChatPage() {
             <strong>{activeSession?.title || '新的学习对话'}</strong>
           </div>
           <div className="kb-selector">
-            <button onClick={() => setKbMenuOpen((value) => !value)}><BookOpen size={16} /><span>{selectedLabel}</span><ChevronDown size={15} /></button>
+            <button aria-expanded={kbMenuOpen} onClick={() => setKbMenuOpen((value) => !value)}><BookOpen size={16} /><span>{selectedLabel}</span><ChevronDown size={15} /></button>
             {kbMenuOpen && (
               <div className="kb-menu">
-                <div><strong>检索范围</strong><button onClick={() => setKbMenuOpen(false)}><X size={15} /></button></div>
+                <div><strong>检索范围</strong><button aria-label="关闭检索范围" title="关闭检索范围" onClick={() => setKbMenuOpen(false)}><X size={15} /></button></div>
                 {knowledgeBases.length ? knowledgeBases.map((kb) => {
                   const id = String(kb.id)
                   const checked = selectedKbIds.includes(id)
@@ -225,24 +246,24 @@ export default function ChatPage() {
                   <button className="source-trigger" onClick={() => setSourceDrawer(message.sources)}><Quote size={15} />查看 {message.sources.length} 条资料依据</button>
                 )}
                 {!!message.pending?.length && <div className="memory-confirmations">{message.pending.map((memory) => (
-                  <div key={memory.temp_id}><Sparkles size={16} /><span><small>是否记住</small>{memory.content}</span><button onClick={() => resolveMemory(message.id, memory, 'confirm')} title="确认"><Check size={15} /></button><button onClick={() => resolveMemory(message.id, memory, 'dismiss')} title="忽略"><X size={15} /></button></div>
+                  <div key={memory.temp_id}><Sparkles size={16} /><span><small>是否记住</small>{memory.content}</span><button onClick={() => resolveMemory(message.id, memory, 'confirm')} title="确认" aria-label="确认记忆"><Check size={15} /></button><button onClick={() => resolveMemory(message.id, memory, 'dismiss')} title="忽略" aria-label="忽略记忆"><X size={15} /></button></div>
                 ))}</div>}
               </div>
             </article>
           ))}
-          {error && <div className="chat-error">{error}</div>}
+          {error && <div className="chat-error" role="alert">{error}</div>}
           <div ref={bottomRef} />
         </div>
 
         <form className="composer" onSubmit={sendMessage}>
-          <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage() } }} placeholder="向忆知提问..." rows={1} />
+          <textarea aria-label="向忆知提问..." value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); sendMessage() } }} placeholder="向忆知提问..." rows={1} />
           <span className="composer-context"><FileText size={14} />{selectedLabel}</span>
-          {streaming ? <button type="button" className="stop-send" onClick={() => abortRef.current?.abort()} title="停止生成"><CircleStop size={19} /></button> : <button className="send-message" disabled={!input.trim()} title="发送"><ArrowUp size={20} /></button>}
+          {streaming ? <button type="button" className="stop-send" onClick={() => abortRef.current?.abort()} title="停止生成" aria-label="停止生成"><CircleStop size={19} /></button> : <button className="send-message" disabled={!input.trim()} title="发送" aria-label="发送"><ArrowUp size={20} /></button>}
         </form>
       </section>
 
-      {sourceDrawer && <aside className="source-drawer">
-        <header><div><span>引用依据</span><strong>资料依据</strong></div><button onClick={() => setSourceDrawer(null)}><X size={18} /></button></header>
+      {sourceDrawer && <aside ref={drawerRef} className="source-drawer" role="dialog" aria-modal="true" aria-labelledby="source-title">
+        <header><div><span>引用依据</span><strong id="source-title">资料依据</strong></div><button title="关闭资料依据" aria-label="关闭资料依据" onClick={() => setSourceDrawer(null)}><X size={18} /></button></header>
         <div>{sourceDrawer.map((source, index) => <article key={`${source.document_id || source.document_name}-${index}`}><div><span>{index + 1}</span><strong>{source.document_name}</strong></div><small>{source.page ? `第 ${source.page} 页` : '全文'}{source.section ? ` · ${source.section}` : ''}</small><p>{source.chunk_content}</p><button className="source-open" onClick={() => openSource(source)} disabled={!source.document_id}>打开原文定位</button></article>)}</div>
       </aside>}
     </div>
