@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.privacy import require_cloud_processing
 
 from app.agents.nodes import memory_write_node, run_pre_llm_nodes
 from app.agents.trace_store import agent_trace_store
@@ -10,6 +11,7 @@ from app.models.chat import ChatRequest, Message
 
 
 def prepare_conversation(request: ChatRequest) -> dict:
+    require_cloud_processing(request.user_id)
     user_message = Message(
         role="user",
         content=request.message,
@@ -39,6 +41,7 @@ def prepare_conversation(request: ChatRequest) -> dict:
 
 
 def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dict:
+    require_cloud_processing(request.user_id)
     answer = answer.strip()
     state["answer"] = answer
     with agent_trace_store.span(

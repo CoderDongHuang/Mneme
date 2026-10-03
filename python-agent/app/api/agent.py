@@ -6,10 +6,38 @@ from app.agents.trace_store import agent_trace_store
 from app.tools.registry import tool_registry
 from app.core.internal_tokens import internal_tokens
 from app.core.config import settings
+from app.core.privacy import privacy_store
 from pydantic import BaseModel, Field
 
 
 router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
+
+
+class PrivacyPolicy(BaseModel):
+    cloud_allowed: bool
+    trace_days: int = Field(ge=1, le=365)
+
+
+@router.get("/privacy/{user_id}")
+async def privacy_policy(user_id: str) -> dict:
+    return {**privacy_store.get(user_id), "trace_max_days": settings.agent_trace_retention_days,
+            "providers": ["DeepSeek", "Alibaba DashScope"],
+            "sending_scope": ["对话与历史摘要", "检索片段与学习记忆", "文档文本及启用视觉解析时的图片"],
+            "offline_embeddings": settings.offline_embeddings}
+
+
+@router.put("/privacy/{user_id}")
+async def update_privacy(user_id: str, policy: PrivacyPolicy) -> dict:
+    if policy.trace_days > settings.agent_trace_retention_days:
+        raise HTTPException(422, "保留期不能超过服务策略")
+    privacy_store.save(user_id, policy.cloud_allowed, policy.trace_days)
+    agent_trace_store.prune_user(user_id, policy.trace_days)
+    return await privacy_policy(user_id)
+
+
+@router.delete("/privacy/{user_id}/traces")
+async def clear_traces(user_id: str) -> dict:
+    return {"deleted": agent_trace_store.delete_user(user_id)}
 
 
 class InternalTokenRotation(BaseModel):

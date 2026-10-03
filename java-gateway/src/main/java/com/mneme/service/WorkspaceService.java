@@ -375,7 +375,7 @@ public class WorkspaceService {
                 "metadata", Map.of("source", document.get("file_name"), "page", 1, "section", "原文回退")
             ));
         }
-        List<Map<String, Object>> questions = generateQuestions(topic, chunks);
+        List<Map<String, Object>> questions = generateQuestions(userId, topic, chunks);
         String title = topic + " · 知识测验";
         jdbc.update("INSERT INTO knowledge_quiz(user_id,kb_id,title,topic,questions_json) VALUES(?,?,?,?,CAST(? AS JSON))",
             userId, kbId, title, topic, mapper.writeValueAsString(questions));
@@ -755,10 +755,10 @@ public class WorkspaceService {
         }
     }
 
-    private List<Map<String, Object>> generateQuestions(String topic, List<Map<String, Object>> chunks) {
+    private List<Map<String, Object>> generateQuestions(Long userId, String topic, List<Map<String, Object>> chunks) {
         try {
             @SuppressWarnings("unchecked") Map<String, Object> response = restTemplate.postForObject(
-                pythonAgentUrl + "/api/v1/knowledge/quiz/generate", Map.of("topic", topic, "chunks", chunks), Map.class);
+                pythonAgentUrl + "/api/v1/knowledge/quiz/generate", Map.of("user_id", userId.toString(), "topic", topic, "chunks", chunks), Map.class);
             List<Map<String, Object>> generated = mapper.convertValue(
                 response == null ? List.of() : response.getOrDefault("questions", List.of()), new TypeReference<>() {});
             if (generated.isEmpty() || generated.size() > 5) throw new IllegalArgumentException("模型返回题目数量不合法");

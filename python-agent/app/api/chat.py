@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage
 from app.core.logging import setup_logger
 from app.knowledge.citations import select_citations
 from app.core.telemetry import tracer
+from app.core.privacy import privacy_store
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = setup_logger("chat_api")
@@ -74,6 +75,7 @@ async def delete_user_sessions(user_id: str):
             working_memory.clear(session_id)
     session_store.delete_user(user_id)
     traces = agent_trace_store.delete_user(user_id)
+    privacy_store.delete(user_id)
     return {"status": "deleted", "user_id": user_id, "traces": traces}
 
 

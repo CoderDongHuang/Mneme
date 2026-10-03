@@ -8,6 +8,7 @@ from pathlib import Path
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.core.privacy import require_cloud_processing
 from app.core.logging import setup_logger
 from app.knowledge.chunking import chunk_documents
 from app.knowledge.lexical_index import lexical_index
@@ -419,6 +420,7 @@ def ingest_document(
     source_name: str | None = None,
     document_id: str | None = None,
 ) -> str:
+    require_cloud_processing(user_id)
     path = Path(file_path)
     source = source_name or path.name
     parsed = parse_document(file_path, source)
