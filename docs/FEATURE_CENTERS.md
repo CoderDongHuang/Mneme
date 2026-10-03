@@ -57,3 +57,5 @@
 六项实现与本地验收完成，分别交付 [#15 任务中心](https://github.com/CoderDongHuang/Mneme/pull/15)、[#16 备份恢复](https://github.com/CoderDongHuang/Mneme/pull/16)、[#17 数据隐私](https://github.com/CoderDongHuang/Mneme/pull/17)、[#18 管理运维](https://github.com/CoderDongHuang/Mneme/pull/18)、[#19 学习分析](https://github.com/CoderDongHuang/Mneme/pull/19)、[#20 性能与可访问性](https://github.com/CoderDongHuang/Mneme/pull/20)。最终 CI 和合并状态以各 PR 的实际记录为准；失败不得合并。
 
 本地 Python 528 项通过/1 项跳过，Java 77 项通过（含 7 项实际 MySQL 集成测试），前端 21 项单测和 30 项浏览器测试通过/2 项真实栈用例跳过。构建体积、ESLint、Ruff 和 npm audit 均通过。GitHub 另执行真实栈、Windows 哈希锁/审计、OCR/Qwen-VL、分布式和供应链检查。具体故障修复与安全例外见根目录 `调试问题记录.md`，自动化成功不代替生产配置或人工可访问性验收。
+
+2026-10-04 第六项功能验收 [Run 37136759600](https://github.com/CoderDongHuang/Mneme/actions/runs/37136759600) 全部 8 个作业成功，含实际完整栈浏览器、跨存储删除和备份恢复演练。六项功能验收全部完成；证据补充提交按同一完整门禁验证后合并，最终状态见 PR #20。
