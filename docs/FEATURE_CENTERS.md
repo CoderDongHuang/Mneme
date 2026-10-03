@@ -50,3 +50,10 @@
 - 聊天会话删除改为独立可键盘操作按钮；引用抽屉具备 dialog 名称、焦点循环、Escape 和焦点恢复；中文输入法组合期间 Enter 不发送。
 - 新增五个功能中心在桌面/移动视口的 axe WCAG 2 A/AA、2.1 AA 自动检查，另测展开导航、懒加载请求、键盘流程、图片资源和横向溢出，并产出截图。检查范围不等同于整站 WCAG 合规认证，人工屏幕阅读器验收仍需部署侧执行。
 - 保留全局减少动态效果设置，提高焦点和导航文字对比度；不通过禁用 axe 规则或隐藏失败元素规避检查。
+- 学习表格在移动端保持最小列宽、局部横向滚动与可键盘聚焦；会话打开按钮提供明确名称，真实栈验收以角色/名称定位，桌面与移动端覆盖刷新后重新打开持久化历史。
+
+## 独立交付与验证
+
+六项实现与本地验收完成，分别交付 [#15 任务中心](https://github.com/CoderDongHuang/Mneme/pull/15)、[#16 备份恢复](https://github.com/CoderDongHuang/Mneme/pull/16)、[#17 数据隐私](https://github.com/CoderDongHuang/Mneme/pull/17)、[#18 管理运维](https://github.com/CoderDongHuang/Mneme/pull/18)、[#19 学习分析](https://github.com/CoderDongHuang/Mneme/pull/19)、[#20 性能与可访问性](https://github.com/CoderDongHuang/Mneme/pull/20)。最终 CI 和合并状态以各 PR 的实际记录为准；失败不得合并。
+
+本地 Python 528 项通过/1 项跳过，Java 77 项通过（含 7 项实际 MySQL 集成测试），前端 21 项单测和 30 项浏览器测试通过/2 项真实栈用例跳过。构建体积、ESLint、Ruff 和 npm audit 均通过。GitHub 另执行真实栈、Windows 哈希锁/审计、OCR/Qwen-VL、分布式和供应链检查。具体故障修复与安全例外见根目录 `调试问题记录.md`，自动化成功不代替生产配置或人工可访问性验收。

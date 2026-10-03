@@ -191,7 +191,7 @@ export default function ChatPage() {
         <div className="history-list">
           {loading ? <LoadingState /> : sessions.length ? sessions.map((session) => (
             <div key={session.id} className={`history-item ${activeSession?.id === session.id ? 'active' : ''}`}>
-              <button className="session-open" onClick={() => chooseSession(session)}><strong>{session.title || '新对话'}</strong><small>{formatTime(session.updatedAt || session.createdAt)}</small></button>
+              <button className="session-open" aria-label={`打开对话：${session.title || '新对话'}`} onClick={() => chooseSession(session)}><strong>{session.title || '新对话'}</strong><small>{formatTime(session.updatedAt || session.createdAt)}</small></button>
               <button className="delete-session" title={`删除对话：${session.title || '新对话'}`} aria-label={`删除对话：${session.title || '新对话'}`} onClick={(event) => removeSession(event, session)}><Trash2 size={15} /></button>
             </div>
           )) : <p className="history-empty">还没有历史对话</p>}

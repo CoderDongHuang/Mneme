@@ -65,7 +65,7 @@ test('真实注册、资料入库、检索引用和流式回答', async ({ page 
   await expect(page.locator('.message-assistant')).toHaveCount(2, { timeout: 90_000 })
   await expect(page.locator('.message-assistant').last()).toContainText('QZ-7294')
   await page.reload()
-  await page.locator('.history-list > button').first().click()
+  await page.getByRole('button', { name: /^打开对话：/ }).first().click()
   await expect(page.locator('.message-assistant')).toHaveCount(2, { timeout: 30_000 })
   await page.screenshot({ path: path.join(imageDirectory, 'mneme-rag-chat.png'), fullPage: true })
 })

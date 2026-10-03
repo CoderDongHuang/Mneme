@@ -48,6 +48,13 @@ for (const [path, title] of [['tasks', '任务中心'], ['recovery', '备份恢�
     }
     if (path === 'privacy') await expect(page.getByRole('button', { name: '保存策略' })).toBeVisible()
     if (path === 'analytics') await expect(page.getByRole('table', { name: '主题表现' })).toBeVisible()
+    if (path === 'analytics' && page.viewportSize().width < 760) {
+      const tableRegion = page.getByRole('region', { name: '主题表现', exact: true })
+      await tableRegion.focus()
+      await page.keyboard.press('ArrowRight')
+      await expect.poll(() => tableRegion.evaluate(node => node.scrollLeft)).toBeGreaterThan(0)
+      await tableRegion.evaluate(node => { node.scrollLeft = 0; node.blur() })
+    }
     if (path === 'tasks') await expect(page.getByText('暂无符合条件的任务')).toBeVisible()
     const report = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
     expect(report.violations).toEqual([])
@@ -140,4 +147,20 @@ test('历史删除按钮可键盘操作且收起后不可聚焦', async ({ page 
   await expect(remove).toHaveCount(0)
   await toggle.click()
   await expect(page.locator('.chat-history')).toHaveAttribute('inert', '')
+})
+
+test('刷新后可用键盘打开持久化历史会话', async ({ page }) => {
+  await page.route('**/api/v1/sessions', route => route.fulfill(ok([{ id: 5, title: '历史回答' }])))
+  await page.route('**/api/v1/sessions/5/messages', route => route.fulfill(ok([
+    { id: 51, role: 'user', content: '确认识别码' },
+    { id: 52, role: 'assistant', content: '识别码 QZ-7294' },
+  ])))
+  await page.goto('/chat')
+  await expect(page.getByRole('textbox', { name: '向忆知提问...' })).toBeVisible()
+  await page.reload()
+  if (page.viewportSize().width < 760) await page.getByRole('button', { name: '切换会话栏' }).click()
+  const session = page.getByRole('button', { name: '打开对话：历史回答', exact: true })
+  await session.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.message-assistant')).toContainText('QZ-7294')
 })
