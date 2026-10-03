@@ -143,8 +143,9 @@ public class WorkspaceService {
     public List<Map<String, Object>> tasks(Long userId) {
         return rows("""
             SELECT t.id,t.task_id,t.task_type,t.aggregate_id,t.status,t.attempt_count,t.max_attempts,
-                   t.error_code,t.error_message,t.created_at,t.updated_at,d.file_name
+                   t.error_code,t.error_message,t.created_at,t.updated_at,t.next_attempt_at,d.file_name
             FROM processing_task t LEFT JOIN knowledge_document d ON d.id=t.aggregate_id
+              AND t.task_type IN ('document_ingest','document_delete')
             WHERE t.user_id=? ORDER BY t.created_at DESC LIMIT 100
             """, userId);
     }
@@ -163,6 +164,23 @@ public class WorkspaceService {
                 d.error_message=NULL WHERE t.user_id=? AND t.task_id=?
             """, userId, taskId);
         return Map.of("task_id", taskId, "status", "retry");
+    }
+
+    @Transactional
+    public Map<String, Object> cancelTask(Long userId, String taskId) {
+        int updated = jdbc.update("""
+            UPDATE processing_task SET status='cancelled',locked_at=NULL,locked_by=NULL
+            WHERE user_id=? AND task_id=? AND task_type='document_ingest'
+              AND status IN ('pending','retry')
+            """, userId, taskId);
+        if (updated != 1) throw new IllegalArgumentException("仅可取消等待中的解析任务");
+        jdbc.update("""
+            UPDATE knowledge_document d JOIN processing_task t ON t.aggregate_id=d.id
+            JOIN knowledge_base k ON k.id=d.kb_id
+            SET d.status='failed',d.error_message='任务已由用户取消'
+            WHERE t.user_id=? AND t.task_id=? AND k.user_id=? AND d.parse_task_id=t.task_id
+            """, userId, taskId, userId);
+        return Map.of("task_id", taskId, "status", "cancelled");
     }
 
     public Map<String, Object> debugRetrieval(Long userId, Long kbId, String query, int topK) {

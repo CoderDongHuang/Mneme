@@ -47,6 +47,7 @@ public class WorkspaceController {
             .body(resource);
     }
     @GetMapping("/tasks") public Result<List<Map<String, Object>>> tasks(@RequestAttribute("userId") Long userId) { return Result.success(workspace.tasks(userId)); }
+    @PostMapping("/tasks/{taskId}/cancel") public Result<Map<String, Object>> cancel(@RequestAttribute("userId") Long userId, @PathVariable String taskId) { return Result.success(workspace.cancelTask(userId, taskId)); }
     @PostMapping("/tasks/{taskId}/retry") public Result<Map<String, Object>> retry(@RequestAttribute("userId") Long userId, @PathVariable String taskId) { return Result.success(workspace.retryTask(userId, taskId)); }
     @GetMapping("/operations") public Result<List<Map<String, Object>>> operations(@RequestAttribute("userId") Long userId, @RequestParam(defaultValue="100") int limit) { return Result.success(workspace.operationLogs(userId, limit)); }
     @GetMapping("/retrieval/debug") public Result<Map<String, Object>> debug(@RequestAttribute("userId") Long userId, @RequestParam Long kbId, @RequestParam String query, @RequestParam(defaultValue="6") int topK) { return Result.success(workspace.debugRetrieval(userId, kbId, query, topK)); }

@@ -127,6 +127,7 @@ public class ProcessingTaskService {
     private void ingest(ProcessingTask task) throws Exception {
         JsonNode payload = objectMapper.readTree(task.getPayload());
         Path localFile = storage.materialize(payload.path("file_path").asText());
+        record(task, "source_ready", "processing", Map.of(), null);
         IngestionRequest request = new IngestionRequest(
             payload.path("user_id").asText(),
             payload.path("kb_id").asText(),
@@ -139,6 +140,7 @@ public class ProcessingTaskService {
         if (result == null || !"done".equals(result.status())) {
             throw new IllegalStateException("Python Agent 未完成解析任务");
         }
+        record(task, "index_ready", "processing", Map.of("chunks", result.chunks()), null);
         KnowledgeDocument document = documentMapper.selectById(task.getAggregateId());
         if (document != null) {
             document.setStatus("ready");
