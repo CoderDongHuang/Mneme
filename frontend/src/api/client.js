@@ -135,6 +135,8 @@ export const endpoints = {
   confirmMemory: (body) => api('/memory/confirm', { method: 'POST', body: JSON.stringify(body) }),
   documentPreview: (id) => api(`/workspace/documents/${id}/preview`),
   tasks: () => api('/workspace/tasks'),
+  operations: () => api('/workspace/operations?limit=200'),
+  cancelTask: (id) => api(`/workspace/tasks/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
   retryTask: (id) => api(`/workspace/tasks/${id}/retry`, { method: 'POST' }),
   retrievalDebug: (kbId, query, topK = 6) => api(`/workspace/retrieval/debug?kbId=${encodeURIComponent(kbId)}&query=${encodeURIComponent(query)}&topK=${topK}`),
   plans: () => api('/workspace/plans'),

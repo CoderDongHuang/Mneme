@@ -1,0 +1,22 @@
+.center-page { min-height: 100vh; padding: 32px; background: #f7f9f8; color: #18201c; }
+.center-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid #c7d1cc; padding-bottom: 16px; }
+.center-page h1 { font-size: 26px; margin: 0; }
+.center-page h2 { font-size: 18px; margin: 18px 0 12px; }
+.center-page button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 12px; border: 1px solid #879b92; border-radius: 4px; background: #fff; color: #18201c; }
+.center-toolbar { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 18px 0; }
+.center-page label { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.center-page input, .center-page select, .center-page textarea { padding: 8px; max-width: 100%; border: 1px solid #879b92; border-radius: 4px; }
+.center-list { list-style: none; padding: 0; margin: 0; }
+.center-list > li { padding: 16px 0; border-bottom: 1px solid #c7d1cc; }
+.center-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.center-page small { color: #465950; }
+.center-page p, .center-page dd, .center-page strong { overflow-wrap: anywhere; }
+.center-page dl { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 3fr); gap: 12px; }
+.center-page dd { margin: 0; }
+.center-page section { padding: 12px 0; }
+.center-table { overflow-x: auto; }
+.center-page table { width: 100%; border-collapse: collapse; }
+.center-page th, .center-page td { padding: 12px; border-bottom: 1px solid #c7d1cc; text-align: left; }
+.center-page fieldset { border: 1px solid #c7d1cc; margin: 16px 0; padding: 16px; }
+.center-page :focus-visible { outline: 3px solid #176447; outline-offset: 3px; }
+@media(max-width: 760px) { .center-page { padding: 72px 16px 24px; } .center-page dl { grid-template-columns: 1fr; gap: 8px; } }

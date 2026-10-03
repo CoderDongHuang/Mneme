@@ -9,6 +9,7 @@ import WorkspacePage from './pages/WorkspacePage'
 import ProfilePage from './pages/ProfilePage'
 import LegalPage from './pages/LegalPage'
 import SettingsPage from './pages/SettingsPage'
+import TasksPage from './pages/TasksPage'
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/workspace" element={<WorkspacePage />} />
+          <Route path="/tasks" element={<TasksPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
