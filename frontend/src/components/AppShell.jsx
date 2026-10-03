@@ -1,4 +1,4 @@
-import { ArchiveRestore, BrainCircuit, Library, ListTodo, LogOut, Menu, MessageSquareText, PanelsTopLeft, Settings, X } from 'lucide-react'
+import { ArchiveRestore, BrainCircuit, Library, ListTodo, LogOut, Menu, MessageSquareText, PanelsTopLeft, Settings, ShieldCheck, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { endpoints } from '../api/client'
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/workspace', label: '学习工作台', icon: PanelsTopLeft },
   { to: '/tasks', label: '任务中心', icon: ListTodo },
   { to: '/recovery', label: '备份恢复', icon: ArchiveRestore },
+  { to: '/privacy', label: '数据与隐私', icon: ShieldCheck },
   { to: '/settings', label: '服务配置', icon: Settings },
 ]
 

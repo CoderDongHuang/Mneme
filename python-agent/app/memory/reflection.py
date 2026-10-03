@@ -1,4 +1,5 @@
 import json
+from app.core.privacy import require_cloud_processing
 from app.utils.llm import llm
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.memory.long_term_memory import long_term_memory
@@ -27,6 +28,7 @@ REFLECTION_PROMPT = """请分析以下用户记忆数据，挖掘隐性偏好和
 
 def run_reflection(user_id: str) -> dict:
     """执行记忆反思"""
+    require_cloud_processing(user_id)
     prefs = long_term_memory.get_preferences(user_id)
     weak_points = long_term_memory.get_weak_points(user_id)
     progress = long_term_memory.get_progress(user_id)

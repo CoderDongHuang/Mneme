@@ -31,6 +31,20 @@ def test_percentile_is_deterministic():
     assert MODULE.percentile([10, 20, 30, 40], 0.95) == 40
 
 
+def test_deadline_rechecked_after_early_wakeup(monkeypatch):
+    now = [0.0]
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        now[0] += min(seconds, 0.04)
+
+    monkeypatch.setattr(MODULE, "time", SimpleNamespace(monotonic=lambda: now[0], sleep=sleep))
+    MODULE.wait_until(0.15)
+    assert now[0] >= 0.15
+    assert len(sleeps) > 1
+
+
 def test_load_paces_individual_requests_and_retains_errors(monkeypatch):
     import time
 

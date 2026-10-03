@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
+from app.core.privacy import require_cloud_processing
 from app.core.metrics import INPUT_REJECTIONS
 from app.core.logging import setup_logger
 from app.knowledge.ingestion import SUPPORTED_EXTENSIONS, ingest_document
@@ -33,6 +34,7 @@ executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ingestion")
 
 
 class QuizGenerationRequest(BaseModel):
+    user_id: str = Field(default="default", min_length=1, max_length=128)
     topic: str = Field(min_length=1, max_length=200)
     chunks: list[dict] = Field(min_length=1, max_length=8)
 
@@ -203,6 +205,7 @@ async def search(
 
 @router.post("/quiz/generate")
 async def generate_quiz(request: QuizGenerationRequest) -> dict:
+    require_cloud_processing(request.user_id)
     evidence = "\n\n".join(
         f"片段 {index + 1}：{chunk.get('content', '')[:1600]}\n来源：{json.dumps(chunk.get('metadata', {}), ensure_ascii=False)}"
         for index, chunk in enumerate(request.chunks)

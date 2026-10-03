@@ -21,6 +21,7 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from app.core.config import settings
+from app.core.privacy import require_cloud_processing
 from app.utils.embedding import embeddings
 from app.core.logging import setup_logger
 from app.memory.version_store import memory_version_store
@@ -82,6 +83,7 @@ class MemoryVectorStore:
             topic: 薄弱点主题（仅 weak_point 类别有意义）
             importance: 重要性分数 0.0-1.0
         """
+        require_cloud_processing(user_id)
         if category not in VALID_CATEGORIES:
             raise ValueError(f"非法记忆类别: {category}，合法值: {VALID_CATEGORIES}")
 
@@ -138,6 +140,7 @@ class MemoryVectorStore:
         current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
         if not current.get("ids"):
             return False
+        require_cloud_processing(str((current.get("metadatas") or [{}])[0].get("user_id", "")))
         memory_version_store.snapshot(self._memory_from_result(mem_id, current), "update")
         metadata = dict((current.get("metadatas") or [{}])[0] or {})
         if topic is not None:
@@ -166,6 +169,7 @@ class MemoryVectorStore:
         return True
 
     def restore_memory(self, memory_id: str, content: str, metadata: dict):
+        require_cloud_processing(str(metadata.get("user_id", "")))
         metadata = dict(metadata)
         metadata["updated_at"] = datetime.now().isoformat()
         self._collection.upsert(
@@ -244,6 +248,7 @@ class MemoryVectorStore:
             category: 记忆类别过滤，None 表示不过滤
             top_k: 返回条数
         """
+        require_cloud_processing(user_id)
         # Chroma 多条件过滤需 $and 语法，兼容各版本
         if category:
             where_filter = {"$and": [{"user_id": user_id}, {"category": category}]}

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from app.core.config import settings
+from app.core.privacy import privacy_store
 from app.storage.mysql import connection as mysql_connection
 
 
@@ -76,6 +77,7 @@ class AgentTraceStore:
         duration_ms: float = 0,
         error: str = "",
     ) -> None:
+        self.prune_user(user_id, privacy_store.get(user_id)["trace_days"])
         safe_payload = self._redact(payload or {})
         if self.shared:
             with mysql_connection() as connection:
@@ -154,6 +156,7 @@ class AgentTraceStore:
     def list_session(
         self, user_id: str, session_id: str, limit: int = 100
     ) -> list[dict[str, Any]]:
+        self.prune_user(user_id, privacy_store.get(user_id)["trace_days"])
         limit = max(1, min(limit, 500))
         if self.shared:
             with mysql_connection() as connection:
@@ -230,6 +233,26 @@ class AgentTraceStore:
                 "DELETE FROM agent_trace WHERE user_id=?", (str(user_id),)
             )
             return max(0, cursor.rowcount)
+
+    def prune_user(self, user_id: str, retention_days: int) -> int:
+        days = max(1, min(int(retention_days), settings.agent_trace_retention_days))
+        if self.shared:
+            with mysql_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM agent_trace WHERE user_id=%s AND created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)", (str(user_id), days))
+                count = cursor.rowcount
+                cursor.close()
+                return max(0, count)
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM agent_trace WHERE user_id=? AND created_at < datetime('now', ?)", (str(user_id), f"-{days} days"))
+            return max(0, cursor.rowcount)
+
+
+    def prune_policies(self) -> int:
+        count = self.prune(settings.agent_trace_retention_days)
+        for policy in privacy_store.policies():
+            count += self.prune_user(policy["user_id"], policy["trace_days"])
+        return count
 
 
 agent_trace_store = AgentTraceStore()
