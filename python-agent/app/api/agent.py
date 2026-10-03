@@ -80,3 +80,8 @@ async def list_traces(
         "session_id": session_id,
         "traces": agent_trace_store.list_session(user_id, session_id, limit),
     }
+
+
+@router.get("/quality/{user_id}")
+async def quality_summary(user_id: str, days: int = 30) -> dict:
+    return agent_trace_store.quality_summary(user_id, days)

@@ -21,5 +21,10 @@
 .center-page table { width: 100%; border-collapse: collapse; }
 .center-page th, .center-page td { padding: 12px; border-bottom: 1px solid #c7d1cc; text-align: left; }
 .center-page fieldset { border: 1px solid #c7d1cc; margin: 16px 0; padding: 16px; }
+.center-feedback { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.center-feedback label { min-width: 0; flex-direction: column; align-items: stretch; }
+.center-feedback select { width: 100%; min-width: 0; }
+.center-page caption { text-align: left; color: #465950; padding: 8px 0; }
+@media(max-width: 760px) { .center-feedback { grid-template-columns: 1fr; } }
 .center-page :focus-visible { outline: 3px solid #176447; outline-offset: 3px; }
 @media(max-width: 760px) { .center-page { padding: 72px 16px 24px; } .center-page dl { grid-template-columns: 1fr; gap: 8px; } }

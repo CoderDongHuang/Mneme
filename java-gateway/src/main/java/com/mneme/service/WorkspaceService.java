@@ -475,6 +475,7 @@ public class WorkspaceService {
         data.put("quizzes", quizzes(userId));
         data.put("quiz_attempts", rows("SELECT a.id,a.quiz_id,a.answers_json,a.score,a.feedback_json,a.created_at FROM quiz_attempt a WHERE a.user_id=? ORDER BY a.created_at", userId));
         data.put("learning_outcomes", rows("SELECT event_type,topic,score,success,created_at FROM learning_outcome_event WHERE user_id=? ORDER BY created_at", userId));
+        data.put("rag_feedback", rows("SELECT message_id,outcome,citation_rating,reason,note,updated_at FROM rag_quality_feedback WHERE user_id=? ORDER BY updated_at", userId));
         data.put("branches", branches(userId));
         data.put("scope", Map.of("relational_data", true, "original_files", false, "vector_index", false));
         return data;
