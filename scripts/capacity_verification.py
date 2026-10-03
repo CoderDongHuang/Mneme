@@ -54,6 +54,12 @@ def pause(seconds: float) -> None:
     time.sleep(seconds)
 
 
+def wait_until(deadline: float) -> None:
+    # Recheck the monotonic deadline after early timer wake-ups on Windows.
+    while (remaining := deadline - time.monotonic()) > 0:
+        pause(remaining)
+
+
 def request_json(url: str, method: str = "GET", payload: dict | None = None) -> object:
     data = None if payload is None else json.dumps(payload).encode()
     request = urllib.request.Request(
@@ -174,9 +180,7 @@ def load_test(urls: list[str], requests: int, concurrency: int, duration_seconds
     with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
         pending = set()
         for index in range(requests):
-            remaining = started + index * interval - time.monotonic()
-            if remaining > 0:
-                pause(remaining)
+            wait_until(started + index * interval)
             if len(pending) >= concurrency:
                 done, pending = concurrent.futures.wait(
                     pending, timeout=remaining_timeout(30),
@@ -187,9 +191,7 @@ def load_test(urls: list[str], requests: int, concurrency: int, duration_seconds
                 collect(done)
             pending.add(pool.submit(one, index))
         collect(pending)
-        remaining = started + duration_seconds - time.monotonic()
-        if remaining > 0:
-            pause(remaining)
+        wait_until(started + duration_seconds)
     if not latencies:
         raise CapacityVerificationError("load test produced no successful requests")
     return {
