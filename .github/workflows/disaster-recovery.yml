@@ -66,6 +66,7 @@ jobs:
             --report artifacts/operational-trends.json
       - name: Run Alertmanager configuration drill
         run: |
+          python scripts/render_alertmanager_config.py
           docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml -f docker-compose.observability.yml up -d alertmanager
           python scripts/alertmanager_drill.py --url http://127.0.0.1:9093 --receiver-port 18080 --report artifacts/alertmanager-drill.json
       - name: Run backup key rotation drill
@@ -81,7 +82,7 @@ jobs:
           --report artifacts/backup-geo-recovery-protocol.json
       - name: Collect recovery logs
         if: failure()
-        run: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml logs --no-color > disaster-recovery-services.log
+        run: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml -f docker-compose.observability.yml logs --no-color > disaster-recovery-services.log
       - name: Upload recovery evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -98,4 +99,4 @@ jobs:
             disaster-recovery-services.log
       - name: Stop isolated stack
         if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml down --volumes --remove-orphans
+        run: docker compose -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml -f docker-compose.observability.yml down --volumes --remove-orphans
