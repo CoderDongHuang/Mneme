@@ -96,7 +96,7 @@ public class WorkspaceService {
     private Object parseReport(Long userId, Map<String, Object> document) {
         try {
             String documentId = "doc_" + document.get("id");
-            String url = UriComponentsBuilder.fromHttpUrl(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId + "/report")
+            String url = UriComponentsBuilder.fromUriString(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId + "/report")
                 .queryParam("user_id", userId)
                 .queryParam("kb_id", document.get("kb_id"))
                 .build().encode().toUriString();
@@ -185,7 +185,7 @@ public class WorkspaceService {
 
     public Map<String, Object> debugRetrieval(Long userId, Long kbId, String query, int topK) {
         requireKb(userId, kbId);
-        String url = UriComponentsBuilder.fromHttpUrl(pythonAgentUrl + "/api/v1/knowledge/search")
+        String url = UriComponentsBuilder.fromUriString(pythonAgentUrl + "/api/v1/knowledge/search")
             .queryParam("user_id", userId).queryParam("kb_id", kbId)
             .queryParam("query", query).queryParam("top_k", Math.max(1, Math.min(topK, 20)))
             .build().encode().toUriString();

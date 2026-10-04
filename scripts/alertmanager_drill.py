@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import threading
+import time
 import urllib.request
+from urllib.error import HTTPError, URLError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -28,6 +30,20 @@ class Receiver(BaseHTTPRequestHandler):
         return
 
 
+def wait_for_alertmanager(base: str, timeout: float = 60) -> None:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            with urllib.request.urlopen(f"{base}/-/ready", timeout=3) as response:
+                if response.status == 200:
+                    return
+        except (HTTPError, URLError, TimeoutError):
+            pass
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Alertmanager did not become ready within {timeout}s: {base}")
+        time.sleep(min(1, max(0, deadline - time.monotonic())))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--report", default="artifacts/alertmanager-drill.json")
@@ -44,6 +60,8 @@ def main() -> int:
     api_mode = args.url is not None
     reports = []
     try:
+        if api_mode:
+            wait_for_alertmanager(base)
         for severity, status in (
             ("warning", "firing"),
             ("critical", "firing"),
