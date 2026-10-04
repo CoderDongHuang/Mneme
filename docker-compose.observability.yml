@@ -25,13 +25,10 @@ services:
       - "127.0.0.1:9093:9093"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    environment:
-      ALERTMANAGER_WEBHOOK_URL: ${ALERTMANAGER_WEBHOOK_URL:-}
     volumes:
-      - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./data/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
-      - --config.expand-env
 
 volumes:
   prometheus-data:

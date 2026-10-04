@@ -35,7 +35,7 @@ PowerShell 可继续使用 `scripts/backup-data.ps1` 和 `scripts/restore-data.p
 
 ## SLO、告警与灾备演练
 
-Prometheus 和 Alertmanager 可通过 `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.observability.yml up -d` 启动。目标值、记录规则和告警位于 `observability/slo.json` 与 `observability/prometheus/`；应用错误率、可用性和 p95 延迟进入统一告警。默认接收器在 Alertmanager 中保留告警状态；正式部署必须在 `observability/alertmanager.yml` 增加组织实际使用的邮件、Webhook 或值班平台接收器。
+Prometheus 和 Alertmanager 可通过 `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.observability.yml up -d` 启动。目标值、记录规则和告警位于 `observability/slo.json` 与 `observability/prometheus/`；应用错误率、可用性和 p95 延迟进入统一告警。启动 Alertmanager 前，必须在部署主机的环境中设置有效 HTTP(S) `ALERTMANAGER_WEBHOOK_URL`，运行 `python scripts/render_alertmanager_config.py`，再执行 Compose 命令。生成的 `data/alertmanager/alertmanager.yml` 包含通知地址（可能含令牌），已被 Git 忽略；应限制数据目录的主机访问权限，勿上传为日志或 artifact。更新地址后重新生成并重启 Alertmanager。模板 `observability/alertmanager.yml` 不直接作为容器配置使用；未生成配置时 Alertmanager 应启动失败，不会静默丢失通知。
 
 ### Chroma 升级
 

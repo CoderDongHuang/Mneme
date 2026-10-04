@@ -78,7 +78,7 @@ Mneme 的认证、资料库、异步解析、RAG、流式对话、引用、记�
 3. ✅ **多节点反思调度。** 会话计数使用 Redis 原子 `INCR`，反思使用带过期时间的分布式租约；同一用户只由一个节点执行，失败释放租约保留计数，成功按认领数量递减，新增会话不会被覆盖。
 4. ✅ **WebSocket 边界收敛。** 前端和 API 实际使用 SSE，已移除未使用的 Spring WebSocket 依赖、配置、握手鉴权器和进程内连接处理器，并更新相关架构文档。
 5. ✅ **备份机密性与来源验证。** 新版本备份支持 AES-GCM 文件加密、HMAC-SHA256 manifest 签名、密钥版本和生产强制保护；恢复会验证签名、密文校验和及解密后的明文校验和，并兼容 v1 未保护归档。
-6. ✅ **告警通知落地。** Alertmanager 已提供 webhook receiver、critical/warning 分级路由、critical 抑制 warning 和 resolved 通知；部署通过 `ALERTMANAGER_WEBHOOK_URL` 注入真实通知地址，并启用环境变量展开。
+6. ✅ **告警通知落地。** Alertmanager 已提供 webhook receiver、critical/warning 分级路由、critical 抑制 warning 和 resolved 通知；部署前使用 `ALERTMANAGER_WEBHOOK_URL` 生成真实配置文件，不依赖镜像不支持的环境变量展开参数。
 7. ✅ **Python 依赖可重现性。** 直接依赖已固定版本，维护带哈希的 `python-agent/requirements.lock`，Docker 与 CI 使用 `--require-hashes` 安装；Chroma 已升级到 `0.6.3`，三个无上游修复版本的漏洞仍保留有边界和到期日的例外。
 
 ## 5. 新的后续实施顺序
