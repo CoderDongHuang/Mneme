@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta, timezone
 import json
 import threading
 import time
@@ -62,6 +63,9 @@ def main() -> int:
     try:
         if api_mode:
             wait_for_alertmanager(base)
+        now = datetime.now(timezone.utc)
+        alert_start = (now - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+        alert_end = (now - timedelta(seconds=1)).isoformat().replace("+00:00", "Z")
         for severity, status in (
             ("warning", "firing"),
             ("critical", "firing"),
@@ -73,10 +77,10 @@ def main() -> int:
                 alert = {
                     "labels": labels,
                     "annotations": {"summary": "Mneme drill"},
-                    "startsAt": "2026-01-01T00:00:00Z",
+                    "startsAt": alert_start,
                 }
                 if status == "resolved":
-                    alert["endsAt"] = "2026-01-01T00:00:01Z"
+                    alert["endsAt"] = alert_end
                 request = urllib.request.Request(
                     f"{base}/api/v2/alerts",
                     json.dumps([alert]).encode(),
@@ -91,8 +95,8 @@ def main() -> int:
         if api_mode:
             silence = {
                 "matchers": [{"name": "alertname", "value": "MnemeDrill", "isRegex": False}],
-                "startsAt": "2026-01-01T00:00:00Z",
-                "endsAt": "2026-01-01T00:05:00Z",
+                "startsAt": now.isoformat().replace("+00:00", "Z"),
+                "endsAt": (now + timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
                 "createdBy": "mneme-drill",
                 "comment": "automated drill",
             }
