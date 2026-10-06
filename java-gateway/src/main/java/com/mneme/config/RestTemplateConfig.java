@@ -42,6 +42,24 @@ public class RestTemplateConfig {
             .build();
     }
 
+    @Bean("healthHttp")
+    public RestTemplate healthHttp(InternalServiceTokenProvider tokens) {
+        var client = monitoringHttp();
+        client.getInterceptors().add((request, body, execution) -> {
+            request.getHeaders().set("X-Internal-Service-Token", tokens.current());
+            return execution.execute(request, body);
+        });
+        return client;
+    }
+
+    @Bean("monitoringHttp")
+    public RestTemplate monitoringHttp() {
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(2));
+        factory.setReadTimeout(Duration.ofSeconds(3));
+        return new RestTemplate(factory);
+    }
+
     @Bean("recoveryHttp")
     public RestTemplate recoveryHttp() {
         var factory = new SimpleClientHttpRequestFactory();

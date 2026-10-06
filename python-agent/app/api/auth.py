@@ -14,6 +14,7 @@ from pathlib import Path
 import jwt
 from fastapi import APIRouter
 from pydantic import BaseModel
+from app.core.config import settings
 from app.core.logging import setup_logger
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -24,7 +25,7 @@ JWT_EXPIRATION = int(os.getenv("JWT_EXPIRATION", "86400000"))  # ms
 SKIP_AUTH = os.getenv("SKIP_AUTH", "false").lower() == "true"
 
 # 简易用户存储（JSON 文件，生产环境应迁移到 MySQL）
-USER_FILE = Path("./data/users.json")
+USER_FILE = Path(settings.session_data_path).parent / "users.json"
 
 
 class AuthRequest(BaseModel):

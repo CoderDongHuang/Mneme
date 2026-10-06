@@ -1,10 +1,53 @@
 import json
+import importlib.util
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.error import URLError
 
 
 ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location("alertmanager_drill", ROOT / "scripts" / "alertmanager_drill.py")
+assert SPEC and SPEC.loader
+DRILL = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(DRILL)
+
+
+def test_alertmanager_waits_for_readiness(monkeypatch):
+    calls = []
+
+    class Ready:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    def open_url(url, timeout):
+        calls.append((url, timeout))
+        if len(calls) == 1:
+            raise URLError("starting")
+        return Ready()
+
+    monkeypatch.setattr(DRILL.urllib.request, "urlopen", open_url)
+    monkeypatch.setattr(DRILL.time, "sleep", lambda _seconds: None)
+    DRILL.wait_for_alertmanager("http://localhost:9093")
+    assert calls == [("http://localhost:9093/-/ready", 3)] * 2
+
+
+def test_alertmanager_readiness_times_out(monkeypatch):
+    ticks = iter([0, 2, 2])
+    monkeypatch.setattr(DRILL.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(DRILL.urllib.request, "urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(URLError("down")))
+    try:
+        DRILL.wait_for_alertmanager("http://localhost:9093", timeout=1)
+    except TimeoutError as error:
+        assert "did not become ready" in str(error)
+    else:
+        raise AssertionError("readiness timeout must fail")
 
 
 def test_alertmanager_drill_generates_evidence(tmp_path):
@@ -27,3 +70,35 @@ def test_alertmanager_drill_generates_evidence(tmp_path):
     assert "inhibition" in data["inhibition_rule"]
     assert data["receiver_failure_policy"].startswith("failure detected")
     assert "completed" in result.stdout
+
+
+def test_api_drill_uses_live_silence_window(tmp_path, monkeypatch):
+    requests = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    def open_url(request, timeout):
+        if isinstance(request, DRILL.urllib.request.Request):
+            if request.full_url == "http://127.0.0.1:18080" or request.full_url.startswith("http://127.0.0.1:"):
+                raise URLError("receiver unavailable")
+            requests.append((request.full_url, json.loads(request.data)))
+            if request.full_url.endswith("/api/v2/silences"):
+                now = datetime.now(timezone.utc)
+                silence = requests[-1][1]
+                assert datetime.fromisoformat(silence["startsAt"].replace("Z", "+00:00")) <= now
+                assert datetime.fromisoformat(silence["endsAt"].replace("Z", "+00:00")) > now
+        return Response()
+
+    monkeypatch.setattr(DRILL, "wait_for_alertmanager", lambda *_args: None)
+    monkeypatch.setattr(DRILL.urllib.request, "urlopen", open_url)
+    monkeypatch.setattr(DRILL.Receiver, "available", True)
+    monkeypatch.setattr(sys, "argv", ["drill", "--url", "http://localhost:9093", "--report", str(tmp_path / "report.json")])
+    assert DRILL.main() == 0
+    assert len([url for url, _body in requests if url.endswith("/api/v2/alerts")]) == 3

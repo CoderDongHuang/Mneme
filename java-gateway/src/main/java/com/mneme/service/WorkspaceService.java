@@ -96,7 +96,7 @@ public class WorkspaceService {
     private Object parseReport(Long userId, Map<String, Object> document) {
         try {
             String documentId = "doc_" + document.get("id");
-            String url = UriComponentsBuilder.fromHttpUrl(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId + "/report")
+            String url = UriComponentsBuilder.fromUriString(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId + "/report")
                 .queryParam("user_id", userId)
                 .queryParam("kb_id", document.get("kb_id"))
                 .build().encode().toUriString();
@@ -185,7 +185,7 @@ public class WorkspaceService {
 
     public Map<String, Object> debugRetrieval(Long userId, Long kbId, String query, int topK) {
         requireKb(userId, kbId);
-        String url = UriComponentsBuilder.fromHttpUrl(pythonAgentUrl + "/api/v1/knowledge/search")
+        String url = UriComponentsBuilder.fromUriString(pythonAgentUrl + "/api/v1/knowledge/search")
             .queryParam("user_id", userId).queryParam("kb_id", kbId)
             .queryParam("query", query).queryParam("top_k", Math.max(1, Math.min(topK, 20)))
             .build().encode().toUriString();
@@ -475,6 +475,7 @@ public class WorkspaceService {
         data.put("quizzes", quizzes(userId));
         data.put("quiz_attempts", rows("SELECT a.id,a.quiz_id,a.answers_json,a.score,a.feedback_json,a.created_at FROM quiz_attempt a WHERE a.user_id=? ORDER BY a.created_at", userId));
         data.put("learning_outcomes", rows("SELECT event_type,topic,score,success,created_at FROM learning_outcome_event WHERE user_id=? ORDER BY created_at", userId));
+        data.put("rag_feedback", rows("SELECT message_id,outcome,citation_rating,reason,note,updated_at FROM rag_quality_feedback WHERE user_id=? ORDER BY updated_at", userId));
         data.put("branches", branches(userId));
         data.put("scope", Map.of("relational_data", true, "original_files", false, "vector_index", false));
         return data;

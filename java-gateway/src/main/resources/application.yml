@@ -55,6 +55,7 @@ management:
 mneme:
   recovery-github-repository: ${RECOVERY_GITHUB_REPOSITORY:}
   recovery-github-token: ${RECOVERY_GITHUB_TOKEN:}
+  prometheus-url: ${PROMETHEUS_URL:}
   python-agent-url: ${PYTHON_AGENT_URL:http://localhost:8001}
   jwt-secret: ${JWT_SECRET}
   jwt-expiration: ${JWT_EXPIRATION:86400000}

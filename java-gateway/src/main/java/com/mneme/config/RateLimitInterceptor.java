@@ -16,6 +16,7 @@ import java.util.List;
 
 @Component
 public class RateLimitInterceptor implements HandlerInterceptor {
+    public static final java.util.Map<String, Integer> LIMITS = java.util.Map.of("auth", 12, "upload", 20, "chat", 60, "api", 240);
     private final StringRedisTemplate redis;
     private final List<CidrBlock> trustedProxies;
 
@@ -34,7 +35,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         String bucket = path.startsWith("/api/v1/auth/") ? "auth"
             : path.contains("/document/upload") ? "upload"
             : path.contains("/chat") ? "chat" : "api";
-        int limit = bucket.equals("auth") ? 12 : bucket.equals("upload") ? 20 : bucket.equals("chat") ? 60 : 240;
+        int limit = LIMITS.get(bucket);
         String key = "mneme:rate:" + bucket + ":" + clientIp(request) + ":" + (System.currentTimeMillis() / 60_000L);
         Long count = redis.opsForValue().increment(key);
         if (count != null && count == 1) redis.expire(key, Duration.ofSeconds(70));

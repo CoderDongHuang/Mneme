@@ -30,9 +30,9 @@ export default function TasksPage() {
     finally { setBusy(false) }
   }
   return <div className="center-page">
-    <header className="center-head"><h1>任务中心</h1><button onClick={load} title="刷新"><RefreshCw size={18} /></button></header>
+    <header className="center-head"><h1>任务中心</h1><button onClick={load} title="刷新" aria-label="刷新任务"><RefreshCw size={18} /></button></header>
     {error && <p role="alert" className="page-error">{error}</p>}
-    <div className="center-toolbar"><label>状态<select value={filter} onChange={e => setFilter(e.target.value)}><option value="all">全部</option>{Object.entries(statuses).map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label><span role="status">{loaded ? `${tasks.length} 个任务` : '正在加载'}</span></div>
+    <div className="center-toolbar"><label>状态<select aria-label="任务状态" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">全部</option>{Object.entries(statuses).map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label><span role="status">{loaded ? `${tasks.length} 个任务` : '正在加载'}</span></div>
     <ul className="center-list">{tasks.filter(t => filter === 'all' || t.status === filter).map(t => <li key={t.task_id}>
       <div className="center-row"><strong>{t.file_name || types[t.task_type] || t.task_type}</strong><span>{t.status === 'processing' && t.task_type !== 'document_ingest' ? '执行中' : statuses[t.status] || t.status}</span></div>
       <p><small>{t.task_id} · {types[t.task_type]} · 尝试 {t.attempt_count}/{t.max_attempts}{t.next_attempt_at && ['pending', 'retry'].includes(t.status) ? ` · 下次执行 ${t.next_attempt_at}` : ''}</small></p>

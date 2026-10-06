@@ -23,7 +23,7 @@ body { min-width: 320px; overflow-x: hidden; background: #f3f5f2; }
 button, input, textarea, select { font: inherit; letter-spacing: 0; }
 button { cursor: pointer; transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
 button:active:not(:disabled) { transform: translateY(1px); }
-:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgb(35 36 32 / 22%); }
+:focus-visible { outline: 3px solid #176447; outline-offset: 3px; }
 button:disabled { cursor: not-allowed; opacity: .52; }
 a { color: inherit; text-decoration: none; }
 ::selection { background: #f3d69a; color: #171915; }
@@ -51,6 +51,13 @@ a { color: inherit; text-decoration: none; }
 .route-stage { min-height: 100vh; margin-left: var(--nav-width); animation: route-in .38s ease both; }
 @keyframes route-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 .mobile-nav-toggle, .nav-scrim { display: none; }
+.skip-link { position: fixed; top: 8px; left: 8px; z-index: 200; padding: 12px; background: #fff; color: #18201c; transform: translateY(-150%); }
+.skip-link:focus { transform: none; }
+.global-nav :focus-visible { outline-color: #f7dc8c; outline-offset: -3px; }
+.route-stage:focus { outline: none; }
+.global-nav nav { min-height: 0; overflow-y: auto; flex: 1; gap: 4px; padding: 12px; }
+.global-nav nav a { flex-shrink: 0; min-height: 52px; color: #bec8c1; }
+.brand-mark, .nav-profile { flex-shrink: 0; }
 
 .eyebrow { margin: 0; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
 .loading-state { min-height: 110px; display: flex; align-items: center; justify-content: center; gap: 10px; color: #777d74; font-size: 13px; }
@@ -79,8 +86,8 @@ a { color: inherit; text-decoration: none; }
   :root { --nav-width: 0px; }
   .route-stage { margin-left: 0; }
   .mobile-nav-toggle { display: grid; place-items: center; position: fixed; z-index: 80; top: 14px; left: 14px; width: 40px; aspect-ratio: 1; border: 1px solid #34372f; background: #171915; color: white; }
-  .global-nav { width: min(82vw, 300px); align-items: stretch; transform: translateX(-100%); transition: transform .22s ease; }
-  .global-nav.is-open { transform: translateX(0); }
+  .global-nav { width: min(82vw, 300px); align-items: stretch; transform: translateX(-100%); visibility: hidden; transition: transform .22s ease; }
+  .global-nav.is-open { transform: translateX(0); visibility: visible; }
   .brand-mark { height: 76px; display: flex; justify-content: flex-start; gap: 12px; padding: 0 22px; }
   .brand-name { display: block; font-family: Georgia, serif; font-size: 21px; }
   .global-nav nav a { min-height: 48px; flex-direction: row; justify-content: flex-start; padding: 0 16px; font-size: 14px; }

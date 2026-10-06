@@ -1,6 +1,6 @@
 services:
   minio:
-    image: rustfs/rustfs:1.0.0
+    image: ${MNEME_CI_RUSTFS_IMAGE:-rustfs/rustfs:1.0.0}
     user: "${MNEME_CI_UID:-1000}:${MNEME_CI_GID:-1000}"
     environment:
       RUSTFS_VOLUMES: /data

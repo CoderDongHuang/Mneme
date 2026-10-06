@@ -75,9 +75,14 @@ jobs:
           DEEPSEEK_API_KEY: ci-dummy-key
           DASHSCOPE_API_KEY: ci-dummy-key
           MNEME_OFFLINE_EMBEDDINGS: "true"
+          SESSION_DATA_PATH: ${{ runner.temp }}\\mneme-sessions
+          CHROMA_PATH: ${{ runner.temp }}\\mneme-chroma
+          LEXICAL_INDEX_PATH: ${{ runner.temp }}\\mneme-lexical.sqlite3
+          MEMORY_VERSION_STORE_PATH: ${{ runner.temp }}\\mneme-versions.sqlite3
+          AGENT_TRACE_STORE_PATH: ${{ runner.temp }}\\mneme-traces.sqlite3
         run: |
-          ruff check python-agent/
-          python -m pytest python-agent/tests -q --maxfail=1
+          python -m ruff check python-agent/
+          python -m pytest python-agent/tests -q --maxfail=1 --tb=long
       - name: Audit Windows locked dependencies
         run: >-
           pip-audit --requirement python-agent/requirements.windows.lock --timeout 60

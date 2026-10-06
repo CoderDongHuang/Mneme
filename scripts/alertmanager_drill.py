@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta, timezone
 import json
 import threading
+import time
 import urllib.request
+from urllib.error import HTTPError, URLError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -28,6 +31,20 @@ class Receiver(BaseHTTPRequestHandler):
         return
 
 
+def wait_for_alertmanager(base: str, timeout: float = 60) -> None:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            with urllib.request.urlopen(f"{base}/-/ready", timeout=3) as response:
+                if response.status == 200:
+                    return
+        except (HTTPError, URLError, TimeoutError):
+            pass
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Alertmanager did not become ready within {timeout}s: {base}")
+        time.sleep(min(1, max(0, deadline - time.monotonic())))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--report", default="artifacts/alertmanager-drill.json")
@@ -44,6 +61,11 @@ def main() -> int:
     api_mode = args.url is not None
     reports = []
     try:
+        if api_mode:
+            wait_for_alertmanager(base)
+        now = datetime.now(timezone.utc)
+        alert_start = (now - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+        alert_end = (now - timedelta(seconds=1)).isoformat().replace("+00:00", "Z")
         for severity, status in (
             ("warning", "firing"),
             ("critical", "firing"),
@@ -55,10 +77,10 @@ def main() -> int:
                 alert = {
                     "labels": labels,
                     "annotations": {"summary": "Mneme drill"},
-                    "startsAt": "2026-01-01T00:00:00Z",
+                    "startsAt": alert_start,
                 }
                 if status == "resolved":
-                    alert["endsAt"] = "2026-01-01T00:00:01Z"
+                    alert["endsAt"] = alert_end
                 request = urllib.request.Request(
                     f"{base}/api/v2/alerts",
                     json.dumps([alert]).encode(),
@@ -73,8 +95,8 @@ def main() -> int:
         if api_mode:
             silence = {
                 "matchers": [{"name": "alertname", "value": "MnemeDrill", "isRegex": False}],
-                "startsAt": "2026-01-01T00:00:00Z",
-                "endsAt": "2026-01-01T00:05:00Z",
+                "startsAt": now.isoformat().replace("+00:00", "Z"),
+                "endsAt": (now + timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
                 "createdBy": "mneme-drill",
                 "comment": "automated drill",
             }
