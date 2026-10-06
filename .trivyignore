@@ -1,0 +1,6 @@
+# CVE-2026-47884 currently has no OSS fix on the Spring Framework 6.2 line.
+# Spring's advisory lists 6.2.20 as enterprise-only; the public fix is 7.0.9,
+# which requires the broader Spring Boot 4 migration. The application exposes
+# REST controllers only and does not configure XsltView or wildcard view
+# rendering. Re-review by 2026-10-18, or earlier when an OSS 6.2 fix exists.
+CVE-2026-47884

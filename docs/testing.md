@@ -60,6 +60,21 @@ python scripts/run_real_stack_e2e.py
 
 Linux/macOS 使用同一个入口：`MNEME_OFFLINE_EMBEDDINGS=true MNEME_DETERMINISTIC_TEST_LLM=true python scripts/run_real_stack_e2e.py`。配置检查可单独运行 `python scripts/run_real_stack_e2e.py --config-only`；默认失败会收集 `docker compose ps` 和完整服务日志后执行 `down --volumes --remove-orphans`，需要保留容器排查时加 `--keep`。
 
+Windows Docker Desktop 若仅 Docker Hub 的 `registry-1.docker.io` 出口超时，可从可信的 AWS Public ECR 官方 Docker Library 镜像源拉取构建基础镜像，设置当前 PowerShell 会话的构建参数（无需修改 Docker Desktop 全局配置）：
+
+```powershell
+docker pull public.ecr.aws/docker/library/maven:3.9-eclipse-temurin-17
+docker pull public.ecr.aws/docker/library/eclipse-temurin:17-jre-alpine
+docker pull public.ecr.aws/docker/library/node:22-alpine
+docker pull public.ecr.aws/docker/library/caddy:2.9-alpine
+$env:MNEME_MAVEN_BASE_IMAGE='public.ecr.aws/docker/library/maven:3.9-eclipse-temurin-17'
+$env:MNEME_JAVA_BASE_IMAGE='public.ecr.aws/docker/library/eclipse-temurin:17-jre-alpine'
+$env:MNEME_NODE_BASE_IMAGE='public.ecr.aws/docker/library/node:22-alpine'
+$env:MNEME_CADDY_BASE_IMAGE='public.ecr.aws/docker/library/caddy:2.9-alpine'
+```
+
+Python 基础镜像可同样设置 `MNEME_PYTHON_BASE_IMAGE=public.ecr.aws/docker/library/python:3.11-slim`；本机若已缓存 `python:3.11-slim` 则无需替换。其他服务镜像（MySQL、Redis、Mailpit、Chroma）也必须已缓存或来自经核准的可信仓库；CI 的 RustFS 镜像可通过 `MNEME_CI_RUSTFS_IMAGE` 覆盖。镜像来源变更不绕过应用依赖的 npm/Maven/PyPI/apt 校验，仍需实际构建与真实栈测试。不要在 Windows Docker Desktop 上执行 Linux `systemd` 代理命令；如需企业代理，应在 Docker Desktop 的代理设置中填入实际受控代理地址并复测。
+
 `MNEME_DETERMINISTIC_TEST_LLM` 只能用于验收环境，不能用于生产。验证外部模型质量和供应商连通性时不要设置该变量，并显式设置：
 
 ```powershell
