@@ -1,6 +1,10 @@
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NODE_BASE_IMAGE: ${MNEME_NODE_BASE_IMAGE:-node:22-alpine}
+        CADDY_BASE_IMAGE: ${MNEME_CADDY_BASE_IMAGE:-caddy:2.9-alpine}
     ports:
       - "3000:80"
     environment:

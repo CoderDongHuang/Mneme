@@ -14,7 +14,8 @@ services:
     image: redis:7-alpine
 
   chroma-1:
-    image: chromadb/chroma:0.6.3
+    image: ${MNEME_CHROMA_IMAGE:-ghcr.io/chroma-core/chroma:0.6.3}
+    networks: [vector-backend]
     environment: &chroma-environment
       IS_PERSISTENT: "TRUE"
       PERSIST_DIRECTORY: /chroma/data
@@ -28,7 +29,8 @@ services:
       retries: 40
 
   chroma-2:
-    image: chromadb/chroma:0.6.3
+    image: ${MNEME_CHROMA_IMAGE:-ghcr.io/chroma-core/chroma:0.6.3}
+    networks: [vector-backend]
     environment: *chroma-environment
     volumes:
       - scale-chroma-2:/chroma/data
@@ -42,7 +44,11 @@ services:
       - "127.0.0.1:16686:16686"
 
   python-agent-1:
-    build: ./python-agent
+    build:
+      context: ./python-agent
+      args:
+        PYTHON_BASE_IMAGE: ${MNEME_PYTHON_BASE_IMAGE:-python:3.11-slim}
+    networks: [default, vector-backend]
     ports:
       - "127.0.0.1:8001:8001"
     environment: &agent-environment
@@ -82,7 +88,11 @@ services:
         condition: service_started
 
   python-agent-2:
-    build: ./python-agent
+    build:
+      context: ./python-agent
+      args:
+        PYTHON_BASE_IMAGE: ${MNEME_PYTHON_BASE_IMAGE:-python:3.11-slim}
+    networks: [default, vector-backend]
     ports:
       - "127.0.0.1:8002:8001"
     environment:
@@ -104,7 +114,11 @@ services:
         condition: service_started
 
   java-gateway-1:
-    build: ./java-gateway
+    build: &gateway-build
+      context: ./java-gateway
+      args:
+        MAVEN_BASE_IMAGE: ${MNEME_MAVEN_BASE_IMAGE:-maven:3.9-eclipse-temurin-17}
+        JAVA_BASE_IMAGE: ${MNEME_JAVA_BASE_IMAGE:-eclipse-temurin:17-jre-alpine}
     ports:
       - "127.0.0.1:8080:8080"
     environment: &gateway-environment
@@ -130,7 +144,7 @@ services:
         condition: service_healthy
 
   java-gateway-2:
-    build: ./java-gateway
+    build: *gateway-build
     ports:
       - "127.0.0.1:8081:8080"
     environment:
@@ -151,3 +165,7 @@ volumes:
   scale-chroma-2:
   scale-agent-1:
   scale-agent-2:
+
+networks:
+  vector-backend:
+    internal: true
