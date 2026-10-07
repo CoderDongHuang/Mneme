@@ -1,0 +1,141 @@
+/* A restrained, shared visual language for every authenticated view. */
+.route-stage :is(.chat-page, .knowledge-page, .memory-page, .workspace-page, .profile-page, .center-page, .settings-page) {
+  background: #f4f6f3;
+  color: #25312b;
+}
+.route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head, .profile-hero, .settings-head, .center-head) {
+  min-height: 0;
+  padding: 28px clamp(22px, 3vw, 44px);
+  border: 0;
+  border-bottom: 1px solid #dce4dc;
+  border-radius: 0;
+  background: #f9fbf8;
+  color: #25312b;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head, .profile-hero, .settings-head, .center-head) h1 {
+  margin: 6px 0 8px;
+  font-family: inherit;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head, .profile-hero, .settings-head, .center-head) p,
+.route-stage :is(.knowledge-masthead, .memory-hero) .eyebrow { color: #64736a; }
+.route-stage .knowledge-masthead::after { display: none; }
+.route-stage :is(.knowledge-masthead, .memory-hero) > div > p:last-child { color: #64736a; }
+.route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head) > button,
+.route-stage :is(.select-kb-empty, .drop-zone) button {
+  border: 0; border-radius: 5px; background: #286448; color: white; box-shadow: none;
+}
+.route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head) > button:hover,
+.route-stage :is(.select-kb-empty, .drop-zone) button:hover { background: #1f523a; transform: none; box-shadow: none; }
+.route-stage :is(.document-workbench, .reader-pane, .quiz-sheet, .task-center, .memory-manager, .debugger) { background: #fff; }
+.route-stage :is(.kb-index, .chat-history, .studio-layout > aside, .quiz-layout > form, .branch-layout > form) {
+  background: #f0f4ef; border-color: #dce4dc; box-shadow: none; backdrop-filter: none;
+}
+.route-stage :is(.chat-workspace, .conversation, .chat-toolbar, .workspace-canvas) {
+  background: #fff; border-color: #dce4dc; box-shadow: none; backdrop-filter: none;
+}
+.route-stage :is(.chat-history, .chat-workspace) { margin: 0; border-radius: 0; }
+.route-stage .chat-toolbar { border-bottom: 1px solid #dce4dc; }
+.route-stage :is(.history-head, .history-foot) { background: transparent; border-color: #dce4dc; }
+.route-stage :is(.history-head button, .collapse-history, .kb-selector > button, .composer, .prompt-grid button, .kb-menu, .source-drawer) {
+  background: #fff; border: 1px solid #dce4dc; box-shadow: none; backdrop-filter: none;
+}
+.route-stage :is(.history-head button, .collapse-history, .kb-selector > button):hover { background: #eff5f0; transform: none; box-shadow: none; }
+.route-stage .prompt-grid button { border-radius: 5px; }
+.route-stage .prompt-grid button:hover { background: #f1f6f1; border-color: #b9cebd; transform: none; box-shadow: none; }
+.route-stage .chat-welcome::before { display: none; }
+.route-stage .chat-welcome h1 { font-family: inherit; font-size: 32px; font-weight: 700; }
+.route-stage .composer { bottom: 20px; border-radius: 6px; }
+.route-stage .composer:focus-within { border: 1px solid #78a186; transform: none; box-shadow: 0 0 0 3px rgb(40 100 72 / 9%); }
+.route-stage .send-message { background: #286448; }
+.route-stage .send-message:hover { background: #1f523a; transform: none; }
+.route-stage .message-user .message-body { background: #edf3ed; border: 0; box-shadow: none; }
+.route-stage .live-dot { background: #478862; box-shadow: 0 0 0 4px #e3f1e6; }
+.route-stage .knowledge-metrics > div { border: 0; border-right: 1px solid #dce4dc; border-radius: 0; box-shadow: none; }
+.route-stage .knowledge-metrics > div:last-child { border-right: 0; }
+.route-stage :is(.document-table, .document-search, .drop-zone, .kb-dialog) { box-shadow: none; backdrop-filter: none; }
+.route-stage .drop-zone { border: 1px dashed #a9c2ae; background: #f2f7f2; transform: none; }
+.route-stage .kb-index > button { border-radius: 0; box-shadow: none; }
+.route-stage .kb-index > button.active { border-left-color: #286448; background: #fff; }
+.route-stage .workspace-page { padding: 0; }
+.route-stage .workspace-modes { margin: 0; padding: 10px clamp(18px, 3vw, 44px); border-radius: 0; background: #fff; border-bottom: 1px solid #dce4dc; box-shadow: none; backdrop-filter: none; }
+.route-stage .workspace-modes button.active { background: #286448; color: #fff; box-shadow: none; }
+.route-stage .workspace-modes button:hover { transform: none; box-shadow: none; }
+.route-stage .workspace-metrics { margin: 0; padding: 18px clamp(18px, 3vw, 44px); background: #f4f6f3; }
+.route-stage .workspace-metrics article,
+.route-stage .memory-scoreboard > div { border: 1px solid #dce4dc; border-radius: 5px; background: #fff; box-shadow: none; }
+.route-stage .metric-trend { margin: 0; padding: 12px clamp(18px, 3vw, 44px); border: 0; border-radius: 0; background: #f4f6f3; box-shadow: none; }
+.route-stage .workspace-canvas { border-radius: 0; }
+.route-stage :is(.plan-grid > form, .plan-list, .review-stream, .branch-compare > section, .data-transfer article) {
+  border: 1px solid #dce4dc; border-radius: 5px; background: #fff; box-shadow: none;
+}
+.route-stage :is(.quiz-sheet label, .quiz-history button, .studio-layout > aside > button, .branch-layout form > div button, .memory-versions button) { background: #f3f6f2; box-shadow: none; }
+.route-stage :is(.workspace-canvas input, .workspace-canvas textarea, .workspace-canvas select, .profile-form input) {
+  border: 1px solid #d7e1d8; background: #fff; box-shadow: none;
+}
+.route-stage :is(.plan-grid form button, .quiz-layout form > button, .quiz-sheet > button, .branch-layout form > button, .data-transfer button, .debugger form button, .profile-form > button) { background: #286448; color: #fff; }
+.route-stage .memory-page { min-height: 100vh; padding: 0 0 40px; }
+.route-stage .memory-hero { display: flex; align-items: center; gap: 22px; }
+.route-stage .memory-orbit { width: 52px; height: 52px; flex: none; border-radius: 6px; background: #e6efe7; color: #286448; box-shadow: none; }
+.route-stage .memory-scoreboard { gap: 10px; margin: 20px clamp(22px, 3vw, 44px) 0; border: 0; }
+.route-stage .memory-scoreboard > div { min-height: 92px; padding: 18px; }
+.route-stage .memory-scoreboard strong { color: #286448; font-family: inherit; font-size: 30px; font-weight: 700; }
+.route-stage .memory-scoreboard span, .route-stage .memory-scoreboard small { color: #65756a; }
+.route-stage .memory-grid { margin: 20px clamp(22px, 3vw, 44px) 0; }
+.route-stage :is(.preference-field, .weakpoint-ledger, .memory-method, .progress-panel) {
+  border: 1px solid #dce4dc; border-radius: 5px; background: #fff; color: #25312b; box-shadow: none;
+}
+.route-stage .preference-field { padding: 20px; }
+.route-stage .progress-panel { padding: 20px; }
+.route-stage :is(.preference-field h2, .progress-panel h2) { font-family: inherit; font-size: 20px; font-weight: 700; }
+.route-stage :is(.preference-map article, .weakpoint-ledger article, .preference-field > header, .weakpoint-ledger > header) { border-color: #dce4dc; box-shadow: none; color: #34443a; }
+.route-stage :is(.preference-map article p, .weakpoint-ledger article strong, .memory-method strong) { color: #25312b; }
+.route-stage :is(.memory-method p, .progress-panel p, .memory-empty p) { color: #64736a; }
+.route-stage :is(.memory-orbit, .progress-symbol, .memory-method svg, .weak-rank, .preference-field header > div) { color: #286448; }
+.route-stage .memory-method { padding: 20px; }
+.route-stage .memory-dialog { background: #fff; color: #25312b; }
+.route-stage .memory-dialog :is(input, textarea, select) { background: #fff; color: #25312b; border: 1px solid #dce4dc; box-shadow: none; }
+.route-stage .memory-dialog .dialog-submit { background: #286448; color: #fff; }
+.route-stage .profile-page { padding: 0; }
+.route-stage .profile-layout { margin: 0; padding: 20px clamp(22px, 3vw, 44px); }
+.route-stage :is(.identity-panel, .profile-form) { border: 1px solid #dce4dc; border-radius: 5px; background: #fff; box-shadow: none; backdrop-filter: none; }
+.route-stage .center-page { padding: 0 clamp(22px, 3vw, 44px) 40px; }
+.route-stage .center-head { margin: 0 calc(-1 * clamp(22px, 3vw, 44px)) 20px; }
+.route-stage .center-head h1 { margin: 0; font-size: 28px; }
+.route-stage .center-page :is(input, select, textarea) { border-color: #cbd9cf; background: #fff; }
+.route-stage .center-page button { border-color: #cbd9cf; }
+.route-stage .settings-page { max-width: none; padding: 0 0 40px; }
+.route-stage .settings-head { margin: 0 0 22px; align-items: center; }
+.route-stage .settings-head h1 { margin: 0; }
+.route-stage .settings-head button { flex: none; }
+.route-stage .config-grid { padding: 0 clamp(22px, 3vw, 44px); }
+.route-stage .config-group { background: #fff; border-radius: 5px; }
+.route-stage .config-item { border: 0; border-top: 1px solid #e5ebe5; padding: 16px 8px; }
+
+@media (max-width: 760px) {
+  .route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head, .profile-hero, .settings-head, .center-head) { padding: 72px 18px 20px; }
+  .route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head, .profile-hero, .settings-head, .center-head) h1 { font-size: 24px; }
+  .route-stage .memory-hero { display: block; }
+  .route-stage .memory-orbit { display: none; }
+  .route-stage .memory-scoreboard { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 14px 14px 0; }
+  .route-stage .memory-scoreboard > div { min-width: 0; padding: 10px; display: block; }
+  .route-stage .memory-scoreboard strong { display: block; margin: 6px 0; font-size: 24px; }
+  .route-stage .memory-grid { margin: 14px; }
+  .route-stage .profile-layout { display: grid; grid-template-columns: 1fr; padding: 14px; }
+  .route-stage .profile-form:last-child { grid-column: auto; }
+  .route-stage .center-page { padding: 0 16px 30px; }
+  .route-stage .center-head { margin: 0 -16px 18px; }
+  .route-stage .settings-head { flex-direction: row; align-items: end; gap: 10px; }
+  .route-stage .settings-head > div { min-width: 0; }
+  .route-stage .config-grid { padding: 0 16px; }
+  .route-stage .workspace-modes { margin: 0; padding: 8px 14px; grid-template-columns: repeat(4, 1fr); }
+  .route-stage .workspace-modes button { min-height: 48px; }
+  .route-stage .workspace-metrics { padding: 12px 14px; }
+  .route-stage .chat-workspace { margin: 0; }
+  .route-stage .chat-history { margin: 0; }
+  .route-stage .composer { bottom: max(12px, env(safe-area-inset-bottom)); }
+}
