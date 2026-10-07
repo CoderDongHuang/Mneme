@@ -56,19 +56,8 @@ export default function AppShell() {
 
   function closeNav() { setOpen(false); toggleRef.current?.focus() }
 
-  function moveBackdrop(event) {
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const x = ((event.clientX - bounds.left) / bounds.width - 0.5) * 14
-    const y = ((event.clientY - bounds.top) / bounds.height - 0.5) * 10
-    event.currentTarget.style.setProperty('--backdrop-x', `${x}px`)
-    event.currentTarget.style.setProperty('--backdrop-y', `${y}px`)
-  }
-
   return (
-    <div className="app-shell" onPointerMove={moveBackdrop} onPointerLeave={(event) => {
-      event.currentTarget.style.setProperty('--backdrop-x', '0px')
-      event.currentTarget.style.setProperty('--backdrop-y', '0px')
-    }}>
+    <div className="app-shell">
       <a className="skip-link" href="#main-content" onClick={() => mainRef.current?.focus()}>跳转到主要内容</a>
       <button ref={toggleRef} className="mobile-nav-toggle" onClick={() => open ? closeNav() : setOpen(true)} aria-label={open ? '关闭导航' : '打开导航'} aria-expanded={open} aria-controls="global-navigation">
         {open ? <X size={20} /> : <Menu size={20} />}

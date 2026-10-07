@@ -14,7 +14,8 @@ test('真实注册、资料入库、检索引用和流式回答', async ({ page 
   const imageDirectory = path.resolve('../docs/images')
 
   await page.goto('/auth')
-  await page.screenshot({ path: path.join(imageDirectory, 'mneme-auth.png'), fullPage: true })
+  await expect(page.getByRole('heading', { name: '继续你的学习轨迹' })).toBeVisible()
+  await page.screenshot({ path: path.join(imageDirectory, 'mneme-auth.png'), fullPage: true, animations: 'disabled' })
   const register = await page.request.post('/api/v1/auth/register', {
     data: { username, password },
   })
@@ -53,7 +54,7 @@ test('真实注册、资料入库、检索引用和流式回答', async ({ page 
 
   await page.goto('/knowledge')
   await expect(page.getByText('rag-fixture.txt')).toBeVisible()
-  await page.screenshot({ path: path.join(imageDirectory, 'mneme-knowledge.png'), fullPage: true })
+  await page.screenshot({ path: path.join(imageDirectory, 'mneme-knowledge.png'), fullPage: true, animations: 'disabled' })
   await page.goto('/chat')
   await page.getByPlaceholder('向忆知提问...').fill('星桥计划的核心识别码是什么？请引用资料。')
   await page.getByTitle('发送').click()
@@ -65,7 +66,13 @@ test('真实注册、资料入库、检索引用和流式回答', async ({ page 
   await expect(page.locator('.message-assistant')).toHaveCount(2, { timeout: 90_000 })
   await expect(page.locator('.message-assistant').last()).toContainText('QZ-7294')
   await page.reload()
+  const historyToggle = page.getByRole('button', { name: '切换会话栏' })
+  if (await historyToggle.getAttribute('aria-expanded') === 'false') await historyToggle.click()
   await page.getByRole('button', { name: /^打开对话：/ }).first().click()
   await expect(page.locator('.message-assistant')).toHaveCount(2, { timeout: 30_000 })
-  await page.screenshot({ path: path.join(imageDirectory, 'mneme-rag-chat.png'), fullPage: true })
+  const restoredAnswer = page.locator('.message-assistant').last()
+  await expect(restoredAnswer).toContainText('QZ-7294')
+  await restoredAnswer.scrollIntoViewIfNeeded()
+  await expect(restoredAnswer).toBeInViewport()
+  await page.screenshot({ path: path.join(imageDirectory, 'mneme-rag-chat.png'), fullPage: true, animations: 'disabled' })
 })

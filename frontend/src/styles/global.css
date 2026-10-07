@@ -165,3 +165,57 @@ a { color: inherit; text-decoration: none; }
     backdrop-filter: blur(14px);
   }
 }
+
+/* Shared application frame */
+:root {
+  --nav-width: 216px;
+  --ink: #25312b;
+  --muted: #66756d;
+  --line: #dce4dc;
+  --green: #286448;
+  --coral: #aa6252;
+  --yellow: #af8742;
+  --blue: #526f7c;
+  --paper: #fff;
+}
+body, .app-shell { background: #f4f6f3; }
+.app-shell { transition: none; }
+.app-shell::before { display: none; }
+.global-nav {
+  align-items: stretch;
+  width: var(--nav-width);
+  background: #172820;
+  border-right: 1px solid #304339;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.brand-mark { height: 74px; justify-content: flex-start; gap: 11px; padding: 0 18px; border-bottom: 1px solid #304339; }
+.brand-glyph { width: 38px; border: 0; border-radius: 5px; background: transparent; box-shadow: none; }
+.brand-name { display: block; font-family: inherit; font-size: 20px; font-weight: 700; }
+.global-nav nav { gap: 3px; padding: 16px 9px; }
+.global-nav nav a, .global-nav nav a.active {
+  min-height: 43px; flex-direction: row; justify-content: flex-start; gap: 12px;
+  padding: 0 12px; border: 0; border-radius: 5px; font-size: 13px; box-shadow: none;
+}
+.global-nav nav a { color: #bfcdc2; }
+.global-nav nav a:hover { background: #263e31; color: #fff; }
+.global-nav nav a.active { background: #345943; color: #fff; font-weight: 700; }
+.global-nav nav svg { flex: none; }
+.nav-profile { min-height: 72px; padding: 10px; grid-template-columns: minmax(0, 1fr) auto; border-top: 1px solid #304339; }
+.nav-profile .profile-entry { min-width: 0; grid-template-columns: auto minmax(0, 1fr); gap: 8px; justify-items: start; text-align: left; }
+.nav-profile .profile-copy { min-width: 0; display: flex; flex-direction: column; text-align: left; }
+.nav-profile .profile-copy strong { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.nav-profile small { color: #b1c1b5; }
+.nav-profile .avatar { background: #d9e9dc; color: #1c4931; }
+.nav-profile button { color: #c6d2c9; }
+.route-stage, .route-stage > * { background: #f4f6f3; animation: none; }
+.mobile-nav-toggle { background: #204630; box-shadow: 0 4px 16px rgb(18 38 25 / 18%); backdrop-filter: none; }
+.dialog-backdrop { background: rgb(17 32 23 / 60%); backdrop-filter: none; }
+.dialog-submit { background: var(--green); }
+.dialog-submit:hover { background: #1e5139; transform: none; box-shadow: none; }
+@media (max-width: 760px) {
+  :root { --nav-width: 0px; }
+  .global-nav { width: min(82vw, 300px); }
+  .brand-mark { height: 74px; }
+  .global-nav nav a, .global-nav nav a.active { min-height: 43px; }
+}
