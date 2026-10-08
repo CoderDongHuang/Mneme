@@ -1,6 +1,6 @@
 # 接口契约
 
-所有浏览器接口基址为 `http://localhost:8080/api/v1`。除认证和健康检查外，必须携带：
+浏览器通过前端同源反向代理访问 `/api/v1`；直接调试网关可使用 `http://localhost:8080/api/v1`。认证接口设置 `mneme_session` HttpOnly Cookie，浏览器请求携带 Cookie；非浏览器客户端也可使用：
 
 ```http
 Authorization: Bearer <jwt>
@@ -12,6 +12,9 @@ Java 普通响应采用 `{ "code": 200, "message": "success", "data": ... }`。
 
 - `POST /auth/register`：`{ "username", "password" }`
 - `POST /auth/login`：`{ "username", "password" }`
+- `POST /auth/logout`：撤销当前服务端会话并清除 Cookie。
+- `POST /auth/password-reset/request`：按用户名和绑定邮箱请求 15 分钟有效的验证码。
+- `POST /auth/password-reset/confirm`：凭验证码设置新密码并撤销旧会话。
 
 通过 HttpOnly Cookie 建立会话，响应体只返回 `userId` 和 `username`；JWT 不返回给 JavaScript。
 

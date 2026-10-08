@@ -1,22 +1,16 @@
-# Remediation rollout and rollback
+# 升级、验收与回退
 
-## Release sequence
+本页适用于当前 Beta 自部署版本。历史 V3 迁移步骤已经过期；数据库以 `java-gateway/src/main/resources/db/migration` 中的 Flyway 迁移为准，当前最高版本为 V18。
 
-1. Back up MySQL and Chroma, then deploy Flyway V3 with the old application still stopped.
-2. Deploy Python Agent with both legacy asynchronous ingestion and durable synchronous ingestion enabled.
-3. Deploy Java Gateway with the durable task scheduler disabled using `MNEME_TASK_POLL_DELAY_MS` only during schema verification, then enable normal polling.
-4. Verify new uploads reach `ready`, failed jobs retry, and knowledge-base deletion removes vectors and files before metadata.
-5. Deploy the frontend request-ID and memory-confirmation changes.
-6. After one stable release window, remove the legacy Python upload/task endpoints and obsolete in-memory task tracker.
+## 升级
 
-## Verification gates
+1. 记录当前 Git 提交、容器镜像、配置版本，暂停写入并使用 `scripts/backup_restore.py` 备份 MySQL、Redis、Chroma 和原文件；另外安全保存备份密钥。按 [备份与恢复](cloud-recovery.md) 完成可恢复性检查。
+2. 阅读目标版本 Release Notes，检查 `.env.example` 中新增配置。先在隔离环境用备份副本演练升级和恢复。
+3. 执行 `docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d --build`。检查 Flyway 迁移成功、Java 和 Python 健康状态以及后台任务无持续失败。
+4. 验证注册、登录、退出、上传和重解析、引用回答、记忆确认、密码重置、账号删除与备份恢复。破坏性演练使用隔离的 CI 栈，不能针对用户的主数据运行。
 
-- Flyway reports schema version 3 with no failed migration.
-- No `processing` task remains locked for more than five minutes.
-- A repeated task produces the same document vector IDs and no duplicate chat messages.
-- Java `/actuator/health`, Java `/actuator/prometheus`, Python `/health/ready`, and Python `/metrics` respond as expected.
-- Register, upload, parse, cited chat, pending-memory confirmation, and deletion pass end to end.
+## 回退
 
-## Rollback
+先停止写入并保留日志。仅在确认旧应用与已迁移数据库兼容时回退镜像；不要自动逆转 Flyway 迁移或清空任务表。若迁移不兼容，在隔离环境验证备份后恢复整个一致性数据集和对应版本密钥，再切回旧版本。V14 会使旧的无会话 ID JWT 失效，升级后用户需重新登录。
 
-Application rollback is allowed while V3 remains in place because its new columns and tables are additive. Disable task polling before rolling Java back. Do not automatically reverse V3 or delete durable task records. Restore MySQL/Chroma backups only for confirmed data corruption, not for an application-only regression.
+验收命令见 [测试说明](testing.md)，本地部署命令见 [自部署指南](SELF_HOSTING.md)。

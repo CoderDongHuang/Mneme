@@ -57,6 +57,14 @@ describe('api client', () => {
     await expect(api('/auth/login')).rejects.toMatchObject({ status: 502, message: '服务暂时不可用，请稍后重试' })
   })
 
+  it('explains a network outage without exposing the browser fetch error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+    await expect(api('/auth/login')).rejects.toMatchObject({
+      status: 0,
+      message: '无法连接服务，请确认 Mneme 服务已启动后重试',
+    })
+  })
+
   it('posts memory restore requests through the workspace API', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,

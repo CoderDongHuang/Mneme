@@ -12,7 +12,7 @@
 
 Mneme 面向需要长期学习和资料管理的用户。它不仅回答单次问题，还会从对话中沉淀表达偏好、知识薄弱点和学习进度，并在后续回答与复习建议中使用这些记忆。
 
-> 当前状态：面向个人与小规模团队的本地自部署版本。核心学习闭环、中文 OCR、本地邮件、RAG 评测和真实全链路验收入口均已提供；图表与流程图理解按需启用多模态模型。
+> 当前状态：面向个人与小规模团队的本地自部署 Beta 版本。核心学习闭环、中文 OCR、本地邮件、RAG 评测和真实全链路验收入口均已提供；图表与流程图理解按需启用多模态模型。[收尾状态与已知边界](docs/PROJECT_STATUS.md)。
 
 ## 功能概览
 
@@ -66,7 +66,7 @@ Copy-Item .env.example .env
 
 ### 2. 配置 `.env`
 
-至少修改以下配置，三个密钥不要复用：
+至少修改以下配置，数据库密码、JWT 密钥和内部服务令牌不要复用：
 
 ```dotenv
 DEEPSEEK_API_KEY=你的_deepseek_key
@@ -108,7 +108,7 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml down
 本地调试可让 Docker 只运行 MySQL、Redis 和 Chroma，再分别启动 Python、Java 和 React：
 
 ```powershell
-docker compose up -d mysql redis chroma
+docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d mysql redis chroma
 ./start.bat
 ```
 
@@ -119,7 +119,8 @@ docker compose up -d mysql redis chroma
 ```bash
 # Python
 cd python-agent
-pip install -r requirements.txt -r requirements-dev.txt
+pip install --require-hashes -r requirements.lock
+pip install -r requirements-dev.txt
 python -m pytest tests -q
 ruff check .
 
@@ -149,6 +150,7 @@ CI 会分别执行 Python、Java 和前端检查，并使用 mock API 验证关�
 - [配置获取与参数说明](docs/SELF_HOSTING.md#2-配置与获取方式)
 - [ADR：服务与数据边界](docs/adr/0001-service-and-data-boundaries.md)
 - [项目审计与迭代路线图](docs/PROJECT_AUDIT_AND_ROADMAP.md)
+- [当前项目状态与已知边界](docs/PROJECT_STATUS.md)
 
 `全阶段开发步骤.md` 和 `调试问题记录.md` 是历史过程记录，不代表当前实现状态。
 

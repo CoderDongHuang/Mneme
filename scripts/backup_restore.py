@@ -32,6 +32,7 @@ VERSION = 2
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(PROJECT_ROOT / ".env")
 DATA_SOURCES = {
+    "payload/data/redis": PROJECT_ROOT / "data" / "redis",
     "payload/data/files": PROJECT_ROOT / "data" / "files",
     "payload/data/avatars": PROJECT_ROOT / "data" / "avatars",
     "payload/data/chroma": PROJECT_ROOT / "data" / "chroma",
@@ -41,7 +42,7 @@ DATA_SOURCES = {
 ALLOWED_FILE_PREFIXES = tuple(f"{name}/" for name in DATA_SOURCES) + (
     "payload/mysql.sql",
 )
-APP_SERVICES = ("java-gateway", "python-agent", "chroma", "minio")
+APP_SERVICES = ("java-gateway", "python-agent", "chroma", "minio", "redis")
 START_ORDER = ("chroma", "minio", "python-agent", "java-gateway")
 
 

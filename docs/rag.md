@@ -3,13 +3,13 @@
 ## 处理链路
 
 1. Java 校验用户对知识库的所有权并保存原文件。
-2. Java 创建文档元数据，调用 Python `/knowledge/ingest`。
-3. Python 后台解析，任务状态为 `processing`。
+2. Java 创建文档元数据和 MySQL 持久化处理任务；后台任务服务认领任务并调用 Python 的同步入库接口。
+3. Python 解析并建立索引，Java 根据调用结果推进任务状态；失败任务保留重试信息。
 4. 解析器按格式还原页码、章节、表格和正文。
 5. 切片器保持结构化元素完整，对正文执行带重叠的语义段落切分。
 6. Chroma 按用户和知识库隔离存储；SQLite FTS5 同步维护持久化词法索引。
 7. 检索使用 Dense、FTS5 词法召回和 RRF；可通过配置懒加载 Cross Encoder。
-8. Java 轮询任务状态并更新 `ready / failed` 与 chunk 数量。
+8. 前端轮询 Java 文档状态，读取 `ready / failed` 与 chunk 数量。
 
 ## 支持格式
 

@@ -32,6 +32,8 @@ _LEASE_STATE_PREFIX = "mneme:reflection:lease-state:"
 _QUEUE_KEY = "mneme:reflection:queue"
 _QUEUE_GROUP = "mneme-reflection-workers"
 _QUEUE_CONSUMER_PREFIX = "worker-"
+_QUEUE_BLOCK_MS = 1000
+_QUEUE_SOCKET_TIMEOUT_SECONDS = 2
 _ACQUIRE_SCRIPT = """
 if redis.call('exists', KEYS[1]) == 1 then return 0 end
 local previous = redis.call('get', KEYS[2]) or ''
@@ -71,7 +73,7 @@ class ReflectionScheduler:
             db=settings.REDIS_DB,
             password=settings.REDIS_PASSWORD or None,
             socket_connect_timeout=0.25,
-            socket_timeout=0.5,
+            socket_timeout=_QUEUE_SOCKET_TIMEOUT_SECONDS,
             decode_responses=True,
         )
         self._redis_available = redis_client is not None
@@ -171,7 +173,7 @@ class ReflectionScheduler:
             try:
                 self._ensure_queue()
                 messages = self._redis.xreadgroup(
-                    _QUEUE_GROUP, self._consumer, {_QUEUE_KEY: ">"}, count=1, block=1000
+                    _QUEUE_GROUP, self._consumer, {_QUEUE_KEY: ">"}, count=1, block=_QUEUE_BLOCK_MS
                 )
                 for _, entries in messages:
                     for message_id, values in entries:
