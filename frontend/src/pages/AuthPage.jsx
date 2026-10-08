@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../state/AuthContext'
 import '../styles/auth.css'
+import '../styles/theme.css'
 import logo from '../assets/mneme-logo.svg'
 import { endpoints } from '../api/client'
 
