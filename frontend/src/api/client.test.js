@@ -33,6 +33,30 @@ describe('api client', () => {
     await expect(api('/example')).rejects.toMatchObject({ message: 'bad request' })
   })
 
+  it.each(['/auth/login', '/auth/register'])('explains an empty rate-limit response for %s', async (path) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'Retry-After': '23' }),
+      json: async () => { throw new SyntaxError('empty body') },
+    }))
+    await expect(api(path)).rejects.toMatchObject({ status: 429, message: '请求过于频繁，请在 23 秒后重试' })
+  })
+
+  it('explains rate limits without a retry header', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 429, headers: new Headers(), json: async () => null,
+    }))
+    await expect(api('/auth/login')).rejects.toMatchObject({ message: '请求过于频繁，请稍后重试' })
+  })
+
+  it('explains a non-JSON gateway outage', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 502, json: async () => { throw new SyntaxError('HTML body') },
+    }))
+    await expect(api('/auth/login')).rejects.toMatchObject({ status: 502, message: '服务暂时不可用，请稍后重试' })
+  })
+
   it('posts memory restore requests through the workspace API', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,

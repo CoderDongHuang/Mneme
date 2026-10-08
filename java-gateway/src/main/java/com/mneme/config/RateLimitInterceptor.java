@@ -1,5 +1,7 @@
 package com.mneme.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mneme.dto.Result;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,6 +11,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.net.InetAddress;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,29 +23,38 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     public static final java.util.Map<String, Integer> LIMITS = java.util.Map.of("auth", 12, "upload", 20, "chat", 60, "api", 240);
     private final StringRedisTemplate redis;
     private final List<CidrBlock> trustedProxies;
+    private final ObjectMapper objectMapper;
 
     public RateLimitInterceptor(
         StringRedisTemplate redis,
-        @Value("${mneme.trusted-proxies:}") String trustedProxies
+        @Value("${mneme.trusted-proxies:}") String trustedProxies,
+        ObjectMapper objectMapper
     ) {
         this.redis = redis;
         this.trustedProxies = parseTrustedProxies(trustedProxies);
+        this.objectMapper = objectMapper;
     }
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws IOException {
         String path = request.getRequestURI();
         if (!path.startsWith("/api/v1/") || "OPTIONS".equalsIgnoreCase(request.getMethod())) return true;
         String bucket = path.startsWith("/api/v1/auth/") ? "auth"
             : path.contains("/document/upload") ? "upload"
             : path.contains("/chat") ? "chat" : "api";
         int limit = LIMITS.get(bucket);
-        String key = "mneme:rate:" + bucket + ":" + clientIp(request) + ":" + (System.currentTimeMillis() / 60_000L);
+        long now = System.currentTimeMillis();
+        String key = "mneme:rate:" + bucket + ":" + clientIp(request) + ":" + (now / 60_000L);
         Long count = redis.opsForValue().increment(key);
         if (count != null && count == 1) redis.expire(key, Duration.ofSeconds(70));
         if (count != null && count > limit) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-            response.setHeader("Retry-After", "60");
+            long retryAfter = (60_000L - now % 60_000L + 999L) / 1000L;
+            response.setHeader("Retry-After", Long.toString(retryAfter));
+            response.setContentType("application/json");
+            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            objectMapper.writeValue(response.getWriter(), Result.error(429,
+                "请求过于频繁，请在 " + retryAfter + " 秒后重试"));
             return false;
         }
         return true;
