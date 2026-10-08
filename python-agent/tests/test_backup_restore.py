@@ -44,6 +44,20 @@ def test_archive_round_trip_verification(tmp_path):
     }
 
 
+def test_backup_archive_preserves_redis_stream_snapshot(tmp_path):
+    staging = tmp_path / "staging"
+    (staging / "payload/data/redis").mkdir(parents=True)
+    (staging / "payload/mysql.sql").write_text("SELECT 1;", encoding="utf-8")
+    snapshot = b"redis-snapshot-with-pending-reflections"
+    (staging / "payload/data/redis/dump.rdb").write_bytes(snapshot)
+    archive = tmp_path / "redis-backup.tar.gz"
+
+    manifest = create_archive(staging, archive)
+    assert "payload/data/redis/dump.rdb" in {entry["path"] for entry in manifest["files"]}
+    extract_verified(archive, tmp_path / "restored")
+    assert (tmp_path / "restored/payload/data/redis/dump.rdb").read_bytes() == snapshot
+
+
 def test_archive_rejects_tampered_content(tmp_path):
     valid = make_archive(tmp_path)
     with tarfile.open(valid, "r:gz") as source:

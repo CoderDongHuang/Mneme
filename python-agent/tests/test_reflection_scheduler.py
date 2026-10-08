@@ -85,6 +85,19 @@ class QueueExecutor:
         return function(*args)
 
 
+def test_idle_queue_wait_fits_within_redis_socket_timeout(monkeypatch):
+    options = {}
+
+    def create_redis(**kwargs):
+        options.update(kwargs)
+        return FakeRedis()
+
+    monkeypatch.setattr(module.redis, "Redis", create_redis)
+    module.ReflectionScheduler()
+
+    assert options["socket_timeout"] > module._QUEUE_BLOCK_MS / 1000
+
+
 def test_reflection_is_persisted_to_stream_before_execution(monkeypatch):
     fake = FakeRedis()
     monkeypatch.setattr(

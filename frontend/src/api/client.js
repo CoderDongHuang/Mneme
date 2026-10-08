@@ -47,14 +47,19 @@ function httpErrorMessage(response) {
 
 export async function api(path, options = {}) {
   const isForm = options.body instanceof FormData
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: authHeaders({
-      ...(!isForm && options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...options.headers,
-    }),
-  })
+  let response
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      credentials: 'include',
+      headers: authHeaders({
+        ...(!isForm && options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...options.headers,
+      }),
+    })
+  } catch (error) {
+    throw new ApiError('无法连接服务，请确认 Mneme 服务已启动后重试', 0, { cause: error?.message })
+  }
   return parseResponse(response)
 }
 

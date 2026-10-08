@@ -4,12 +4,9 @@
 
 ```powershell
 $env:MNEME_OFFLINE_EMBEDDINGS='true'
-cd ..
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_environment.ps1 -SkipDocker
-cd python-agent
-ruff check .
-$env:MNEME_OFFLINE_EMBEDDINGS='true'
-python -m pytest tests -q
+ruff check python-agent
+python -m pytest python-agent/tests -q
 ```
 
 测试环境使用确定性本地向量，不发送 Embedding API 请求。
@@ -17,7 +14,6 @@ python -m pytest tests -q
 Windows CPython 3.11 依赖安装和审计：
 
 ```powershell
-cd ..
 python -m pip install --require-hashes -r python-agent/requirements.windows.lock
 python -m pip install pip-audit==2.9.0
 pip-audit --requirement python-agent/requirements.windows.lock
@@ -28,8 +24,7 @@ Linux/Docker 使用 `python-agent/requirements.lock`。两个锁文件均由官�
 ## Java
 
 ```powershell
-cd java-gateway
-mvn --batch-mode -s target/maven-settings.xml test
+mvn --batch-mode -f java-gateway/pom.xml test
 ```
 
 Surefire 将测试临时目录固定到项目 `target`，避免 Windows 隔离环境无法清理用户临时目录导致误报。Maven 构建会同时验证 Flyway 迁移资源、Spring 类型和 Java 17 编译；需要真实 MySQL 迁移测试时必须让 Docker Engine 可用。
@@ -37,11 +32,10 @@ Surefire 将测试临时目录固定到项目 `target`，避免 Windows 隔离�
 ## 前端
 
 ```powershell
-cd frontend
-npm ci
-npm run lint
-npm test
-npm run build
+npm --prefix frontend ci
+npm --prefix frontend run lint
+npm --prefix frontend test
+npm --prefix frontend run build
 ```
 
 浏览器验收至少覆盖 1440x900 与 390x844：认证、会话切换、资料上传状态、SSE 回答、引用抽屉、记忆确认和导航抽屉。
@@ -191,4 +185,4 @@ python scripts/evaluate_quiz_quality.py evaluation/external_quiz_workspace.json 
 1. 上传文档并等待 `ready`，确认 chunk 数大于 0。
 2. 点击文档“重新解析”，确认状态回到 `parsing`，完成后仍为同一文档且片段被替换而不是重复累加。
 3. 删除文档，确认状态短暂为 `deleting`，任务完成后文档消失、原文件删除、检索不再返回该文档。
-4. 创建账号、资料库、会话和长期记忆后删除账号；确认 MySQL 业务数据、Chroma 集合、Redis 会话和本地用户文件均被清理。任一外部清理失败时，接口应失败且用户行不会被删除。
+4. 创建账号、资料库、会话和长期记忆后删除账号；删除请求先冻结账号并持久化清理任务。任务最终完成后，确认 MySQL 业务数据、Chroma 集合、Redis 会话和本地用户文件均被清理。外部清理失败时任务保留并重试，不能把已入队的异步请求误判为同步清理完成。

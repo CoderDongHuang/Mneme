@@ -30,11 +30,13 @@ export function AuthProvider({ children }) {
     session,
     async login(credentials) {
       const result = await endpoints.login(credentials)
+      localStorage.setItem('mneme_auth', JSON.stringify(result))
       setSession(result)
       return result
     },
     async register(credentials) {
       const result = await endpoints.register(credentials)
+      localStorage.setItem('mneme_auth', JSON.stringify(result))
       setSession(result)
       return result
     },

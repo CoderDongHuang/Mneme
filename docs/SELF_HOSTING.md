@@ -53,7 +53,7 @@ CLAMAV_HOST=clamav
 CLAMAV_PORT=3310
 ```
 
-Compose 中的 ClamAV 使用可选 `security` profile，启动命令为 `docker compose --profile security up -d --build`。`MALWARE_SCAN_FAIL_CLOSED=true` 会在扫描器不可用时拒绝上传；仅本地低风险开发才应使用 fail-open。
+Compose 中的 ClamAV 使用可选 `security` profile，启动命令为 `docker compose -f docker-compose.yml -f docker-compose.selfhost.yml --profile security up -d --build`。`MALWARE_SCAN_FAIL_CLOSED=true` 会在扫描器不可用时拒绝上传；仅本地低风险开发才应使用 fail-open。
 
 在线轮换内部服务令牌时调用管理员轮换接口，并把新值持久化到部署密钥；滚动重启期间可将旧值暂存为 `INTERNAL_SERVICE_TOKEN_PREVIOUS`，全部实例切换后清空。
 

@@ -32,7 +32,7 @@ docker-compose
 ## 技术栈
 
 - Frontend：React 19、Vite 8、React Router、React Markdown、Lucide
-- Gateway：Java 17、Spring Boot 3.2、MyBatis-Plus、Flyway、JWT、SSE
+- Gateway：Java 17、Spring Boot 3.5.14、MyBatis-Plus、Flyway、JWT、SSE
 - Agent：Python 3.11、FastAPI、LangGraph、LangChain、Pydantic
 - AI：DeepSeek、Qwen、DashScope Embedding、Chroma
 - Data：MySQL 8、Redis 7
@@ -45,7 +45,7 @@ docker-compose
 - 中文名：`忆知`
 - 副标题：`一个会使用资料、记住学习状态并给出可追溯回答的个人学习 Agent`
 
-## 首个 Release
+## 历史首个 Release
 
 版本：`v0.2.0`
 
@@ -82,5 +82,5 @@ Mneme v0.2.0 完成了个人学习助手的本地自部署闭环：
 - 仓库未包含 `.env`、API Key、用户上传文件、测试结果和本地数据。
 - README 中的 Docker 命令在干净环境验证通过。
 - `LICENSE`、已知限制和数据备份说明可见。
-- 创建 `v0.2.0` 标签并附上 Release Notes。
+- 从合并后的 `main` 创建新版本标签并附上与该提交一致的 Release Notes；`v0.2.0` 是历史版本。
 - 至少添加 3 张真实截图：登录页、资料库上传状态、带引用的对话页。

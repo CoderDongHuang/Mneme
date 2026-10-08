@@ -187,17 +187,19 @@ a:focus-visible { outline: 3px solid color-mix(in srgb, var(--mn-accent) 48%, tr
 
 /* Auth */
 .auth-page { min-height: 100vh !important; grid-template-columns: minmax(0, 1fr) minmax(420px, 43%) !important; background: var(--mn-bg) !important; }
-.auth-story { min-height: 100vh !important; padding: 48px clamp(32px, 6vw, 92px) !important; color: var(--mn-text) !important; background: var(--mn-surface-soft) !important; }
-.auth-story::before, .auth-story::after { display: none !important; }
-.auth-wordmark { color: var(--mn-text) !important; font-family: inherit !important; font-size: 20px !important; font-weight: 750 !important; }
+.auth-story { min-height: 100vh !important; padding: 48px clamp(32px, 6vw, 92px) !important; color: #f7f8f4 !important; background: #192522 url("../assets/mneme-library.jpg") center / cover no-repeat !important; }
+.auth-story::before { display: block !important; background: linear-gradient(90deg, rgb(12 25 23 / 86%), rgb(12 25 23 / 58%)) !important; }
+.auth-story::after { display: none !important; }
+.auth-wordmark { color: #f7f8f4 !important; font-family: inherit !important; font-size: 20px !important; font-weight: 750 !important; }
 .auth-wordmark img { width: 38px !important; height: 38px !important; border-radius: 10px !important; background: var(--mn-accent-soft) !important; }
 .auth-thesis { max-width: 620px !important; }
-.auth-thesis .eyebrow { color: var(--mn-accent-dark) !important; }
-.auth-thesis h1 { margin: 20px 0 !important; color: var(--mn-text) !important; font-family: inherit !important; font-size: clamp(40px, 5vw, 68px) !important; font-weight: 750 !important; line-height: 1.2 !important; }
-.auth-thesis > p:last-child { color: var(--mn-muted) !important; line-height: 1.8 !important; }
-.auth-capabilities { border-top-color: var(--mn-border) !important; }
-.auth-capabilities div { color: var(--mn-muted) !important; }
-.auth-capabilities svg { color: var(--mn-teal) !important; }
+.auth-thesis .eyebrow { color: #c7dfd5 !important; }
+.auth-thesis h1 { margin: 20px 0 !important; color: #f7f8f4 !important; font-family: inherit !important; font-size: clamp(40px, 5vw, 68px) !important; font-weight: 750 !important; line-height: 1.2 !important; }
+.auth-thesis > p:last-child { color: #e3ebe7 !important; line-height: 1.8 !important; }
+.auth-capabilities { border-top-color: rgb(247 248 244 / 28%) !important; }
+.auth-capabilities div { color: #e3ebe7 !important; }
+.auth-capabilities svg { color: #b8d2c6 !important; }
+.auth-photo-credit { color: #e3ebe7 !important; }
 .auth-panel { min-height: 100vh !important; padding: 48px clamp(28px, 5vw, 76px) !important; background: var(--mn-surface) !important; box-shadow: -8px 0 22px rgb(31 41 55 / 3%) !important; }
 .auth-form-heading p { color: var(--mn-accent-dark) !important; }
 .auth-form-heading h2 { color: var(--mn-text) !important; font-family: inherit !important; font-size: clamp(26px, 3vw, 34px) !important; font-weight: 750 !important; }

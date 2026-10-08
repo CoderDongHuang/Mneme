@@ -10,6 +10,13 @@ build/
 .env
 .venv/
 venv/
+.m2/
+.npm-cache/
+.review-ci/
+.ci-evidence-*/
+artifacts/
+audit-local.json
+java-gateway/.tmp-java/
 
 # Java
 target/
