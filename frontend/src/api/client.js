@@ -26,11 +26,23 @@ function authHeaders(extra = {}) {
 async function parseResponse(response) {
   const payload = await response.json().catch(() => null)
   if (!response.ok || (payload && payload.code && payload.code !== 200)) {
-    const message = payload?.message || payload?.detail || payload?.error?.message || '请求失败'
+    const message = payload?.message || payload?.detail || payload?.error?.message || httpErrorMessage(response)
     if (response.status === 401) window.dispatchEvent(new Event('mneme:unauthorized'))
     throw new ApiError(message, response.status, payload)
   }
   return payload?.data ?? payload
+}
+
+function httpErrorMessage(response) {
+  if (response.status === 429) {
+    const retryAfter = response.headers?.get('Retry-After')
+    const seconds = Number(retryAfter)
+    return retryAfter && Number.isInteger(seconds) && seconds > 0
+      ? `请求过于频繁，请在 ${seconds} 秒后重试`
+      : '请求过于频繁，请稍后重试'
+  }
+  if ([502, 503, 504].includes(response.status)) return '服务暂时不可用，请稍后重试'
+  return `请求失败（HTTP ${response.status}），请稍后重试`
 }
 
 export async function api(path, options = {}) {
