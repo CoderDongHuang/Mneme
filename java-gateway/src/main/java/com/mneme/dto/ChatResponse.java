@@ -14,6 +14,26 @@ public class ChatResponse {
     private List<PendingMemory> pendingMemories;
 
     public static class Source {
+        @com.fasterxml.jackson.annotation.JsonProperty("document_id")
+        private String documentId;
+        public String getDocumentId() { return documentId; }
+        public void setDocumentId(String value) { this.documentId = value; }
+        @com.fasterxml.jackson.annotation.JsonProperty("visual_page")
+        private Integer visualPage;
+        public Integer getVisualPage() { return visualPage; }
+        public void setVisualPage(Integer value) { this.visualPage = value; }
+        @com.fasterxml.jackson.annotation.JsonProperty("visual_region")
+        private Object visualRegion;
+        public Object getVisualRegion() { return visualRegion; }
+        public void setVisualRegion(Object value) { this.visualRegion = value; }
+        @com.fasterxml.jackson.annotation.JsonProperty("ocr_confidence")
+        private Double ocrConfidence;
+        public Double getOcrConfidence() { return ocrConfidence; }
+        public void setOcrConfidence(Double value) { this.ocrConfidence = value; }
+        @com.fasterxml.jackson.annotation.JsonProperty("evidence_type")
+        private String evidenceType;
+        public String getEvidenceType() { return evidenceType; }
+        public void setEvidenceType(String value) { this.evidenceType = value; }
         @com.fasterxml.jackson.annotation.JsonProperty("document_name")
         private String documentName;
         @com.fasterxml.jackson.annotation.JsonProperty("chunk_content")

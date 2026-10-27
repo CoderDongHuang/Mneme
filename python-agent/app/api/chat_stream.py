@@ -8,7 +8,7 @@ from app.agents.nodes import build_llm_prompt
 from app.agents.runtime import complete_conversation, prepare_conversation
 from app.core.config import settings
 from app.core.logging import setup_logger
-from app.knowledge.citations import select_citations
+from app.knowledge.citations import select_citations, validate_evidence_answer, NO_EVIDENCE_ANSWER
 from app.models.chat import ChatRequest
 from app.utils.llm import llm
 from app.core.telemetry import tracer
@@ -54,7 +54,7 @@ def _retrieval_fallback(state: dict) -> str:
     for index, chunk in enumerate(chunks[:3], start=1):
         content = str(chunk.get("content", "")).strip()
         if content:
-            excerpts.append(f"{index}. {content}")
+            excerpts.append(f"[{index}] {content}")
     if not excerpts:
         return (
             "当前模型服务暂时不可用，本次也没有检索到可直接作答的资料片段，请稍后重试。"
@@ -80,34 +80,32 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 ),
             },
         )
+        evidence_mode = state.get("intent") == "qa"
         try:
             try:
-                with tracer.start_as_current_span("mneme.llm.stream") as span:
-                    span.set_attribute("mneme.llm.streaming", True)
-                    stream = llm.astream([HumanMessage(content=prompt)]).__aiter__()
-                    while True:
-                        try:
-                            chunk = await asyncio.wait_for(
-                                stream.__anext__(), timeout=settings.stream_timeout_seconds
-                            )
-                        except StopAsyncIteration:
-                            break
-                        content = str(chunk.content or "")
-                        if content:
-                            answer += content
-                            yield _event("token", {"content": content})
+                if evidence_mode and not state.get("retrieved_chunks"):
+                    answer = NO_EVIDENCE_ANSWER
+                else:
+                    async for event in model_events():
+                        if evidence_mode:
+                            answer += event
+                        else:
+                            answer += event
+                            yield _event("token", {"content": event})
             except asyncio.TimeoutError:
-                logger.warning(
-                    "流式模型调用超过 %s 秒，启用检索降级",
-                    settings.stream_timeout_seconds,
-                )
-                if not answer:
+                logger.warning("流式模型调用超时，使用资料原文降级")
+                if evidence_mode or not answer:
                     answer = _retrieval_fallback(state)
-                    yield _event("token", {"content": answer})
+                    if not evidence_mode:
+                        yield _event("token", {"content": answer})
                 else:
                     suffix = "\n\n模型连接已超时，回答提前结束。"
                     answer += suffix
                     yield _event("token", {"content": suffix})
+
+            if evidence_mode:
+                answer = validate_evidence_answer(state, answer)
+                yield _event("token", {"content": answer})
 
             memory_result = complete_conversation(request, state, answer)
             if memory_result.get("pending_memories"):
@@ -115,7 +113,22 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             yield _event("done", {"answer_length": len(answer)})
         except Exception as error:
             logger.exception("流式回答失败: %s", error)
-            yield _event("error", {"message": str(error)})
+            yield _event("error", {"message": "模型服务暂时不可用，请稍后重试或检查服务配置。"})
+
+    async def model_events():
+        with tracer.start_as_current_span("mneme.llm.stream") as span:
+            span.set_attribute("mneme.llm.streaming", True)
+            stream = llm.astream([HumanMessage(content=prompt)]).__aiter__()
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(
+                        stream.__anext__(), timeout=settings.stream_timeout_seconds
+                    )
+                except StopAsyncIteration:
+                    break
+                content = str(chunk.content or "")
+                if content:
+                    yield content
 
     return StreamingResponse(
         generate(),
