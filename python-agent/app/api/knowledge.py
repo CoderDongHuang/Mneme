@@ -206,6 +206,8 @@ async def search(
 
 @router.post("/quiz/generate")
 async def generate_quiz(request: QuizGenerationRequest) -> dict:
+    if getattr(settings, "demo_mode", False):
+        raise HTTPException(status_code=503, detail="演示模式不生成 AI 测验；请配置真实模型后使用")
     require_cloud_processing(request.user_id)
     evidence = "\n\n".join(
         f"片段 {index + 1}：{chunk.get('content', '')[:1600]}\n来源：{json.dumps(chunk.get('metadata', {}), ensure_ascii=False)}"

@@ -69,13 +69,17 @@ class FallbackLLM:
     @property
     def configured(self) -> bool:
         return bool(
-            settings.deterministic_test_llm
+            getattr(settings, "demo_mode", False)
+            or settings.deterministic_test_llm
             or settings.deepseek_api_key
             or settings.dashscope_api_key
         )
 
     @property
     def status(self) -> dict[str, Any]:
+        if getattr(settings, "demo_mode", False):
+            return {"configured": True, "primary": "local-extractive-demo", "fallback": None,
+                    "circuit_open": False, "failure_count": 0}
         if settings.deterministic_test_llm:
             return {
                 "configured": True,
@@ -161,6 +165,9 @@ class FallbackLLM:
         logger.warning("LLM 主模型调用失败: %s", error)
 
     def _selected(self) -> tuple[Any, bool]:
+        if getattr(settings, "demo_mode", False):
+            from app.utils.demo_llm import ExtractiveDemoLLM
+            return ExtractiveDemoLLM(), False
         if settings.deterministic_test_llm:
             return DeterministicTestLLM(), False
         if not settings.deepseek_api_key:
@@ -200,7 +207,7 @@ class FallbackLLM:
 
     def _reserve_budget(self, messages: Any, kwargs: dict[str, Any], using_fallback: bool) -> None:
         budget = self._budget_limit()
-        if not budget or getattr(settings, "deterministic_test_llm", False):
+        if not budget or settings.demo_mode or getattr(settings, "deterministic_test_llm", False):
             return
         provider = "fallback" if using_fallback else "primary"
         input_price = float(getattr(settings, f"llm_{provider}_input_cost_per_million", 0))

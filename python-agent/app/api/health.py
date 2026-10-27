@@ -6,6 +6,7 @@ from app.knowledge.vector_store import vector_store
 from app.memory.session_persistence import session_persistence
 from app.utils.llm import llm
 from app.core.config import settings
+from app.core.provider_diagnostics import profiles, check_providers
 
 
 router = APIRouter(tags=["health"])
@@ -41,6 +42,8 @@ async def config_status() -> dict:
     """Expose configuration presence only; never return keys or secret values."""
     return {
         "service": "mneme-python-agent",
+        "demo_mode": settings.demo_mode,
+        "provider_profiles": profiles(),
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "rotation_required": settings.secret_rotation_due,
         "configuration": {
@@ -68,3 +71,8 @@ async def config_status() -> dict:
             "agent_trace_redaction": bool(settings.agent_trace_redact_fields),
         },
     }
+
+
+@router.post("/health/providers/check")
+async def provider_check() -> dict:
+    return await check_providers()

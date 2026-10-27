@@ -1,0 +1,106 @@
+name: mneme-demo
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DEMO_DB_PASSWORD:?Run python scripts/demo.py start first}
+      MYSQL_DATABASE: mneme
+    volumes: [demo-mysql:/var/lib/mysql]
+    healthcheck:
+      test: [CMD-SHELL, 'mysql --protocol=TCP -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent -e "USE mneme; SELECT 1"']
+      interval: 5s
+      timeout: 3s
+      retries: 40
+  redis:
+    image: redis:7-alpine
+    volumes: [demo-redis:/data]
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports: ["127.0.0.1:${DEMO_MAIL_PORT:-8025}:8025"]
+  chroma:
+    image: ghcr.io/chroma-core/chroma:0.6.3
+    networks: [vector-backend]
+    environment:
+      CHROMA_SERVER_HOST: 0.0.0.0
+      CHROMA_SERVER_HTTP_PORT: "8000"
+      CHROMA_LOG_CONFIG: /etc/chroma/log_config.yml
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /chroma/data
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - demo-chroma:/chroma/data
+      - ./config/chroma-log-config.yml:/etc/chroma/log_config.yml:ro
+    healthcheck:
+      test: [CMD, python, -c, "from urllib.request import urlopen; urlopen('http://localhost:8000/api/v1/heartbeat', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  python-agent:
+    build: ./python-agent
+    networks: [default, vector-backend]
+    environment:
+      MNEME_DEMO_MODE: "true"
+      MNEME_OFFLINE_EMBEDDINGS: "true"
+      MNEME_DETERMINISTIC_TEST_LLM: "false"
+      DEEPSEEK_API_KEY: ""
+      DASHSCOPE_API_KEY: ""
+      INTERNAL_SERVICE_TOKEN: ${DEMO_SERVICE_TOKEN:?Missing demo configuration}
+      CHROMA_MODE: http
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
+      REDIS_HOST: redis
+      CHROMA_PATH: /data/chroma
+      SESSION_DATA_PATH: /data/sessions
+      LEXICAL_INDEX_PATH: /data/lexical.sqlite3
+      MEMORY_VERSION_STORE_PATH: /data/versions.sqlite3
+      AGENT_TRACE_STORE_PATH: /data/traces.sqlite3
+      OCR_ENABLED: "true"
+      MULTIMODAL_ENABLED: "false"
+      RERANKER_ENABLED: "false"
+      RETRIEVER_REWRITE_ENABLED: "false"
+    volumes: [demo-agent:/data]
+    depends_on:
+      chroma: {condition: service_healthy}
+      redis: {condition: service_started}
+  java-gateway:
+    build: ./java-gateway
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/mneme
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${DEMO_DB_PASSWORD:?Missing demo configuration}
+      REDIS_HOST: redis
+      PYTHON_AGENT_URL: http://python-agent:8001
+      JWT_SECRET: ${DEMO_JWT_SECRET:?Missing demo configuration}
+      INTERNAL_SERVICE_TOKEN: ${DEMO_SERVICE_TOKEN:?Missing demo configuration}
+      FILE_STORAGE_PATH: /data/files
+      AVATAR_STORAGE_PATH: /data/avatars
+      SECURE_COOKIES: "false"
+      CORS_ORIGINS: http://localhost:${DEMO_PORT:-3000}
+      SPRING_MAIL_HOST: mailpit
+      SPRING_MAIL_PORT: "1025"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "false"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "false"
+    volumes: [demo-files:/data]
+    depends_on:
+      mysql: {condition: service_healthy}
+      python-agent: {condition: service_healthy}
+  frontend:
+    build:
+      context: ./frontend
+      args: {VITE_DEMO_MODE: "true"}
+    environment: {PUBLIC_DOMAIN: ":80"}
+    ports: ["127.0.0.1:${DEMO_PORT:-3000}:80"]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/api/v1/health]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    depends_on: [java-gateway]
+volumes:
+  demo-mysql:
+  demo-redis:
+  demo-chroma:
+  demo-agent:
+  demo-files:
+networks:
+  vector-backend: {internal: true}

@@ -31,6 +31,8 @@ def rerank(query: str, candidates: list[dict], limit: int) -> list[dict]:
     """对候选片段重排；模型缺失或推理失败时确定性降级。"""
     if not candidates:
         return []
+    if getattr(settings, "demo_mode", False):
+        return candidates[:limit]
     if settings.reranker_enabled and settings.reranker_provider == "dashscope":
         ranked = _dashscope_rerank(query, candidates, limit)
         if ranked is not None:

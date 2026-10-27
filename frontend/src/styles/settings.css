@@ -13,3 +13,16 @@
 .settings-empty { grid-column:1/-1; display:flex; justify-content:center; gap:10px; color:var(--muted); padding:48px; }
 @media (max-width:900px) { .config-grid { grid-template-columns:1fr; } }
 @media (max-width:700px) { .settings-page { padding:52px 18px; } .settings-head { align-items:flex-start; flex-direction:column; } .settings-head h1 { font-size:34px; } }
+.provider-panel { margin-bottom:24px; padding:24px; border:1px solid var(--line); background:var(--paper); border-radius:16px; }
+.provider-head { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+.provider-panel h2 { font-size:18px; margin:0; }
+.provider-panel p { color:var(--muted); font-size:13px; line-height:1.7; }
+.provider-head button { flex-shrink:0; padding:10px 14px; border:1px solid var(--line); border-radius:8px; background:var(--paper); cursor:pointer; }
+.provider-head button:disabled { opacity:.6; cursor:wait; }
+.provider-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:20px; }
+.provider-card { padding:18px; border:1px solid var(--line); border-radius:10px; min-width:0; overflow-wrap:anywhere; }
+.provider-card h3 { font-size:15px; margin:0; }
+.provider-card strong { font-size:14px; font-weight:500; }
+.provider-card .probe-ok { color:var(--green); }
+.provider-card .probe-detail, .provider-notice { color:var(--muted); }
+@media (max-width:700px) { .provider-grid { grid-template-columns:1fr; } .provider-head { align-items:flex-start; flex-direction:column; } }

@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import sys
 from contextvars import ContextVar
 from typing import TextIO
@@ -10,17 +11,29 @@ from app.core.config import settings
 trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
 
 
+def redact_log(value: str) -> str:
+    # Known server secrets, bearer tokens and email addresses are never diagnostic output.
+    for field in ("deepseek_api_key", "dashscope_api_key", "internal_service_token",
+                  "internal_service_token_previous", "admin_api_token", "mysql_password", "redis_password"):
+        secret = str(getattr(settings, field, "") or "")
+        if len(secret) >= 4:
+            value = value.replace(secret, "[REDACTED]")
+    value = re.sub(r"(?i)Bearer\s+[^\s,;\"']+", "Bearer [REDACTED]", value)
+    value = re.sub(r"(?i)(api[_-]?key|password|token|secret)(\s*['\"]?\s*[:=]\s*['\"]?)[^\s,;}\"']+", r"\1\2[REDACTED]", value)
+    return re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[EMAIL]", value)
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload = {
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": redact_log(record.getMessage()),
             "timestamp": self.formatTime(record),
             "trace_id": trace_id_var.get(),
         }
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            payload["exception"] = redact_log(self.formatException(record.exc_info))
         return json.dumps(payload, ensure_ascii=False)
 
 

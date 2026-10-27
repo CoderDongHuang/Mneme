@@ -5,6 +5,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+ARG VITE_DEMO_MODE=false
+ENV VITE_DEMO_MODE=${VITE_DEMO_MODE}
 RUN npm run audit
 RUN npm run build
 
