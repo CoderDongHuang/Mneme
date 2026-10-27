@@ -58,7 +58,10 @@ services:
       MULTIMODAL_ENABLED: "false"
       RERANKER_ENABLED: "false"
       RETRIEVER_REWRITE_ENABLED: "false"
-    volumes: [demo-agent:/data]
+    volumes:
+      - demo-agent:/data
+      # Java sends this absolute path to the ingestion service.
+      - demo-files:/uploads:ro
     depends_on:
       chroma: {condition: service_healthy}
       redis: {condition: service_started}
@@ -72,15 +75,15 @@ services:
       PYTHON_AGENT_URL: http://python-agent:8001
       JWT_SECRET: ${DEMO_JWT_SECRET:?Missing demo configuration}
       INTERNAL_SERVICE_TOKEN: ${DEMO_SERVICE_TOKEN:?Missing demo configuration}
-      FILE_STORAGE_PATH: /data/files
-      AVATAR_STORAGE_PATH: /data/avatars
+      FILE_STORAGE_PATH: /uploads/files
+      AVATAR_STORAGE_PATH: /uploads/avatars
       SECURE_COOKIES: "false"
       CORS_ORIGINS: http://localhost:${DEMO_PORT:-3000}
       SPRING_MAIL_HOST: mailpit
       SPRING_MAIL_PORT: "1025"
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "false"
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "false"
-    volumes: [demo-files:/data]
+    volumes: [demo-files:/uploads]
     depends_on:
       mysql: {condition: service_healthy}
       python-agent: {condition: service_healthy}
