@@ -292,3 +292,5 @@ frozenlist==1.8.0 \
     --hash=sha256:ac913f8403b36a2c8610bbfd25b8013488533e71e62b4b4adce9c86c8cea905b
 aiohappyeyeballs==2.7.1 \
     --hash=sha256:9243213661e29250eb41368e5daa826fc017156c3b8a11440826b2e3ed376472
+opentelemetry-exporter-http-transport==0.66b1 \
+    --hash=sha256:2f95404bdee7f9d2d529c7de56c7bd86d014d774d8fbf137810e0167f8a492bf
