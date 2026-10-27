@@ -14,6 +14,43 @@ Mneme 面向需要长期学习和资料管理的用户。它不仅回答单次�
 
 > 当前状态：面向个人与小规模团队的本地自部署 Beta 版本。核心学习闭环、中文 OCR、本地邮件、RAG 评测和真实全链路验收入口均已提供；图表与流程图理解按需启用多模态模型。[收尾状态与已知边界](docs/PROJECT_STATUS.md)。
 
+## 解决什么问题
+
+资料分散、对话缺少出处、复习难以持续时，Mneme 把文件检索、原文引用、可编辑测验和间隔复习放进同一工作区。它面向个人私有部署，回答仍需核对证据，不承诺消除幻觉。
+
+## 30 秒了解演示
+
+无需模型密钥：注册本地账号 → 上传固定合成资料 → 问“星桥计划的核心识别码是什么” → 打开引用 → 在设置中检测运行配置。演示回答明确标为**原文摘录**，不模拟 AI 推理；首次镜像下载和构建需要数分钟。
+
+## 快速开始：无外部 API 的离线演示
+
+需要 Git、Python 3.10+、正在运行的 Docker 与 Compose v2；建议 4 核、8 GB 内存、20 GB 可用磁盘。在 PowerShell、Bash 中均可运行：
+
+```bash
+git clone https://github.com/CoderDongHuang/Mneme.git
+cd Mneme
+python scripts/demo.py start
+```
+
+打开 <http://localhost:3000/auth>，注册账号并上传 `test-fixtures/rag-fixture.txt`，等待“可检索”后提问。本地重置邮件位于 <http://localhost:8025>。脚本生成仅供演示的随机密钥，使用独立 `mneme-demo` 容器和卷，不读取正式 `.env`。
+
+```bash
+python scripts/demo.py status
+python scripts/demo.py logs
+python scripts/demo.py stop
+# 仅在确认不再需要演示数据时执行
+python scripts/demo.py clean --confirm-delete-demo-data
+```
+
+端口冲突、无 Docker、测试与清理见 [完整离线演示指南](docs/DEMO.md)。需要真实模型时按后文 Docker 自部署配置独立实例；演示索引不能直接冒充云端模型索引。
+
+## 界面预览
+
+![登录界面](docs/images/mneme-auth.png)
+![资料与引用](docs/images/mneme-rag-chat.png)
+
+截图展示已有工作区。最新离线演示的实际截图由 `Offline demo clean install` CI 产物保存。
+
 ## 功能概览
 
 - **账号与工作区**：注册、登录、资料库、对话历史、个人资料和学习工作台。
@@ -159,7 +196,15 @@ CI 会分别执行 Python、Java 和前端检查，并使用 mock API 验证关�
 - 默认模式优先使用本地版面解析和 OCR；图表、公式、图片与流程图需要设置 `MULTIMODAL_ENABLED=true`，会消耗 DashScope 多模态额度。
 - Chroma 与本地文件目录针对个人和小规模自部署设计，正好覆盖本项目当前定位。
 - Mailpit 是本地测试邮箱，不会向真实邮箱投递；验证码在 `http://localhost:8025` 查看。
-- 尚未提供插件市场和模型供应商可视化配置，模型参数统一在 `.env` 管理。
+- 设置页可查看 Chat/Embedding/Rerank/OCR 脱敏配置并检测连通性；模型参数和密钥仍由服务端 `.env` 管理，界面不回显完整密钥。
+- 引用会经历编号、声明支持判定和逐字引文核验；模型核验失败时拒答。核验增加延迟和调用费用，仍不能证明语义绝对正确。
+- Chroma 三项及 Spring 两项公告保留到期受控例外，详见 [安全策略](docs/SECURITY_RESPONSE_POLICY.md)；扫描通过不代表零漏洞。
+
+## 路线图与贡献
+
+本轮通用工程与 Mneme 第一章的逐项对应、测试入口和实际限制见 [路线图落实记录](docs/ROADMAP_COVERAGE.md)，升级前阅读 [发布说明](docs/RELEASE_NOTES_2026-10-27.md) 和 [迁移流程](docs/rollout.md)。优先完善真实资料评测与恢复可靠性；暂不扩张为公网多租户 SaaS。
+
+提交问题请使用 [Bug / 功能建议模板](https://github.com/CoderDongHuang/Mneme/issues/new/choose)，附环境、复现步骤和脱敏日志。提交代码请先阅读 [开发指南](docs/development.md)，为实际行为增加回归，说明迁移及兼容性；MIT 仅覆盖本仓库代码，第三方依赖和模型仍遵守各自许可证与服务条款。
 
 ## 开源协议
 

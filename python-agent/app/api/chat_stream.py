@@ -8,7 +8,8 @@ from app.agents.nodes import build_llm_prompt
 from app.agents.runtime import complete_conversation, prepare_conversation
 from app.core.config import settings
 from app.core.logging import setup_logger
-from app.knowledge.citations import select_citations, validate_evidence_answer, NO_EVIDENCE_ANSWER
+from app.knowledge.citations import select_citations, NO_EVIDENCE_ANSWER
+from app.knowledge.grounding import verify_evidence_answer
 from app.models.chat import ChatRequest
 from app.utils.llm import llm
 from app.core.telemetry import tracer
@@ -39,6 +40,10 @@ def _source_payload(chunks: list[dict]) -> list[dict]:
                 "ocr_confidence": metadata.get("ocr_confidence"),
                 "chunk_content": chunk.get("content", ""),
                 "score": chunk.get("score", 0.0),
+                "retrieval_ranks": chunk.get("retrieval_ranks", {}),
+                "content_sha256": metadata.get("content_sha256", ""),
+                "indexed_at": metadata.get("indexed_at", ""),
+                "parser_version": metadata.get("parser_version", ""),
             }
         )
     return sources
@@ -104,7 +109,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                     yield _event("token", {"content": suffix})
 
             if evidence_mode:
-                answer = validate_evidence_answer(state, answer)
+                answer = await verify_evidence_answer(state, answer)
                 yield _event("token", {"content": answer})
 
             memory_result = complete_conversation(request, state, answer)

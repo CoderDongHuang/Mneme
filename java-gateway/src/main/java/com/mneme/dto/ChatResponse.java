@@ -14,6 +14,22 @@ public class ChatResponse {
     private List<PendingMemory> pendingMemories;
 
     public static class Source {
+        @com.fasterxml.jackson.annotation.JsonProperty("retrieval_ranks")
+        private java.util.Map<String, Integer> retrievalRanks;
+        @com.fasterxml.jackson.annotation.JsonProperty("content_sha256")
+        private String contentSha256;
+        @com.fasterxml.jackson.annotation.JsonProperty("indexed_at")
+        private String indexedAt;
+        @com.fasterxml.jackson.annotation.JsonProperty("parser_version")
+        private String parserVersion;
+        public java.util.Map<String, Integer> getRetrievalRanks() { return retrievalRanks; }
+        public void setRetrievalRanks(java.util.Map<String, Integer> value) { retrievalRanks = value; }
+        public String getContentSha256() { return contentSha256; }
+        public void setContentSha256(String value) { contentSha256 = value; }
+        public String getIndexedAt() { return indexedAt; }
+        public void setIndexedAt(String value) { indexedAt = value; }
+        public String getParserVersion() { return parserVersion; }
+        public void setParserVersion(String value) { parserVersion = value; }
         @com.fasterxml.jackson.annotation.JsonProperty("document_id")
         private String documentId;
         public String getDocumentId() { return documentId; }

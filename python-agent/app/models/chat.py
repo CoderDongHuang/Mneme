@@ -38,6 +38,10 @@ class ChatRequest(BaseModel):
 
 
 class Source(BaseModel):
+    retrieval_ranks: dict[str, int] = Field(default_factory=dict)
+    content_sha256: str = ""
+    indexed_at: str = ""
+    parser_version: str = ""
     document_id: str = ""
     document_name: str
     chunk_content: str

@@ -15,6 +15,7 @@ from app.agents.trace_store import agent_trace_store
 from app.core.config import settings
 from app.core.logging import setup_logger
 from app.knowledge.vector_store import vector_store
+from app.knowledge.citations import build_evidence_context
 from app.memory.distillation import apply_distilled_entries, distill_conversation
 from app.memory.long_term_memory import long_term_memory
 from app.memory.reflection import run_reflection
@@ -152,26 +153,9 @@ def knowledge_retrieval_node(state: dict) -> dict:
     chunks.sort(key=lambda item: item.get("score", 0.0), reverse=True)
     chunks = chunks[: settings.retriever_top_k]
 
-    context_parts = []
-    context_chars = 0
-    max_context_chars = max(2000, settings.retriever_context_max_chars)
-    evidence_chunks = []
-    for index, chunk in enumerate(chunks, start=1):
-        metadata = chunk.get("metadata", {})
-        location = metadata.get("source", "未知文档")
-        if metadata.get("page"):
-            location += f"，第 {metadata['page']} 页"
-        if metadata.get("section"):
-            location += f"，{metadata['section']}"
-        remaining = max_context_chars - context_chars
-        if remaining <= 0:
-            break
-        content = chunk.get("content", "")[:remaining]
-        context_parts.append(f"[{index}] {location}\n{json.dumps(content, ensure_ascii=False)}")
-        evidence_chunks.append({**chunk, "content": content})
-        context_chars += len(content)
+    context, evidence_chunks = build_evidence_context(chunks, max(2000, settings.retriever_context_max_chars))
     return {
-        "context": "\n\n".join(context_parts) or "本次未检索到匹配片段",
+        "context": context,
         "retrieved_chunks": evidence_chunks,
         "knowledge_base_ids": kb_ids,
         "memory_context": _memory_context(state["user_id"], state["session_id"], False),

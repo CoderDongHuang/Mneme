@@ -4,6 +4,8 @@ pytest 共享 fixtures 和配置
 
 import os
 import sys
+import tempfile
+from pathlib import Path
 import pytest
 
 # 确保项目根目录在 sys.path 中
@@ -14,7 +16,27 @@ os.environ["ANONYMIZED_TELEMETRY"] = "False"
 os.environ["SKIP_INTERNAL_AUTH"] = "true"
 
 # 使用本地持久化 Chroma（避免依赖外部服务）
-os.environ.setdefault("CHROMA_HOST", "localhost")  # 触发 PersistentClient
+# Never run tests against a developer's document/memory stores, even when a
+# production .env or CHROMA_PATH is present. Keep the temporary directory alive
+# for the process: Chroma can retain handles until interpreter shutdown.
+_test_data = Path(tempfile.mkdtemp(prefix="mneme-pytest-"))
+for _name, _relative in {
+    "CHROMA_PATH": "chroma",
+    "SESSION_DATA_PATH": "sessions",
+    "LEXICAL_INDEX_PATH": "lexical.sqlite3",
+    "MEMORY_VERSION_STORE_PATH": "memory_versions.sqlite3",
+    "AGENT_TRACE_STORE_PATH": "agent_traces.sqlite3",
+    "UPLOAD_DIR": "uploads",
+}.items():
+    os.environ[_name] = str(_test_data / _relative)
+os.environ["CHROMA_MODE"] = "local"
+os.environ["AUXILIARY_STORE_BACKEND"] = "sqlite"
+os.environ["REDIS_HOST"] = "127.0.0.1"
+os.environ["REDIS_PORT"] = "1"
+os.environ["MNEME_OFFLINE_EMBEDDINGS"] = "true"
+os.environ["MNEME_DEMO_MODE"] = "false"
+os.environ["DEEPSEEK_API_KEY"] = "ci-dummy-key"
+os.environ["DASHSCOPE_API_KEY"] = "ci-dummy-key"
 
 
 @pytest.fixture

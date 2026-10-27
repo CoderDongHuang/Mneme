@@ -18,6 +18,8 @@ import sys
 import tarfile
 import tempfile
 import time
+import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
@@ -217,6 +219,35 @@ def copy_tree(source: Path, destination: Path) -> None:
         shutil.copytree(source, destination, copy_function=shutil.copy2)
 
 
+def capture_snapshot(compose_files: list[str], staging: Path, archive: Path) -> dict:
+    """Applications and file stores must already be stopped by the caller."""
+    payload = staging / "payload"
+    payload.mkdir(parents=True)
+    dump = run_compose(
+        compose_files, "exec", "-T", "mysql", "sh", "-c",
+        'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --events "$MYSQL_DATABASE"',
+        capture=True,
+    )
+    (payload / "mysql.sql").write_bytes(dump.stdout)
+    for archive_path, source in DATA_SOURCES.items():
+        copy_tree(source, staging / archive_path)
+    manifest = create_archive(staging, archive, {"application_schema_max": supported_schema_version()})
+    archive.chmod(0o600)
+    verify_archive(archive)
+    return manifest
+
+
+def supported_schema_version() -> int:
+    migrations = PROJECT_ROOT / "java-gateway/src/main/resources/db/migration"
+    return max(int(path.name.split("__", 1)[0][1:]) for path in migrations.glob("V*__*.sql"))
+
+
+def validate_restore_schema(manifest: dict) -> None:
+    version = manifest.get("metadata", {}).get("application_schema_max")
+    if version is not None and (type(version) is not int or version > supported_schema_version()):
+        raise BackupError("backup application schema is newer than this checkout; restore with its matching release")
+
+
 def create_archive(
     staging: Path,
     archive: Path,
@@ -284,9 +315,13 @@ def create_archive(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
     )
     archive.parent.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(archive, "w:gz", format=tarfile.PAX_FORMAT) as bundle:
-        bundle.add(manifest_path, arcname="manifest.json", recursive=False)
-        bundle.add(payload, arcname="payload", recursive=True)
+    # Exclusive creation prevents overwrites and applies permissions before data
+    # reaches disk (Windows additionally inherits the parent directory ACL).
+    descriptor = os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as output:
+        with tarfile.open(fileobj=output, mode="w:gz", format=tarfile.PAX_FORMAT) as bundle:
+            bundle.add(manifest_path, arcname="manifest.json", recursive=False)
+            bundle.add(payload, arcname="payload", recursive=True)
     return manifest
 
 
@@ -451,27 +486,35 @@ def extract_verified(archive: Path, destination: Path) -> dict:
     return manifest
 
 
+@contextmanager
+def operation_lock():
+    """Serialize operators in this checkout; stale locks require manual review."""
+    lock = PROJECT_ROOT / ".backup-restore.lock"
+    try:
+        descriptor = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as error:
+        raise BackupError("another backup/restore is active; review .backup-restore.lock before removing a stale lock") from error
+    try:
+        with os.fdopen(descriptor, "w") as output:
+            output.write(str(os.getpid()))
+        yield
+    finally:
+        lock.unlink()
+
+
 def backup(args: argparse.Namespace) -> int:
-    started = time.monotonic()
+    with operation_lock():
+        return _backup(args)
+
+
+def _backup(args: argparse.Namespace) -> int:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     archive = Path(args.output_dir).resolve() / f"mneme-{stamp}.tar.gz"
     with tempfile.TemporaryDirectory(prefix="mneme-backup-") as temporary:
         staging = Path(temporary)
-        payload = staging / "payload"
-        payload.mkdir(parents=True)
         stop_application_services(args.compose_file)
         try:
-            dump = run_compose(
-                args.compose_file, "exec", "-T", "mysql", "sh", "-c",
-                'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --events "$MYSQL_DATABASE"',
-                capture=True,
-            )
-            (payload / "mysql.sql").write_bytes(dump.stdout)
-            for archive_path, source in DATA_SOURCES.items():
-                copy_tree(source, staging / archive_path)
-            manifest = create_archive(
-                staging, archive, {"backup_duration_seconds": round(time.monotonic() - started, 3)}
-            )
+            manifest = capture_snapshot(args.compose_file, staging, archive)
         finally:
             start_application_services(args.compose_file)
     verify_archive(archive)
@@ -504,44 +547,97 @@ def wait_for_mysql(compose_files: list[str], timeout: int = 90) -> None:
 
 
 def restore(args: argparse.Namespace) -> int:
+    with operation_lock():
+        return _restore(args)
+
+
+def _restore(args: argparse.Namespace) -> int:
     if not args.yes:
         raise BackupError("restore overwrites current data; pass --yes to confirm")
     archive = Path(args.archive).resolve()
     manifest = verify_archive(archive)
-    started = time.monotonic()
-    stop_application_services(args.compose_file)
+    validate_restore_schema(manifest)
     try:
-        with tempfile.TemporaryDirectory(prefix="mneme-restore-") as temporary:
-            extracted = Path(temporary)
-            extract_verified(archive, extracted)
+        created = datetime.fromisoformat(manifest["created_at"].replace("Z", "+00:00"))
+        if created.tzinfo is None:
+            raise ValueError("timezone required")
+    except (KeyError, TypeError, AttributeError, ValueError) as error:
+        raise BackupError("backup created_at must be a valid timestamp with timezone") from error
+    started = time.monotonic()
+    report_path = Path(args.report).resolve()
+    recovery = report_path.parent / f"pre-restore-{uuid.uuid4().hex}.tar.gz"
+    report = {"archive": str(archive), "recovery_archive": str(recovery), "status": "preflight"}
+
+    def record(status, *, best_effort=False):
+        report["status"] = status
+        try:
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary_report = report_path.with_suffix(".tmp")
+            temporary_report.write_text(json.dumps(report, indent=2), encoding="utf-8")
+            temporary_report.replace(report_path)
+        except OSError:
+            if not best_effort:
+                raise
+            print(f"restore report unavailable; status={status}; recovery archive: {recovery}", file=sys.stderr)
+
+    # Authenticate/decrypt before taking services down or changing live state.
+    with tempfile.TemporaryDirectory(prefix="mneme-restore-") as temporary:
+        extracted = Path(temporary) / "target"
+        extract_verified(archive, extracted)
+        required = sum(p.stat().st_size for p in extracted.rglob("*") if p.is_file())
+        required += sum(p.stat().st_size for root in DATA_SOURCES.values() if root.exists()
+                        for p in root.rglob("*") if p.is_file()) * 3
+        if shutil.disk_usage(PROJECT_ROOT).free < required + 64 * 1024 * 1024:
+            raise BackupError("insufficient free space for restore and recovery snapshot")
+        restart_safe = True
+        record("snapshotting")
+        try:
+            stop_application_services(args.compose_file)
             run_compose(args.compose_file, "up", "-d", "mysql")
             wait_for_mysql(args.compose_file)
-            run_compose(
-                args.compose_file, "exec", "-T", "mysql", "sh", "-c",
-                r'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS \`$MYSQL_DATABASE\`; CREATE DATABASE \`$MYSQL_DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"',
-            )
-            sql = (extracted / "payload" / "mysql.sql").read_bytes()
-            run_compose(
-                args.compose_file, "exec", "-T", "mysql", "sh", "-c",
-                'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"', input_data=sql,
-            )
-            replace_data_directories(extracted)
-    finally:
-        start_application_services(args.compose_file)
+            capture_snapshot(args.compose_file, Path(temporary) / "snapshot", recovery)
+            record("applying")
+            try:
+                apply_restore_payload(args.compose_file, extracted)
+            except BaseException as original:
+                record("rolling_back", best_effort=True)
+                try:
+                    previous = Path(temporary) / "previous"
+                    extract_verified(recovery, previous)
+                    apply_restore_payload(args.compose_file, previous)
+                except BaseException as rollback_error:
+                    restart_safe = False
+                    record("rollback_failed_services_stopped", best_effort=True)
+                    raise BackupError(f"restore and rollback failed; services remain stopped; recovery archive: {recovery}") from rollback_error
+                record("rolled_back", best_effort=True)
+                raise BackupError(f"restore failed; previous data restored; recovery archive: {recovery}") from original
+        finally:
+            if restart_safe:
+                start_application_services(args.compose_file)
     finished = datetime.now(timezone.utc)
-    created = datetime.fromisoformat(manifest["created_at"].replace("Z", "+00:00"))
-    report = {
+    report.update({
         "archive": str(archive),
         "restored_at": finished.isoformat().replace("+00:00", "Z"),
         "rpo_seconds": round((finished - created).total_seconds(), 3),
         "rto_seconds": round(time.monotonic() - started, 3),
         "status": "completed",
-    }
-    report_path = Path(args.report).resolve()
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    })
+    record("completed")
     print(json.dumps(report))
     return 0
+
+
+def apply_restore_payload(compose_files: list[str], extracted: Path) -> None:
+    run_compose(
+        compose_files, "exec", "-T", "mysql", "sh", "-c",
+        r'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS \`$MYSQL_DATABASE\`; CREATE DATABASE \`$MYSQL_DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"',
+    )
+    run_compose(
+        compose_files, "exec", "-T", "mysql", "sh", "-c",
+        'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"',
+        input_data=(extracted / "payload/mysql.sql").read_bytes(),
+    )
+    replace_data_directories(extracted)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -38,10 +39,18 @@ def _get(value: dict[str, Any], path: str) -> Any:
 def compare(baseline: dict, candidate: dict, max_regression: float = 0.05) -> dict:
     metrics = {}
     failures = []
+    for path in ("schema_version", "dataset.version", "dataset.sha256", "configuration.embedding_model", "configuration.top_k"):
+        before, after = _get(baseline, path), _get(candidate, path)
+        if before is not None and after != before:
+            failures.append(f"{path} changed; reports are not comparable")
     for name in DEFAULT_METRICS:
         before = _get(baseline, name)
         after = _get(candidate, name)
         if before is None or after is None:
+            continue
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+               for value in (before, after)):
+            failures.append(f"{name} is not finite numeric evidence")
             continue
         delta = round(float(after) - float(before), 4)
         metrics[name] = {"baseline": float(before), "candidate": float(after), "delta": delta}
@@ -50,6 +59,8 @@ def compare(baseline: dict, candidate: dict, max_regression: float = 0.05) -> di
 
     baseline_version = _get(baseline, "dataset.version") or _get(baseline, "dataset_version")
     candidate_version = _get(candidate, "dataset.version") or _get(candidate, "dataset_version")
+    if not metrics:
+        failures.append("no comparable metrics")
     return {
         "status": "failed" if failures else "passed",
         "baseline_version": baseline_version,

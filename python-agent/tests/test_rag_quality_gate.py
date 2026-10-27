@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "evaluate_rag.py"
@@ -60,6 +61,7 @@ def test_real_llm_scoring_limits_both_model_responses(monkeypatch):
         return next(responses)
 
     monkeypatch.setattr(evaluate_rag.llm, "invoke", invoke)
+    monkeypatch.setattr(evaluate_rag.llm, "ainvoke", AsyncMock(return_value=SimpleNamespace(content='{"checks":[{"id":0,"supported":true,"quotes":[{"citation":1,"text":"答案是 A"}]}]}')))
     report = evaluate_rag._real_llm_scores(
         "答案是什么？",
         [{"content": "证据说明答案是 A。", "metadata": {}}],
@@ -68,3 +70,11 @@ def test_real_llm_scoring_limits_both_model_responses(monkeypatch):
     assert report["faithfulness"] == 0.9
     assert report["answer_relevance"] == 0.8
     assert [call[1]["max_tokens"] for call in calls] == [400, 200]
+    assert "任务规则" in calls[0][0][0][1]
+
+
+def test_real_model_sampling_includes_unanswerable_cases_at_end():
+    cases = [{"answerable": True}] * 10 + [{"answerable": False}] * 2
+    selected = evaluate_rag.select_model_sample_indices(cases, 8)
+    assert len(selected) == 8 and {10, 11} <= selected
+    assert evaluate_rag.select_model_sample_indices(cases, 0) == set()

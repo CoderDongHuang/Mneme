@@ -102,7 +102,7 @@ jobs:
           --require-sanitized
           --input-cost-per-million 0.30
           --output-cost-per-million 0.60
-          --max-estimated-cost 0.03
+          --max-estimated-cost 0.08
           --real-llm-thresholds evaluation/real_rag_thresholds.json
           --report ../artifacts/real-rag-quality-report.json
       - name: Run budgeted real quiz quality gate
@@ -178,7 +178,7 @@ jobs:
                 dataset=python-agent/evaluation/target_domain_rag_cases.json
                 evaluator=python-agent/scripts/evaluate_rag.py
                 thresholds=python-agent/evaluation/real_rag_thresholds.json
-                configuration='{"model":"qwen-plus","samples":8,"embeddings":"offline","top_k":5,"max_cost":0.03,"input_cost_per_million":0.30,"output_cost_per_million":0.60}' ;;
+                configuration='{"model":"qwen-plus","samples":8,"embeddings":"offline","top_k":5,"max_cost":0.08,"input_cost_per_million":0.30,"output_cost_per_million":0.60,"verification":"claims-v1"}' ;;
               quiz)
                 name=real-quiz-quality-report.json
                 dataset=python-agent/evaluation/target_domain_quiz_workspace.json
@@ -192,11 +192,17 @@ jobs:
                 thresholds=python-agent/evaluation/real_embedding_thresholds.json
                 configuration='{"model":"text-embedding-v3","require_real":true,"max_cost":0.01,"input_cost_per_million":0.30}' ;;
             esac
+            extra_provenance=()
+            if [ "$kind" = rag ]; then
+              extra_provenance+=(--provenance-input python-agent/app/agents/prompts.py
+                --provenance-input python-agent/app/knowledge/grounding.py
+                --provenance-input python-agent/app/knowledge/citations.py)
+            fi
             if ! python scripts/quality_trend.py --kind "$kind" --record-provenance \
               --reports "artifacts/$name" --configuration "$configuration" \
               --provenance-input "$dataset" --provenance-input "$evaluator" \
               --provenance-input "$thresholds" --provenance-input python-agent/requirements.lock \
-              --provenance-input python-agent/scripts/quality_policy.py; then
+              --provenance-input python-agent/scripts/quality_policy.py "${extra_provenance[@]}"; then
               status=1
               continue
             fi

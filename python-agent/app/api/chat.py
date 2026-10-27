@@ -9,7 +9,8 @@ from app.memory.working_memory import working_memory
 from app.agents.trace_store import agent_trace_store
 from langchain_core.messages import HumanMessage
 from app.core.logging import setup_logger
-from app.knowledge.citations import select_citations, validate_evidence_answer, NO_EVIDENCE_ANSWER
+from app.knowledge.citations import select_citations, NO_EVIDENCE_ANSWER
+from app.knowledge.grounding import verify_evidence_answer
 from app.core.telemetry import tracer
 from app.core.privacy import privacy_store
 
@@ -96,7 +97,7 @@ async def chat(request: ChatRequest):
             if state.get("intent") == "qa" and not state.get("retrieved_chunks")
             else llm.invoke([HumanMessage(content=build_llm_prompt(state))])
         )
-    answer = validate_evidence_answer(state, str(response.content or "").strip())
+    answer = await verify_evidence_answer(state, str(response.content or "").strip())
     completion = complete_conversation(request, state, answer)
     result = {**state, **completion, "answer": answer}
 
@@ -108,6 +109,10 @@ async def chat(request: ChatRequest):
         metadata = chunk.get("metadata", {})
         sources.append(
             Source(
+                retrieval_ranks=chunk.get("retrieval_ranks", {}),
+                content_sha256=metadata.get("content_sha256", ""),
+                indexed_at=metadata.get("indexed_at", ""),
+                parser_version=metadata.get("parser_version", ""),
                 document_id=str(metadata.get("document_id", "")),
                 document_name=metadata.get("source", "unknown"),
                 chunk_content=content,

@@ -43,6 +43,8 @@ npm ci
 
 ## 常见问题
 
+无需外部模型的完整部署见 [隔离演示](DEMO.md)。它独立于正式栈，不要把 demo 卷接到生产。设置页可检测供应商配置；修改模型后重启服务。Embedding 更换须按 [迁移说明](EMBEDDING_MIGRATION.md) dry-run 和重建，不允许把不同向量空间混写。
+
 - `localhost:8000/health` 返回 404：8000 是 Chroma，Python 健康检查在 8001。
 - Java 启动失败：先确认 MySQL 已创建 `mneme` 数据库，密码与 `.env`/环境变量一致。
 - Java 测试临时目录：Surefire 默认使用 `java-gateway/target`，避免 Windows 隔离账户无法访问用户临时目录；若使用自定义 Maven 配置，请保留该项目内临时目录设置。

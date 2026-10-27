@@ -2,6 +2,8 @@
 
 本文面向从 GitHub 克隆 Mneme 后，在个人电脑运行完整系统的用户。无需购买服务器、域名、HTTPS 证书或 SMTP 服务。
 
+仅想试用且没有模型账号时，先按 [隔离离线演示](DEMO.md) 启动；正式功能仍需供应商配置。设置页的连通性检测可区分密钥、额度、模型和超时错误，密钥只在服务端配置。已有资料切换 Embedding 前必须阅读 [索引迁移](EMBEDDING_MIGRATION.md)，本次发布升级最高 Flyway 为 V19。
+
 ## 1. 运行组件
 
 一次 Compose 启动会运行：
@@ -94,7 +96,7 @@ OCR_ENABLED=true
 OCR_LANGUAGES=chi_sim+eng
 PDF_MIN_TEXT_CHARS=80
 MULTIMODAL_ENABLED=false
-MULTIMODAL_MODEL=qwen-vl-plus
+MULTIMODAL_MODEL=qwen3-vl-plus
 MULTIMODAL_MAX_IMAGES=8
 ```
 

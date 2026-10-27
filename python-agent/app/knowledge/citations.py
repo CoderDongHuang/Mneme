@@ -2,9 +2,29 @@
 from __future__ import annotations
 
 import re
+import json
 
 NO_EVIDENCE_ANSWER = "当前资料没有足够的可核查证据回答这个问题。请补充相关文档，或说明需要查询的具体范围。"
 INVALID_EVIDENCE_ANSWER = "本次回答未能提供有效的资料引用，已停止展示未经核验的结论。请补充资料或缩小问题范围后重试。"
+
+
+def build_evidence_context(chunks, max_chars=12000):
+    parts, selected, count = [], [], 0
+    for index, chunk in enumerate(chunks, 1):
+        remaining = max_chars - count
+        if remaining <= 0:
+            break
+        metadata = chunk.get("metadata", {})
+        location = str(metadata.get("source", "未知文档"))
+        if metadata.get("page"):
+            location += f"，第 {metadata['page']} 页"
+        if metadata.get("section"):
+            location += f"，{metadata['section']}"
+        content = str(chunk.get("content", ""))[:remaining]
+        parts.append(f"[{index}] {location}\n{json.dumps(content, ensure_ascii=False)}")
+        selected.append({**chunk, "content": content})
+        count += len(content)
+    return "\n\n".join(parts) or "本次未检索到匹配片段", selected
 
 
 def select_citations(chunks: list[dict], max_citations: int = 20) -> list[dict]:
@@ -26,6 +46,8 @@ def validate_evidence_answer(state: dict, answer: str) -> str:
         return answer
     chunks = state.get("retrieved_chunks", [])
     if not chunks:
+        return NO_EVIDENCE_ANSWER
+    if answer.strip() == NO_EVIDENCE_ANSWER:
         return NO_EVIDENCE_ANSWER
     references = [int(value) for value in re.findall(r"\[(\d+)\]", answer)]
     if not references or any(index < 1 or index > len(chunks) for index in references):
