@@ -116,6 +116,25 @@ class Client:
             return response.read().decode("utf-8")
 
 
+def assert_no_evidence_stream(stream: str) -> None:
+    """An empty account must finish safely without invented fixture evidence."""
+    events: dict[str, list[dict]] = {}
+    event = ""
+    for line in stream.splitlines():
+        if line.startswith("event:"):
+            event = line.split(":", 1)[1].strip()
+        elif line.startswith("data:"):
+            events.setdefault(event, []).append(json.loads(line.split(":", 1)[1]))
+    answer = "".join(item.get("content", "") for item in events.get("token", []))
+    metadata = events.get("meta", [])
+    if (
+        events.get("error") or not events.get("done") or not metadata
+        or any(item.get("sources") != [] for item in metadata)
+        or not answer.strip() or "QZ-7294" in answer or "证据" not in answer
+    ):
+        raise VerificationError(f"empty-account stream did not safely refuse: {events}")
+
+
 def mysql(files: list[str], sql: str) -> str:
     result = compose(
         files, "exec", "-T", "mysql", "sh", "-c",
@@ -169,8 +188,7 @@ def new_user(
         })
     else:
         stream = client.stream(state["session_id"])
-        if "QZ-7294" not in stream:
-            raise VerificationError("deterministic stream did not complete")
+        assert_no_evidence_stream(stream)
     return client, state
 
 

@@ -12,7 +12,7 @@
 
 | 检查 | 结果/范围 |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest python-agent/tests -q` | 617 通过、1 跳过；本机缺 Tesseract 的测试在容器真实 OCR 流程另测 |
+| `.venv/Scripts/python.exe -m pytest python-agent/tests -q` | 623 通过、1 跳过；本机缺 Tesseract 的测试在容器真实 OCR 流程另测 |
 | Ruff：app/tests/scripts 和根 scripts | 通过 |
 | Maven `-f java-gateway/pom.xml test`，Docker 可用 | 85 项、0 失败、0 跳过；真实 MySQL V1 升级、V13 升级和 V20 幂等校验 |
 | 前端 lint / Vitest / build / bundle budget | 26 项通过；13 懒加载路由，首屏 JS gzip 78.88 KiB；Docker 构建 npm 审计 0 漏洞 |
@@ -24,7 +24,7 @@
 | 加密备份/恢复 | 独立栈通过备份—删除—恢复—重新登录—引用问答；报告 status=completed，RPO 55.664 秒、RTO 25.671 秒，仅为本次样本 |
 | schema 核对 | 实际 MySQL 的 18 条 Flyway 历史名称/版本/CRC32 与迁移文件匹配，最高 V20 |
 
-最终真实地址 8 项全部通过（`artifacts/final-browser-completion.log`），前端最后一次修复后 lint、26 项单测和容器生产构建/预算通过。
+最终真实地址 8 项全部通过（`artifacts/pr34-final-real-url.log`），前端最后一次修复后 lint、26 项单测和容器生产构建/预算通过。
 
 本地原始日志保存在忽略的 `artifacts/`，可公开的模型报告在 [release-evidence-2026-10-27](../python-agent/evaluation/release-evidence-2026-10-27/)。不得上传数据库、备份包、实际用户数据或环境密钥。
 
@@ -48,7 +48,9 @@ npx playwright test e2e/roadmap-stack.spec.js --retries=0
 - 可选 DashScope 重排在 4 题抽样、阈值 0.25 下原始首条精度达 1.0，但 P95=4240.11ms；扩大至 110 题时召回降至 0.5238、P95=32551.02ms。拒绝将该配置设为默认，保留两个失败实验报告。默认 rerank 关闭、最小分数为 0；云 embedding 实验与离线基线不可直接比较。
 - 真实回归发现并修复资料库加载完成前发送导致空范围，以及项目名“计划”误路由为建议、手机长用户名撑宽。
 - 旧浏览器定位器在带图标容器中寻找后代文字失败，改为对可见范围容器本身断言全文，不修改功能行为。
-- PR #34 首轮 Linux CI 检出短文字层页面启用 OCR 后跳过页眉清理；已按原文字块坐标修复，并新增不依赖 Tesseract 的 OCR 成功路径回归。Linux 容器真实 Tesseract 断言和本机 617 项通过；扫描正文保护继续保留。
+- PR #34 首轮 Linux CI 检出短文字层页面启用 OCR 后跳过页眉清理；已按原文字块坐标修复，并新增不依赖 Tesseract 的 OCR 成功路径回归。Linux 容器真实 Tesseract 断言和本机 623 项通过；扫描正文保护继续保留。
+
+- PR #34 后续 CI 发现两处旧验收前提失效：扩容脚本绕过目录使用虚构资料 ID，空库删除演练期待凭空回答资料识别码。现改为正式建库/上传并等待 ready，以及验证完整 SSE 无证据拒答；保留租户与来源权限校验。扩容拓扑补齐网关与两套 Agent 的共享文件卷。新增 6 项空库流验收回归。
 
 ## 文档对照
 

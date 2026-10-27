@@ -105,24 +105,55 @@ def agent(path: str, method: str = "GET", payload: dict | None = None, port: int
     )
 
 
-def distributed_vectors(user_id: str) -> list[str]:
+def registered_knowledge_bases(user_id: str, client, base_url: str = "http://127.0.0.1:8080") -> dict[int, str]:
+    """Populate both shards through the same catalog/upload flow used by users."""
     kb_by_shard: dict[int, str] = {}
-    for candidate in range(100):
-        kb_id = f"scale-kb-{candidate}"
+    for candidate in range(30):
+        kb = request_json(
+            base_url + "/api/v1/knowledge/base", "POST",
+            {"name": f"scale-{candidate}", "description": "CI shard verification"},
+            opener=client,
+        )
+        kb_id = str(kb["id"])
         kb_by_shard.setdefault(shard(user_id, kb_id), kb_id)
         if len(kb_by_shard) == 2:
             break
     if len(kb_by_shard) != 2:
         raise VerificationError("could not select knowledge bases for both shards")
     for kb_id in kb_by_shard.values():
-        result = agent("/api/v1/knowledge/internal/ingest", "POST", {
-            "user_id": user_id,
-            "kb_id": kb_id,
-            "file_path": "/test-fixtures/rag-fixture.txt",
-            "document_id": f"doc-{kb_id}",
-        })
-        if result["chunks"] < 1:
-            raise VerificationError(f"ingestion produced no chunks: {result}")
+        boundary = f"----mneme-{uuid.uuid4().hex}"
+        body = (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="kbId"\r\n\r\n{kb_id}\r\n'
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
+            'filename="rag-fixture.txt"\r\nContent-Type: text/plain\r\n\r\n'
+        ).encode() + (ROOT / "test-fixtures/rag-fixture.txt").read_bytes()
+        body += f"\r\n--{boundary}--\r\n".encode()
+        request = urllib.request.Request(
+            base_url + "/api/v1/knowledge/document/upload", data=body, method="POST",
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        with client.open(request, timeout=180) as response:
+            uploaded = json.loads(response.read())
+        if uploaded.get("code") != 200:
+            raise VerificationError(f"document upload failed: {uploaded}")
+        document_id = uploaded["data"]["id"]
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            status = request_json(
+                base_url + f"/api/v1/knowledge/document/{document_id}/status", opener=client,
+            )
+            if status["status"] == "ready" and status.get("chunkCount", 0) > 0:
+                break
+            if status["status"] in {"failed", "cancelled", "partial"}:
+                raise VerificationError(f"document ingestion did not complete: {status}")
+            time.sleep(2)
+        else:
+            raise VerificationError(f"document {document_id} did not become ready")
+    return kb_by_shard
+
+
+def distributed_vectors(user_id: str, client) -> list[str]:
+    kb_by_shard = registered_knowledge_bases(user_id, client)
     first_stats = agent("/api/v1/knowledge/admin/stats")
     second_stats = agent("/api/v1/knowledge/admin/stats", port=8002)
     if any(item["chunks"] < 1 for item in first_stats["shards"]):
@@ -301,7 +332,7 @@ def main() -> None:
     ):
         wait_http(url)
     user_id, username, client = notification_broadcast()
-    knowledge_bases = distributed_vectors(user_id)
+    knowledge_bases = distributed_vectors(user_id, client)
     cache_revision(user_id)
     trace_id = trace_chain(username, knowledge_bases, client)
     report = {
