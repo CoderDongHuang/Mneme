@@ -12,7 +12,7 @@
 
 | 检查 | 结果/范围 |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest python-agent/tests -q` | 616 通过、1 跳过；本机缺 Tesseract 的测试在容器真实 OCR 流程另测 |
+| `.venv/Scripts/python.exe -m pytest python-agent/tests -q` | 617 通过、1 跳过；本机缺 Tesseract 的测试在容器真实 OCR 流程另测 |
 | Ruff：app/tests/scripts 和根 scripts | 通过 |
 | Maven `-f java-gateway/pom.xml test`，Docker 可用 | 85 项、0 失败、0 跳过；真实 MySQL V1 升级、V13 升级和 V20 幂等校验 |
 | 前端 lint / Vitest / build / bundle budget | 26 项通过；13 懒加载路由，首屏 JS gzip 78.88 KiB；Docker 构建 npm 审计 0 漏洞 |
@@ -48,6 +48,7 @@ npx playwright test e2e/roadmap-stack.spec.js --retries=0
 - 可选 DashScope 重排在 4 题抽样、阈值 0.25 下原始首条精度达 1.0，但 P95=4240.11ms；扩大至 110 题时召回降至 0.5238、P95=32551.02ms。拒绝将该配置设为默认，保留两个失败实验报告。默认 rerank 关闭、最小分数为 0；云 embedding 实验与离线基线不可直接比较。
 - 真实回归发现并修复资料库加载完成前发送导致空范围，以及项目名“计划”误路由为建议、手机长用户名撑宽。
 - 旧浏览器定位器在带图标容器中寻找后代文字失败，改为对可见范围容器本身断言全文，不修改功能行为。
+- PR #34 首轮 Linux CI 检出短文字层页面启用 OCR 后跳过页眉清理；已按原文字块坐标修复，并新增不依赖 Tesseract 的 OCR 成功路径回归。Linux 容器真实 Tesseract 断言和本机 617 项通过；扫描正文保护继续保留。
 
 ## 文档对照
 

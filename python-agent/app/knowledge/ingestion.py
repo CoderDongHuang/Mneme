@@ -159,11 +159,11 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
         pdf.close()
 
     edge_lines: Counter[str] = Counter()
-    for blocks, (_, height), confidence in zip(page_blocks, page_sizes, page_ocr_confidences):
+    for blocks, (_, height) in zip(page_blocks, page_sizes):
         # A short page's first/last lines can be its entire body. Only remove
-        # repeated text physically inside a margin; OCR has no text blocks.
-        if confidence is not None:
-            continue
+        # repeated text physically inside a margin. Short native-text pages may
+        # also use OCR; their original blocks still provide valid coordinates.
+        # Scanned pages have no native text blocks and cannot enter this set.
         candidates = {
             line.strip()
             for _, y0, _, y1, content in blocks
