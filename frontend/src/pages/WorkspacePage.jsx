@@ -19,6 +19,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { documentFileUrl, downloadWorkspaceArchive, downloadWorkspaceExport, endpoints } from "../api/client";
 import LoadingState from "../components/LoadingState";
+import ParsePreview from '../components/ParsePreview';
+import RetrievalFilters, { emptyFilters } from '../components/RetrievalFilters';
 import StatusBadge from "../components/StatusBadge";
 import "../styles/workspace.css";
 
@@ -84,6 +86,7 @@ export default function WorkspacePage() {
   const [branches, setBranches] = useState([]);
   const [comparison, setComparison] = useState(null);
   const [debugResult, setDebugResult] = useState(null);
+  const [retrievalFilters, setRetrievalFilters] = useState({ ...emptyFilters });
   const [planForm, setPlanForm] = useState({
     title: "",
     goal: "",
@@ -150,13 +153,23 @@ export default function WorkspacePage() {
   }, []);
 
   useEffect(() => {
+    if (mode !== 'tasks') return;
+    let active = true;
+    const timer = setInterval(() => {
+      endpoints.tasks().then(items => { if (active) setTasks(items || []); })
+        .catch(error => { if (active) setError(error.message); });
+    }, 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [mode]);
+
+  useEffect(() => {
     const params = new URLSearchParams(location.search);
     const documentId = params.get("document");
     if (!documentId) return;
     setMode("reader");
     setHighlight(params.get("highlight") || "");
     setPreviewPage(params.get("page") || "");
-    endpoints.documentPreview(documentId).then(setPreview).catch((requestError) => setError(requestError.message));
+    endpoints.documentPreview(documentId, params.get('sha256')).then(setPreview).catch((requestError) => setError(requestError.message));
   }, [location.search]);
 
   async function run(action) {
@@ -174,6 +187,8 @@ export default function WorkspacePage() {
 
   async function changeKb(value) {
     setKbId(value);
+    setRetrievalFilters({ ...emptyFilters });
+    setDebugResult(null);
     setDocuments(value ? await endpoints.documents(value) : []);
   }
   async function loadMemoryVersions(memoryId) {
@@ -361,12 +376,13 @@ export default function WorkspacePage() {
                     {preview.extension === "pdf" ? (
                       <iframe
                         className="document-frame"
-                        src={documentFileUrl(preview.document.id, previewPage)}
+                        src={documentFileUrl(preview.document.id, previewPage, preview.document.sha256)}
                         title={`${preview.document.file_name} PDF 预览`}
                       />
                     ) : (
                       <pre>{highlight && preview.content.includes(highlight) ? preview.content.split(highlight).map((part, index, parts) => <span key={`${index}-${part.slice(0, 12)}`}>{part}{index < parts.length - 1 && <mark>{highlight}</mark>}</span>) : preview.content}</pre>
                     )}
+                    <ParsePreview key={`${preview.document.id}-${preview.document.sha256 || ''}-${previewPage}`} preview={preview} initialPage={previewPage} />
                   </>
                 ) : (
                   <div className="studio-empty">
@@ -461,7 +477,7 @@ export default function WorkspacePage() {
             <section className="quiz-layout">
               <form onSubmit={generateQuiz}>
                 <h2>从资料生成测验</h2>
-                <select value={kbId} onChange={(e) => setKbId(e.target.value)}>
+                <select value={kbId} onChange={(e) => { setKbId(e.target.value); setRetrievalFilters({ ...emptyFilters }); setDebugResult(null); }}>
                   {knowledgeBases.map((k) => (
                     <option key={k.id} value={k.id}>
                       {k.name}
@@ -571,7 +587,8 @@ export default function WorkspacePage() {
                     {task.attempt_count}/{task.max_attempts}
                   </span>
                   <p>{task.error_message || "处理链路正常"}</p>
-                  {["failed", "retry"].includes(task.status) && (
+                  {task.task_type === 'document_ingest' && ['pending', 'retry', 'processing'].includes(task.status) && <button onClick={() => run(async () => { await endpoints.cancelTask(task.task_id); setTasks(await endpoints.tasks()); })}>取消解析</button>}
+                  {["failed", "retry", "cancelled"].includes(task.status) && (
                     <button
                       onClick={() =>
                         run(async () => {
@@ -596,18 +613,19 @@ export default function WorkspacePage() {
                   e.preventDefault();
                   run(async () =>
                     setDebugResult(
-                      await endpoints.retrievalDebug(kbId, debugQuery, 8),
+                      await endpoints.retrievalDebug(kbId, debugQuery, 8, retrievalFilters),
                     ),
                   );
                 }}
               >
-                <select value={kbId} onChange={(e) => setKbId(e.target.value)}>
+                <select value={kbId} onChange={(e) => { setKbId(e.target.value); setRetrievalFilters({ ...emptyFilters }); setDebugResult(null); }}>
                   {knowledgeBases.map((k) => (
                     <option key={k.id} value={k.id}>
                       {k.name}
                     </option>
                   ))}
                 </select>
+                <RetrievalFilters key={kbId} kbIds={kbId ? [kbId] : []} value={retrievalFilters} onChange={setRetrievalFilters} />
                 <input
                   value={debugQuery}
                   onChange={(e) => setDebugQuery(e.target.value)}
@@ -620,6 +638,7 @@ export default function WorkspacePage() {
                 </button>
               </form>
               <div className="retrieval-results">
+                {debugResult?.chunks?.length === 0 && <p role="status">当前筛选范围没有命中资料，请调整筛选条件或检索问题。</p>}
                 {debugResult?.chunks?.map((chunk, index) => (
                   <article key={chunk.id || index}>
                     <span>{String(index + 1).padStart(2, "0")}</span>
@@ -627,11 +646,12 @@ export default function WorkspacePage() {
                       <header>
                         <strong>{chunk.metadata?.source || "未知来源"}</strong>
                         <small>
-                          相似度 {Number(chunk.score || 0).toFixed(4)} · 第{" "}
+                          排序信号 {Number(chunk.score || 0).toFixed(4)} · 第{" "}
                           {chunk.metadata?.page || "-"} 页
                         </small>
                       </header>
                       <p>{chunk.content}</p>
+                      <small>{Object.entries(chunk.retrieval_ranks || {}).map(([channel, rank]) => `${channel} #${rank}`).join(' · ')}</small>
                       <code>
                         {chunk.metadata?.section || chunk.metadata?.chunk_type}
                       </code>

@@ -16,6 +16,7 @@ class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128)
     message: str = Field(min_length=1, max_length=8000)
     knowledge_base_ids: list[str] = Field(default_factory=list, max_length=20)
+    document_ids: list[str] | None = Field(default=None, max_length=10000)
 
     @field_validator("user_id", "session_id", "message")
     @classmethod

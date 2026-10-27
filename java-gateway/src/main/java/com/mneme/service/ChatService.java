@@ -30,6 +30,8 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final ChatSessionService sessionService;
     private final PendingMemoryService pendingMemoryService;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private RetrievalScopeService retrievalScope;
 
     @Value("${mneme.python-agent-url}")
     private String pythonAgentUrl;
@@ -52,6 +54,7 @@ public class ChatService {
     }
 
     public ChatResponse chat(Long userId, ChatRequest request) {
+        if (retrievalScope != null) retrievalScope.apply(userId, request);
         Long sessionId = parseSessionId(request.getSessionId());
         ChatSessionService.Exchange exchange = sessionService.prepareExchange(
             userId, sessionId, request.getRequestId(), request.getMessage()
@@ -85,6 +88,7 @@ public class ChatService {
     }
 
     public StreamingResponseBody stream(Long userId, ChatRequest request) {
+        if (retrievalScope != null) retrievalScope.apply(userId, request);
         Long sessionId = parseSessionId(request.getSessionId());
         ChatSessionService.Exchange exchange = sessionService.prepareExchange(
             userId, sessionId, request.getRequestId(), request.getMessage()

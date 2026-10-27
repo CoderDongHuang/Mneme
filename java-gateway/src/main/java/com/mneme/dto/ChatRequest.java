@@ -24,6 +24,31 @@ public class ChatRequest {
     @Size(max = 20)
     private List<@Size(max = 128) String> knowledgeBaseIds = new ArrayList<>();
 
+    @com.fasterxml.jackson.annotation.JsonProperty("selected_document_ids")
+    @Size(max = 1000)
+    private List<@Size(max = 128) String> selectedDocumentIds = new ArrayList<>();
+    @Size(max = 20)
+    private List<@Size(max = 80) String> tags = new ArrayList<>();
+    @com.fasterxml.jackson.annotation.JsonProperty("date_from")
+    @Size(max = 10)
+    private String dateFrom;
+    @com.fasterxml.jackson.annotation.JsonProperty("date_to")
+    @Size(max = 10)
+    private String dateTo;
+    @com.fasterxml.jackson.annotation.JsonProperty(value = "document_ids", access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private List<String> documentIds;
+
+    public List<String> getSelectedDocumentIds() { return selectedDocumentIds; }
+    public void setSelectedDocumentIds(List<String> ids) { selectedDocumentIds = ids; }
+    public List<String> getTags() { return tags; }
+    public void setTags(List<String> values) { tags = values; }
+    public String getDateFrom() { return dateFrom; }
+    public void setDateFrom(String value) { dateFrom = value; }
+    public String getDateTo() { return dateTo; }
+    public void setDateTo(String value) { dateTo = value; }
+    public List<String> getDocumentIds() { return documentIds; }
+    public void setDocumentIds(List<String> ids) { documentIds = ids; }
+
     // getters and setters
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }

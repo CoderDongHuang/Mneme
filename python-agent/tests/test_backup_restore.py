@@ -324,7 +324,19 @@ def test_failed_restore_recovers_previous_stores_or_keeps_services_stopped(tmp_p
     restarts = []
     monkeypatch.setattr(module, "start_application_services", lambda _: restarts.append(True))
     monkeypatch.setattr(module, "wait_for_mysql", lambda _: None)
-    monkeypatch.setattr(module, "run_compose", lambda *a, **k: SimpleNamespace(stdout=b"previous-sql"))
+    import zlib
+    migration = module.PROJECT_ROOT / "java-gateway/src/main/resources/db/migration/V1__initial_schema.sql"
+    migration = next(migration.parent.glob("V1__*.sql"))
+    checksum = 0
+    for line in migration.read_text(encoding="utf-8-sig").splitlines():
+        checksum = zlib.crc32(line.encode("utf-8"), checksum)
+    if checksum >= 2**31:
+        checksum -= 2**32
+    def compose(*args, **kwargs):
+        content = (f"1\t{checksum}\t1\t{migration.name}\n".encode()
+                   if "flyway_schema_history" in str(args) else b"previous-sql")
+        return SimpleNamespace(stdout=content)
+    monkeypatch.setattr(module, "run_compose", compose)
     calls = []
 
     def apply(_, extracted):
@@ -363,6 +375,28 @@ def test_restore_rejects_future_application_schema_before_stopping_services(monk
     from scripts import backup_restore as module
     with pytest.raises(BackupError, match="newer"):
         module.validate_restore_schema({"metadata": {"application_schema_max": module.supported_schema_version() + 1}})
+
+
+def test_restore_checks_actual_database_migration_checksums(tmp_path, monkeypatch):
+    import zlib
+    from scripts import backup_restore as module
+    directory = tmp_path / "java-gateway/src/main/resources/db/migration"
+    directory.mkdir(parents=True)
+    script = directory / "V1__initial.sql"
+    script.write_bytes(b"\xef\xbb\xbfCREATE TABLE sample(id INT);\r\nSELECT 1;\r\n")
+    checksum = zlib.crc32(b"CREATE TABLE sample(id INT);SELECT 1;")
+    if checksum >= 2**31:
+        checksum -= 2**32
+    metadata = {"application_schema_max": 1, "schema_history_format": 1,
+                "flyway_schema_history": [{"version": 1, "checksum": checksum, "script": script.name}]}
+    monkeypatch.setattr(module, "PROJECT_ROOT", tmp_path)
+    module.validate_restore_schema({"metadata": metadata})
+    script.write_text("CREATE TABLE changed(id TEXT);", encoding="utf-8")
+    with pytest.raises(BackupError, match="checksum differs"):
+        module.validate_restore_schema({"metadata": metadata})
+    metadata["flyway_schema_history"].append(metadata["flyway_schema_history"][0])
+    with pytest.raises(BackupError):
+        module.validate_restore_schema({"metadata": metadata})
 
 
 def test_backup_restore_operations_cannot_overlap(tmp_path, monkeypatch):

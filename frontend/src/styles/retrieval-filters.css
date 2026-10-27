@@ -1,0 +1,7 @@
+.retrieval-filters { margin: 8px 0; color: var(--text-secondary, #62665f); font-size: 13px; }
+.retrieval-filters summary { cursor: pointer; padding: 8px 4px; }
+.retrieval-filter-fields { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; border: 1px solid var(--border-color, #deded6); border-radius: 12px; background: var(--surface, #fafaf6); }
+.retrieval-filter-fields label { display: flex; flex: 1 1 180px; flex-direction: column; gap: 6px; }
+.retrieval-filter-fields input,.retrieval-filter-fields select { width: 100%; border: 1px solid #d3d5cd; border-radius: 6px; padding: 8px; background: inherit; color: inherit; }
+.retrieval-filter-fields select[multiple] { min-height: 85px; }
+.retrieval-filter-fields button { align-self: flex-end; }

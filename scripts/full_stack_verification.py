@@ -30,7 +30,7 @@ def compose(files: list[str], *args: str, check: bool = True) -> subprocess.Comp
         command.extend(("-f", file))
     command.extend(args)
     return subprocess.run(
-        command, cwd=ROOT, check=check, text=True,
+        command, cwd=ROOT, check=check, text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
 

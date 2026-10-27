@@ -269,7 +269,7 @@ class ToolRegistry:
 
     def _validate(self, spec: ToolSpec, arguments: dict[str, Any]) -> None:
         unknown = set(arguments) - set(spec.input_schema)
-        missing = set(spec.input_schema) - set(arguments)
+        missing = {key for key, value in spec.input_schema.items() if not str(value).endswith("?")} - set(arguments)
         if unknown or missing:
             raise ValueError(
                 f"工具 {spec.name} 参数不合法: missing={sorted(missing)}, unknown={sorted(unknown)}"
@@ -279,13 +279,21 @@ class ToolRegistry:
             "integer": int,
             "number": (int, float),
             "boolean": bool,
+            "strings": list,
         }
         for field, declared in spec.input_schema.items():
+            if field not in arguments:
+                continue
+            declared = str(declared).removesuffix("?")
             expected = expected_types.get(str(declared))
             if expected and (not isinstance(arguments[field], expected) or (
                 declared in {"integer", "number"} and isinstance(arguments[field], bool)
             )):
                 raise TypeError(f"工具 {spec.name} 参数 {field} 必须是 {declared}")
+            if declared == "strings" and (len(arguments[field]) > 10000 or any(
+                not isinstance(value, str) or not value or len(value) > 128 for value in arguments[field]
+            )):
+                raise TypeError(f"工具 {spec.name} 参数 {field} 必须是文档 ID 列表")
 
     def _trace(
         self,
@@ -320,6 +328,7 @@ tool_registry.register(
             "kb_id": "string",
             "query": "string",
             "top_k": "integer",
+            "document_ids": "strings?",
         },
         owner="knowledge",
         required_scopes=frozenset({"knowledge.read"}),

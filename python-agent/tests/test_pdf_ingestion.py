@@ -62,6 +62,20 @@ def test_pdf_keeps_extracted_text_when_ocr_is_unavailable(tmp_path, monkeypatch)
     assert "Extracted text must survive" in parsed[0].page_content
 
 
+def test_repeated_short_body_is_not_mistaken_for_page_margins(tmp_path):
+    path = tmp_path / "repeated-body.pdf"
+    pdf = pymupdf.open()
+    for _ in range(4):
+        page = pdf.new_page()
+        page.insert_text((72, 200), "Repeated body SCAN-ALPHA retained for 42 months")
+    pdf.save(path)
+    pdf.close()
+    parsed = parse_document(str(path))
+    text = [doc for doc in parsed if doc.metadata["chunk_type"] == "text"]
+    assert len(text) == 4
+    assert all("SCAN-ALPHA" in doc.page_content for doc in text)
+
+
 @pytest.mark.integration
 @pytest.mark.skipif(shutil.which("tesseract") is None, reason="需要 Tesseract")
 def test_scanned_pdf_uses_ocr(tmp_path):

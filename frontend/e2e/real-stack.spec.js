@@ -11,19 +11,27 @@ test('真实注册、资料入库、检索引用和流式回答', async ({ page 
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`
   const username = `e2e_${suffix}`
   const password = `Mneme_${suffix}!`
-  const imageDirectory = path.resolve('../docs/images')
+  const imageDirectory = path.resolve(process.env.MNEME_E2E_IMAGE_DIRECTORY || '../artifacts/real-stack-images')
+  fs.mkdirSync(imageDirectory, { recursive: true })
 
   await page.goto('/auth')
   await expect(page.getByRole('heading', { name: '继续你的学习轨迹' })).toBeVisible()
   await page.screenshot({ path: path.join(imageDirectory, 'mneme-auth.png'), fullPage: true, animations: 'disabled' })
-  const register = await page.request.post('/api/v1/auth/register', {
-    data: { username, password },
-  })
-  expect(register.ok()).toBeTruthy()
-  const session = (await register.json()).data
-  await page.addInitScript((value) => {
-    localStorage.setItem('mneme_auth', JSON.stringify(value))
-  }, session)
+  await page.getByRole('tab', { name: '注册', exact: true }).click()
+  await page.getByPlaceholder('输入用户名', { exact: true }).fill(username)
+  await page.getByPlaceholder('至少 8 个字符', { exact: true }).fill(password)
+  await page.getByRole('button', { name: '创建账号', exact: true }).click()
+  await expect(page).toHaveURL(/\/chat/)
+  await page.request.post('/api/v1/auth/logout')
+  await page.evaluate(() => localStorage.removeItem('mneme_auth'))
+  await page.goto('/auth')
+  await page.getByPlaceholder('输入用户名', { exact: true }).fill(username)
+  await page.getByPlaceholder('至少 8 个字符', { exact: true }).fill(`${password}wrong`)
+  await page.getByRole('button', { name: '进入忆知', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await page.getByPlaceholder('至少 8 个字符', { exact: true }).fill(password)
+  await page.getByRole('button', { name: '进入忆知', exact: true }).click()
+  await expect(page).toHaveURL(/\/chat/)
 
   const createKb = await page.request.post('/api/v1/knowledge/base', {
     data: { name: `真实验收-${suffix}`, description: 'Playwright 全链路验收' },
@@ -64,7 +72,8 @@ test('真实注册、资料入库、检索引用和流式回答', async ({ page 
   await page.getByPlaceholder('向忆知提问...').fill('请结合上一轮，再用一句话确认识别码。')
   await page.getByTitle('发送').click()
   await expect(page.locator('.message-assistant')).toHaveCount(2, { timeout: 90_000 })
-  await expect(page.locator('.message-assistant').last()).toContainText('QZ-7294')
+  await expect(page.locator('.message-assistant').last()).toContainText('QZ-7294', { timeout: 90_000 })
+  await expect(page.getByTitle('发送')).toBeVisible({ timeout: 90_000 })
   await page.reload()
   const historyToggle = page.getByRole('button', { name: '切换会话栏' })
   if (await historyToggle.getAttribute('aria-expanded') === 'false') await historyToggle.click()

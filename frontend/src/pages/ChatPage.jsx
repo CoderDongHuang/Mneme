@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { endpoints, streamChat } from '../api/client'
 import LoadingState from '../components/LoadingState'
+import RetrievalFilters, { emptyFilters } from '../components/RetrievalFilters'
 import '../styles/chat.css'
 
 function formatTime(value) {
@@ -22,6 +23,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState([])
   const [knowledgeBases, setKnowledgeBases] = useState([])
   const [selectedKbIds, setSelectedKbIds] = useState([])
+  const [retrievalFilters, setRetrievalFilters] = useState({ ...emptyFilters })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [streaming, setStreaming] = useState(false)
@@ -55,6 +57,7 @@ export default function ChatPage() {
     if (!/^\d+$/.test(documentId)) return
     const params = new URLSearchParams({ document: documentId })
     if (source.page) params.set('page', String(source.page))
+    if (source.content_sha256) params.set('sha256', source.content_sha256)
     if (source.chunk_content) params.set('highlight', source.chunk_content.slice(0, 500))
     navigate(`/workspace?${params.toString()}`)
     setSourceDrawer(null)
@@ -116,7 +119,7 @@ export default function ChatPage() {
   async function sendMessage(event) {
     event?.preventDefault()
     const text = input.trim()
-    if (!text || streaming) return
+    if (!text || streaming || loading) return
     setError('')
     setInput('')
     setStreaming(true)
@@ -133,6 +136,7 @@ export default function ChatPage() {
         session_id: String(session.id),
         message: text,
         knowledge_base_ids: selectedKbIds,
+        ...retrievalFilters,
       }, {
         signal: controller.signal,
         onEvent(name, data) {
@@ -209,6 +213,7 @@ export default function ChatPage() {
             <strong>{activeSession?.title || '新的学习对话'}</strong>
           </div>
           <div className="kb-selector">
+            <RetrievalFilters kbIds={selectedKbIds} value={retrievalFilters} onChange={setRetrievalFilters} />
             <button aria-expanded={kbMenuOpen} onClick={() => setKbMenuOpen((value) => !value)}><BookOpen size={16} /><span>{selectedLabel}</span><ChevronDown size={15} /></button>
             {kbMenuOpen && (
               <div className="kb-menu">
@@ -216,7 +221,7 @@ export default function ChatPage() {
                 {knowledgeBases.length ? knowledgeBases.map((kb) => {
                   const id = String(kb.id)
                   const checked = selectedKbIds.includes(id)
-                  return <label key={id}><input type="checkbox" checked={checked} onChange={() => setSelectedKbIds((current) => checked ? current.filter((item) => item !== id) : [...current, id])} /><span className="custom-check">{checked && <Check size={12} />}</span><span>{kb.name}</span></label>
+                  return <label key={id}><input type="checkbox" checked={checked} onChange={() => { setSelectedKbIds((current) => checked ? current.filter((item) => item !== id) : [...current, id]); setRetrievalFilters({ ...emptyFilters }) }} /><span className="custom-check">{checked && <Check size={12} />}</span><span>{kb.name}</span></label>
                 }) : <p>请先在资料库页面上传学习资料。</p>}
               </div>
             )}
@@ -258,7 +263,7 @@ export default function ChatPage() {
         <form className="composer" onSubmit={sendMessage}>
           <textarea aria-label="向忆知提问..." value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); sendMessage() } }} placeholder="向忆知提问..." rows={1} />
           <span className="composer-context"><FileText size={14} />{selectedLabel}</span>
-          {streaming ? <button type="button" className="stop-send" onClick={() => abortRef.current?.abort()} title="停止生成" aria-label="停止生成"><CircleStop size={19} /></button> : <button className="send-message" disabled={!input.trim()} title="发送" aria-label="发送"><ArrowUp size={20} /></button>}
+          {streaming ? <button type="button" className="stop-send" onClick={() => abortRef.current?.abort()} title="停止生成" aria-label="停止生成"><CircleStop size={19} /></button> : <button className="send-message" disabled={loading || !input.trim()} title="发送" aria-label="发送"><ArrowUp size={20} /></button>}
         </form>
       </section>
 

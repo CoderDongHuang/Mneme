@@ -8,6 +8,7 @@
 """
 
 import json
+import pytest
 from unittest.mock import patch, MagicMock
 
 import app.agents.nodes as nodes_module
@@ -25,6 +26,20 @@ def _mock_llm(return_content: str):
 
 class TestIntentClassification:
     # ── 正常流程 ──────────────────────────────────────────
+
+    @pytest.mark.parametrize("message", [
+        "星桥计划的核心识别码是什么？请引用资料。",
+        "请结合上一轮，再用一句话确认识别码。",
+        "建议书的原文发布日期是什么？",
+    ])
+    def test_source_questions_bypass_learning_keyword_rules(self, message):
+        mock = _mock_llm('{"intent":"suggest"}')
+        with patch.object(nodes_module, "llm", mock):
+            assert intent_classification_node({"message": message})["intent"] == "qa"
+        mock.invoke.assert_not_called()
+
+    def test_explicit_learning_plan_still_uses_suggestions(self):
+        assert intent_classification_node({"message": "帮我制定学习计划"})["intent"] == "suggest"
 
     def test_returns_qa_intent(self):
         """qa 意图正确返回"""
@@ -102,7 +117,7 @@ class TestIntentClassification:
             )
         )
         with patch.object(nodes_module, "llm", mock):
-            result = intent_classification_node({"message": "上传一份文档"})
+            result = intent_classification_node({"message": "执行一个未知动作"})
         assert result["intent"] == "general"
 
     def test_malicious_intent_blocked(self):

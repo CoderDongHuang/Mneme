@@ -229,9 +229,28 @@ def capture_snapshot(compose_files: list[str], staging: Path, archive: Path) -> 
         capture=True,
     )
     (payload / "mysql.sql").write_bytes(dump.stdout)
+    history = run_compose(
+        compose_files, "exec", "-T", "mysql", "sh", "-c",
+        'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --batch --skip-column-names "$MYSQL_DATABASE" -e "SELECT version,checksum,success,script FROM flyway_schema_history WHERE type=\'SQL\' ORDER BY installed_rank"',
+        capture=True,
+    )
+    migrations = []
+    for line in history.stdout.decode("utf-8").splitlines():
+        columns = line.split("\t")
+        if len(columns) != 4 or not columns[0].isdigit() or columns[2] != "1":
+            raise BackupError("database migration history is invalid or has failed migrations")
+        try:
+            migrations.append({"version": int(columns[0]), "checksum": int(columns[1]), "script": columns[3]})
+        except ValueError as error:
+            raise BackupError("database migration checksum is invalid") from error
+    if not migrations:
+        raise BackupError("database migration history is empty; refusing an unverifiable backup")
+    metadata = {"application_schema_max": max(item["version"] for item in migrations),
+                "flyway_schema_history": migrations, "schema_history_format": 1}
+    validate_restore_schema({"metadata": metadata})
     for archive_path, source in DATA_SOURCES.items():
         copy_tree(source, staging / archive_path)
-    manifest = create_archive(staging, archive, {"application_schema_max": supported_schema_version()})
+    manifest = create_archive(staging, archive, metadata)
     archive.chmod(0o600)
     verify_archive(archive)
     return manifest
@@ -246,6 +265,34 @@ def validate_restore_schema(manifest: dict) -> None:
     version = manifest.get("metadata", {}).get("application_schema_max")
     if version is not None and (type(version) is not int or version > supported_schema_version()):
         raise BackupError("backup application schema is newer than this checkout; restore with its matching release")
+    metadata = manifest.get("metadata", {})
+    if "schema_history_format" not in metadata and "flyway_schema_history" not in metadata:
+        return  # Legacy archives retain the historical upper-bound compatibility check.
+    history = metadata.get("flyway_schema_history")
+    if metadata.get("schema_history_format") != 1 or not isinstance(history, list) or not history:
+        raise BackupError("backup migration history is missing or invalid")
+    import zlib
+    directory = PROJECT_ROOT / "java-gateway/src/main/resources/db/migration"
+    seen = set()
+    for item in history:
+        if (not isinstance(item, dict) or type(item.get("version")) is not int
+                or type(item.get("checksum")) is not int or not isinstance(item.get("script"), str)
+                or item["version"] in seen):
+            raise BackupError("backup migration history contains invalid or duplicate entries")
+        seen.add(item["version"])
+        matches = list(directory.glob(f"V{item['version']}__*.sql"))
+        if len(matches) != 1 or matches[0].name != item["script"]:
+            raise BackupError("backup migration is not available in this checkout")
+        # Flyway CRC32 consumes UTF-8 lines without terminators and ignores a BOM.
+        checksum = 0
+        for line in matches[0].read_text(encoding="utf-8-sig").splitlines():
+            checksum = zlib.crc32(line.encode("utf-8"), checksum)
+        if checksum >= 2**31:
+            checksum -= 2**32
+        if checksum != item["checksum"]:
+            raise BackupError(f"backup migration checksum differs from checkout: {item['script']}")
+    if max(seen) != version:
+        raise BackupError("backup schema version does not match its migration history")
 
 
 def create_archive(

@@ -150,12 +150,21 @@ export const endpoints = {
   memory: () => api('/memory'),
   writeMemory: (body) => api('/memory/write', { method: 'POST', body: JSON.stringify(body) }),
   confirmMemory: (body) => api('/memory/confirm', { method: 'POST', body: JSON.stringify(body) }),
-  documentPreview: (id) => api(`/workspace/documents/${id}/preview`),
+  documentPreview: (id, sha256) => api(`/workspace/documents/${id}/preview${sha256 ? `?sha256=${encodeURIComponent(sha256)}` : ''}`),
+  documentTags: (id) => api(`/workspace/documents/${id}/tags`),
+  setDocumentTags: (id, tags) => api(`/workspace/documents/${id}/tags`, { method: 'PUT', body: JSON.stringify(tags) }),
   tasks: () => api('/workspace/tasks'),
   operations: () => api('/workspace/operations?limit=200'),
   cancelTask: (id) => api(`/workspace/tasks/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
   retryTask: (id) => api(`/workspace/tasks/${id}/retry`, { method: 'POST' }),
-  retrievalDebug: (kbId, query, topK = 6) => api(`/workspace/retrieval/debug?kbId=${encodeURIComponent(kbId)}&query=${encodeURIComponent(query)}&topK=${topK}`),
+  retrievalDebug: (kbId, query, topK = 6, filters = {}) => {
+    const params = new URLSearchParams({ kbId, query, topK })
+    ;(filters.selected_document_ids || []).forEach(id => params.append('documentIds', id))
+    ;(filters.tags || []).forEach(tag => params.append('tags', tag))
+    if (filters.date_from) params.set('dateFrom', filters.date_from)
+    if (filters.date_to) params.set('dateTo', filters.date_to)
+    return api(`/workspace/retrieval/debug?${params}`)
+  },
   plans: () => api('/workspace/plans'),
   metrics: () => api('/workspace/metrics'),
   metricHistory: (days = 30) => api(`/workspace/metrics/history?days=${days}`),
@@ -253,7 +262,7 @@ export async function downloadWorkspaceArchive() {
   URL.revokeObjectURL(url)
 }
 
-export function documentFileUrl(id, page) {
+export function documentFileUrl(id, page, sha256) {
   const anchor = page ? `#page=${encodeURIComponent(page)}` : ''
-  return `${API_BASE}/workspace/documents/${encodeURIComponent(id)}/file${anchor}`
+  return `${API_BASE}/workspace/documents/${encodeURIComponent(id)}/file${sha256 ? `?sha256=${encodeURIComponent(sha256)}` : ''}${anchor}`
 }

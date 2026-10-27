@@ -109,6 +109,8 @@ class Settings:
     reranker_enabled: bool = _bool("RERANKER_ENABLED", False)
     reranker_provider: str = os.getenv("RERANKER_PROVIDER", "dashscope").strip().lower()
     reranker_model: str = os.getenv("RERANKER_MODEL", "gte-rerank-v2").strip()
+    # DashScope normalized relevance only; local CrossEncoder logits use another scale.
+    reranker_min_score: float = float(os.getenv("RERANKER_MIN_SCORE", "0"))
     vector_shard_count: int = max(1, int(os.getenv("VECTOR_SHARD_COUNT", "1")))
     vector_shard_id: int = max(0, int(os.getenv("VECTOR_SHARD_ID", "0")))
     vector_shard_urls: str = os.getenv("VECTOR_SHARD_URLS", "").strip()

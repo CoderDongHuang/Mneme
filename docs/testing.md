@@ -79,6 +79,8 @@ npm run test:e2e:real
 
 外部模型模式会把 `test-fixtures/rag-fixture.txt` 的虚构内容发送给配置的 Embedding 和 LLM 供应商，并产生调用费用。
 
+同一真实 URL 的扩展回归：`npx playwright test e2e/roadmap-stack.spec.js --retries=0`，同时运行桌面与移动端。它覆盖八种格式、联合筛选、历史版本、跨用户隔离、测验/复习导出、损坏 PDF、扫描 OCR、运行中取消重试、标签/空结果/切库和供应商 UI。完整测验需要真实模型；确定性 CI 仅运行 `--grep '真实解析异常|真实界面交互'`。不要把性能基线与故障注入、多个浏览器同时运行；保留失败日志后在固定资源条件下复核。当前验收见 [最终回归记录](ACCEPTANCE_2026-10-27.md)。
+
 ## 跨存储删除与恢复演练
 
 ### 中期可靠性演练
@@ -131,6 +133,8 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml exec \
   -e MNEME_OFFLINE_EMBEDDINGS=true python-agent \
   python scripts/evaluate_rag.py
 ```
+
+历史 `no_answer_evidence_absence` 在空 `expected_sources` 标注时恒真，即使仍有无关召回，不可当作实际拒答证据。需要查看真实模型拒答指标与答案。
 
 离线基线包括 Recall@5、MRR、top_evidence_term_support、top_evidence_precision、evidence_hit_recall、no_answer_evidence_absence 和延迟。这些是检索代理指标，没有生成答案，不能称为最终引用准确率或真实拒答。报告由 CI 作为 artifact 保存。
 

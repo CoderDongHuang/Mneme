@@ -25,6 +25,18 @@ import java.nio.file.Path;
 public class WorkspaceController {
     private final WorkspaceService workspace;
     private final RestTemplate restTemplate;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.mneme.service.RetrievalScopeService retrievalScope;
+
+    @GetMapping("/documents/{id}/tags")
+    public Result<List<String>> tags(@RequestAttribute("userId") Long userId, @PathVariable Long id) {
+        return Result.success(retrievalScope.tags(userId, id));
+    }
+    @PutMapping("/documents/{id}/tags")
+    public Result<List<String>> setTags(@RequestAttribute("userId") Long userId, @PathVariable Long id,
+                                       @RequestBody List<String> tags) {
+        return Result.success(retrievalScope.setTags(userId, id, tags));
+    }
 
     @Value("${mneme.python-agent-url}") private String pythonAgentUrl;
 
@@ -33,10 +45,15 @@ public class WorkspaceController {
         this.restTemplate = restTemplate;
     }
 
-    @GetMapping("/documents/{id}/preview") public Result<Map<String, Object>> preview(@RequestAttribute("userId") Long userId, @PathVariable Long id) throws Exception { return Result.success(workspace.preview(userId, id)); }
+    @GetMapping("/documents/{id}/preview") public Result<Map<String, Object>> preview(@RequestAttribute("userId") Long userId, @PathVariable Long id, @RequestParam(required=false) String sha256) throws Exception { return Result.success(workspace.preview(userId, id, sha256)); }
+    @GetMapping(value="/documents/{id}/pages/{page}", produces="image/png")
+    public ResponseEntity<byte[]> pageImage(@RequestAttribute("userId") Long userId, @PathVariable Long id,
+                                           @PathVariable int page, @RequestParam(required=false) String sha256) {
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(workspace.pageImage(userId, id, sha256, page));
+    }
     @GetMapping("/documents/{id}/file")
-    public ResponseEntity<Resource> documentFile(@RequestAttribute("userId") Long userId, @PathVariable Long id) {
-        Path path = workspace.documentPath(userId, id);
+    public ResponseEntity<Resource> documentFile(@RequestAttribute("userId") Long userId, @PathVariable Long id, @RequestParam(required=false) String sha256) {
+        Path path = workspace.documentPath(userId, id, sha256);
         Resource resource = new FileSystemResource(path);
         MediaType contentType = MediaTypeFactory.getMediaType(path.getFileName().toString())
             .orElse(MediaType.APPLICATION_OCTET_STREAM);
@@ -50,7 +67,13 @@ public class WorkspaceController {
     @PostMapping("/tasks/{taskId}/cancel") public Result<Map<String, Object>> cancel(@RequestAttribute("userId") Long userId, @PathVariable String taskId) { return Result.success(workspace.cancelTask(userId, taskId)); }
     @PostMapping("/tasks/{taskId}/retry") public Result<Map<String, Object>> retry(@RequestAttribute("userId") Long userId, @PathVariable String taskId) { return Result.success(workspace.retryTask(userId, taskId)); }
     @GetMapping("/operations") public Result<List<Map<String, Object>>> operations(@RequestAttribute("userId") Long userId, @RequestParam(defaultValue="100") int limit) { return Result.success(workspace.operationLogs(userId, limit)); }
-    @GetMapping("/retrieval/debug") public Result<Map<String, Object>> debug(@RequestAttribute("userId") Long userId, @RequestParam Long kbId, @RequestParam String query, @RequestParam(defaultValue="6") int topK) { return Result.success(workspace.debugRetrieval(userId, kbId, query, topK)); }
+    @GetMapping("/retrieval/debug") public Result<Map<String, Object>> debug(@RequestAttribute("userId") Long userId,
+        @RequestParam Long kbId, @RequestParam String query, @RequestParam(defaultValue="6") int topK,
+        @RequestParam(required=false) List<String> documentIds, @RequestParam(required=false) List<String> tags,
+        @RequestParam(required=false) String dateFrom, @RequestParam(required=false) String dateTo) {
+        List<String> scope = retrievalScope.resolve(userId, List.of(kbId.toString()), documentIds, tags, dateFrom, dateTo);
+        return Result.success(workspace.debugRetrieval(userId, kbId, query, topK, scope));
+    }
     @GetMapping("/plans") public Result<List<Map<String, Object>>> plans(@RequestAttribute("userId") Long userId) { return Result.success(workspace.plans(userId)); }
     @GetMapping("/metrics") public Result<Map<String, Object>> metrics(@RequestAttribute("userId") Long userId) { return Result.success(workspace.metrics(userId)); }
     @GetMapping("/metrics/history") public Result<List<Map<String, Object>>> metricHistory(
