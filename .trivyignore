@@ -2,5 +2,10 @@
 # Spring's advisory lists 6.2.20 as enterprise-only; the public fix is 7.0.9,
 # which requires the broader Spring Boot 4 migration. The application exposes
 # REST controllers only and does not configure XsltView or wildcard view
-# rendering. Re-review by 2026-10-18, or earlier when an OSS 6.2 fix exists.
+# rendering. Re-reviewed 2026-10-27; expires 2026-11-10.
 CVE-2026-47884
+# CVE-2026-47890 affects SSE view-fragment rendering, not JSON SSE messages.
+# NotificationService sends only JSON maps; no FragmentsRendering/ModelAndView,
+# template engines, or WebFlux. CI guards these prerequisites. Spring 6.2 has
+# no public patched version. Owner: project maintainer; expires 2026-11-10.
+CVE-2026-47890
