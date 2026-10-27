@@ -18,7 +18,13 @@ jobs:
           cache: pip
           cache-dependency-path: python-agent/requirements.lock
       - name: Install OCR runtime
-        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng fonts-noto-cjk
+        timeout-minutes: 5
+        run: |
+          # Avoid stalled Azure mirror downloads on hosted runners.
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          printf '%s\n' 'https://security.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors-security.txt >/dev/null
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng fonts-noto-cjk
       - run: pip install --require-hashes -r python-agent/requirements.lock
       - run: pip install pytest==9.0.3 "ruff==0.15.17"
       - run: ruff check python-agent/
@@ -118,6 +124,9 @@ jobs:
           cache-dependency-path: python-agent/requirements.lock
       - name: Install OCR runtime and Python dependencies
         run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          printf '%s\n' 'https://security.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors-security.txt >/dev/null
+          printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' | sudo tee /etc/apt/apt.conf.d/80mneme-ci >/dev/null
           sudo apt-get update
           sudo apt-get install -y tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng fonts-noto-cjk
           pip install --require-hashes -r python-agent/requirements.lock
@@ -198,6 +207,9 @@ jobs:
       - name: Install browser test dependencies
         working-directory: frontend
         run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          printf '%s\n' 'https://security.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors-security.txt >/dev/null
+          printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' | sudo tee /etc/apt/apt.conf.d/80mneme-ci >/dev/null
           npm ci
           npx playwright install --with-deps chromium
       - name: Install host backup dependencies

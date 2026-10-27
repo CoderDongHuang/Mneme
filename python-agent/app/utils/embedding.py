@@ -35,6 +35,12 @@ class DashScopeEmbeddingFunction(EmbeddingFunction):
     def name(self) -> str:
         return "mneme-dashscope-embedding"
 
+    def profile(self) -> str:
+        """Identity of the vector space, independent of credentials."""
+        if self._should_use_offline():
+            return f"local-trigram-sha256-v1:{EMBEDDING_DIMENSION}"
+        return f"dashscope:{settings.embedding_model}:{EMBEDDING_DIMENSION}"
+
     def _should_use_offline(self) -> bool:
         if os.getenv("MNEME_REQUIRE_REAL_EMBEDDINGS", "").lower() == "true":
             return False
@@ -79,12 +85,20 @@ class DashScopeEmbeddingFunction(EmbeddingFunction):
                 self._warned_offline = True
             return [_offline_embedding(text) for text in texts]
         try:
-            return self._call_dashscope(texts)
+            vectors = self._call_dashscope(texts)
+            if len(vectors) != len(texts) or any(
+                len(vector) != EMBEDDING_DIMENSION
+                or not all(math.isfinite(value) for value in vector)
+                for vector in vectors
+            ):
+                raise ValueError("Embedding response shape is invalid")
+            return vectors
         except Exception as error:
             if strict_real:
                 raise RuntimeError("真实 Embedding API 调用失败") from error
-            logger.warning("DashScope Embedding 调用失败，降级本地向量: %s", error)
-            return [_offline_embedding(text) for text in texts]
+            # Hash vectors and provider vectors share a dimension, not a vector space.
+            # Never write or query one using the other when a provider is unavailable.
+            raise RuntimeError("Embedding API 调用失败；原有索引保留，请稍后重试") from error
 
 
 embeddings = DashScopeEmbeddingFunction()

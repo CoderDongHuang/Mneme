@@ -4,6 +4,7 @@ import zipfile
 from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
+from datetime import datetime, timezone
 
 from langchain_core.documents import Document
 
@@ -16,6 +17,7 @@ from app.knowledge.vector_store import vector_store
 
 
 logger = setup_logger("ingestion")
+PARSER_VERSION = "mneme-structured-v2"
 SUPPORTED_EXTENSIONS = {
     ".pdf",
     ".docx",
@@ -69,66 +71,76 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
     page_sizes: list[tuple[float, float]] = []
     page_ocr_confidences: list[float | None] = []
     page_images: list[tuple[int, bytes]] = []
+    warnings: list[dict] = []
 
-    for page_index, page in enumerate(pdf, start=1):
-        blocks = sorted(
-            page.get_text("blocks"),
-            key=lambda block: (round(float(block[1]) / 12), float(block[0])),
-        )
-        page_blocks.append([
-            (float(block[0]), float(block[1]), float(block[2]), float(block[3]), str(block[4]))
-            for block in blocks
-            if str(block[4]).strip()
-        ])
-        page_sizes.append((float(page.rect.width), float(page.rect.height)))
-        lines = [
-            line.strip()
-            for block in blocks
-            for line in str(block[4]).splitlines()
-            if line.strip()
-        ]
-        text = "\n".join(lines).strip()
-        ocr_confidence = None
+    try:
+        for page_index, page in enumerate(pdf, start=1):
+            blocks = sorted(
+                page.get_text("blocks"),
+                key=lambda block: (round(float(block[1]) / 12), float(block[0])),
+            )
+            page_blocks.append([
+                (float(block[0]), float(block[1]), float(block[2]), float(block[3]), str(block[4]))
+                for block in blocks
+                if str(block[4]).strip()
+            ])
+            page_sizes.append((float(page.rect.width), float(page.rect.height)))
+            lines = [
+                line.strip()
+                for block in blocks
+                for line in str(block[4]).splitlines()
+                if line.strip()
+            ]
+            text = "\n".join(lines).strip()
+            ocr_confidence = None
 
-        if len(text) < settings.pdf_min_text_chars and settings.ocr_enabled:
-            try:
-                import pytesseract
-                from PIL import Image
+            if len(text) < settings.pdf_min_text_chars and settings.ocr_enabled:
+                try:
+                    import pytesseract
+                    from PIL import Image
 
-                pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
-                image = Image.frombytes(
-                    "RGB", [pixmap.width, pixmap.height], pixmap.samples
-                )
-                ocr_data = pytesseract.image_to_data(
-                    image, lang=settings.ocr_languages, output_type=pytesseract.Output.DICT
-                )
-                confidence_values = [
-                    float(value) for value in ocr_data.get("conf", [])
-                    if str(value).strip() not in {"", "-1"} and float(value) >= 0
-                ]
-                ocr_confidence = round(sum(confidence_values) / len(confidence_values) / 100, 4) if confidence_values else None
-                ocr_text = pytesseract.image_to_string(image, lang=settings.ocr_languages).strip()
-                if ocr_text:
-                    text = ocr_text
-                    lines = [
-                        line.strip() for line in text.splitlines() if line.strip()
+                    pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
+                    image = Image.frombytes(
+                        "RGB", [pixmap.width, pixmap.height], pixmap.samples
+                    )
+                    ocr_data = pytesseract.image_to_data(
+                        image, lang=settings.ocr_languages, output_type=pytesseract.Output.DICT
+                    )
+                    confidence_values = [
+                        float(value) for value in ocr_data.get("conf", [])
+                        if str(value).strip() not in {"", "-1"} and float(value) >= 0
                     ]
-            except (ImportError, OSError, RuntimeError) as error:
-                logger.warning(
-                    "PDF 第 %s 页 OCR 不可用，保留已提取文本: %s",
-                    page_index,
-                    error,
-                )
-        page_lines.append(lines)
-        page_ocr_confidences.append(ocr_confidence)
+                    ocr_confidence = round(sum(confidence_values) / len(confidence_values) / 100, 4) if confidence_values else None
+                    ocr_text = pytesseract.image_to_string(image, lang=settings.ocr_languages).strip()
+                    if ocr_text:
+                        text = ocr_text
+                        lines = [
+                            line.strip() for line in text.splitlines() if line.strip()
+                        ]
+                except (ImportError, OSError, RuntimeError) as error:
+                    warnings.append({"page": page_index, "code": "ocr_unavailable"})
+                    logger.warning(
+                        "PDF 第 %s 页 OCR 不可用，保留已提取文本: %s",
+                        page_index,
+                        error,
+                    )
+            if not text:
+                warnings.append({"page": page_index, "code": "no_text"})
+            if ocr_confidence is not None and ocr_confidence < 0.6:
+                warnings.append({"page": page_index, "code": "low_ocr_confidence"})
+            page_lines.append(lines)
+            page_ocr_confidences.append(ocr_confidence)
 
-        if (
-            settings.multimodal_enabled
-            and len(page_images) < settings.multimodal_max_images
-            and (page.get_images(full=True) or page.get_drawings())
-        ):
-            rendered = page.get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5), alpha=False)
-            page_images.append((page_index, rendered.tobytes("png")))
+            if (
+                settings.multimodal_enabled
+                and len(page_images) < settings.multimodal_max_images
+                and (page.get_images(full=True) or page.get_drawings())
+            ):
+                rendered = page.get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5), alpha=False)
+                page_images.append((page_index, rendered.tobytes("png")))
+
+    finally:
+        pdf.close()
 
     edge_lines: Counter[str] = Counter()
     for lines in page_lines:
@@ -197,8 +209,10 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                             )
                         )
     except ImportError:
+        warnings.append({"page": 0, "code": "table_parser_unavailable"})
         logger.info("未安装 pdfplumber，PDF 表格将按普通文本处理")
     except Exception as error:
+        warnings.append({"page": 0, "code": "table_parse_failed"})
         logger.warning("PDF 表格解析失败，继续使用文本结果: %s", error)
 
     if page_images:
@@ -224,7 +238,11 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                         )
                     )
             except Exception as error:
+                warnings.append({"page": page_index, "code": "vision_parse_failed"})
                 logger.warning("多模态图片解析失败，保留其他解析结果: %s", error)
+    # Empty sentinels carry diagnostics without becoming searchable evidence.
+    for warning in warnings:
+        documents.append(_document("", source, chunk_type="diagnostic", parse_warning=warning))
     return documents
 
 
@@ -419,24 +437,30 @@ def ingest_document(
     file_path: str,
     source_name: str | None = None,
     document_id: str | None = None,
+    report: dict | None = None,
 ) -> str:
     require_cloud_processing(user_id)
     path = Path(file_path)
     source = source_name or path.name
     parsed = parse_document(file_path, source)
+    content_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    indexed_at = datetime.now(timezone.utc).isoformat()
+    warnings = [item.metadata["parse_warning"] for item in parsed if "parse_warning" in item.metadata]
+    if report is not None:
+        report.update({"parser_version": PARSER_VERSION, "content_sha256": content_hash,
+                       "indexed_at": indexed_at, "warnings": warnings,
+                       "status": "partial" if warnings else "done"})
+    parsed = [item for item in parsed if item.page_content.strip()]
     chunks = chunk_documents(parsed)
     valid_chunks = [chunk for chunk in chunks if chunk.page_content.strip()]
     if not valid_chunks:
         raise ValueError("文档中没有可检索的文本；扫描件请启用 OCR 后重试")
 
     if document_id is None:
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+        digest = content_hash[:16]
         document_id = f"doc_{digest}"
     collection = vector_store.get_or_create_collection(user_id, kb_id)
-    try:
-        collection.delete(where={"document_id": document_id})
-    except Exception:
-        pass
+    old_ids = collection.get(where={"document_id": document_id}).get("ids", [])
 
     ids = [f"{document_id}_{index:05d}" for index in range(len(valid_chunks))]
     metadatas = []
@@ -462,6 +486,9 @@ def ingest_document(
             ),
             "visual_region": str(chunk.metadata.get("visual_region", "")),
             "parser": str(chunk.metadata.get("parser", "")),
+            "parser_version": PARSER_VERSION,
+            "content_sha256": content_hash,
+            "indexed_at": indexed_at,
         }
         if chunk.metadata.get("ocr_confidence") is not None:
             metadata["ocr_confidence"] = float(chunk.metadata["ocr_confidence"])
@@ -471,6 +498,11 @@ def ingest_document(
         documents=[chunk.page_content for chunk in valid_chunks],
         metadatas=metadatas,
     )
+    # Upsert computes embeddings before changing data. Do not delete good evidence
+    # until it succeeds; then remove tail chunks left by a shorter replacement.
+    stale_ids = sorted(set(old_ids) - set(ids))
+    if stale_ids:
+        collection.delete(ids=stale_ids)
     lexical_index.replace_document(
         user_id,
         kb_id,

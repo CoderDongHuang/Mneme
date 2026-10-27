@@ -5,6 +5,7 @@ import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from functools import partial
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from langchain_core.messages import HumanMessage
@@ -171,20 +172,20 @@ async def ingest_durable(request: DocumentIngestRequest) -> IngestionResult:
     path = Path(request.file_path).resolve()
     if not path.is_file():
         raise HTTPException(status_code=404, detail="待解析文件不存在")
+    report: dict = {}
     document_id = await asyncio.get_running_loop().run_in_executor(
-        executor,
-        ingest_document,
+        executor, partial(ingest_document,
         request.user_id,
         request.kb_id,
         str(path),
         path.name,
-        request.document_id,
+        request.document_id, report=report),
     )
     collection = vector_store.get_collection(request.user_id, request.kb_id)
     chunks = 0
     if collection is not None:
         chunks = len(collection.get(where={"document_id": document_id}).get("ids", []))
-    return IngestionResult(status="done", document_id=document_id, chunks=chunks)
+    return IngestionResult(status=report.get("status", "done"), document_id=document_id, chunks=chunks, report=report)
 
 
 @router.get("/task/{task_id}")

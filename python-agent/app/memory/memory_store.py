@@ -18,6 +18,7 @@ from typing import List, Optional, Dict
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 
 import chromadb
+from chromadb.errors import InvalidCollectionException
 from chromadb.config import Settings as ChromaSettings
 
 from app.core.config import settings
@@ -53,14 +54,26 @@ class MemoryVectorStore:
 
     def __init__(self):
         self._client = _build_client()
-        self._collection = self._client.get_or_create_collection(
-            name=self.COLLECTION_NAME,
-            metadata={"description": "用户长期记忆：偏好、薄弱点、学习进度"},
-            embedding_function=embeddings,
-        )
+        try:
+            self._collection = self._client.get_collection(
+                name=self.COLLECTION_NAME, embedding_function=embeddings,
+            )
+        except InvalidCollectionException:
+            self._collection = self._client.get_or_create_collection(
+                name=self.COLLECTION_NAME,
+                metadata={"description": "用户长期记忆：偏好、薄弱点、学习进度", "embedding_profile": embeddings.profile()},
+                embedding_function=embeddings,
+            )
         logger.info(
             f"MemoryVectorStore 初始化完成，collection='{self.COLLECTION_NAME}'"
         )
+
+    def _require_embedding_profile(self):
+        metadata = self._collection.metadata or {}
+        if metadata.get("embedding_profile") != embeddings.profile():
+            if self._collection.count():
+                raise ValueError("长期记忆 Embedding 配置已改变；请按迁移指南重建索引，仍可查看、导出或删除记忆")
+            self._collection.modify(metadata={**metadata, "embedding_profile": embeddings.profile()})
 
     # ── 写操作 ──────────────────────────────────────────────
 
@@ -84,6 +97,7 @@ class MemoryVectorStore:
             importance: 重要性分数 0.0-1.0
         """
         require_cloud_processing(user_id)
+        self._require_embedding_profile()
         if category not in VALID_CATEGORIES:
             raise ValueError(f"非法记忆类别: {category}，合法值: {VALID_CATEGORIES}")
 
@@ -106,9 +120,7 @@ class MemoryVectorStore:
             ],
             ids=[mem_id],
         )
-        logger.debug(
-            f"记忆已写入: id={mem_id}, category={category}, content={content[:50]}..."
-        )
+        logger.debug("记忆已写入: id=%s, category=%s", mem_id, category)
         return mem_id
 
     def update_importance(self, mem_id: str, new_importance: float):
@@ -137,6 +149,7 @@ class MemoryVectorStore:
         self, mem_id: str, content: str | None = None, topic: str | None = None
     ):
         """Update editable memory fields while preserving ownership metadata."""
+        self._require_embedding_profile()
         current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
         if not current.get("ids"):
             return False
@@ -169,6 +182,7 @@ class MemoryVectorStore:
         return True
 
     def restore_memory(self, memory_id: str, content: str, metadata: dict):
+        self._require_embedding_profile()
         require_cloud_processing(str(metadata.get("user_id", "")))
         metadata = dict(metadata)
         metadata["updated_at"] = datetime.now().isoformat()
@@ -249,6 +263,7 @@ class MemoryVectorStore:
             top_k: 返回条数
         """
         require_cloud_processing(user_id)
+        self._require_embedding_profile()
         # Chroma 多条件过滤需 $and 语法，兼容各版本
         if category:
             where_filter = {"$and": [{"user_id": user_id}, {"category": category}]}
@@ -259,11 +274,9 @@ class MemoryVectorStore:
             results = self._collection.query(
                 query_texts=[query or " "], n_results=top_k, where=where_filter
             )
-        except Exception as e:
-            logger.error(
-                f"记忆检索失败: user_id={user_id}, query={query[:50]}, error={e}"
-            )
-            return []
+        except Exception:
+            logger.error("记忆检索失败: user_id=%s", user_id)
+            raise
 
         entries = []
         ids_list = results.get("ids", [[]])[0]
