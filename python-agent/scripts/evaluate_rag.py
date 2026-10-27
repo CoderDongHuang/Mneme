@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import hashlib
+import math
 import uuid
 import asyncio
 from pathlib import Path
@@ -98,7 +99,7 @@ def _json_object(text: str) -> dict:
     return value
 
 
-def _real_llm_scores(question: str, chunks: list[dict], answerable=True) -> dict:
+async def _real_llm_scores(question: str, chunks: list[dict], answerable=True) -> dict:
     evidence, chunks = build_evidence_context(chunks[:5])
     prompt = QA_PROMPT.format(question=question, context=evidence, memory_context="暂无明确记录")
     generated = _content(
@@ -107,7 +108,7 @@ def _real_llm_scores(question: str, chunks: list[dict], answerable=True) -> dict
             max_tokens=400,
         )
     )
-    answer = asyncio.run(verify_evidence_answer({"intent": "qa", "message": question, "retrieved_chunks": chunks}, generated))
+    answer = await verify_evidence_answer({"intent": "qa", "message": question, "retrieved_chunks": chunks}, generated)
     judge_response = _content(
         llm.invoke(
             [
@@ -127,15 +128,18 @@ def _real_llm_scores(question: str, chunks: list[dict], answerable=True) -> dict
         )
     )
     judged = _json_object(judge_response)
+    for metric in ("faithfulness", "answer_relevance"):
+        value = judged.get(metric)
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value) or not 0 <= value <= 1):
+            raise ValueError(f"Invalid judge score: {metric}")
     return {
         "answer": answer,
         "generated_answer": generated,
         "answerable": answerable,
         "refused": answer in (NO_EVIDENCE_ANSWER, UNSUPPORTED_ANSWER) or "已停止展示未经核验" in answer,
-        "faithfulness": max(0.0, min(1.0, float(judged["faithfulness"]))),
-        "answer_relevance": max(
-            0.0, min(1.0, float(judged["answer_relevance"]))
-        ),
+        "faithfulness": float(judged["faithfulness"]),
+        "answer_relevance": float(judged["answer_relevance"]),
         "reason": str(judged.get("reason", "")),
         "estimated_input_tokens": max(
             1, len((prompt + evidence * 2 + generated * 2 + VERIFICATION_PROMPT).encode("utf-8"))
@@ -168,6 +172,18 @@ def evaluate(
     max_estimated_cost: float = 0.0,
     require_sanitized_dataset: bool = False,
 ) -> dict:
+    # One loop for the entire run: the provider reuses an asynchronous HTTP
+    # client whose connections cannot move between closed per-sample loops.
+    return asyncio.run(_evaluate(
+        dataset_path, top_k, keep, input_cost_per_million, llm_sample_size,
+        output_cost_per_million, max_estimated_cost, require_sanitized_dataset,
+    ))
+
+
+async def _evaluate(
+    dataset_path, top_k, keep, input_cost_per_million, llm_sample_size,
+    output_cost_per_million, max_estimated_cost, require_sanitized_dataset,
+):
     cases = json.loads(dataset_path.read_text(encoding="utf-8"))
     if not isinstance(cases, list) or not cases:
         raise ValueError("评测集必须是非空 JSON 数组")
@@ -287,7 +303,7 @@ def evaluate(
                 output_tokens=2400,
                 label=f"RAG 样本 {len(llm_details) + 1}",
             )
-            scores = _real_llm_scores(case["question"], chunks, answerable)
+            scores = await _real_llm_scores(case["question"], chunks, answerable)
             llm_details.append({"question": case["question"], **scores})
 
     count = max(1, len(cases))
@@ -373,7 +389,11 @@ def apply_thresholds(report: dict, thresholds: dict) -> list[str]:
         if metric not in report:
             failures.append(f"missing metric: {metric}")
             continue
-        value = float(report[metric])
+        raw = report[metric]
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(raw):
+            failures.append(f"invalid numeric metric: {metric}")
+            continue
+        value = float(raw)
         if "min" in rule and value < float(rule["min"]):
             failures.append(f"{metric}={value} is below {rule['min']}")
         if "max" in rule and value > float(rule["max"]):

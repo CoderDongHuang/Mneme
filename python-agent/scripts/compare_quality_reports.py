@@ -46,7 +46,10 @@ def compare(baseline: dict, candidate: dict, max_regression: float = 0.05) -> di
     for name in DEFAULT_METRICS:
         before = _get(baseline, name)
         after = _get(candidate, name)
-        if before is None or after is None:
+        if before is None:
+            continue
+        if after is None:
+            failures.append(f"missing candidate metric: {name}")
             continue
         if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
                for value in (before, after)):

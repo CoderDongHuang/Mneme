@@ -1456,5 +1456,5 @@
     "real_llm_thresholds": null,
     "failures": []
   },
-  "execution_note": "Synthetic fixtures only. Real generation/verifier/judge used qwen-plus fallback; primary key empty. Offline embeddings. Local OCR runtime unavailable; OCR validated separately in CI."
+  "execution_note": "Synthetic fixtures only. Offline retrieval and embeddings; real generation, semantic verifier and model judge were disabled. Local OCR runtime unavailable; OCR validated separately in CI."
 }
