@@ -21,7 +21,7 @@
 | 真实解析异常 | 扫描页文字和区域置信度、多栏表格、损坏 PDF 的错误、processing 取消后 cancelled、新任务 ID 重试、唯一 chunk、浏览器实际加载 OCR 原图，通过 |
 | 真实界面交互 | 桌面和移动均通过；保存标签、联合过滤、空结果、切库清空筛选和旧结果、设置页四类供应商检测、无横向溢出 |
 | 删除故障注入 | 独立栈通过 Chroma、RustFS、Redis 中断与 Java 重启，核对各存储删除完成 |
-| 加密备份/恢复 | 独立栈通过备份—删除—恢复—重新登录—引用问答；报告 status=completed，RPO 55.664 秒、RTO 25.671 秒，仅为本次样本 |
+| 加密备份/恢复 | 独立栈通过备份—删除—恢复—重新登录—引用问答；报告 status=completed，最终复测 RPO 59.919 秒、RTO 28.890 秒，仅为本次样本 |
 | schema 核对 | 实际 MySQL 的 18 条 Flyway 历史名称/版本/CRC32 与迁移文件匹配，最高 V20 |
 
 最终真实地址 8 项全部通过（`artifacts/pr34-final-real-url.log`），前端最后一次修复后 lint、26 项单测和容器生产构建/预算通过。
@@ -51,6 +51,14 @@ npx playwright test e2e/roadmap-stack.spec.js --retries=0
 - PR #34 首轮 Linux CI 检出短文字层页面启用 OCR 后跳过页眉清理；已按原文字块坐标修复，并新增不依赖 Tesseract 的 OCR 成功路径回归。Linux 容器真实 Tesseract 断言和本机 623 项通过；扫描正文保护继续保留。
 
 - PR #34 后续 CI 发现两处旧验收前提失效：扩容脚本绕过目录使用虚构资料 ID，空库删除演练期待凭空回答资料识别码。现改为正式建库/上传并等待 ready，以及验证完整 SSE 无证据拒答；保留租户与来源权限校验。扩容拓扑补齐网关与两套 Agent 的共享文件卷。新增 6 项空库流验收回归。
+
+## 2026-10-28 发布前复核
+
+- `6e0c751` 的 [9 项 CI](https://github.com/CoderDongHuang/Mneme/actions/runs/40541953447) 全部通过，包括正式资料目录下的双分片检索、故障恢复、跨实例通知和完整追踪，以及删除与备份恢复。
+- 发现并修复默认 `com.mneme=DEBUG` 会让 MyBatis 记录 SQL 绑定值的问题；默认应用和 mapper 均为 INFO。重建网关后，真实注册、空资料拒答和上传日志未出现 SQL 参数或密码哈希，Java 85 项/0 跳过通过。
+- 最终网关镜像的主项目桌面/手机冒烟 2/2 通过，日志 `artifacts/pr34-release-smoke.log`；真实接口空库拒答及正式建库上传/ready 通过，日志 `artifacts/pr34-final-service-check.log`。
+- 独立验收栈曾被旧源码挂载覆盖镜像；同步本轮源码后重新通过 Chroma/S3 兼容存储/Redis/Java 重启四类删除故障，以及加密备份—删除—恢复—登录—引用问答。日志 `artifacts/pr34-deletion-verifier-fix.log` 与 `artifacts/pr34-backup-final.log`。主项目数据未参与破坏性演练。
+- 最后日志修复的提交仍须 PR 最新检查全部通过后才合并；最终状态以 PR 检查和合并提交为准。
 
 ## 文档对照
 

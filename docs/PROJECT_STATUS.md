@@ -1,6 +1,6 @@
 # Mneme 当前状态
 
-核对日期：2026-10-27，面向个人和小团队私有部署 Beta。当前入口为 [README](../README.md)、[路线图落实记录](ROADMAP_COVERAGE.md)、[最终回归记录](ACCEPTANCE_2026-10-27.md)、[发布说明](RELEASE_NOTES_2026-10-27.md)和 [自部署指南](SELF_HOSTING.md)；旧审计与开发笔记保留为历史记录。
+核对日期：2026-10-28，面向个人和小团队私有部署 Beta。当前入口为 [README](../README.md)、[路线图落实记录](ROADMAP_COVERAGE.md)、[最终回归记录](ACCEPTANCE_2026-10-27.md)、[发布说明](RELEASE_NOTES_2026-10-27.md)和 [自部署指南](SELF_HOSTING.md)；旧审计与开发笔记保留为历史记录。
 
 ## 已完成闭环
 
