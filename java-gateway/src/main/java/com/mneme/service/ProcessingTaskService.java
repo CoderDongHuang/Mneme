@@ -137,15 +137,17 @@ public class ProcessingTaskService {
         IngestionResult result = restTemplate.postForObject(
             pythonAgentUrl + "/api/v1/knowledge/internal/ingest", request, IngestionResult.class
         );
-        if (result == null || !"done".equals(result.status())) {
+        if (result == null || !("done".equals(result.status()) || "partial".equals(result.status()))) {
             throw new IllegalStateException("Python Agent 未完成解析任务");
         }
         record(task, "index_ready", "processing", Map.of("chunks", result.chunks()), null);
         KnowledgeDocument document = documentMapper.selectById(task.getAggregateId());
         if (document != null) {
-            document.setStatus("ready");
+            boolean partial = "partial".equals(result.status());
+            document.setStatus(partial ? "partial" : "ready");
             document.setChunkCount(result.chunks());
-            document.setErrorMessage(null);
+            document.setErrorMessage(partial ? "部分页面或解析步骤未完成，请查看解析报告后重试" : null);
+            document.setParseReport(objectMapper.writeValueAsString(result.report() == null ? Map.of() : result.report()));
             documentMapper.updateById(document);
         }
     }

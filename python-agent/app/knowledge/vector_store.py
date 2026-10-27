@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 
 import chromadb
+from chromadb.errors import InvalidCollectionException
 from chromadb.config import Settings as ChromaSettings
 
 from app.core.config import settings
@@ -27,7 +28,11 @@ def _safe(value: str) -> str:
 def _get_collection_name(user_id: str, kb_id: str) -> str:
     shard = resolve_vector_shard(user_id, kb_id)
     suffix = "" if settings.vector_shard_count == 1 else f"_s{shard}"
-    return f"user_{_safe(user_id)}_kb_{_safe(kb_id)}{suffix}"[:120]
+    name = f"user_{_safe(user_id)}_kb_{_safe(kb_id)}{suffix}"
+    if _safe(user_id) != user_id or _safe(kb_id) != kb_id:
+        digest = hashlib.sha256(f"{len(user_id)}:{user_id}{kb_id}".encode()).hexdigest()[:16]
+        name += f"_{digest}"
+    return name[:120]
 
 
 def resolve_vector_shard(user_id: str, kb_id: str) -> int:
@@ -107,37 +112,63 @@ class VectorStore:
         return True
 
     def get_or_create_collection(self, user_id: str, kb_id: str) -> Any:
-        return self._client_for(user_id, kb_id).get_or_create_collection(
+        collection = self.get_collection(user_id, kb_id)
+        if collection is not None:
+            return collection
+        collection = self._client_for(user_id, kb_id).get_or_create_collection(
             name=_get_collection_name(user_id, kb_id),
             metadata={
                 "user_id": user_id,
                 "kb_id": kb_id,
                 "vector_shard_id": resolve_vector_shard(user_id, kb_id),
                 "vector_shard_count": settings.vector_shard_count,
+                "embedding_profile": embeddings.profile(),
             },
             embedding_function=embeddings,
         )
+        self._validate_collection(collection, user_id, kb_id)
+        return collection
 
-    def get_collection(self, user_id: str, kb_id: str) -> Any | None:
+    @staticmethod
+    def _validate_collection(collection: Any, user_id: str, kb_id: str, *, validate_profile: bool = True) -> None:
+        metadata = collection.metadata or {}
+        if str(metadata.get("user_id", "")) != str(user_id) or str(metadata.get("kb_id", "")) != str(kb_id):
+            raise PermissionError("向量集合归属不匹配，操作已拒绝")
+        if not validate_profile:
+            return
+        profile = metadata.get("embedding_profile")
+        if profile != embeddings.profile():
+            if collection.count():
+                raise ValueError("Embedding 配置与索引不一致或旧索引缺少版本；请新建知识库并重新上传原文件")
+            collection.modify(metadata={**metadata, "embedding_profile": embeddings.profile()})
+
+    def get_collection(self, user_id: str, kb_id: str, *, validate_profile: bool = True) -> Any | None:
         try:
-            return self._client_for(user_id, kb_id).get_collection(
+            collection = self._client_for(user_id, kb_id).get_collection(
                 name=_get_collection_name(user_id, kb_id), embedding_function=embeddings
             )
-        except Exception:
+        except InvalidCollectionException:
             return None
+        self._validate_collection(collection, user_id, kb_id, validate_profile=validate_profile)
+        return collection
 
     def delete_collection(self, user_id: str, kb_id: str) -> bool:
         name = _get_collection_name(user_id, kb_id)
+        # Deletion must remain possible after a provider change, but must verify ownership.
         try:
+            collection = self._client_for(user_id, kb_id).get_collection(name=name)
+            metadata = collection.metadata or {}
+            if str(metadata.get("user_id", "")) != str(user_id) or str(metadata.get("kb_id", "")) != str(kb_id):
+                raise PermissionError("向量集合归属不匹配，操作已拒绝")
             self._client_for(user_id, kb_id).delete_collection(name=name)
             logger.info("知识库向量集合已删除: %s", name)
-        except Exception:
-            return False
+        except InvalidCollectionException:
+            pass  # Idempotent retry still cleans the derived lexical index.
         lexical_index.delete_collection(user_id, kb_id)
         return True
 
     def delete_document(self, user_id: str, kb_id: str, document_id: str) -> int:
-        collection = self.get_collection(user_id, kb_id)
+        collection = self.get_collection(user_id, kb_id, validate_profile=False)
         if collection is None:
             lexical_index.delete_document(user_id, kb_id, document_id)
             return 0
@@ -178,8 +209,7 @@ class VectorStore:
         return [
             collection
             for collection in collections
-            if (collection.metadata or {}).get("user_id") == user_id
-            or collection.name.startswith(f"user_{_safe(user_id)}_kb_")
+            if str((collection.metadata or {}).get("user_id", "")) == str(user_id)
         ]
 
     def get_collection_stats(self, user_id: str) -> list[dict[str, Any]]:
@@ -224,9 +254,7 @@ class VectorStore:
         for client in self.clients:
             for collection in self._collections_for_client(client):
                 metadata = collection.metadata or {}
-                if metadata.get("user_id") == user_id or collection.name.startswith(
-                    f"user_{_safe(user_id)}_kb_"
-                ):
+                if str(metadata.get("user_id", "")) == str(user_id):
                     deleted += collection.count()
                     client.delete_collection(collection.name)
         lexical_index.delete_user(user_id)

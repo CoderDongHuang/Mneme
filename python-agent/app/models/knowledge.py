@@ -32,3 +32,4 @@ class IngestionResult(BaseModel):
     status: str
     document_id: str
     chunks: int
+    report: dict[str, Any] = Field(default_factory=dict)

@@ -22,6 +22,20 @@ import LoadingState from "../components/LoadingState";
 import StatusBadge from "../components/StatusBadge";
 import "../styles/knowledge.css";
 
+function ParseReport({ value }) {
+  let report;
+  try { report = JSON.parse(value); } catch { return <small>解析报告格式无效，请重新解析</small>; }
+  const reasons = { no_text: "未提取到文本（可能为空白页或扫描件）", ocr_unavailable: "OCR 不可用", low_ocr_confidence: "OCR 置信度偏低，请核对原文", table_parser_unavailable: "表格解析器不可用", table_parse_failed: "表格解析失败", vision_parse_failed: "图片理解失败" };
+  return <div className="parse-report">
+    <small>解析器：{report.parser_version || "未知"} · 索引时间：{report.indexed_at || "未知"}</small>
+    <small>文件 SHA-256：{report.content_sha256 || "未知"}</small>
+    {(report.warnings || []).map((warning, index) => <small key={index}>
+      {warning.page > 0 ? `第 ${warning.page} 页：` : "文件："}{reasons[warning.code] || warning.code}
+    </small>)}
+    {!(report.warnings || []).length && <small>已启用的解析步骤未报告异常；仍建议抽查原文。</small>}
+  </div>;
+}
+
 function fileIcon(name = "") {
   const extension = name.split(".").pop()?.toLowerCase();
   if (["xlsx", "xlsm", "csv"].includes(extension)) return FileSpreadsheet;
@@ -399,17 +413,21 @@ export default function KnowledgePage() {
                   const Icon = fileIcon(document.fileName);
                   return (
                     <div className="document-row" key={document.id}>
-                      <span className="document-name">
+                      <div className="document-name">
                         <span className="file-icon">
                           <Icon size={19} />
                         </span>
-                        <span>
+                        <div>
                           <strong>{document.fileName}</strong>
                           <small>
                             {document.errorMessage || `文档编号 ${document.id}`}
                           </small>
-                        </span>
-                      </span>
+                          {document.parseReport && <details>
+                            <summary>解析报告</summary>
+                            <ParseReport value={document.parseReport} />
+                          </details>}
+                        </div>
+                      </div>
                       <span>
                         <StatusBadge status={document.status} />
                       </span>

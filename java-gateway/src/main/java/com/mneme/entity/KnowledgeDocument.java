@@ -16,6 +16,7 @@ public class KnowledgeDocument {
     private String parseTaskId;
     private Integer chunkCount;
     private String errorMessage;
+    private String parseReport;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -35,6 +36,8 @@ public class KnowledgeDocument {
     public Integer getChunkCount() { return chunkCount; }
     public void setChunkCount(Integer chunkCount) { this.chunkCount = chunkCount; }
     public String getErrorMessage() { return errorMessage; }
+    public String getParseReport() { return parseReport; }
+    public void setParseReport(String parseReport) { this.parseReport = parseReport; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

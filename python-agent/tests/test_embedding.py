@@ -33,3 +33,12 @@ def test_strict_real_embedding_requires_credential(monkeypatch):
 
     with pytest.raises(RuntimeError, match="有效 DASHSCOPE_API_KEY"):
         embedding.DashScopeEmbeddingFunction()(["sample"])
+
+
+def test_provider_outage_never_silently_changes_vector_space(monkeypatch):
+    client = embedding.DashScopeEmbeddingFunction()
+    monkeypatch.delenv("MNEME_REQUIRE_REAL_EMBEDDINGS", raising=False)
+    monkeypatch.setattr(client, "_should_use_offline", lambda: False)
+    monkeypatch.setattr(client, "_call_dashscope", lambda _: (_ for _ in ()).throw(ConnectionError("provider unavailable")))
+    with pytest.raises(RuntimeError, match="原有索引保留"):
+        client(["existing document"])
