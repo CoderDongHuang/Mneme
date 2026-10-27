@@ -1,5 +1,8 @@
 {
   "samples": {"min": 5},
+  "unanswerable_samples": {"min": 2},
+  "answer_abstention_accuracy": {"min": 1.0},
+  "answerable_refusal_rate": {"max": 0.34},
   "faithfulness": {"min": 0.7},
   "answer_relevance": {"min": 0.7}
 }

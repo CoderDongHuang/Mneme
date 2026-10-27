@@ -307,3 +307,77 @@ def test_restore_provider_preserves_windows_command_paths(monkeypatch):
     assert backup_restore.split_command(
         '"C:\\Program Files\\Python\\python.exe" "D:\\Backup Tools\\provider.py" unwrap v1'
     ) == ["C:\\Program Files\\Python\\python.exe", "D:\\Backup Tools\\provider.py", "unwrap", "v1"]
+
+
+@pytest.mark.parametrize("rollback_fails", [False, True])
+@pytest.mark.parametrize("report_fails", [False, True])
+def test_failed_restore_recovers_previous_stores_or_keeps_services_stopped(tmp_path, monkeypatch, rollback_fails, report_fails):
+    from types import SimpleNamespace
+    from scripts import backup_restore as module
+
+    archive = make_archive(tmp_path)
+    live = tmp_path / "live"
+    live.mkdir()
+    (live / "note.txt").write_text("previous-data")
+    monkeypatch.setattr(module, "DATA_SOURCES", {"payload/data/files": live})
+    monkeypatch.setattr(module, "stop_application_services", lambda _: None)
+    restarts = []
+    monkeypatch.setattr(module, "start_application_services", lambda _: restarts.append(True))
+    monkeypatch.setattr(module, "wait_for_mysql", lambda _: None)
+    monkeypatch.setattr(module, "run_compose", lambda *a, **k: SimpleNamespace(stdout=b"previous-sql"))
+    calls = []
+
+    def apply(_, extracted):
+        calls.append((extracted / "payload/mysql.sql").read_bytes())
+        if len(calls) == 1:
+            (live / "note.txt").write_text("half-restored")
+            raise OSError("injected import failure")
+        if rollback_fails:
+            raise OSError("injected rollback failure")
+        module.replace_data_directories(extracted)
+
+    monkeypatch.setattr(module, "apply_restore_payload", apply)
+    report = tmp_path / "report.json"
+    original_write = Path.write_text
+
+    def write(path, content, *args, **kwargs):
+        if report_fails and path == report.with_suffix(".tmp") and calls:
+            raise OSError("injected report disk failure")
+        return original_write(path, content, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", write)
+    args = SimpleNamespace(yes=True, archive=str(archive), compose_file=[], report=str(report))
+    with pytest.raises(BackupError, match="services remain stopped" if rollback_fails else "previous data restored"):
+        module.restore(args)
+    assert len(calls) == 2 and calls[-1] == b"previous-sql"
+    result = json.loads(report.read_text())
+    assert Path(result["recovery_archive"]).is_file()
+    if not report_fails:
+        assert result["status"] == ("rollback_failed_services_stopped" if rollback_fails else "rolled_back")
+    assert restarts == ([] if rollback_fails else [True])
+    if not rollback_fails:
+        assert (live / "note.txt").read_text() == "previous-data"
+
+
+def test_restore_rejects_future_application_schema_before_stopping_services(monkeypatch):
+    from scripts import backup_restore as module
+    with pytest.raises(BackupError, match="newer"):
+        module.validate_restore_schema({"metadata": {"application_schema_max": module.supported_schema_version() + 1}})
+
+
+def test_backup_restore_operations_cannot_overlap(tmp_path, monkeypatch):
+    from scripts import backup_restore as module
+    monkeypatch.setattr(module, "PROJECT_ROOT", tmp_path)
+    with module.operation_lock():
+        with pytest.raises(BackupError, match="another backup/restore"):
+            with module.operation_lock():
+                pytest.fail("overlapping operation entered")
+    assert not (tmp_path / ".backup-restore.lock").exists()
+
+
+def test_archive_creation_never_overwrites_existing_backup(tmp_path):
+    archive = make_archive(tmp_path)
+    original = archive.read_bytes()
+    with pytest.raises(FileExistsError):
+        create_archive(tmp_path / "staging", archive)
+    assert archive.read_bytes() == original

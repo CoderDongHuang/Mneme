@@ -29,6 +29,9 @@ jobs:
           MNEME_DEMO_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          printf '%s\n' 'https://security.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors-security.txt >/dev/null
+          printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' | sudo tee /etc/apt/apt.conf.d/80mneme-ci >/dev/null
           npm ci
           npx playwright install --with-deps chromium
           npx playwright test e2e/demo-stack.spec.js --project=桌面端

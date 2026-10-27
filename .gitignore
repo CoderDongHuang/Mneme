@@ -47,6 +47,7 @@ frontend/dist-codex/
 .e2e-state.json
 
 # Logs
+.backup-restore.lock
 *.log
 logs/
 

@@ -264,7 +264,14 @@ export default function ChatPage() {
 
       {sourceDrawer && <aside ref={drawerRef} className="source-drawer" role="dialog" aria-modal="true" aria-labelledby="source-title">
         <header><div><span>引用依据</span><strong id="source-title">资料依据</strong></div><button title="关闭资料依据" aria-label="关闭资料依据" onClick={() => setSourceDrawer(null)}><X size={18} /></button></header>
-        <div>{sourceDrawer.map((source, index) => <article key={`${source.document_id || source.document_name}-${index}`}><div><span>{index + 1}</span><strong>{source.document_name}</strong></div><small>{source.page ? `第 ${source.page} 页` : '全文'}{source.section ? ` · ${source.section}` : ''}</small><p>{source.chunk_content}</p><button className="source-open" onClick={() => openSource(source)} disabled={!source.document_id}>打开原文定位</button></article>)}</div>
+        <div>{sourceDrawer.map((source, index) => <article key={`${source.document_id || source.document_name}-${index}`}>
+          <div><span>{index + 1}</span><strong>{source.document_name}</strong></div>
+          <small>{source.page ? `第 ${source.page} 页` : '全文'}{source.section ? ` · ${source.section}` : ''}</small>
+          {!!Object.keys(source.retrieval_ranks || {}).length && <p className="source-signals">召回路径：{Object.entries(source.retrieval_ranks).map(([channel, rank]) => `${channel.startsWith('dense:') ? '向量' : '词法'} #${rank}`).join(' · ')}{Number.isFinite(source.score) ? ` · 排序信号 ${source.score.toFixed(3)}（非可信概率）` : ''}</p>}
+          {source.indexed_at && <small>索引时间：{new Date(source.indexed_at).toLocaleString('zh-CN')} · 解析器 {source.parser_version || '未知'}</small>}
+          {source.content_sha256 && <small title={source.content_sha256}>文件版本 SHA-256：{source.content_sha256.slice(0, 16)}…</small>}
+          <p>{source.chunk_content}</p><button className="source-open" onClick={() => openSource(source)} disabled={!source.document_id}>打开原文定位</button>
+        </article>)}</div>
       </aside>}
     </div>
   )

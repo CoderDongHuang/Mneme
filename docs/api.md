@@ -54,7 +54,13 @@ SSE 事件：
 - `GET /knowledge/document/{id}/versions`：列出文件版本、SHA-256、大小和当前版本状态。
 - `POST /knowledge/document/{id}/versions/{version}/restore`：恢复指定原文件版本并重建索引。
 
-文档状态：`parsing -> ready | failed`；删除时为 `deleting`，删除任务失败时为 `delete_failed`。
+文档状态：`parsing -> ready | partial | failed`；删除时为 `deleting`，删除任务失败时为 `delete_failed`。`partial` 表示有可检索内容但部分页/能力不可用，应查看 `parseReport`，不能当成完整成功。报告含 parser_version、content_sha256、indexed_at、页/片段统计与逐页 warnings，不保证复杂版式解析正确。
+
+来源额外返回 `retrieval_ranks`（召回通道到名次）、`content_sha256`、`indexed_at`、`parser_version`。排序分数不是答案可信概率；打开原文仍由网关校验权限和删除状态。资料 QA 在 token 展示前核验引用与声明，因此首 token 可能比闲聊慢；失败返回拒答正文。
+
+## 供应商配置检测
+
+`POST /health/providers/check` 必须登录，转发到 Python 内部保护接口。返回 Chat/Embedding/Rerank/OCR 的脱敏 profile、状态、延迟与缓存信息（60 秒缓存），可能执行少量合成请求并产生费用。状态区分 missing_credentials、authentication_failed、quota_or_rate_limit、model_unsupported、timeout、runtime_missing、disabled、ok；不回传密钥，也不能代替业务验收。密钥修改仍在服务端 `.env`，UI 不编辑秘密。
 
 ## 记忆
 

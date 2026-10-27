@@ -1,13 +1,19 @@
 {
+  "schema_version": 3,
   "dataset": {
     "path": "target_domain_rag_cases.json",
+    "sha256": "015f047e98ed77a8ec3c462175df5f79006921495ce650a1c7e04c101f68913d",
     "version": "2026.09.20-v1"
   },
   "recall@5": 1.0,
   "mrr": 1.0,
-  "faithfulness_proxy": 1.0,
-  "citation_precision": 0.8333,
-  "citation_recall": 1.0,
-  "abstention_proxy": 1.0,
-  "failed_examples": []
+  "top_evidence_term_support": 1.0,
+  "top_evidence_precision": 0.8333,
+  "evidence_hit_recall": 1.0,
+  "no_answer_evidence_absence": 1.0,
+  "configuration": {
+    "embedding_model": "local-trigram-sha256-v1:1024",
+    "top_k": 5
+  },
+  "scope": "Offline retrieval only; regenerated for schema 3, not comparable to historical model scores"
 }

@@ -132,16 +132,16 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml exec \
   python scripts/evaluate_rag.py
 ```
 
-基线指标包括 Recall@5、MRR、最终引用 Precision/Recall、拒答和延迟。报告由 CI 作为 artifact 保存，文档不复制容易过期的测试计数。
+离线基线包括 Recall@5、MRR、top_evidence_term_support、top_evidence_precision、evidence_hit_recall、no_answer_evidence_absence 和延迟。这些是检索代理指标，没有生成答案，不能称为最终引用准确率或真实拒答。报告由 CI 作为 artifact 保存。
 
 真实模型 Faithfulness 与 Answer Relevance 评测必须使用脱敏数据、显式样本数、价格假设和单次预算上限：
 
 ```bash
 python scripts/evaluate_rag.py \
-  --dataset evaluation/external_rag_cases.json \
-  --llm-sample-size 5 --require-sanitized \
+  --dataset evaluation/target_domain_rag_cases.json --dataset-version 2026.09.20-v1 \
+  --llm-sample-size 8 --require-sanitized \
   --input-cost-per-million 0.30 --output-cost-per-million 0.60 \
-  --max-estimated-cost 0.03 \
+  --max-estimated-cost 0.08 \
   --real-llm-thresholds evaluation/real_rag_thresholds.json \
   --report ../artifacts/real-rag-quality-report.json
 ```
@@ -161,7 +161,9 @@ python scripts/evaluate_quiz_quality.py evaluation/external_quiz_workspace.json 
 
 `.github/workflows/model-quality.yml` 每周运行真实 OCR、多模态、RAG 和测验抽检，也支持手动触发。预算守卫会在每次模型调用前预留最坏情况下的输出成本；脱敏扫描发现邮箱、手机号、身份证号或 API Key 形态时会在发送前失败。真实模型报告保留 30 天，并包含失败样例和评审理由。
 
-目标领域评测集由 `evaluation/target_domain_manifest.json` 统一声明版本、数据分类、来源和样本下限。周期任务额外抽检真实 Embedding 的语义对间隔，并设置 `MNEME_REQUIRE_REAL_EMBEDDINGS=true`，API 失败时不会降级成本地向量。RAG 报告通过 `compare_quality_reports.py` 与提交基线比较，退化超过允许幅度会保留失败样例并阻断任务。
+目标领域评测集由 `evaluation/target_domain_manifest.json` 统一声明版本、数据分类、来源和样本下限。周期任务额外抽检真实 Embedding 的语义对间隔，并设置 `MNEME_REQUIRE_REAL_EMBEDDINGS=true`，API 失败时不会降级成本地向量。RAG 报告通过 `compare_quality_reports.py` 比较同 schema/数据集的提交检索基线。真实生成和核验趋势额外检查模型配置与源码摘要；首次手动运行需 bootstrap_baseline=true，仅采集基线并保留 insufficient_history，不代表趋势通过。下次独立同配置运行才判断回退。schema 3 增加生产 Prompt 和逐项引文核验，必须重新采集；预算为 UTF-8 字节上界及最大核验输出估算，不能作为供应商账单。
+
+离线演示的干净安装由 CI `Offline demo clean install` 使用独立空卷构建后运行 `frontend/e2e/demo-stack.spec.js`，覆盖注册、入库、原文问答、引用和受保护的供应商检测；操作见 [演示指南](DEMO.md)。故障回归 `test_backup_restore.py` 覆盖导入中断、恢复旧存储及回滚失败保持服务停止；真实 Docker 演练验证正常备份恢复链路。`test_grounding.py` 覆盖缺漏声明、伪造逐字引文、超时和同步/SSE 共用核验。
 
 ## 容量与组合故障测试
 

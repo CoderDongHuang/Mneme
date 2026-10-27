@@ -32,4 +32,11 @@ def test_quality_report_comparison_keeps_failed_examples():
     assert report["status"] == "failed"
     assert report["candidate_version"] == "new"
     assert report["failed_examples"] == [{"id": "case-2"}]
-    assert "mrr regressed" in report["failures"][0]
+    assert any("mrr regressed" in failure for failure in report["failures"])
+
+
+def test_report_comparison_rejects_changed_schema_and_empty_evidence():
+    module = _load("compare_quality_reports", "compare_quality_reports.py")
+    assert module.compare({"schema_version": 2, "mrr": 1}, {"schema_version": 3, "mrr": 1})["status"] == "failed"
+    assert module.compare({}, {})["status"] == "failed"
+    assert module.compare({"mrr": 1, "recall@5": 1}, {"mrr": 1})["status"] == "failed"

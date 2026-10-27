@@ -1,0 +1,36 @@
+name: Bug report / 缺陷
+description: 报告可复现的问题，请勿上传密钥或真实私人资料
+title: '[Bug] '
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境与版本
+      description: Git 提交、操作系统、Docker/Compose 或 Java/Python/Node 版本、部署模式；勿提供密钥
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 最小复现步骤和合成样本
+      description: 从启动到故障的命令/操作、复现频率；文件问题请用无私人数据的最小样例
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 预期行为与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 脱敏日志、request_id 与截图
+      description: 删除密码、API Key、Cookie、授权头、邮件正文和个人信息后再粘贴
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 提交检查
+      options:
+        - label: 我已移除密钥和个人数据，并检索过已有 Issue
+          required: true
