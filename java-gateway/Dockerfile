@@ -10,6 +10,8 @@ RUN mvn package -DskipTests
 
 FROM ${JAVA_BASE_IMAGE}
 
+RUN apk upgrade --no-cache
+
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 
