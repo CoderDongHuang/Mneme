@@ -40,3 +40,13 @@ def test_report_comparison_rejects_changed_schema_and_empty_evidence():
     assert module.compare({"schema_version": 2, "mrr": 1}, {"schema_version": 3, "mrr": 1})["status"] == "failed"
     assert module.compare({}, {})["status"] == "failed"
     assert module.compare({"mrr": 1, "recall@5": 1}, {"mrr": 1})["status"] == "failed"
+
+
+def test_report_comparison_rejects_changed_retrieval_configuration():
+    module = _load("compare_quality_reports", "compare_quality_reports.py")
+    baseline = {"mrr": 1, "configuration": {"retrieval": {"reranker_min_score": 0.0}}}
+    candidate = {"mrr": 1, "configuration": {"retrieval": {"reranker_min_score": 0.25}}}
+    result = module.compare(baseline, candidate)
+    assert result["status"] == "failed"
+    assert "configuration.retrieval changed; reports are not comparable" in result["failures"]
+    assert module.compare(candidate, candidate)["status"] == "passed"

@@ -30,6 +30,7 @@ def prepare_conversation(request: ChatRequest) -> dict:
         "session_id": request.session_id,
         "message": request.message,
         "knowledge_base_ids": request.knowledge_base_ids,
+        "document_ids": request.document_ids,
     }
     with agent_trace_store.span(
         request.user_id,

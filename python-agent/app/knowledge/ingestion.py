@@ -12,12 +12,13 @@ from app.core.config import settings
 from app.core.privacy import require_cloud_processing
 from app.core.logging import setup_logger
 from app.knowledge.chunking import chunk_documents
+from app.knowledge.cancellation import check_cancelled, IngestionCancelled
 from app.knowledge.lexical_index import lexical_index
 from app.knowledge.vector_store import vector_store
 
 
 logger = setup_logger("ingestion")
-PARSER_VERSION = "mneme-structured-v2"
+PARSER_VERSION = "mneme-structured-v3"
 SUPPORTED_EXTENSIONS = {
     ".pdf",
     ".docx",
@@ -75,6 +76,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
 
     try:
         for page_index, page in enumerate(pdf, start=1):
+            check_cancelled()
             blocks = sorted(
                 page.get_text("blocks"),
                 key=lambda block: (round(float(block[1]) / 12), float(block[0])),
@@ -93,6 +95,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
             ]
             text = "\n".join(lines).strip()
             ocr_confidence = None
+            ocr_regions = []
 
             if len(text) < settings.pdf_min_text_chars and settings.ocr_enabled:
                 try:
@@ -111,6 +114,14 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                         if str(value).strip() not in {"", "-1"} and float(value) >= 0
                     ]
                     ocr_confidence = round(sum(confidence_values) / len(confidence_values) / 100, 4) if confidence_values else None
+                    for index, word in enumerate(ocr_data.get("text", [])):
+                        confidence = float(ocr_data["conf"][index])
+                        if not str(word).strip() or confidence < 0:
+                            continue
+                        left, top = ocr_data["left"][index], ocr_data["top"][index]
+                        ocr_regions.append({"text": str(word), "confidence": round(confidence / 100, 4),
+                                            "region": _region(left, top, left + ocr_data["width"][index],
+                                                              top + ocr_data["height"][index], image.width, image.height)})
                     ocr_text = pytesseract.image_to_string(image, lang=settings.ocr_languages).strip()
                     if ocr_text:
                         text = ocr_text
@@ -130,6 +141,11 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                 warnings.append({"page": page_index, "code": "low_ocr_confidence"})
             page_lines.append(lines)
             page_ocr_confidences.append(ocr_confidence)
+            documents.append(_document("", source, chunk_type="page_preview", page_preview={
+                "page": page_index, "text": text, "ocr_regions": ocr_regions,
+                "width": float(page.rect.width), "height": float(page.rect.height),
+                "has_text_layer": bool(blocks), "ocr_confidence_avg": ocr_confidence,
+            }))
 
             if (
                 settings.multimodal_enabled and not settings.demo_mode
@@ -143,10 +159,19 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
         pdf.close()
 
     edge_lines: Counter[str] = Counter()
-    for lines in page_lines:
-        for line in lines[:2] + lines[-2:]:
-            if 2 <= len(line) <= 160:
-                edge_lines[line] += 1
+    for blocks, (_, height) in zip(page_blocks, page_sizes):
+        # A short page's first/last lines can be its entire body. Only remove
+        # repeated text physically inside a margin. Short native-text pages may
+        # also use OCR; their original blocks still provide valid coordinates.
+        # Scanned pages have no native text blocks and cannot enter this set.
+        candidates = {
+            line.strip()
+            for _, y0, _, y1, content in blocks
+            if y1 <= height * 0.1 or y0 >= height * 0.9
+            for line in content.splitlines()
+            if 2 <= len(line.strip()) <= 160
+        }
+        edge_lines.update(candidates)
     repeated = {
         line
         for line, count in edge_lines.items()
@@ -155,6 +180,8 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
 
     for page_index, lines in enumerate(page_lines, start=1):
         text = "\n".join(line for line in lines if line not in repeated).strip()
+        if not text and lines:
+            text = "\n".join(lines).strip()
         if text:
             width, height = page_sizes[page_index - 1]
             retained = [
@@ -186,6 +213,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
 
         with pdfplumber.open(str(path)) as pdf:
             for page_index, page in enumerate(pdf.pages, start=1):
+                check_cancelled()
                 for table_index, table in enumerate(
                     page.find_tables() or [], start=1
                 ):
@@ -211,6 +239,8 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
     except ImportError:
         warnings.append({"page": 0, "code": "table_parser_unavailable"})
         logger.info("未安装 pdfplumber，PDF 表格将按普通文本处理")
+    except IngestionCancelled:
+        raise
     except Exception as error:
         warnings.append({"page": 0, "code": "table_parse_failed"})
         logger.warning("PDF 表格解析失败，继续使用文本结果: %s", error)
@@ -219,6 +249,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
         from app.knowledge.vision import describe_image
 
         for image_index, (page_index, image_bytes) in enumerate(page_images, start=1):
+            check_cancelled()
             try:
                 description = describe_image(
                     image_bytes, f"{source} 第 {page_index} 页图片 {image_index}"
@@ -237,13 +268,15 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                             visual_region="0.0000,0.0000,1.0000,1.0000",
                         )
                     )
+            except IngestionCancelled:
+                raise
             except Exception as error:
                 warnings.append({"page": page_index, "code": "vision_parse_failed"})
                 logger.warning("多模态图片解析失败，保留其他解析结果: %s", error)
     # Empty sentinels carry diagnostics without becoming searchable evidence.
     for warning in warnings:
         documents.append(_document("", source, chunk_type="diagnostic", parse_warning=warning))
-    return documents
+    return sorted(documents, key=lambda item: not bool(item.page_content))
 
 
 def _parse_docx(path: Path, source: str) -> list[Document]:
@@ -443,9 +476,12 @@ def ingest_document(
     path = Path(file_path)
     source = source_name or path.name
     parsed = parse_document(file_path, source)
+    check_cancelled()
     content_hash = hashlib.sha256(path.read_bytes()).hexdigest()
     indexed_at = datetime.now(timezone.utc).isoformat()
     warnings = [item.metadata["parse_warning"] for item in parsed if "parse_warning" in item.metadata]
+    page_previews = {item.metadata["page_preview"]["page"]: item.metadata["page_preview"]
+                     for item in parsed if "page_preview" in item.metadata}
     if report is not None:
         report.update({"parser_version": PARSER_VERSION, "content_sha256": content_hash,
                        "indexed_at": indexed_at, "warnings": warnings,
@@ -453,6 +489,40 @@ def ingest_document(
     parsed = [item for item in parsed if item.page_content.strip()]
     chunks = chunk_documents(parsed)
     valid_chunks = [chunk for chunk in chunks if chunk.page_content.strip()]
+    if report is not None:
+        budget = 2_000_000
+        for item in parsed:
+            page = int(item.metadata.get("page") or 1)
+            preview = page_previews.setdefault(page, {"page": page, "text": "", "ocr_regions": []})
+            preview.setdefault("blocks", [])
+            content = item.page_content[:max(0, budget)]
+            budget -= len(content)
+            preview["blocks"].append({"type": item.metadata.get("chunk_type", "text"),
+                                      "section": item.metadata.get("section", ""), "content": content,
+                                      "region": item.metadata.get("visual_region", "")})
+            if not preview.get("text"):
+                preview["text"] = content
+        # Keep preview storage bounded; expose truncation rather than silently claiming completeness.
+        truncated = budget <= 0
+        text_budget = 2_000_000
+        region_budget = 50_000
+        for preview in page_previews.values():
+            text = preview.get("text", "")
+            regions = preview.get("ocr_regions", [])
+            preview["text"] = text[:min(100_000, text_budget)]
+            preview["ocr_regions"] = regions[:min(10000, region_budget)]
+            preview["truncated"] = len(text) > len(preview["text"]) or len(regions) > len(preview["ocr_regions"])
+            truncated = truncated or preview["truncated"]
+            text_budget -= len(preview["text"])
+            region_budget -= len(preview["ocr_regions"])
+        report["pages"] = list(page_previews.values())
+        report["page_count"] = len(page_previews)
+        report["chunk_count"] = len(valid_chunks)
+        report["preview_truncated"] = truncated
+        report["chunks"] = [{"index": index, "page": chunk.metadata.get("page", 1),
+                             "type": chunk.metadata.get("chunk_type", "text"),
+                             "content": chunk.page_content[:4000]} for index, chunk in enumerate(valid_chunks[:500])]
+        report["chunks_truncated"] = len(valid_chunks) > 500 or any(len(chunk.page_content) > 4000 for chunk in valid_chunks[:500])
     if not valid_chunks:
         raise ValueError("文档中没有可检索的文本；扫描件请启用 OCR 后重试")
 
@@ -493,6 +563,7 @@ def ingest_document(
         if chunk.metadata.get("ocr_confidence") is not None:
             metadata["ocr_confidence"] = float(chunk.metadata["ocr_confidence"])
         metadatas.append(metadata)
+    check_cancelled()
     collection.upsert(
         ids=ids,
         documents=[chunk.page_content for chunk in valid_chunks],
@@ -512,6 +583,7 @@ def ingest_document(
             for chunk_id, metadata, chunk in zip(ids, metadatas, valid_chunks)
         ],
     )
+    check_cancelled()
     logger.info(
         "文档入库完成: user=%s kb=%s document=%s source=%s chunks=%s",
         user_id,

@@ -6,6 +6,7 @@ const labels = {
   deleting: '删除中',
   delete_failed: '删除待重试',
   cancelled: '已取消',
+  cancelling: '取消中',
   done: '可检索',
   completed: '已完成',
   retry: '等待重试',

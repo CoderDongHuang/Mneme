@@ -105,7 +105,7 @@ public class KnowledgeService {
 
     @Transactional
     public KnowledgeDocument uploadDocument(Long userId, Long kbId, MultipartFile file) {
-        KnowledgeBase kb = getOwnedKb(userId, kbId);
+        lockOwnedActiveKb(userId, kbId);
         if (file.isEmpty()) {
             throw new IllegalArgumentException("上传文件为空");
         }
@@ -258,6 +258,7 @@ public class KnowledgeService {
     @Transactional
     public KnowledgeDocument replaceDocument(Long userId, Long documentId, MultipartFile file) {
         KnowledgeDocument document = ownedDocument(userId, documentId);
+        requireIdleDocument(document);
         String originalName = file.getOriginalFilename() == null ? "document" : file.getOriginalFilename();
         String safeName = Path.of(originalName).getFileName().toString();
         String lowerName = safeName.toLowerCase(java.util.Locale.ROOT);
@@ -317,6 +318,7 @@ public class KnowledgeService {
     @Transactional
     public KnowledgeDocument restoreDocumentVersion(Long userId, Long documentId, int version) {
         KnowledgeDocument document = ownedDocument(userId, documentId);
+        requireIdleDocument(document);
         List<Map<String, Object>> rows = jdbc.queryForList("""
             SELECT file_name,file_path FROM knowledge_document_version
             WHERE document_id=? AND version_number=?
@@ -386,6 +388,7 @@ public class KnowledgeService {
     public void deleteDocument(Long userId, Long documentId) {
         KnowledgeDocument document = ownedDocument(userId, documentId);
         if ("deleting".equals(document.getStatus())) return;
+        requireIdleDocument(document);
         document.setStatus("deleting");
         document.setErrorMessage(null);
         docMapper.updateById(document);
@@ -396,6 +399,7 @@ public class KnowledgeService {
     public void reparseDocument(Long userId, Long documentId) {
         KnowledgeDocument document = ownedDocument(userId, documentId);
         if ("parsing".equals(document.getStatus())) return;
+        requireIdleDocument(document);
         if ("deleting".equals(document.getStatus())) {
             throw new IllegalArgumentException("文档正在删除，无法重新解析");
         }
@@ -407,11 +411,36 @@ public class KnowledgeService {
         createDocumentTask(userId, document, "document_ingest");
     }
 
+    private void requireIdleDocument(KnowledgeDocument document) {
+        List<Map<String, Object>> tasks = jdbc.queryForList("""
+            SELECT task_id FROM processing_task WHERE aggregate_id=? AND task_type='document_ingest'
+            AND status IN ('pending','retry','processing','cancelling') LIMIT 1
+            """, document.getId());
+        if (!tasks.isEmpty() || "parsing".equals(document.getStatus())) {
+            throw new IllegalArgumentException("文档正在解析，请先取消任务并等待取消完成后重试");
+        }
+        if (List.of("deleting", "delete_failed").contains(document.getStatus())) {
+            throw new IllegalArgumentException("文档正在删除，请在任务页重试删除");
+        }
+    }
+
     private KnowledgeDocument ownedDocument(Long userId, Long documentId) {
+        KnowledgeDocument initial = docMapper.selectById(documentId);
+        if (initial == null) throw new IllegalArgumentException("文档不存在");
+        // All catalog mutations lock the parent before the document, including deletion.
+        lockOwnedActiveKb(userId, initial.getKbId());
+        jdbc.queryForList("SELECT id FROM knowledge_document WHERE id=? FOR UPDATE", documentId);
         KnowledgeDocument document = docMapper.selectById(documentId);
         if (document == null) throw new IllegalArgumentException("文档不存在");
         getOwnedKb(userId, document.getKbId());
         return document;
+    }
+
+    private KnowledgeBase lockOwnedActiveKb(Long userId, Long kbId) {
+        jdbc.queryForList("SELECT id FROM knowledge_base WHERE id=? AND user_id=? FOR UPDATE", kbId, userId);
+        KnowledgeBase kb = getOwnedKb(userId, kbId);
+        if (!"active".equals(kb.getStatus())) throw new IllegalArgumentException("知识库正在删除或不可用");
+        return kb;
     }
 
     private void createDocumentTask(Long userId, KnowledgeDocument document, String type) {
@@ -440,8 +469,15 @@ public class KnowledgeService {
 
     @Transactional
     public void deleteKb(Long userId, Long kbId) {
+        jdbc.queryForList("SELECT id FROM knowledge_base WHERE id=? AND user_id=? FOR UPDATE", kbId, userId);
         KnowledgeBase kb = getOwnedKb(userId, kbId);
         if ("deleting".equals(kb.getStatus())) return;
+        List<Map<String, Object>> active = jdbc.queryForList("""
+            SELECT t.task_id FROM processing_task t JOIN knowledge_document d ON d.id=t.aggregate_id
+            WHERE d.kb_id=? AND t.task_type='document_ingest'
+            AND t.status IN ('pending','retry','processing','cancelling') LIMIT 1
+            """, kbId);
+        if (!active.isEmpty()) throw new IllegalArgumentException("知识库内仍有解析任务，请先取消并等待结束后删除");
         try {
             kb.setStatus("deleting");
             kbMapper.updateById(kb);

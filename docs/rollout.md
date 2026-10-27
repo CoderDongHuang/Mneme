@@ -1,6 +1,6 @@
 # 升级、验收与回退
 
-本页适用于当前 Beta 自部署版本。历史 V3 迁移步骤已经过期；数据库以 `java-gateway/src/main/resources/db/migration` 中的 Flyway 迁移为准，当前最高版本为 V19（文档解析报告）。
+本页适用于当前 Beta 自部署版本。历史 V3 迁移步骤已经过期；数据库以 `java-gateway/src/main/resources/db/migration` 中的 Flyway 迁移为准，当前最高版本为 V20（文档标签与版本解析报告；V19 为文档解析报告）。
 
 ## 升级
 
@@ -19,4 +19,4 @@
 
 升级后非空的旧向量集合如没有 profile 元数据，或模型/维度变化，会拒绝新增和检索；列表、导出、删除仍可用。不要手工补写 profile 伪装兼容。先备份、停止服务，按 [Embedding 迁移](EMBEDDING_MIGRATION.md) dry-run，再显式重建并核对报告；恢复使用匹配模型与快照。
 
-`backup_restore.py restore ARCHIVE --yes` 先验证解密、空间及已记录的 schema 上限，再持久保存 `pre-restore-*.tar.gz`。导入/目录替换失败会恢复旧 SQL 和存储目录；回滚失败保持应用服务停止。通过 `--report` 指定状态报告位置，恢复包包含敏感数据，需按备份策略保护及清理。强杀/断电不具备自动原子恢复保证，启动前检查报告并手动恢复 recovery_archive。旧归档缺少 schema 元数据时只能在匹配版本隔离演练，格式版本校验不能代替数据库兼容性校验。
+`backup_restore.py restore ARCHIVE --yes` 先验证解密、空间、schema 上限及新归档记录的实际 MySQL Flyway 历史（迁移名称/版本/CRC32），再持久保存 `pre-restore-*.tar.gz`。导入/目录替换失败会恢复旧 SQL 和存储目录；回滚失败保持应用服务停止。通过 `--report` 指定状态报告位置，恢复包包含敏感数据，需按备份策略保护及清理。强杀/断电不具备自动原子恢复保证，启动前检查报告并手动恢复 recovery_archive。旧归档缺少 schema 元数据时只能在匹配版本隔离演练，格式版本校验不能代替数据库兼容性校验。

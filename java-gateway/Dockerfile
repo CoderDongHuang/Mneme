@@ -10,7 +10,9 @@ RUN mvn package -DskipTests
 
 FROM ${JAVA_BASE_IMAGE}
 
-RUN apk upgrade --no-cache
+ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
+RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
+    && apk upgrade --no-cache
 
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar

@@ -12,5 +12,7 @@
         <appender-ref ref="CONSOLE"/>
     </root>
 
-    <logger name="com.mneme" level="DEBUG"/>
+    <!-- MyBatis DEBUG logs include bound values (credentials and document text). -->
+    <logger name="com.mneme" level="INFO"/>
+    <logger name="com.mneme.mapper" level="INFO"/>
 </configuration>

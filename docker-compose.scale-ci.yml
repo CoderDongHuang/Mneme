@@ -75,6 +75,7 @@ services:
     volumes:
       - ./test-fixtures:/test-fixtures:ro
       - scale-agent-1:/app/data
+      - scale-files:/data/files
     depends_on:
       mysql:
         condition: service_healthy
@@ -101,6 +102,7 @@ services:
     volumes:
       - ./test-fixtures:/test-fixtures:ro
       - scale-agent-2:/app/data
+      - scale-files:/data/files
     depends_on:
       mysql:
         condition: service_healthy
@@ -131,10 +133,13 @@ services:
       JWT_SECRET: ci-jwt-secret-at-least-32-characters-long
       INTERNAL_SERVICE_TOKEN: ci-internal-token-at-least-32-characters
       SECURE_COOKIES: "false"
+      FILE_STORAGE_PATH: /data/files
       OTEL_TRACING_ENABLED: "true"
       OTEL_TRACES_SAMPLER_ARG: "1.0"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAME: mneme-java-gateway-1
+    volumes:
+      - scale-files:/data/files
     depends_on:
       mysql:
         condition: service_healthy
@@ -152,6 +157,8 @@ services:
       SPRING_FLYWAY_ENABLED: "false"
       PYTHON_AGENT_URL: http://python-agent-2:8001
       OTEL_SERVICE_NAME: mneme-java-gateway-2
+    volumes:
+      - scale-files:/data/files
     depends_on:
       mysql:
         condition: service_healthy
@@ -165,6 +172,7 @@ volumes:
   scale-chroma-2:
   scale-agent-1:
   scale-agent-2:
+  scale-files:
 
 networks:
   vector-backend:

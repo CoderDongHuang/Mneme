@@ -32,6 +32,88 @@ class FlywayMigrationTest {
         .withPassword("mneme-test-password");
 
     @Test
+    void concurrentTagEditsAvoidGapDeadlockAndKeepWholeTagSets() throws Exception {
+        Flyway.configure().dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+            .locations("classpath:db/migration").load().migrate();
+        var source = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+        var deleted = new CountDownLatch(2);
+        var jdbc = new JdbcTemplate(source) {
+            @Override public int update(String sql, Object... args) {
+                int count = super.update(sql, args);
+                if (sql.startsWith("DELETE FROM knowledge_document_tag")) {
+                    deleted.countDown();
+                    try {
+                        if (!deleted.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                            throw new IllegalStateException("Concurrent tag edits did not reach the insert boundary");
+                    } catch (InterruptedException error) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(error);
+                    }
+                }
+                return count;
+            }
+        };
+        jdbc.update("INSERT INTO user(username,password_hash) VALUES('tag-race-a','hash'),('tag-race-b','hash')");
+        Long a = value(jdbc, "SELECT id FROM user WHERE username='tag-race-a'", Long.class);
+        Long b = value(jdbc, "SELECT id FROM user WHERE username='tag-race-b'", Long.class);
+        jdbc.update("INSERT INTO knowledge_base(user_id,name,status) VALUES(?,'tag-race-a','active'),(?,'tag-race-b','active')", a, b);
+        Long ka = value(jdbc, "SELECT id FROM knowledge_base WHERE user_id=?", Long.class, a);
+        Long kb = value(jdbc, "SELECT id FROM knowledge_base WHERE user_id=?", Long.class, b);
+        jdbc.update("INSERT INTO knowledge_document(kb_id,file_name,file_path,status) VALUES(?,'tag-race-a','x','ready'),(?,'tag-race-b','x','ready')", ka, kb);
+        Long da = value(jdbc, "SELECT id FROM knowledge_document WHERE kb_id=?", Long.class, ka);
+        Long db = value(jdbc, "SELECT id FROM knowledge_document WHERE kb_id=?", Long.class, kb);
+        var proxy = new org.springframework.aop.framework.ProxyFactory(new com.mneme.service.RetrievalScopeService(jdbc));
+        proxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(
+            new DataSourceTransactionManager(source), new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
+        var scope = (com.mneme.service.RetrievalScopeService) proxy.getProxy();
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            var first = pool.submit(() -> scope.setTags(a, da, java.util.List.of("alpha", "beta")));
+            var second = pool.submit(() -> scope.setTags(b, db, java.util.List.of("alpha", "beta")));
+            assertThat(first.get(15, java.util.concurrent.TimeUnit.SECONDS)).containsExactly("alpha", "beta");
+            assertThat(second.get(15, java.util.concurrent.TimeUnit.SECONDS)).containsExactly("alpha", "beta");
+            var sameA = pool.submit(() -> scope.setTags(a, da, java.util.List.of("one", "two")));
+            var sameB = pool.submit(() -> scope.setTags(a, da, java.util.List.of("red", "white")));
+            sameA.get(15, java.util.concurrent.TimeUnit.SECONDS);
+            sameB.get(15, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(scope.tags(a, da)).isIn(java.util.List.of("one", "two"), java.util.List.of("red", "white"));
+            assertThatThrownBy(() -> scope.setTags(b, da, java.util.List.of("foreign"))).isInstanceOf(IllegalArgumentException.class);
+            jdbc.update("UPDATE knowledge_base SET status='deleting' WHERE id=?", ka);
+            assertThatThrownBy(() -> scope.tags(a, da)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> scope.setTags(a, da, java.util.List.of("deleted"))).isInstanceOf(IllegalArgumentException.class);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void retrievalScopeIntersectsTenantDocumentsTagsDatesAndReadyState() {
+        Flyway.configure().dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+            .locations("classpath:db/migration").load().migrate();
+        var jdbc = new JdbcTemplate(new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword()));
+        jdbc.update("INSERT INTO user(username,password_hash) VALUES('scope-a','hash'),('scope-b','hash')");
+        Long a = value(jdbc, "SELECT id FROM user WHERE username='scope-a'", Long.class);
+        Long b = value(jdbc, "SELECT id FROM user WHERE username='scope-b'", Long.class);
+        jdbc.update("INSERT INTO knowledge_base(user_id,name,status) VALUES(?,'scope','active'),(?,'scope','active')", a, b);
+        Long ka = value(jdbc, "SELECT id FROM knowledge_base WHERE user_id=?", Long.class, a);
+        Long kb = value(jdbc, "SELECT id FROM knowledge_base WHERE user_id=?", Long.class, b);
+        jdbc.update("INSERT INTO knowledge_document(kb_id,file_name,file_path,status,created_at) VALUES(?,'scope-yes','x','ready','2026-10-27 12:00:00'),(?,'scope-foreign','x','ready','2026-10-27 12:00:00'),(?,'scope-old','x','ready','2026-10-26 12:00:00'),(?,'scope-running','x','parsing','2026-10-27 12:00:00')", ka, kb, ka, ka);
+        Long yes = value(jdbc, "SELECT id FROM knowledge_document WHERE file_name='scope-yes'", Long.class);
+        Long foreign = value(jdbc, "SELECT id FROM knowledge_document WHERE file_name='scope-foreign'", Long.class);
+        var scope = new com.mneme.service.RetrievalScopeService(jdbc);
+        scope.setTags(a, yes, java.util.List.of("课程", "重点"));
+        scope.setTags(b, foreign, java.util.List.of("课程", "重点"));
+        assertThat(scope.resolve(a, java.util.List.of(ka.toString(), kb.toString()), null,
+            java.util.List.of("课程", "重点"), "2026-10-27", "2026-10-27")).containsExactly("doc_" + yes);
+        assertThat(scope.resolve(a, java.util.List.of(ka.toString(), kb.toString()), java.util.List.of(foreign.toString()),
+            null, null, null)).isEmpty();
+        assertThat(scope.resolve(a, java.util.List.of(ka.toString()), null, java.util.List.of("不存在"), null, null)).isEmpty();
+        assertThatThrownBy(() -> scope.tags(a, foreign)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> scope.setTags(a, foreign, java.util.List.of("泄漏"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> scope.resolve(a, java.util.List.of(ka.toString()), null, null, "bad", null)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void appliesAllMigrationsWhenAuxiliaryStateAlreadyExists() throws Exception {
         Flyway.configure()
             .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())

@@ -148,10 +148,17 @@ class LexicalIndex:
             return 0
 
     def search(
-        self, user_id: str, kb_id: str, query: str, limit: int
+        self, user_id: str, kb_id: str, query: str, limit: int, document_ids: list[str] | None = None
     ) -> list[dict[str, Any]]:
         if not self._available:
             return []
+        if document_ids is not None and not document_ids:
+            return []
+        scope_sql = ""
+        scope_args = []
+        if document_ids is not None:
+            scope_sql = " AND document_id IN (" + ",".join("?" for _ in document_ids) + ")"
+            scope_args = list(document_ids)
         match_query = _search_query(query)
         if not match_query:
             return []
@@ -163,10 +170,11 @@ class LexicalIndex:
                            source,section,bm25(lexical_chunks) AS rank
                     FROM lexical_chunks
                     WHERE lexical_chunks MATCH ? AND user_id=? AND kb_id=?
+                    """ + scope_sql + """
                     ORDER BY rank ASC
                     LIMIT ?
                     """,
-                    (match_query, str(user_id), str(kb_id), max(1, int(limit))),
+                    (match_query, str(user_id), str(kb_id), *scope_args, max(1, int(limit))),
                 ).fetchall()
         except sqlite3.Error as error:
             logger.warning("SQLite 词法检索失败，继续使用 Chroma: %s", error)

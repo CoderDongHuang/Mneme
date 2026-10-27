@@ -7,6 +7,7 @@ from app.core.privacy import require_cloud_processing
 from app.core.logging import setup_logger
 from app.core.telemetry import tracer
 from app.knowledge.lexical_index import lexical_index
+from app.knowledge.filters import DocumentScope
 from app.knowledge.reranker import rerank
 from app.knowledge.vector_store import vector_store
 from app.utils.embedding import embeddings
@@ -92,9 +93,11 @@ def _bm25_candidates(collection, query: str, limit: int) -> list[dict]:
 
 
 def _indexed_candidates(
-    user_id: str, kb_id: str, query: str, limit: int
+    user_id: str, kb_id: str, query: str, limit: int, document_ids: list[str] | None = None
 ) -> list[dict]:
-    return lexical_index.search(user_id, kb_id, query, limit)
+    if document_ids is None:
+        return lexical_index.search(user_id, kb_id, query, limit)
+    return lexical_index.search(user_id, kb_id, query, limit, document_ids=document_ids)
 
 
 def _exact_semantic_candidates(
@@ -192,9 +195,13 @@ def _term_coverage(query: str, item: dict) -> float:
     return len(query_terms & content_terms) / len(query_terms)
 
 
-def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> list[dict]:
+def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None, document_ids: list[str] | None = None) -> list[dict]:
     limit = max(1, min(top_k or settings.retriever_top_k, 20))
     collection = vector_store.get_collection(user_id, kb_id)
+    if document_ids is not None:
+        if not document_ids or collection is None:
+            return []
+        collection = DocumentScope(collection, document_ids)
     if collection is None or collection.count() == 0 or not query.strip():
         return []
     pool_size = min(max(limit * 4, 20), collection.count())
@@ -211,7 +218,8 @@ def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) ->
             "语义检索失败，使用 BM25 降级: user=%s kb=%s error=%s",
             user_id, kb_id, error,
         )
-    lexical = _indexed_candidates(user_id, kb_id, query, pool_size)
+    lexical = (_indexed_candidates(user_id, kb_id, query, pool_size) if document_ids is None
+               else _indexed_candidates(user_id, kb_id, query, pool_size, document_ids))
     if lexical:
         # SQLite is a derived index. Never trust stale content or incomplete metadata.
         canonical = collection.get(ids=[item["id"] for item in lexical], include=["documents", "metadatas"])
@@ -252,11 +260,11 @@ def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) ->
     return rerank(query, candidates, limit)
 
 
-def retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) -> list[dict]:
+def retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None, document_ids: list[str] | None = None) -> list[dict]:
     require_cloud_processing(user_id)
     with tracer.start_as_current_span("mneme.retrieval") as span:
         span.set_attribute("mneme.knowledge_base_id", kb_id)
         span.set_attribute("mneme.retrieval.top_k", top_k or settings.retriever_top_k)
-        results = _retrieve(user_id, kb_id, query, top_k)
+        results = _retrieve(user_id, kb_id, query, top_k, document_ids)
         span.set_attribute("mneme.retrieval.result_count", len(results))
         return results

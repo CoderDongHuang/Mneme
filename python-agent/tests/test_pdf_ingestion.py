@@ -62,6 +62,46 @@ def test_pdf_keeps_extracted_text_when_ocr_is_unavailable(tmp_path, monkeypatch)
     assert "Extracted text must survive" in parsed[0].page_content
 
 
+def test_native_page_margins_are_removed_when_ocr_is_used(tmp_path, monkeypatch):
+    import pytesseract
+    from dataclasses import replace
+    from app.knowledge import ingestion
+    from app.core.config import settings
+
+    path = tmp_path / "native-with-ocr.pdf"
+    _create_layout_pdf(path)
+    monkeypatch.setattr(ingestion, "settings", replace(settings, ocr_enabled=True, pdf_min_text_chars=1000))
+    monkeypatch.setattr(pytesseract, "image_to_data", lambda *args, **kwargs: {
+        "text": ["Mneme"], "conf": [95], "left": [72], "top": [40],
+        "width": [60], "height": [15],
+    })
+    recognized = iter([
+        f"Mneme test material\nChapter {page}\nUnique page content TOKEN-{page}\nInternal material"
+        for page in range(1, 4)
+    ])
+    monkeypatch.setattr(pytesseract, "image_to_string", lambda *args, **kwargs: next(recognized))
+
+    text = [doc for doc in parse_document(str(path)) if doc.metadata["chunk_type"] == "text"]
+    assert len(text) == 3
+    assert all("Mneme test material" not in doc.page_content and "Internal material" not in doc.page_content for doc in text)
+    assert all(f"TOKEN-{page}" in doc.page_content for page, doc in enumerate(text, 1))
+    assert all(doc.metadata["ocr_confidence"] == .95 for doc in text)
+
+
+def test_repeated_short_body_is_not_mistaken_for_page_margins(tmp_path):
+    path = tmp_path / "repeated-body.pdf"
+    pdf = pymupdf.open()
+    for _ in range(4):
+        page = pdf.new_page()
+        page.insert_text((72, 200), "Repeated body SCAN-ALPHA retained for 42 months")
+    pdf.save(path)
+    pdf.close()
+    parsed = parse_document(str(path))
+    text = [doc for doc in parsed if doc.metadata["chunk_type"] == "text"]
+    assert len(text) == 4
+    assert all("SCAN-ALPHA" in doc.page_content for doc in text)
+
+
 @pytest.mark.integration
 @pytest.mark.skipif(shutil.which("tesseract") is None, reason="需要 Tesseract")
 def test_scanned_pdf_uses_ocr(tmp_path):

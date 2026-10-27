@@ -5,18 +5,20 @@ import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from functools import partial
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile, Query
+from typing import Annotated
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field, field_validator
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response
 
 from app.core.config import settings
 from app.core.privacy import require_cloud_processing
 from app.core.metrics import INPUT_REJECTIONS
 from app.core.logging import setup_logger
 from app.knowledge.ingestion import SUPPORTED_EXTENSIONS, ingest_document
+from app.knowledge.cancellation import ingestion_task, IngestionCancelled
 from app.knowledge.retriever import retrieve
 from app.knowledge.task_tracker import create_task, get_task, update_task
 from app.knowledge.vector_store import vector_store
@@ -32,6 +34,27 @@ from app.models.knowledge import (
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
 logger = setup_logger("knowledge_api")
 executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ingestion")
+
+
+class PageImageRequest(BaseModel):
+    file_path: str
+    page: int = Field(ge=1, le=10000)
+
+
+@router.post("/internal/page-image")
+async def page_image(request: PageImageRequest) -> Response:
+    def render():
+        import pymupdf
+        path = Path(request.file_path).resolve()
+        if path.suffix.lower() != ".pdf" or not path.is_file():
+            raise HTTPException(status_code=404, detail="PDF 不存在")
+        with pymupdf.open(path) as pdf:
+            if request.page > len(pdf):
+                raise HTTPException(status_code=404, detail="页码不存在")
+            page = pdf[request.page - 1]
+            scale = min(1.5, 1600 / max(page.rect.width, page.rect.height))
+            return page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False).tobytes("png")
+    return Response(await run_in_threadpool(render), media_type="image/png")
 
 
 class QuizGenerationRequest(BaseModel):
@@ -173,14 +196,14 @@ async def ingest_durable(request: DocumentIngestRequest) -> IngestionResult:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="待解析文件不存在")
     report: dict = {}
-    document_id = await asyncio.get_running_loop().run_in_executor(
-        executor, partial(ingest_document,
-        request.user_id,
-        request.kb_id,
-        str(path),
-        path.name,
-        request.document_id, report=report),
-    )
+    def process():
+        with ingestion_task(request.user_id, request.task_id):
+            return ingest_document(request.user_id, request.kb_id, str(path), path.name,
+                                   request.document_id, report=report)
+    try:
+        document_id = await asyncio.get_running_loop().run_in_executor(executor, process)
+    except IngestionCancelled:
+        return IngestionResult(status="cancelled", document_id=request.document_id or "", chunks=0, report=report)
     collection = vector_store.get_collection(request.user_id, request.kb_id)
     chunks = 0
     if collection is not None:
@@ -198,9 +221,11 @@ async def task_status(task_id: str) -> dict:
 
 @router.get("/search", response_model=RetrieverResult)
 async def search(
-    query: str, user_id: str, kb_id: str, top_k: int = 5
+    query: str, user_id: str, kb_id: str, top_k: int = 5,
+    document_ids: Annotated[list[str] | None, Query()] = None,
 ) -> RetrieverResult:
-    chunks = await run_in_threadpool(retrieve, user_id, kb_id, query, top_k)
+    options = {"document_ids": document_ids} if document_ids is not None else {}
+    chunks = await run_in_threadpool(retrieve, user_id, kb_id, query, top_k, **options)
     return RetrieverResult(chunks=chunks, query=query)
 
 

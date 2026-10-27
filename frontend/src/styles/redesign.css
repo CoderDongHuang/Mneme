@@ -102,6 +102,8 @@
 .route-stage .memory-dialog .dialog-submit { background: #286448; color: #fff; }
 .route-stage .profile-page { padding: 0; }
 .route-stage .profile-layout { margin: 0; padding: 20px clamp(22px, 3vw, 44px); }
+.route-stage .profile-layout > * { min-width: 0; }
+.route-stage .identity-panel :is(strong, small) { max-width: 100%; overflow-wrap: anywhere; text-align: center; }
 .route-stage :is(.identity-panel, .profile-form) { border: 1px solid #dce4dc; border-radius: 5px; background: #fff; box-shadow: none; backdrop-filter: none; }
 .route-stage .center-page { padding: 0 clamp(22px, 3vw, 44px) 40px; }
 .route-stage .center-head { margin: 0 calc(-1 * clamp(22px, 3vw, 44px)) 20px; }
@@ -125,7 +127,7 @@
   .route-stage .memory-scoreboard > div { min-width: 0; padding: 10px; display: block; }
   .route-stage .memory-scoreboard strong { display: block; margin: 6px 0; font-size: 24px; }
   .route-stage .memory-grid { margin: 14px; }
-  .route-stage .profile-layout { display: grid; grid-template-columns: 1fr; padding: 14px; }
+  .route-stage .profile-layout { display: grid; grid-template-columns: minmax(0, 1fr); padding: 14px; }
   .route-stage .profile-form:last-child { grid-column: auto; }
   .route-stage .center-page { padding: 0 16px 30px; }
   .route-stage .center-head { margin: 0 -16px 18px; }

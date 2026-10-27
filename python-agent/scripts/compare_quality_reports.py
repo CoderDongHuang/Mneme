@@ -24,6 +24,7 @@ DEFAULT_METRICS = (
     "real_llm_evaluation.answer_relevance",
     "real_llm_evaluation.grounding",
     "real_llm_evaluation.clarity",
+    "real_llm_evaluation.answer_point_coverage",
 )
 
 
@@ -43,6 +44,14 @@ def compare(baseline: dict, candidate: dict, max_regression: float = 0.05) -> di
         before, after = _get(baseline, path), _get(candidate, path)
         if before is not None and after != before:
             failures.append(f"{path} changed; reports are not comparable")
+    if any(_get(report, "real_llm_evaluation.status") == "completed" for report in (baseline, candidate)):
+        for path in ("configuration.chat_models.configured", "configuration.chat_models.primary",
+                     "configuration.chat_models.fallback", "configuration.qa_prompt_sha256",
+                     "configuration.verification_prompt_sha256", "configuration.answer_point_scoring_version"):
+            if _get(baseline, path) != _get(candidate, path):
+                failures.append(f"{path} changed; model reports are not comparable")
+    if _get(baseline, "configuration.retrieval") != _get(candidate, "configuration.retrieval"):
+        failures.append("configuration.retrieval changed; reports are not comparable")
     for name in DEFAULT_METRICS:
         before = _get(baseline, name)
         after = _get(candidate, name)

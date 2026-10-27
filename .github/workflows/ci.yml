@@ -284,6 +284,12 @@ jobs:
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-real
         run: npx playwright test e2e/real-stack.spec.js --project=桌面端 --reporter=html
+      - name: Regress parsing, cancellation, filters and provider UI
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/roadmap-stack.spec.js --project=桌面端 --grep '真实解析异常|真实界面交互' --retries=0
       - name: Exercise input rejection metrics
         run: |
           status=$(head -c 70000 /dev/zero | curl --silent --output /dev/null --write-out '%{http_code}' \

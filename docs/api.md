@@ -30,7 +30,7 @@ Java 普通响应采用 `{ "code": 200, "message": "success", "data": ... }`。
 - `POST /chat`：同步 JSON 回答。
 - `POST /chat/stream`：SSE 流式回答。
 
-请求字段：`session_id`、`message`、`knowledge_base_ids`。`user_id` 由网关注入。
+请求字段：`session_id`、`message`、`knowledge_base_ids`；可选 `selected_document_ids`（最多 1000 个）、`tags`（最多 20 个，每个 1–80 字，AND 语义）、`date_from`/`date_to`（YYYY-MM-DD，1000–9998 年，按文档导入时间，结束日包含）。空文档选择表示不额外限制文档；无可访问匹配文档时严格返回空范围。`user_id` 和内部 `document_ids` 由网关计算，客户端提交内部字段不能绕过权限。日期起止颠倒或格式错误返回 400。
 
 SSE 事件：
 
@@ -70,6 +70,11 @@ SSE 事件：
 
 ## 学习工作台与迁移
 
+- `GET /workspace/documents/{id}/tags` 与 `PUT /workspace/documents/{id}/tags`：读写当前用户文档标签，请求体为字符串数组；空数组清空。
+- `GET /workspace/retrieval/debug?kbId=...&query=...&topK=...`：支持重复查询参数 `documentIds`/`tags` 及 `dateFrom`/`dateTo`，权限和筛选语义与聊天相同。
+- `GET /workspace/documents/{id}/preview`、`GET /workspace/documents/{id}/file`、`GET /workspace/documents/{id}/pages/{page}`：可传 `sha256`（64 位十六进制）精确选择版本；页图为 PNG。无 hash 选择当前文件；未知版本返回 400。历史版本缺解析报告明确提示，不返回当前报告冒充历史。
+- 解析报告的 `pages` 含文字层、页尺寸、文本、正文/表格块与 OCR 区域（坐标、文字、0–1 置信度），`chunks` 是有界摘要；达到体积预算标记 `preview_truncated`。复杂 OCR 结果需核对原图。
+- `POST /workspace/tasks/{taskId}/cancel`：等待中或运行中入库任务协作取消；请求成功不等于已完成清理，轮询任务到 `cancelled`。`POST /workspace/tasks/{taskId}/retry` 重试取消任务返回新的 task_id；活动任务拒绝并发替换/重解析/删除/恢复。
 - `GET /workspace/metrics`：读取当前学习指标，并写入当天用户快照；响应同时包含近 30 天 `history`。
 - `GET /workspace/metrics/history?days=30`：读取 7 至 365 天按用户隔离的指标趋势。
 - `GET /workspace/outcomes?limit=50`：读取由真实测验得分和复习评分生成的学习效果事件；`metrics.learning_effect` 使用这些观测输出分数变化、保留率和复习间隔校准建议。

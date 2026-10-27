@@ -70,8 +70,12 @@ def intent_classification_node(state: dict) -> dict:
     message = state.get("message", "").strip()
     if state.get("knowledge_base_ids"):
         return {"intent": "qa", "confidence": 1.0}
+    # Source requests must reach retrieval even when a project name contains
+    # words such as “计划” or “建议”. Those nouns alone are not learning intent.
+    if any(word in message for word in ("引用", "资料", "文档", "上传", "原文", "识别码")):
+        return {"intent": "qa", "confidence": 0.95}
     if any(
-        word in message for word in ("建议", "计划", "怎么学", "下一步", "如何复习")
+        word in message for word in ("给我建议", "有什么建议", "学习建议", "学习计划", "复习计划", "制定计划", "怎么学", "下一步", "如何复习")
     ):
         return {"intent": "suggest", "confidence": 0.9}
     if any(
@@ -104,7 +108,7 @@ def intent_classification_node(state: dict) -> dict:
     except Exception as error:
         logger.warning("意图识别调用失败，使用规则降级: %s", error)
         message = state.get("message", "")
-        if any(word in message for word in ("建议", "计划", "怎么学", "下一步")):
+        if any(word in message for word in ("给我建议", "学习建议", "学习计划", "复习计划", "制定计划", "怎么学", "下一步")):
             return {"intent": "suggest", "confidence": 0.55}
         if any(word in message for word in ("上次", "之前", "回顾", "复习")):
             return {"intent": "review", "confidence": 0.55}
@@ -144,6 +148,7 @@ def knowledge_retrieval_node(state: dict) -> dict:
                     "kb_id": kb_id,
                     "query": state["message"],
                     "top_k": settings.retriever_top_k,
+                    **({"document_ids": state["document_ids"]} if state.get("document_ids") is not None else {}),
                 },
                 trace_user_id=state["user_id"],
                 trace_session_id=state["session_id"],

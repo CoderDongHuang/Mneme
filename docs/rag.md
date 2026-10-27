@@ -29,7 +29,7 @@
 词法索引配置：
 
 - `LEXICAL_INDEX_PATH`：SQLite 文件路径，默认 `python-agent/data/lexical-index.sqlite3`。
-- `RERANKER_ENABLED=true`、`RERANKER_PROVIDER=dashscope` 与 `RERANKER_MODEL=gte-rerank-v2`：使用现有 DashScope SDK 在线重排；也可将 provider 设为 `cross_encoder` 使用本地模型。失败时自动降级到 RRF。
+- `RERANKER_ENABLED=true`、`RERANKER_PROVIDER=dashscope` 与 `RERANKER_MODEL=gte-rerank-v2`：使用现有 DashScope SDK 在线重排；也可将 provider 设为 `cross_encoder` 使用本地模型。失败时自动降级到 RRF。默认关闭。`RERANKER_MIN_SCORE` 默认 0，仅过滤 DashScope 的归一化 0–1 分数；不应用于 CrossEncoder logits。成功的空结果保持为空。0.25 阈值在完整 110 题云实验中导致召回下降，不能直接照搬小样本阈值。
 - `VECTOR_SHARD_URLS=http://chroma-0:8000,http://chroma-1:8000`：按 `user_id + kb_id` 稳定哈希到独立 Chroma 节点；`VECTOR_SHARD_COUNT` 应与地址数量一致。
 
 ## 生产评测建议
@@ -49,7 +49,7 @@
 - `MRR`：正确片段的平均倒数排名。
 - `top_evidence_term_support`：Top-K 首片段包含标注关键事实的离线证据 proxy，不等价于 RAGAS/LLM Faithfulness。
 - `top_evidence_precision / evidence_hit_recall`：首片段相关性和问题级证据覆盖率；没有生成答案，不能称为答案引用准确率。
-- `no_answer_evidence_absence`：无答案题未召回标注证据的比例，不能作为实际拒答准确率。实际拒答需要真实模型评测和人工复核。
+- `no_answer_evidence_absence`：历史实现为 `not relevant_ranks`，当 `expected_sources=[]` 时恒真，即使有无关召回也为 1，不能作为实际拒答或空召回证据。实际拒答须查看生成后的 `answer_abstention_accuracy` 和答案人工复核。
 - `citation_metadata_completeness`：引用是否完整包含文档、页码、章节和内容类型。
 - `p95_latency_ms`：检索 P95 延迟。
 - `estimated_input_tokens / estimated_input_cost`：按字符近似 token 的输入成本估算；使用 `--input-cost-per-million` 指定价格。
@@ -58,6 +58,8 @@
 
 ```powershell
 $env:MNEME_OFFLINE_EMBEDDINGS="true"
+$env:RETRIEVER_REWRITE_ENABLED="false"
+$env:RERANKER_ENABLED="false"
 python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 ```
 
@@ -73,3 +75,15 @@ python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 词法索引属于派生数据，候选必须在当前租户的 Chroma 集合内重新读取原文和元数据。删除中断留下的旧词法条目不会成为来源；Chroma 不可用时不能绕过校验展示缓存内容。RRF 候选记录各通道排名；`RETRIEVER_REWRITE_ENABLED=false` 可独立关闭确定性查询改写。
 
 报告升级为 schema 3，记录数据集 SHA-256、Prompt/核验摘要、模型 profile、唯一运行集合与稳定用例 ID。原 `citation_precision` 等候选指标已更名；schema/数据集变化拒绝直接比较。真实模型样本使用生产 Prompt、相同上下文与核验器，保留生成/最终答案、评审理由及实际拒答指标；8 题抽样包含 2 道无答案题。流程改变后必须重新 bootstrap 可比模型历史，不能拼接旧分数声称提升。合成集不代表真实用户准确率。
+
+## 联合范围、历史版本与解析预览
+
+聊天与检索调试都先由网关按用户、活动知识库、ready/partial 文档解析允许列表，再进入向量和词法检索。指定文档、标签 AND、导入日期共同生效；词法 SQL 在 LIMIT 前应用文档筛选，并按当前向量原文重读候选。空允许列表严格不检索，不回退全库。日期针对数据库导入时间，不解释正文中的业务日期。
+
+来源携带 SHA-256，打开原文时按 hash 选择对应文件、报告和页图；旧版本报告缺失会说明，未知 hash 拒绝。parser v3 提供有界逐页文字/文字层、OCR 区域置信度、正文/表格块和 chunk 摘要；达到预算标记截断。重复内容仅在原生文字页顶部/底部区域推断页眉页脚，不删除扫描页重复正文。
+
+运行中入库支持协作取消：检查解析、OCR/模型调用前后与索引阶段，Python 退出后清理再落库；重试用新 job ID。外部调用无法即时终止，强杀可能保留最多 12 小时活动锁。不要在原任务未确认退出时强行释放锁。
+
+真实模型裁判对 expected_answer_points 逐项语义评分，保留 index/matched/reason 与 coverage（scoring version 1）。要点缺失、重复索引或无理由拒绝通过。比较报告额外检查模型配置、QA/核验摘要与评分版本；瞬时熔断计数不参与版本一致性判断。小样本裁判仍非人工质量保证。
+
+最终离线 110 题 P95=15.14ms、Recall@K=1.0、MRR=0.9532，见 [回归记录](ACCEPTANCE_2026-10-27.md)。报告记录 retrieval 开关、provider/model/min_score；比较脚本拒绝配置不一致。云 embedding/重排报告不得与离线 embedding 基线直接比较；失败实验一并保留。

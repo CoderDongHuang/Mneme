@@ -54,6 +54,8 @@ public class WorkspaceService {
 
     @Autowired(required = false)
     private KnowledgeService knowledgeService;
+    @Autowired(required = false)
+    private org.springframework.data.redis.core.StringRedisTemplate cancellationRedis;
 
     @Value("${mneme.file-storage-path:./data/files}")
     private String fileStoragePath;
@@ -68,11 +70,17 @@ public class WorkspaceService {
     }
 
     public Map<String, Object> preview(Long userId, Long documentId) throws Exception {
+        return preview(userId, documentId, null);
+    }
+
+    public Map<String, Object> preview(Long userId, Long documentId, String sha256) throws Exception {
         Map<String, Object> document = one("""
-            SELECT d.id,d.kb_id,d.file_name,d.file_path,d.status,d.chunk_count
+            SELECT d.id,d.kb_id,d.file_name,d.file_path,d.status,d.chunk_count,d.parse_report
             FROM knowledge_document d JOIN knowledge_base k ON k.id=d.kb_id
-            WHERE d.id=? AND k.user_id=?
+            WHERE d.id=? AND k.user_id=? AND k.status='active'
             """, documentId, userId);
+        requireReadable(document);
+        applyVersion(document, documentId, sha256);
         Path path = checkedDocumentPath(document);
         String fileName = String.valueOf(document.get("file_name"));
         String extension = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase() : "";
@@ -85,6 +93,7 @@ public class WorkspaceService {
         }
         Map<String, Object> publicDocument = new LinkedHashMap<>(document);
         publicDocument.remove("file_path");
+        publicDocument.remove("parse_report");
         return Map.of(
             "document", publicDocument,
             "content", content,
@@ -95,6 +104,10 @@ public class WorkspaceService {
 
     private Object parseReport(Long userId, Map<String, Object> document) {
         try {
+            if (document.get("parse_report") != null) {
+                return mapper.readValue(String.valueOf(document.get("parse_report")), Map.class);
+            }
+            if (document.containsKey("sha256")) return Map.of("pages", List.of(), "status", "historical_report_unavailable");
             String documentId = "doc_" + document.get("id");
             String url = UriComponentsBuilder.fromUriString(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId + "/report")
                 .queryParam("user_id", userId)
@@ -108,11 +121,38 @@ public class WorkspaceService {
     }
 
     public Path documentPath(Long userId, Long documentId) {
+        return documentPath(userId, documentId, null);
+    }
+
+    public Path documentPath(Long userId, Long documentId, String sha256) {
         Map<String, Object> document = one("""
-            SELECT d.file_path FROM knowledge_document d JOIN knowledge_base k ON k.id=d.kb_id
-            WHERE d.id=? AND k.user_id=?
+            SELECT d.file_path,d.status FROM knowledge_document d JOIN knowledge_base k ON k.id=d.kb_id
+            WHERE d.id=? AND k.user_id=? AND k.status='active'
             """, documentId, userId);
+        requireReadable(document);
+        applyVersion(document, documentId, sha256);
         return checkedDocumentPath(document);
+    }
+
+    private void requireReadable(Map<String, Object> document) {
+        if (List.of("deleting", "delete_failed").contains(String.valueOf(document.get("status"))))
+            throw new IllegalArgumentException("文档已删除或正在删除，原文不可访问");
+    }
+
+    private void applyVersion(Map<String, Object> document, Long id, String sha256) {
+        if (sha256 == null || sha256.isBlank()) return;
+        if (!sha256.matches("[a-fA-F0-9]{64}")) throw new IllegalArgumentException("文档版本哈希无效");
+        List<Map<String, Object>> versions = rows("SELECT file_name,file_path,sha256,version_number,parse_report FROM knowledge_document_version WHERE document_id=? AND sha256=? ORDER BY version_number DESC LIMIT 1", id, sha256);
+        if (versions.isEmpty()) throw new IllegalArgumentException("引用对应的历史版本已不可用");
+        document.putAll(versions.get(0));
+    }
+
+    public byte[] pageImage(Long userId, Long id, String sha256, int page) {
+        if (page < 1 || page > 10000) throw new IllegalArgumentException("页码无效");
+        Path path = documentPath(userId, id, sha256);
+        if (!path.getFileName().toString().toLowerCase().endsWith(".pdf")) throw new IllegalArgumentException("区域预览仅适用于 PDF");
+        return restTemplate.postForObject(pythonAgentUrl + "/api/v1/knowledge/internal/page-image",
+            Map.of("file_path", path.toString(), "page", page), byte[].class);
     }
 
     private Path checkedDocumentPath(Map<String, Object> document) {
@@ -152,10 +192,39 @@ public class WorkspaceService {
 
     @Transactional
     public Map<String, Object> retryTask(Long userId, String taskId) {
+        List<Map<String, Object>> owned = rows("SELECT status,task_type,aggregate_id FROM processing_task WHERE user_id=? AND task_id=? FOR UPDATE", userId, taskId);
+        if (owned.isEmpty() || !List.of("failed", "retry", "cancelled").contains(String.valueOf(owned.get(0).get("status")))) {
+            throw new IllegalArgumentException("任务不存在或当前状态不可重试");
+        }
+        if (cancellationRedis != null && Boolean.TRUE.equals(cancellationRedis.hasKey("mneme:ingestion:active:" + userId + ":" + taskId))) {
+            throw new IllegalArgumentException("上一次解析尚未退出，请稍后重试");
+        }
+        if ("document_ingest".equals(owned.get(0).get("task_type"))) {
+            List<Map<String, Object>> parents = rows("SELECT k.id,k.status FROM knowledge_base k JOIN knowledge_document d ON d.kb_id=k.id WHERE d.id=? AND k.user_id=? FOR UPDATE", owned.get(0).get("aggregate_id"), userId);
+            if (parents.isEmpty() || !"active".equals(parents.get(0).get("status"))) throw new IllegalArgumentException("知识库正在删除或不可用");
+            List<Map<String, Object>> documents = rows("SELECT parse_task_id,status FROM knowledge_document WHERE id=? FOR UPDATE", owned.get(0).get("aggregate_id"));
+            if (documents.isEmpty() || !taskId.equals(documents.get(0).get("parse_task_id"))
+                || List.of("deleting", "delete_failed").contains(String.valueOf(documents.get(0).get("status")))) {
+                throw new IllegalArgumentException("文档已变更，不能重试旧解析任务");
+            }
+        }
+        if ("cancelled".equals(owned.get(0).get("status"))) {
+            // A cancelled worker may still arrive late. Keep its cancellation tombstone
+            // and give the retry a new identity so it can never resume that request.
+            String nextId = "task_" + java.util.UUID.randomUUID().toString().replace("-", "");
+            jdbc.update("""
+                INSERT INTO processing_task(task_id,user_id,task_type,aggregate_id,idempotency_key,payload,status,attempt_count,max_attempts,next_attempt_at)
+                SELECT ?,user_id,task_type,aggregate_id,?,payload,'retry',0,max_attempts,NOW()
+                FROM processing_task WHERE user_id=? AND task_id=?
+                """, nextId, "retry:" + nextId, userId, taskId);
+            jdbc.update("UPDATE knowledge_document SET parse_task_id=?,status='parsing',error_message=NULL WHERE id=? AND parse_task_id=?",
+                nextId, owned.get(0).get("aggregate_id"), taskId);
+            return Map.of("task_id", nextId, "status", "retry");
+        }
         int updated = jdbc.update("""
             UPDATE processing_task SET status='retry',attempt_count=0,next_attempt_at=NOW(),
               locked_at=NULL,locked_by=NULL,error_code=NULL,error_message=NULL
-            WHERE user_id=? AND task_id=? AND status IN ('failed','retry')
+            WHERE user_id=? AND task_id=? AND status IN ('failed','retry','cancelled')
             """, userId, taskId);
         if (updated == 0) throw new IllegalArgumentException("任务不存在或当前状态不可重试");
         jdbc.update("""
@@ -168,12 +237,25 @@ public class WorkspaceService {
 
     @Transactional
     public Map<String, Object> cancelTask(Long userId, String taskId) {
+        // Lock the same row used by worker completion: cancellation cannot race a completed commit.
+        List<Map<String, Object>> owned = rows("SELECT status FROM processing_task WHERE user_id=? AND task_id=? AND task_type='document_ingest' FOR UPDATE", userId, taskId);
+        if (owned.isEmpty()) throw new IllegalArgumentException("解析任务不存在");
+        String status = String.valueOf(owned.get(0).get("status"));
+        if (List.of("cancelling", "cancelled").contains(status)) return Map.of("task_id", taskId, "status", status);
+        if (!List.of("pending", "retry", "processing").contains(status)) throw new IllegalArgumentException("任务已经完成，不能再取消");
+        if (cancellationRedis == null) throw new IllegalStateException("取消服务不可用，请稍后重试");
+        cancellationRedis.opsForValue().set("mneme:ingestion:cancel:" + userId + ":" + taskId, "1", java.time.Duration.ofDays(7));
+        if ("processing".equals(status) || Boolean.TRUE.equals(cancellationRedis.hasKey("mneme:ingestion:active:" + userId + ":" + taskId))) {
+            if (cancellationRedis == null) throw new IllegalStateException("取消服务不可用，请稍后重试");
+            jdbc.update("UPDATE processing_task SET status='cancelling' WHERE user_id=? AND task_id=? AND status IN ('pending','retry','processing')", userId, taskId);
+            return Map.of("task_id", taskId, "status", "cancelling");
+        }
         int updated = jdbc.update("""
             UPDATE processing_task SET status='cancelled',locked_at=NULL,locked_by=NULL
             WHERE user_id=? AND task_id=? AND task_type='document_ingest'
               AND status IN ('pending','retry')
             """, userId, taskId);
-        if (updated != 1) throw new IllegalArgumentException("仅可取消等待中的解析任务");
+        if (updated != 1) throw new IllegalArgumentException("任务已经完成，不能再取消");
         jdbc.update("""
             UPDATE knowledge_document d JOIN processing_task t ON t.aggregate_id=d.id
             JOIN knowledge_base k ON k.id=d.kb_id
@@ -184,11 +266,17 @@ public class WorkspaceService {
     }
 
     public Map<String, Object> debugRetrieval(Long userId, Long kbId, String query, int topK) {
+        return debugRetrieval(userId, kbId, query, topK, null);
+    }
+
+    public Map<String, Object> debugRetrieval(Long userId, Long kbId, String query, int topK, List<String> scope) {
         requireKb(userId, kbId);
-        String url = UriComponentsBuilder.fromUriString(pythonAgentUrl + "/api/v1/knowledge/search")
+        if (scope != null && scope.isEmpty()) return Map.of("query", query, "chunks", List.of(), "document_ids", scope);
+        var builder = UriComponentsBuilder.fromUriString(pythonAgentUrl + "/api/v1/knowledge/search")
             .queryParam("user_id", userId).queryParam("kb_id", kbId)
-            .queryParam("query", query).queryParam("top_k", Math.max(1, Math.min(topK, 20)))
-            .build().encode().toUriString();
+            .queryParam("query", query).queryParam("top_k", Math.max(1, Math.min(topK, 20)));
+        if (scope != null) builder.queryParam("document_ids", scope.toArray());
+        String url = builder.build().encode().toUriString();
         @SuppressWarnings("unchecked") Map<String, Object> result = restTemplate.getForObject(url, Map.class);
         return result == null ? Map.of("query", query, "chunks", List.of()) : result;
     }

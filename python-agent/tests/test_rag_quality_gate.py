@@ -126,3 +126,29 @@ def test_real_model_sampling_includes_unanswerable_cases_at_end():
     selected = evaluate_rag.select_model_sample_indices(cases, 8)
     assert len(selected) == 8 and {10, 11} <= selected
     assert evaluate_rag.select_model_sample_indices(cases, 0) == set()
+
+
+def test_answer_points_are_scored_semantically_and_keep_reasons(monkeypatch):
+    calls = []
+    responses = iter([SimpleNamespace(content="甲方案于五月开放。"), SimpleNamespace(content=json.dumps({
+        "faithfulness": 1, "answer_relevance": 1, "answer_points": [
+            {"index": 0, "matched": True, "reason": "回答用五月表述了证据中的开放月份"},
+            {"index": 1, "matched": False, "reason": "遗漏另一份资料中的冲突日期"}]}))])
+    def invoke(messages, **kwargs):
+        calls.append(messages)
+        return next(responses)
+    monkeypatch.setattr(evaluate_rag.llm, "invoke", invoke)
+    monkeypatch.setattr(evaluate_rag, "verify_evidence_answer", AsyncMock(return_value="甲方案于五月开放。"))
+    report = asyncio.run(evaluate_rag._real_llm_scores("开放时间？", [], True, ["5月开放", "指出日期冲突"]))
+    assert report["answer_point_coverage"] == 0.5
+    assert report["answer_points"][1]["reason"]
+    assert "5月开放" in calls[1][1][1]
+
+
+def test_missing_or_duplicate_point_judgments_fail_closed(monkeypatch):
+    responses = iter([SimpleNamespace(content="答案"), SimpleNamespace(content=json.dumps({
+        "faithfulness": 1, "answer_relevance": 1, "answer_points": []}))])
+    monkeypatch.setattr(evaluate_rag.llm, "invoke", lambda *args, **kwargs: next(responses))
+    monkeypatch.setattr(evaluate_rag, "verify_evidence_answer", AsyncMock(return_value="答案"))
+    with pytest.raises(ValueError, match="answer point"):
+        asyncio.run(evaluate_rag._real_llm_scores("问题", [], True, ["必须覆盖的要点"]))

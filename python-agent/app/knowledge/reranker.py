@@ -1,6 +1,7 @@
 """Configurable DashScope or local Cross Encoder reranking."""
 
 from functools import lru_cache
+import math
 from typing import Any
 
 from app.core.config import settings
@@ -34,6 +35,8 @@ def rerank(query: str, candidates: list[dict], limit: int) -> list[dict]:
     if getattr(settings, "demo_mode", False):
         return candidates[:limit]
     if settings.reranker_enabled and settings.reranker_provider == "dashscope":
+        if not math.isfinite(settings.reranker_min_score) or not 0 <= settings.reranker_min_score <= 1:
+            raise ValueError("RERANKER_MIN_SCORE must be a finite value between 0 and 1")
         ranked = _dashscope_rerank(query, candidates, limit)
         if ranked is not None:
             return ranked
@@ -76,11 +79,20 @@ def _dashscope_rerank(
         output = getattr(response, "output", {}) or {}
         results = output.get("results", []) if isinstance(output, dict) else getattr(output, "results", [])
         ranked = []
+        seen = set()
         for result in results:
             index = result.get("index") if isinstance(result, dict) else result.index
             score = result.get("relevance_score") if isinstance(result, dict) else result.relevance_score
-            ranked.append({**candidates[int(index)], "rerank_score": float(score)})
-        return ranked or None
+            if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(candidates) or index in seen:
+                raise ValueError("Invalid reranker candidate index")
+            if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score) or not 0 <= score <= 1:
+                raise ValueError("Invalid normalized reranker score")
+            seen.add(index)
+            if score >= settings.reranker_min_score:
+                ranked.append({**candidates[index], "rerank_score": float(score)})
+        ranked.sort(key=lambda item: item["rerank_score"], reverse=True)
+        # An empty successful response is evidence absence, not a provider failure.
+        return ranked[:limit]
     except Exception as error:
         logger.warning("DashScope 重排失败，保留混合召回排序: %s", error)
         return None

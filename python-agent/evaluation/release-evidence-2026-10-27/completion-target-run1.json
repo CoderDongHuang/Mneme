@@ -1,0 +1,395 @@
+{
+  "schema_version": 3,
+  "dataset": {
+    "path": "target_domain_rag_cases.json",
+    "sha256": "015f047e98ed77a8ec3c462175df5f79006921495ce650a1c7e04c101f68913d",
+    "version": "2026.09.20-v1"
+  },
+  "evaluation_scope": "retrieval baseline; optional production-prompt generation + claim verification + model judge",
+  "configuration": {
+    "embedding_model": "local-trigram-sha256-v1:1024",
+    "top_k": 5,
+    "chat_models": {
+      "configured": true,
+      "primary": "deepseek-chat",
+      "fallback": "qwen-plus",
+      "circuit_open": false,
+      "failure_count": 0
+    },
+    "answer_point_scoring_version": 1,
+    "qa_prompt_sha256": "e31d7d2574aa4a87ef39d70e0a39e8e4628c6966a49b9b501db1814fcfef69c3",
+    "verification_prompt_sha256": "7a55ece583d3f0f2ade7e76b1719d11c8b734627c69ba5ff55817222ae2e74b4"
+  },
+  "cases": 12,
+  "answerable_cases": 10,
+  "unanswerable_cases": 2,
+  "hit@5": 1.0,
+  "recall@5": 1.0,
+  "mrr": 1.0,
+  "top_evidence_term_support": 1.0,
+  "citation_metadata_completeness": 1.0,
+  "top_evidence_precision": 0.8333,
+  "evidence_hit_recall": 1.0,
+  "no_answer_evidence_absence": 1.0,
+  "mean_latency_ms": 25.63,
+  "p95_latency_ms": 38.12,
+  "estimated_input_tokens": 1956,
+  "estimated_input_cost": 0.000587,
+  "cost_assumption_usd_per_million_input_tokens": 0.3,
+  "category_stats": {
+    "roadmap": {
+      "cases": 3,
+      "hits": 3
+    },
+    "metrics": {
+      "cases": 2,
+      "hits": 2
+    },
+    "memory": {
+      "cases": 3,
+      "hits": 3
+    },
+    "parser": {
+      "cases": 2,
+      "hits": 2
+    },
+    "unanswerable": {
+      "cases": 2,
+      "hits": 0
+    }
+  },
+  "details": [
+    {
+      "id": "case-001",
+      "question": "学习路线分成哪四个阶段？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 22.21,
+      "passed": true
+    },
+    {
+      "id": "case-002",
+      "question": "低评分卡片何时再次出现？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 38.12,
+      "passed": true
+    },
+    {
+      "id": "case-003",
+      "question": "一个可执行的学习目标需要哪些字段？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 24.68,
+      "passed": true
+    },
+    {
+      "id": "case-004",
+      "question": "Recall@5 的定义是什么？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 8.24,
+      "passed": true
+    },
+    {
+      "id": "case-005",
+      "question": "MRR 主要关注什么？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 44.42,
+      "passed": true
+    },
+    {
+      "id": "case-006",
+      "question": "工作记忆保存什么内容？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 23.27,
+      "passed": true
+    },
+    {
+      "id": "case-007",
+      "question": "确认后的薄弱点属于哪一级记忆？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 30.86,
+      "passed": true
+    },
+    {
+      "id": "case-008",
+      "question": "冻结记忆会发生什么？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 26.52,
+      "passed": true
+    },
+    {
+      "id": "case-009",
+      "question": "PDF 文本页采用什么处理方式？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 25.03,
+      "passed": true
+    },
+    {
+      "id": "case-010",
+      "question": "扫描页缺少文本时采用什么方案？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 24.38,
+      "passed": true
+    },
+    {
+      "id": "case-011",
+      "question": "资料中是否说明了火星基地的开放日期？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 0,
+      "latency_ms": 25.12,
+      "passed": true
+    },
+    {
+      "id": "case-012",
+      "question": "资料是否给出了银行卡密码？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 0,
+      "latency_ms": 14.7,
+      "passed": true
+    }
+  ],
+  "failed_examples": [],
+  "real_llm_evaluation": {
+    "answer_point_scoring_version": 1,
+    "answer_point_coverage": null,
+    "status": "completed",
+    "samples": 8,
+    "unanswerable_samples": 2,
+    "answer_abstention_accuracy": 1.0,
+    "answerable_refusal_rate": 0.0,
+    "cost_estimate_method": "UTF-8 byte upper bounds plus maximum verification output; not provider billing",
+    "faithfulness": 1.0,
+    "answer_relevance": 1.0,
+    "estimated_input_tokens": 66518,
+    "estimated_output_tokens": 18448,
+    "estimated_cost": 0.031024,
+    "reserved_cost": 0.041076,
+    "max_cost": 0.08,
+    "cost_assumption_usd_per_million_output_tokens": 0.6,
+    "details": [
+      {
+        "question": "学习路线分成哪四个阶段？",
+        "answer": "学习路线分为输入、理解、练习和复盘四个阶段[1]。",
+        "generated_answer": "学习路线分为输入、理解、练习和复盘四个阶段[1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答准确提取证据[1]中明确指出的四个阶段：输入、理解、练习、复盘，并正确标注来源[1]；问题可回答，回答直接、完整、无添加、无遗漏，完全基于证据。",
+        "estimated_input_tokens": 8288,
+        "estimated_output_tokens": 2338
+      },
+      {
+        "question": "低评分卡片何时再次出现？",
+        "answer": "低评分卡片应在一天后再次出现[1]。",
+        "generated_answer": "低评分卡片应在一天后再次出现[1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答‘低评分卡片应在一天后再次出现’完全源自证据[1]中明确陈述的‘低评分卡片应在一天后再次出现’，语义一致、无添加、无曲解；问题可回答，回答直接命中，未拒答。",
+        "estimated_input_tokens": 8246,
+        "estimated_output_tokens": 2305
+      },
+      {
+        "question": "一个可执行的学习目标需要哪些字段？",
+        "answer": "一个可执行的学习目标需要包含主题、完成条件、截止日期和验证方式[1]。",
+        "generated_answer": "一个可执行的学习目标需要包含主题、完成条件、截止日期和验证方式[1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答完全基于证据[1]原文‘一个可执行目标需要包含主题、完成条件、截止日期和验证方式’，语义一致、无添加、无遗漏；问题明确询问‘哪些字段’，该回答直接、完整作答，且样本为可回答（answerable: true），故相关性满分。",
+        "estimated_input_tokens": 8363,
+        "estimated_output_tokens": 2450
+      },
+      {
+        "question": "Recall@5 的定义是什么？",
+        "answer": "Recall@5 的定义是相关证据出现在前五个片段的比例 [1]。",
+        "generated_answer": "Recall@5 的定义是相关证据出现在前五个片段的比例 [1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答准确复述了证据[1]中对Recall@5的定义（'相关证据出现在前五个片段的比例'），未添加、删减或曲解；问题明确可回答，回答直接给出定义并标注来源，完全满足要求。",
+        "estimated_input_tokens": 8290,
+        "estimated_output_tokens": 2173
+      },
+      {
+        "question": "MRR 主要关注什么？",
+        "answer": "MRR 主要关注第一个相关片段排名的倒数平均值 [1]。",
+        "generated_answer": "MRR 主要关注第一个相关片段排名的倒数平均值 [1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答准确复述证据[1]中对MRR的定义‘第一个相关片段排名的倒数平均值’，未添加、删减或曲解；问题明确可回答，回答直接回应且完全基于证据。",
+        "estimated_input_tokens": 8275,
+        "estimated_output_tokens": 2253
+      },
+      {
+        "question": "工作记忆保存什么内容？",
+        "answer": "工作记忆保存当前对话窗口[1]。",
+        "generated_answer": "工作记忆保存当前对话窗口[1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答‘工作记忆保存当前对话窗口[1]’完全基于证据[1]的明确陈述，未添加、推断或遗漏；问题可回答，且回答直接、精准、无冗余，引用标注正确。",
+        "estimated_input_tokens": 8231,
+        "estimated_output_tokens": 2114
+      },
+      {
+        "question": "资料中是否说明了火星基地的开放日期？",
+        "answer": "当前资料没有足够的可核查证据回答这个问题。请补充相关文档，或说明需要查询的具体范围。",
+        "generated_answer": "当前资料没有足够的可核查证据回答这个问题。请补充相关文档，或说明需要查询的具体范围。",
+        "answerable": false,
+        "refused": true,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "问题明确询问资料中是否说明火星基地开放日期，而所有提供的证据均未提及‘火星基地’或任何与之相关的日期信息；题干已标注 answerable: false，即该问题在给定证据下不可回答；回答‘当前资料没有足够的可核查证据回答这个问题……’是准确、克制且符合证据的拒答，属于对不可回答问题的恰当响应，因此 faithful 且 relevant。",
+        "estimated_input_tokens": 8420,
+        "estimated_output_tokens": 2439
+      },
+      {
+        "question": "资料是否给出了银行卡密码？",
+        "answer": "当前资料没有足够的可核查证据回答这个问题。请补充相关文档，或说明需要查询的具体范围。",
+        "generated_answer": "当前资料没有足够的可核查证据回答这个问题。请补充相关文档，或说明需要查询的具体范围。",
+        "answerable": false,
+        "refused": true,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "问题明确询问资料是否给出银行卡密码，而所有证据片段均未提及银行卡、密码或任何敏感凭证信息；题干标注'answerable': false，表明该问题在给定证据下不可回答，因此明确拒答符合要求且完全基于证据；回答未引入任何证据外内容，亦未暗示存在或缺失密码信息，严格忠实于证据。",
+        "estimated_input_tokens": 8405,
+        "estimated_output_tokens": 2376
+      }
+    ]
+  },
+  "quality_gate": {
+    "status": "passed",
+    "thresholds": {
+      "recall@5": {
+        "min": 0.95
+      },
+      "mrr": {
+        "min": 0.85
+      },
+      "top_evidence_term_support": {
+        "min": 0.85
+      },
+      "top_evidence_precision": {
+        "min": 0.8
+      },
+      "evidence_hit_recall": {
+        "min": 0.85
+      },
+      "no_answer_evidence_absence": {
+        "min": 1.0
+      },
+      "p95_latency_ms": {
+        "max": 250.0
+      }
+    },
+    "real_llm_thresholds": {
+      "samples": {
+        "min": 5
+      },
+      "unanswerable_samples": {
+        "min": 2
+      },
+      "answer_abstention_accuracy": {
+        "min": 1.0
+      },
+      "answerable_refusal_rate": {
+        "max": 0.34
+      },
+      "faithfulness": {
+        "min": 0.7
+      },
+      "answer_relevance": {
+        "min": 0.7
+      }
+    },
+    "failures": []
+  }
+}

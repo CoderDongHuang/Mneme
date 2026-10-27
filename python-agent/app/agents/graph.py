@@ -19,6 +19,7 @@ class AgentState(TypedDict, total=False):
     session_id: str
     message: str
     knowledge_base_ids: list[str]
+    document_ids: list[str] | None
     intent: str
     confidence: float
     context: str
