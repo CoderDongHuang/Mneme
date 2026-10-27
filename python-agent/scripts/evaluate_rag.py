@@ -3,6 +3,8 @@ import json
 import os
 import sys
 import time
+import hashlib
+import uuid
 from pathlib import Path
 
 
@@ -11,7 +13,6 @@ PROJECT_DIR = AGENT_DIR.parent
 sys.path.insert(0, str(AGENT_DIR))
 
 from app.knowledge.ingestion import ingest_document  # noqa: E402
-from app.knowledge.citations import select_citations  # noqa: E402
 from app.knowledge.retriever import retrieve  # noqa: E402
 from app.knowledge.vector_store import vector_store  # noqa: E402
 from app.utils.llm import llm  # noqa: E402
@@ -165,7 +166,7 @@ def evaluate(
         else None
     )
     user_id = "rag_evaluation"
-    kb_id = "baseline"
+    kb_id = "run_" + uuid.uuid4().hex
     vector_store.delete_collection(user_id, kb_id)
 
     fixtures = {}
@@ -206,7 +207,8 @@ def evaluate(
             if _relevant(chunk, case)
         ]
         rank = relevant_ranks[0] if relevant_ranks else None
-        final_citations = select_citations(chunks)
+        # Offline retrieval cannot establish which sources a generated answer cites.
+        final_citations = chunks[:1]
         relevant_citations = [
             chunk for chunk in final_citations if _relevant(chunk, case)
         ]
@@ -246,6 +248,7 @@ def evaluate(
 
         details.append(
             {
+                "id": case.get("id", f"case-{len(details) + 1:03d}"),
                 "question": case["question"],
                 "category": category,
                 "answerable": answerable,
@@ -280,26 +283,29 @@ def evaluate(
         + llm_output_tokens / 1_000_000 * max(0.0, output_cost_per_million)
     )
     report = {
-        "dataset": {"path": dataset_path.name},
+        "schema_version": 2,
+        "dataset": {"path": dataset_path.name, "sha256": hashlib.sha256(dataset_path.read_bytes()).hexdigest()},
+        "evaluation_scope": "retrieval_only; no_answer_evidence_absence is NOT answer abstention accuracy",
+        "configuration": {"embedding_model": "offline-hash-v1" if os.getenv("MNEME_OFFLINE_EMBEDDINGS") == "true" else os.getenv("EMBEDDING_MODEL", "text-embedding-v3"), "top_k": top_k},
         "cases": len(cases),
         "answerable_cases": answerable_count,
         "unanswerable_cases": unanswerable_count,
         f"hit@{top_k}": round(hits / answerable_denominator, 4),
         f"recall@{top_k}": round(answerable_hits / answerable_denominator, 4),
         "mrr": round(reciprocal_rank / answerable_denominator, 4),
-        "faithfulness_proxy": round(faithfulness_hits / answerable_denominator, 4),
+        "top_evidence_term_support": round(faithfulness_hits / answerable_denominator, 4),
         "citation_metadata_completeness": round(
             metadata_complete / max(1, retrieved_total), 4
         ),
-        "citation_precision": round(
+        "top_evidence_precision": round(
             relevant_retrieved
             / max(1, sum(item["citations"] for item in details)),
             4,
         ),
-        "citation_recall": round(
+        "evidence_hit_recall": round(
             citation_recall_hits / answerable_denominator, 4
         ),
-        "abstention_proxy": round(
+        "no_answer_evidence_absence": round(
             abstention_hits / max(1, unanswerable_count), 4
         ),
         "mean_latency_ms": round(sum(latencies) / count, 2),

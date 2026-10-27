@@ -155,6 +155,7 @@ def knowledge_retrieval_node(state: dict) -> dict:
     context_parts = []
     context_chars = 0
     max_context_chars = max(2000, settings.retriever_context_max_chars)
+    evidence_chunks = []
     for index, chunk in enumerate(chunks, start=1):
         metadata = chunk.get("metadata", {})
         location = metadata.get("source", "未知文档")
@@ -166,11 +167,12 @@ def knowledge_retrieval_node(state: dict) -> dict:
         if remaining <= 0:
             break
         content = chunk.get("content", "")[:remaining]
-        context_parts.append(f"[{index}] {location}\n{content}")
+        context_parts.append(f"[{index}] {location}\n{json.dumps(content, ensure_ascii=False)}")
+        evidence_chunks.append({**chunk, "content": content})
         context_chars += len(content)
     return {
         "context": "\n\n".join(context_parts) or "本次未检索到匹配片段",
-        "retrieved_chunks": chunks,
+        "retrieved_chunks": evidence_chunks,
         "knowledge_base_ids": kb_ids,
         "memory_context": _memory_context(state["user_id"], state["session_id"], False),
     }

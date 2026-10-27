@@ -96,3 +96,27 @@ def test_exact_semantic_candidates_rank_stored_vectors(monkeypatch):
 
     assert [chunk["id"] for chunk in chunks] == ["chunk-a", "chunk-b"]
     assert [chunk["distance"] for chunk in chunks] == [0.0, 2.0]
+
+
+def test_stale_lexical_hits_are_never_returned(monkeypatch):
+    class LiveCollection:
+        def count(self):
+            return 2
+
+        def get(self, **kwargs):
+            if "ids" in kwargs:
+                return {"ids": ["live"], "documents": ["current version"],
+                        "metadatas": [{"document_id": "new", "visual_region": "0,0,1,1"}]}
+            return {"ids": [], "documents": [], "metadatas": []}
+
+    monkeypatch.setattr("app.knowledge.retriever.vector_store.get_collection", lambda *_: LiveCollection())
+    monkeypatch.setattr("app.knowledge.retriever._semantic_candidates", lambda *_: [])
+    monkeypatch.setattr("app.knowledge.retriever._indexed_candidates", lambda *_: [
+        {"id": "deleted", "content": "deleted secret", "metadata": {}, "lexical_score": 10},
+        {"id": "live", "content": "old version", "metadata": {}, "lexical_score": 5},
+    ])
+    results = retrieve("owner", "kb", "version", 5)
+    assert [item["id"] for item in results] == ["live"]
+    assert results[0]["content"] == "current version"
+    assert results[0]["metadata"]["visual_region"] == "0,0,1,1"
+    assert results[0]["retrieval_ranks"] == {"bm25": 1}

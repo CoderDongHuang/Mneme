@@ -198,28 +198,40 @@ def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None) ->
     if collection is None or collection.count() == 0 or not query.strip():
         return []
     pool_size = min(max(limit * 4, 20), collection.count())
-    ranked_lists: list[list[dict]] = []
+    ranked_lists: list[tuple[str, list[dict]]] = []
     try:
-        semantic = _semantic_candidates(collection, rewrite_queries(query), pool_size)
+        queries = rewrite_queries(query) if settings.retriever_rewrite_enabled else [query]
+        semantic = _semantic_candidates(collection, queries, pool_size)
         by_query: dict[int, list[dict]] = {}
         for item in semantic:
             by_query.setdefault(item.pop("query_index"), []).append(item)
-        ranked_lists.extend(by_query.values())
+        ranked_lists.extend((f"dense:{index}", items) for index, items in by_query.items())
     except Exception as error:
         logger.warning(
             "语义检索失败，使用 BM25 降级: user=%s kb=%s error=%s",
             user_id, kb_id, error,
         )
     lexical = _indexed_candidates(user_id, kb_id, query, pool_size)
+    if lexical:
+        # SQLite is a derived index. Never trust stale content or incomplete metadata.
+        canonical = collection.get(ids=[item["id"] for item in lexical], include=["documents", "metadatas"])
+        live = {
+            chunk_id: {"content": content, "metadata": metadata or {}}
+            for chunk_id, content, metadata in zip(
+                canonical.get("ids", []), canonical.get("documents", []), canonical.get("metadatas", [])
+            )
+        }
+        lexical = [{**item, **live[item["id"]]} for item in lexical if item["id"] in live]
     if not lexical:
         lexical = _bm25_candidates(collection, query, pool_size)
     if lexical:
-        ranked_lists.append(lexical)
+        ranked_lists.append(("bm25", lexical))
     merged: dict[str, dict] = {}
-    for result_list in ranked_lists:
+    for channel, result_list in ranked_lists:
         for rank, item in enumerate(result_list, start=1):
-            current = merged.setdefault(item["id"], {**item, "score": 0.0})
+            current = merged.setdefault(item["id"], {**item, "score": 0.0, "retrieval_ranks": {}})
             current["score"] += 1.0 / (RRF_K + rank)
+            current["retrieval_ranks"][channel] = rank
             if "distance" in item:
                 current["distance"] = min(item["distance"], current.get("distance", item["distance"]))
             if "lexical_score" in item:

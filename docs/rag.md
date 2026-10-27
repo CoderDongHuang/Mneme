@@ -47,8 +47,9 @@
 - `Hit@K`：Top-K 中是否命中正确来源和关键事实。
 - `Recall@K`：可回答问题的证据召回率。
 - `MRR`：正确片段的平均倒数排名。
-- `faithfulness_proxy`：Top-K 首片段包含标注关键事实的离线证据 proxy，不等价于 RAGAS/LLM Faithfulness。
-- `citation_precision / citation_recall`：引用片段相关性和问题级证据覆盖率。
+- `top_evidence_term_support`：Top-K 首片段包含标注关键事实的离线证据 proxy，不等价于 RAGAS/LLM Faithfulness。
+- `top_evidence_precision / evidence_hit_recall`：首片段相关性和问题级证据覆盖率；没有生成答案，不能称为答案引用准确率。
+- `no_answer_evidence_absence`：无答案题未召回标注证据的比例，不能作为实际拒答准确率。实际拒答需要真实模型评测和人工复核。
 - `citation_metadata_completeness`：引用是否完整包含文档、页码、章节和内容类型。
 - `p95_latency_ms`：检索 P95 延迟。
 - `estimated_input_tokens / estimated_input_cost`：按字符近似 token 的输入成本估算；使用 `--input-cost-per-million` 指定价格。
@@ -61,3 +62,14 @@ python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 ```
 
 当前评测结果应作为回归基线，而不是生产质量承诺；真实扫描 PDF、复杂表格、公式和跨页问题仍需人工标注与视觉评测。
+
+
+## 2026-10 证据完整性修复
+
+提示词、同步响应和 SSE 来源列表统一按实际进入上下文的片段编号，允许跨文档引用。上下文长度截断后的内容也同步反映在来源中。资料中的角色指令和命令作为不可信数据处理。
+
+资料问答在展示前检查是否存在证据、引用是否缺失或越界；空资料直接拒答且不调用模型。SSE 在资料问答模式下先缓存正文再校验，因此首段响应延迟增加；闲聊继续逐段输出。编号有效并不证明结论蕴含于原文，仍须逐条事实评测和用户复核。
+
+词法索引属于派生数据，候选必须在当前租户的 Chroma 集合内重新读取原文和元数据。删除中断留下的旧词法条目不会成为来源；Chroma 不可用时不能绕过校验展示缓存内容。RRF 候选记录各通道排名；`RETRIEVER_REWRITE_ENABLED=false` 可独立关闭确定性查询改写。
+
+离线报告升级为 schema 2，记录数据集 SHA-256、唯一运行集合与稳定用例 ID。原 `citation_precision` 等字段命名会把候选片段冒充最终答案引用，已更名并保持相同首片段门限；旧版与新版报告只比较同名同义指标。评测集是合成的检索回归，不代表真实用户准确率。

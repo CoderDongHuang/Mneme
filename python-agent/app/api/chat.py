@@ -9,7 +9,7 @@ from app.memory.working_memory import working_memory
 from app.agents.trace_store import agent_trace_store
 from langchain_core.messages import HumanMessage
 from app.core.logging import setup_logger
-from app.knowledge.citations import select_citations
+from app.knowledge.citations import select_citations, validate_evidence_answer, NO_EVIDENCE_ANSWER
 from app.core.telemetry import tracer
 from app.core.privacy import privacy_store
 
@@ -86,13 +86,17 @@ async def delete_user_sessions(user_id: str):
     description="发送消息并等待完整回复后返回 JSON，含答案、参考来源、待确认记忆和记忆洞察",
 )
 async def chat(request: ChatRequest):
-    logger.info(f"收到对话请求: user_id={request.user_id}, message={request.message}")
+    logger.info("收到对话请求: user_id=%s request_id=%s", request.user_id, request.request_id)
 
     state = prepare_conversation(request)
     with tracer.start_as_current_span("mneme.llm.invoke") as span:
         span.set_attribute("mneme.llm.streaming", False)
-        response = llm.invoke([HumanMessage(content=build_llm_prompt(state))])
-    answer = str(response.content or "").strip()
+        response = (
+            HumanMessage(content=NO_EVIDENCE_ANSWER)
+            if state.get("intent") == "qa" and not state.get("retrieved_chunks")
+            else llm.invoke([HumanMessage(content=build_llm_prompt(state))])
+        )
+    answer = validate_evidence_answer(state, str(response.content or "").strip())
     completion = complete_conversation(request, state, answer)
     result = {**state, **completion, "answer": answer}
 

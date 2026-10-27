@@ -11,6 +11,10 @@ from typing import Any
 DEFAULT_METRICS = (
     "recall@5",
     "mrr",
+    "top_evidence_term_support",
+    "top_evidence_precision",
+    "evidence_hit_recall",
+    "no_answer_evidence_absence",
     "faithfulness_proxy",
     "citation_precision",
     "citation_recall",

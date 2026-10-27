@@ -104,6 +104,7 @@ class Settings:
     )
     agent_trace_retention_days: int = int(os.getenv("AGENT_TRACE_RETENTION_DAYS", "30"))
     memory_version_retention_days: int = int(os.getenv("MEMORY_VERSION_RETENTION_DAYS", "180"))
+    retriever_rewrite_enabled: bool = _bool("RETRIEVER_REWRITE_ENABLED", True)
     reranker_enabled: bool = _bool("RERANKER_ENABLED", False)
     reranker_provider: str = os.getenv("RERANKER_PROVIDER", "dashscope").strip().lower()
     reranker_model: str = os.getenv("RERANKER_MODEL", "gte-rerank-v2").strip()
@@ -126,7 +127,7 @@ class Settings:
     ocr_languages: str = os.getenv("OCR_LANGUAGES", "chi_sim+eng")
     pdf_min_text_chars: int = int(os.getenv("PDF_MIN_TEXT_CHARS", "80"))
     multimodal_enabled: bool = _bool("MULTIMODAL_ENABLED", False)
-    multimodal_model: str = os.getenv("MULTIMODAL_MODEL", "qwen-vl-plus")
+    multimodal_model: str = os.getenv("MULTIMODAL_MODEL", "qwen3-vl-plus")
     multimodal_max_images: int = int(os.getenv("MULTIMODAL_MAX_IMAGES", "8"))
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     cors_origins: str = os.getenv(
