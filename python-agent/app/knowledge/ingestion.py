@@ -132,7 +132,7 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
             page_ocr_confidences.append(ocr_confidence)
 
             if (
-                settings.multimodal_enabled
+                settings.multimodal_enabled and not settings.demo_mode
                 and len(page_images) < settings.multimodal_max_images
                 and (page.get_images(full=True) or page.get_drawings())
             ):
@@ -378,7 +378,7 @@ def _parse_plain(path: Path, source: str) -> list[Document]:
 
 
 def _parse_office_images(path: Path, source: str) -> list[Document]:
-    if not settings.multimodal_enabled:
+    if not settings.multimodal_enabled or settings.demo_mode:
         return []
     from app.knowledge.vision import describe_image
 

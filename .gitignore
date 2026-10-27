@@ -8,6 +8,7 @@ __pycache__/
 dist/
 build/
 .env
+.env.demo.local
 .venv/
 venv/
 .m2/

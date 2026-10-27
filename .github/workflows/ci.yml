@@ -7,6 +7,45 @@ on:
     branches: [main]
 
 jobs:
+  offline-demo:
+    name: Offline demo clean install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Start isolated demo without provider keys
+        run: python scripts/demo.py start
+      - name: Verify real demo workflow
+        working-directory: frontend
+        env:
+          MNEME_DEMO_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test e2e/demo-stack.spec.js --project=桌面端
+      - name: Collect demo logs
+        if: failure()
+        run: python scripts/demo.py logs > demo-services.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: offline-demo-acceptance
+          path: |
+            frontend/test-results/
+            demo-services.log
+      - name: Clean only demo volumes
+        if: always()
+        run: python scripts/demo.py clean --confirm-delete-demo-data
+
   python:
     name: Python Agent
     runs-on: ubuntu-24.04

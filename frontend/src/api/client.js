@@ -172,6 +172,7 @@ export const endpoints = {
   restoreMemory: (id, version) => api(`/workspace/memories/${id}/restore`, { method: 'POST', body: JSON.stringify({ version }) }),
   branches: () => api('/workspace/branches'),
   healthConfig: () => api('/health/config'),
+  checkProviders: () => api('/health/providers/check', { method: 'POST' }),
   notifications: () => api('/notifications'),
   createBranch: (body) => api('/workspace/branches', { method: 'POST', body: JSON.stringify(body) }),
   compareBranch: (id) => api(`/workspace/branches/${id}/compare`),
