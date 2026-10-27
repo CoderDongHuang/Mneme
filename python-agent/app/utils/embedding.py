@@ -42,7 +42,7 @@ class DashScopeEmbeddingFunction(EmbeddingFunction):
         return f"dashscope:{settings.embedding_model}:{EMBEDDING_DIMENSION}"
 
     def _should_use_offline(self) -> bool:
-        if settings.demo_mode:
+        if getattr(settings, "demo_mode", False):
             return True
         if os.getenv("MNEME_REQUIRE_REAL_EMBEDDINGS", "").lower() == "true":
             return False
@@ -74,7 +74,7 @@ class DashScopeEmbeddingFunction(EmbeddingFunction):
 
     def __call__(self, input: Documents) -> Embeddings:
         texts = [str(item) for item in input]
-        strict_real = not settings.demo_mode and os.getenv("MNEME_REQUIRE_REAL_EMBEDDINGS", "").lower() == "true"
+        strict_real = not getattr(settings, "demo_mode", False) and os.getenv("MNEME_REQUIRE_REAL_EMBEDDINGS", "").lower() == "true"
         if strict_real and (
             not settings.dashscope_api_key
             or settings.dashscope_api_key.startswith("ci-dummy")

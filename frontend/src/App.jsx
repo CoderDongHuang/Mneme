@@ -18,7 +18,7 @@ const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
 
 export default function App() {
   return (
-    <><div hidden={import.meta.env.VITE_DEMO_MODE !== 'true'} className="demo-banner" role="note">本地演示 · 无外部模型调用 · 回答为原文摘录，推理与 AI 测验需配置模型</div><Suspense fallback={<p className="loading-state" role="status">加载中...</p>}><Routes>
+    <><div hidden={import.meta.env.VITE_DEMO_MODE !== 'true'} className="demo-banner" role="note">离线演示 · 无外部模型调用 · 回答为原文摘录，推理与 AI 测验需配置模型</div><Suspense fallback={<p className="loading-state" role="status">加载中...</p>}><Routes>
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/legal/:document" element={<LegalPage />} />
       <Route element={<ProtectedRoute />}>

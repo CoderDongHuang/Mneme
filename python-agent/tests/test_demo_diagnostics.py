@@ -43,6 +43,8 @@ def test_diagnostic_classifies_http_errors_without_returning_provider_body(statu
 
 def test_chat_probe_exposes_primary_failure_instead_of_hiding_it_with_fallback(monkeypatch):
     monkeypatch.setattr(diagnostics, 'settings', replace(settings, demo_mode=False, deepseek_api_key='synthetic-key'))
+    import app.utils.llm as llm_module
+    monkeypatch.setattr(llm_module, 'settings', diagnostics.settings)
     primary = SimpleNamespace(ainvoke=AsyncMock(side_effect=TimeoutError('private value')))
     monkeypatch.setattr(diagnostics.llm, '_get_primary', lambda: primary)
     monkeypatch.setattr(diagnostics.llm, 'ainvoke', AsyncMock(side_effect=AssertionError('fallback must not mask failure')))

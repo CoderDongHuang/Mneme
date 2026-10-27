@@ -207,7 +207,7 @@ class FallbackLLM:
 
     def _reserve_budget(self, messages: Any, kwargs: dict[str, Any], using_fallback: bool) -> None:
         budget = self._budget_limit()
-        if not budget or settings.demo_mode or getattr(settings, "deterministic_test_llm", False):
+        if not budget or getattr(settings, "demo_mode", False) or getattr(settings, "deterministic_test_llm", False):
             return
         provider = "fallback" if using_fallback else "primary"
         input_price = float(getattr(settings, f"llm_{provider}_input_cost_per_million", 0))
