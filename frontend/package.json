@@ -37,10 +37,11 @@
     "globals": "17.8.0",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.23",
-    "vite": "8.1.5",
-    "vitest": "4.1.11"
+    "vite": "8.3.5",
+    "vitest": "4.1.12"
   },
   "overrides": {
+    "zod": "4.6.6",
     "nanoid": "3.3.19",
     "source-map-js": "1.2.2"
   }

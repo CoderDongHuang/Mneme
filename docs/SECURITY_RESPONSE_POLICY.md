@@ -29,4 +29,6 @@
 
 项目侧缓解：主栈及分片栈的 Chroma 不发布主机端口，只加入 `internal` 的 `vector-backend` Compose 网络；只有 Python Agent 同时加入默认网络和该网络。Python Agent 不启用 Chroma RBAC、`trust_remote_code` 或远程模型加载，服务间请求由既有内部令牌保护；容器运行账号和宿主机数据目录权限仍须按部署文档最小化。`scripts/check_chroma_isolation.py` 在 CI 对两种拓扑强制检查。这些措施降低可达性和触发条件，**不消除依赖包自身的三项漏洞**；取得 Agent 容器执行权限者仍可能访问 Chroma。
 
-例外负责人：项目维护者；复核/到期日：2026-10-18。复核官方 release、OSV 和依赖扫描；到期前必须重新批准或停止受影响的部署。上游发布修复后 7 天内升级 Python 包和服务镜像，验证数据兼容性及真实栈回归，随后删除 CI 的三个忽略项。其他 High/Critical 漏洞仍由门禁拦截。
+例外负责人：项目维护者；最近复核：2026-10-27；下次到期日：2026-11-10。复核官方 release、OSV 和依赖扫描；到期前必须重新批准或停止受影响的部署。上游发布修复后 7 天内升级 Python 包和服务镜像，验证数据兼容性及真实栈回归，随后删除 CI 的三个忽略项。其他 High/Critical 漏洞仍由门禁拦截。
+
+2026-10-27 复核：逐项查询 OSV 的 PYSEC-2026-3813/3814/3815，仍未提供 fixed 事件，影响范围包含当前上游最新 1.5.9；保留上述隔离条件，继续阻止其他新增高危依赖。升级 aiohttp、Pillow、pypdf、filelock、certifi 和 OpenTelemetry 至本轮扫描的修复版本；Linux/Windows 分别使用兼容 wheel 的真实 SHA-256 锁定。

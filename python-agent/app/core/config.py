@@ -127,7 +127,7 @@ class Settings:
     ocr_languages: str = os.getenv("OCR_LANGUAGES", "chi_sim+eng")
     pdf_min_text_chars: int = int(os.getenv("PDF_MIN_TEXT_CHARS", "80"))
     multimodal_enabled: bool = _bool("MULTIMODAL_ENABLED", False)
-    multimodal_model: str = os.getenv("MULTIMODAL_MODEL", "qwen-vl-plus")
+    multimodal_model: str = os.getenv("MULTIMODAL_MODEL", "qwen3-vl-plus")
     multimodal_max_images: int = int(os.getenv("MULTIMODAL_MAX_IMAGES", "8"))
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     cors_origins: str = os.getenv(
