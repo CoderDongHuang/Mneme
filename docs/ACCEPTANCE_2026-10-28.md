@@ -36,4 +36,8 @@
 
 租约为 owner 比较的 60 秒 TTL/20 秒心跳，每个检查点同步校验 owner。embedding 返回后重新检查，再写向量。续租失败停止后续流程；不是 fencing，冻结发生在检查与写入之间仍可能竞态，跨 MySQL/向量/词法/文件不是整体事务。外部调用只能等待返回或超时。
 
-当前尚有三项 Chroma、两项 Spring 安全公告适用性例外，下一批单独处理；隔离不等于补丁。真实 AWS KMS/异地 S3、完整许可证法律兼容性和任意复杂 OCR 的正确性不能用本机合成测试替代。所有当前结论以报告和实际 CI 结果为依据。
+当前尚有三项 Chroma 安全公告例外；隔离不等于补丁。Spring 两项例外通过下述迁移移除。真实 AWS KMS/异地 S3、完整许可证法律兼容性和任意复杂 OCR 的正确性不能用本机合成测试替代。所有当前结论以报告和实际 CI 结果为依据。
+
+## Spring 7 安全迁移
+
+网关迁移至 Spring Boot 4.0.9 / Spring Framework 7.0.10，配套 MyBatis Plus 3.5.18.1、springdoc 3.2.0。Flyway、RestClient 和 OpenTelemetry 使用 Boot 4 模块，Jackson 2 兼容模块保持已有 JSON 契约，OTLP tracing 使用新配置路径；Prometheus 保留且不额外启用 OTLP metrics exporter。最终依赖下 Java 85 tests passed、0 skipped，含真实 MySQL/Flyway。删除两项 Spring CVE 忽略及到期适用性 guard，后续依赖和镜像扫描继续阻断漏洞。

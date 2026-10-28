@@ -451,8 +451,6 @@ jobs:
           exit-code: "1"
           format: json
           output: java-vulnerability-report.json
-      - name: Verify time-limited Spring applicability exception
-        run: python scripts/check_spring_exposure.py
       - name: Scan repository secrets
         id: secret_scan
         continue-on-error: true

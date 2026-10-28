@@ -32,7 +32,7 @@ docker-compose
 ## 技术栈
 
 - Frontend：React 19、Vite 8、React Router、React Markdown、Lucide
-- Gateway：Java 17、Spring Boot 3.5.14、MyBatis-Plus、Flyway、JWT、SSE
+- Gateway：Java 17、Spring Boot 4.0.9 / Spring 7.0.10、MyBatis-Plus、Flyway、JWT、SSE
 - Agent：Python 3.11、FastAPI、LangGraph、LangChain、Pydantic
 - AI：DeepSeek、Qwen、DashScope Embedding、Chroma
 - Data：MySQL 8、Redis 7

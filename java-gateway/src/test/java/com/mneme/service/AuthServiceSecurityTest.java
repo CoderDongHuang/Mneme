@@ -34,7 +34,7 @@ class AuthServiceSecurityTest {
         AuthService service = new AuthService(users, tokens, mock(AuthSessionService.class));
         assertThatThrownBy(() -> service.confirmPasswordReset("expired", "new-password"))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("过期");
-        verify(users, never()).updateById(any());
+        verify(users, never()).updateById(any(User.class));
     }
 
     @Test void resetTokenMustBeClaimedBeforePasswordChanges() {
@@ -49,7 +49,7 @@ class AuthServiceSecurityTest {
         assertThatThrownBy(() -> service.confirmPasswordReset("contended", "new-password"))
             .isInstanceOf(IllegalArgumentException.class);
 
-        verify(users, never()).updateById(any());
+        verify(users, never()).updateById(any(User.class));
         verify(sessions, never()).revokeAll(any());
     }
 

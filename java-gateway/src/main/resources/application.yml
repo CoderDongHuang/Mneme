@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: ${OTEL_SERVICE_NAME:mneme-java-gateway}
+  http:
+    converters:
+      preferred-json-mapper: jackson2
   sql:
     init:
       mode: never
@@ -33,12 +36,15 @@ mybatis-plus:
 
 management:
   tracing:
-    enabled: ${OTEL_TRACING_ENABLED:false}
+    export:
+      enabled: ${OTEL_TRACING_ENABLED:false}
     sampling:
       probability: ${OTEL_TRACES_SAMPLER_ARG:0.1}
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
   endpoints:
     web:
       exposure:

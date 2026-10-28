@@ -4,9 +4,9 @@ FROM ${MAVEN_BASE_IMAGE} AS build
 
 WORKDIR /app
 COPY pom.xml .
-RUN mvn dependency:go-offline
+RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp dependency:go-offline
 COPY src ./src
-RUN mvn package -DskipTests
+RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp package -DskipTests
 
 FROM ${JAVA_BASE_IMAGE}
 

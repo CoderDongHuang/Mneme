@@ -5,7 +5,7 @@ import io.micrometer.tracing.Span;
 import io.micrometer.tracing.TraceContext;
 import io.micrometer.tracing.Tracer;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.boot.restclient.RestTemplateBuilder;
 import org.springframework.http.client.InterceptingClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.http.HttpMethod;
@@ -28,7 +28,7 @@ class RestTemplateConfigTest {
         assertThat(template.getInterceptors()).isEmpty();
         MockRestServiceServer server = MockRestServiceServer.bindTo(template).build();
         server.expect(requestTo("https://api.github.com/repos/test/repo/actions/runs"))
-            .andExpect(request -> assertThat(request.getHeaders()).doesNotContainKey("X-Internal-Service-Token"))
+            .andExpect(request -> assertThat(request.getHeaders().getFirst("X-Internal-Service-Token")).isNull())
             .andRespond(withSuccess());
         template.getForObject("https://api.github.com/repos/test/repo/actions/runs", String.class);
         server.verify();

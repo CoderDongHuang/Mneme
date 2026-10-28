@@ -200,7 +200,7 @@ CI 会分别执行 Python、Java 和前端检查，并使用 mock API 验证关�
 - Mailpit 是本地测试邮箱，不会向真实邮箱投递；验证码在 `http://localhost:8025` 查看。
 - 设置页可查看 Chat/Embedding/Rerank/OCR 脱敏配置并检测连通性；模型参数和密钥仍由服务端 `.env` 管理，界面不回显完整密钥。
 - 引用会经历编号、声明支持判定和逐字引文核验；模型核验失败时拒答。核验增加延迟和调用费用，仍不能证明语义绝对正确。
-- Chroma 三项及 Spring 两项公告保留到期受控例外，详见 [安全策略](docs/SECURITY_RESPONSE_POLICY.md)；扫描通过不代表零漏洞。
+- Chroma 三项公告保留到期受控例外；Spring 已升级到 7.0.10 并移除两项例外，详见 [安全策略](docs/SECURITY_RESPONSE_POLICY.md)。扫描通过不代表零漏洞。
 
 ## 路线图与贡献
 

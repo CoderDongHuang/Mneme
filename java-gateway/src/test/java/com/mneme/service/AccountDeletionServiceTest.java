@@ -55,7 +55,7 @@ class AccountDeletionServiceTest {
 
         assertEquals("existing-op", service.enqueue(7L));
 
-        verify(users, never()).updateById(any());
+        verify(users, never()).updateById(any(User.class));
         verify(jdbc, never()).update(contains("INSERT INTO account_deletion_task"), any(), any());
         verify(operations, never()).newOperationId();
     }
