@@ -38,7 +38,7 @@ flowchart TB
     A --> LG["LangGraph 决策链"]
     LG --> RAG["结构化 RAG"]
     LG --> MEM["三级记忆"]
-    RAG --> V[(Chroma)]
+    RAG --> V[(Qdrant)]
     LG --> LLM["DeepSeek / Qwen"]
 ```
 
@@ -71,7 +71,7 @@ Python 只信任携带内部服务令牌的 Java 请求。这个边界比让浏�
 
 ### FastAPI：AI 能力层
 
-Python 集中实现 LangGraph 编排、文档解析、切片、Embedding、混合检索、Prompt 构建、模型调用、记忆蒸馏和反思。Chroma 保存知识片段和长期语义记忆；Redis 保存可恢复的短期会话状态。
+Python 集中实现 LangGraph 编排、文档解析、切片、Embedding、混合检索、Prompt 构建、模型调用、记忆蒸馏和反思。Qdrant 保存知识片段和长期语义记忆；Redis 保存可恢复的短期会话状态。
 
 ## 三、一条问题如何得到答案
 
@@ -81,7 +81,7 @@ sequenceDiagram
     participant R as React
     participant J as Java Gateway
     participant P as Python Agent
-    participant C as Chroma
+    participant C as Qdrant
     participant L as LLM
 
     U->>R: 选择资料库并提问
@@ -119,7 +119,7 @@ Mneme 支持 PDF、DOCX、PPTX、XLSX/XLSM、CSV、Markdown、TXT 和 HTML。不
 1. **识别页面类型**：原生文本页直接抽取；文本不足的扫描页进入 Tesseract OCR；图文混排页可按配置进入视觉模型。
 2. **还原结构**：使用 PyMuPDF 读取文本块并按坐标排序，保留页码；使用 pdfplumber 单独提取表格；统计跨页重复文本并过滤页眉页脚。
 3. **语义切片**：标题与正文保持邻接，表格作为独立结构块，每个 chunk 携带文档 ID、页码、章节和类型。
-4. **保留溯源**：Embedding 写入 Chroma 时元数据一并保存，检索结果可以直接映射到前端引用。
+4. **保留溯源**：Embedding 写入 Qdrant 时元数据一并保存，检索结果可以直接映射到前端引用。
 
 解析入口会拒绝“成功但没有任何可检索文本”的假成功：
 
@@ -172,7 +172,7 @@ for item in lexical:
 |---|---|---|---|
 | 工作记忆 | 当前请求窗口 | 最近若干条消息和本次检索上下文 | Python 内存 |
 | 短期记忆 | 会话级 | 完整历史、增量摘要、冷却时间 | Redis，可降级到内存 |
-| 长期记忆 | 跨会话 | 偏好、薄弱点、学习进度 | Chroma |
+| 长期记忆 | 跨会话 | 偏好、薄弱点、学习进度 | Qdrant |
 
 长期记忆不能把模型的每次猜测直接写入。Mneme 先蒸馏候选记忆，再按置信度处理：高置信度自动写入，中等置信度在前端显示确认卡片，低置信度丢弃。用户可以查看、确认和删除记忆，避免错误画像持续污染后续回答。
 
@@ -321,7 +321,7 @@ Mneme 将测试分为四层：
 
 发布前结果不再复制固定测试数量。Python、Java、前端、浏览器、全栈、分布式和供应链检查的当前状态以 [GitHub Actions](https://github.com/CoderDongHuang/Mneme/actions) 为准，执行范围和本地复现命令见 [`docs/testing.md`](testing.md)。离线与真实模型质量报告由工作流作为 artifact 保存。
 
-真实 E2E 使用虚构资料，实际经过注册、创建资料库、文件上传、解析状态轮询、Chroma 检索、流式回答和引用按钮展示。常规 CI 使用确定性模型完成全栈验收；付费模型质量由带脱敏和预算门禁的周期工作流抽检。本地显式运行：
+真实 E2E 使用虚构资料，实际经过注册、创建资料库、文件上传、解析状态轮询、Qdrant 检索、流式回答和引用按钮展示。常规 CI 使用确定性模型完成全栈验收；付费模型质量由带脱敏和预算门禁的周期工作流抽检。本地显式运行：
 
 ```bash
 cd frontend
@@ -344,7 +344,7 @@ Mneme 当前应标记为 **Beta 开源项目**，不能宣传为完整生产级�
 - 多模态解析已可选接入 Qwen-VL，但复杂公式、密集表格和流程图仍需人工核验。
 - 混合检索已使用 SQLite FTS5 BM25、Dense 召回与 RRF；专业重排模型仍按配置可选，失败时自动降级。
 - RAG 指标和真实 E2E 已建立，但数据集规模有限，需要更多文档类型和反例。
-- Chroma、本地文件目录与单机 MySQL 面向个人和小规模使用，不针对公网多实例扩缩容。
+- Qdrant、本地文件目录与单机 MySQL 面向个人和小规模使用，不针对公网多实例扩缩容。
 - Mailpit 解决本地密码重置验证；若希望真正向外部邮箱发信，仍需自行配置 SMTP。
 - 备用模型和熔断提高可用性，但两个供应商同时失败时无法生成答案。
 - 文档删除、备份恢复、模型升级和跨版本迁移还需要更完整的破坏性 E2E。
@@ -366,7 +366,7 @@ Mneme 当前应标记为 **Beta 开源项目**，不能宣传为完整生产级�
 | Java 网关 | Java 17、Spring Boot 4.0.9 / Spring 7.0.10、MyBatis-Plus、Flyway、JWT、SSE |
 | Python Agent | Python 3.11、FastAPI、LangGraph、LangChain、Pydantic、APScheduler |
 | 文档处理 | PyMuPDF、pdfplumber、Tesseract OCR、python-docx、python-pptx、openpyxl |
-| AI 与检索 | DeepSeek、Qwen、DashScope Embedding、Chroma |
+| AI 与检索 | DeepSeek、Qwen、DashScope Embedding、Qdrant |
 | 数据与运行 | MySQL 8、Redis 7、Docker Compose、Caddy、Mailpit |
 | 工程质量 | GitHub Actions、Ruff、Pytest、Maven Test、ESLint、Vitest、Playwright、audit-ci |
 

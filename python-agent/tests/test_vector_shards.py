@@ -3,29 +3,26 @@ from types import SimpleNamespace
 from app.knowledge import vector_store as module
 
 
-def test_http_shards_receive_independent_chroma_settings(monkeypatch):
+def test_http_shards_receive_qdrant_urls_and_credentials(monkeypatch):
     created = []
 
     def fake_client(**kwargs):
         created.append(kwargs)
         return object()
 
-    monkeypatch.setattr(module.chromadb, "HttpClient", fake_client)
+    monkeypatch.setattr(module, "VectorClient", fake_client)
     monkeypatch.setattr(
         module,
         "settings",
         SimpleNamespace(
-            vector_shard_urls="http://chroma-1:8000,http://chroma-2:8000",
+            vector_shard_urls="http://qdrant-1:6333,http://qdrant-2:6333",
             vector_shard_count=2,
-            chroma_mode="http",
-            chroma_host="unused",
-            chroma_port=8000,
-            chroma_path="unused",
+            qdrant_api_key="test-key",
         ),
     )
 
     clients = module.VectorStore().clients
 
     assert len(clients) == 2
-    assert [item["host"] for item in created] == ["chroma-1", "chroma-2"]
-    assert created[0]["settings"] is not created[1]["settings"]
+    assert [item["url"] for item in created] == ["http://qdrant-1:6333", "http://qdrant-2:6333"]
+    assert all(item["api_key"] == "test-key" for item in created)

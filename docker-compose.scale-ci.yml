@@ -13,28 +13,29 @@ services:
   redis:
     image: redis:7-alpine
 
-  chroma-1:
-    image: ${MNEME_CHROMA_IMAGE:-ghcr.io/chroma-core/chroma:0.6.3}
+  qdrant-1:
+    build: ./docker/qdrant
+    image: ${MNEME_QDRANT_IMAGE:-mneme-qdrant:1.20.0}
     networks: [vector-backend]
-    environment: &chroma-environment
-      IS_PERSISTENT: "TRUE"
-      PERSIST_DIRECTORY: /chroma/data
-      ANONYMIZED_TELEMETRY: "FALSE"
     volumes:
-      - scale-chroma-1:/chroma/data
-    healthcheck: &chroma-health
-      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8000/api/v1/heartbeat', timeout=2)"]
+      - scale-qdrant-1:/qdrant/storage
+    healthcheck:
+      test: [CMD-SHELL, 'bash -c ''exec 3<>/dev/tcp/127.0.0.1/6333; printf "GET /readyz HTTP/1.0\r\n\r\n" >&3; read -r status <&3; [[ "$$status" == *"200"* ]]''']
       interval: 3s
       timeout: 3s
       retries: 40
 
-  chroma-2:
-    image: ${MNEME_CHROMA_IMAGE:-ghcr.io/chroma-core/chroma:0.6.3}
+  qdrant-2:
+    build: ./docker/qdrant
+    image: ${MNEME_QDRANT_IMAGE:-mneme-qdrant:1.20.0}
     networks: [vector-backend]
-    environment: *chroma-environment
     volumes:
-      - scale-chroma-2:/chroma/data
-    healthcheck: *chroma-health
+      - scale-qdrant-2:/qdrant/storage
+    healthcheck:
+      test: [CMD-SHELL, 'bash -c ''exec 3<>/dev/tcp/127.0.0.1/6333; printf "GET /readyz HTTP/1.0\r\n\r\n" >&3; read -r status <&3; [[ "$$status" == *"200"* ]]''']
+      interval: 3s
+      timeout: 3s
+      retries: 40
 
   jaeger:
     image: jaegertracing/all-in-one:1.62.0
@@ -60,8 +61,11 @@ services:
       MNEME_DETERMINISTIC_TEST_LLM: "true"
       INTERNAL_RATE_LIMIT_PER_SECOND: "10"
       INTERNAL_RATE_LIMIT_BURST: "60"
+      CHROMA_PATH: /legacy-chroma
+      VECTOR_STORE_MODE: http
+      QDRANT_URL: http://qdrant-1:6333
       VECTOR_SHARD_COUNT: "2"
-      VECTOR_SHARD_URLS: http://chroma-1:8000,http://chroma-2:8000
+      VECTOR_SHARD_URLS: http://qdrant-1:6333,http://qdrant-2:6333
       REDIS_HOST: redis
       AUXILIARY_STORE_BACKEND: mysql
       MYSQL_HOST: mysql
@@ -73,15 +77,17 @@ services:
       OTEL_TRACES_SAMPLER_ARG: "1.0"
       OTEL_SERVICE_NAME: mneme-python-agent-1
     volumes:
+      - scale-chroma-1:/legacy-chroma/1:ro
+      - scale-chroma-2:/legacy-chroma/2:ro
       - ./test-fixtures:/test-fixtures:ro
       - scale-agent-1:/app/data
       - scale-files:/data/files
     depends_on:
       mysql:
         condition: service_healthy
-      chroma-1:
+      qdrant-1:
         condition: service_healthy
-      chroma-2:
+      qdrant-2:
         condition: service_healthy
       redis:
         condition: service_started
@@ -100,15 +106,17 @@ services:
       <<: *agent-environment
       OTEL_SERVICE_NAME: mneme-python-agent-2
     volumes:
+      - scale-chroma-1:/legacy-chroma/1:ro
+      - scale-chroma-2:/legacy-chroma/2:ro
       - ./test-fixtures:/test-fixtures:ro
       - scale-agent-2:/app/data
       - scale-files:/data/files
     depends_on:
       mysql:
         condition: service_healthy
-      chroma-1:
+      qdrant-1:
         condition: service_healthy
-      chroma-2:
+      qdrant-2:
         condition: service_healthy
       redis:
         condition: service_started
@@ -170,6 +178,8 @@ services:
 volumes:
   scale-chroma-1:
   scale-chroma-2:
+  scale-qdrant-1:
+  scale-qdrant-2:
   scale-agent-1:
   scale-agent-2:
   scale-files:

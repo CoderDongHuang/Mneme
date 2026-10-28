@@ -17,9 +17,8 @@ langchain-deepseek==1.1.0
 langchain-openai==1.6.2
 dashscope==1.25.21
 
-# Vector store; outstanding upstream advisories: docs/SECURITY_RESPONSE_POLICY.md.
-chromadb==0.6.3
-posthog==5.4.0
+# Vector storage; no implicit model downloads or remote code execution.
+qdrant-client==1.20.0
 jieba==0.42.1
 
 # Structured document parsing

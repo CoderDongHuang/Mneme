@@ -127,7 +127,7 @@ jobs:
           DASHSCOPE_API_KEY: ci-dummy-key
           MNEME_OFFLINE_EMBEDDINGS: "true"
           SESSION_DATA_PATH: ${{ runner.temp }}\\mneme-sessions
-          CHROMA_PATH: ${{ runner.temp }}\\mneme-chroma
+          QDRANT_PATH: ${{ runner.temp }}\\mneme-qdrant
           LEXICAL_INDEX_PATH: ${{ runner.temp }}\\mneme-lexical.sqlite3
           MEMORY_VERSION_STORE_PATH: ${{ runner.temp }}\\mneme-versions.sqlite3
           AGENT_TRACE_STORE_PATH: ${{ runner.temp }}\\mneme-traces.sqlite3
@@ -137,9 +137,6 @@ jobs:
       - name: Audit Windows locked dependencies
         run: >-
           pip-audit --requirement python-agent/requirements.windows.lock --timeout 60
-          --ignore-vuln PYSEC-2026-3813
-          --ignore-vuln PYSEC-2026-3814
-          --ignore-vuln PYSEC-2026-3815
 
   java:
     name: Java Gateway
@@ -263,11 +260,11 @@ jobs:
           python -c "import cryptography, dotenv"
       - name: Prepare writable bind mounts
         run: |
-          mkdir -p data/files data/avatars data/redis data/chroma data/minio python-agent/data
+          mkdir -p data/files data/avatars data/redis data/qdrant data/minio python-agent/data
           echo "MNEME_CI_UID=$(id -u)" >> "$GITHUB_ENV"
           echo "MNEME_CI_GID=$(id -g)" >> "$GITHUB_ENV"
-      - name: Check Chroma network isolation
-        run: python scripts/check_chroma_isolation.py
+      - name: Check vector network isolation
+        run: python scripts/check_vector_isolation.py
       - name: Start full stack
         run: |
           $COMPOSE config --quiet
@@ -367,7 +364,7 @@ jobs:
           python-version: "3.11"
       - name: Validate and start two-node topology
         run: |
-          python scripts/check_chroma_isolation.py
+          python scripts/check_vector_isolation.py
           docker compose -f docker-compose.scale-ci.yml config --quiet
           docker compose -f docker-compose.scale-ci.yml build
           docker compose -f docker-compose.scale-ci.yml up -d java-gateway-1
@@ -424,9 +421,6 @@ jobs:
           pip install pip-audit==2.9.0
           for attempt in 1 2 3; do
             if pip-audit --requirement python-agent/requirements.lock --timeout 60 \
-              --ignore-vuln PYSEC-2026-3813 \
-              --ignore-vuln PYSEC-2026-3814 \
-              --ignore-vuln PYSEC-2026-3815 \
               --format=json --output=python-audit.json; then
               break
             fi
@@ -476,6 +470,9 @@ jobs:
           }
           build_image mneme-python-agent:p1 python-agent
           build_image mneme-java-gateway:p1 java-gateway
+          docker pull qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2
+          build_image mneme-qdrant:1.20.0 docker/qdrant
+          docker image inspect qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2 mneme-qdrant:1.20.0 > vector-image-provenance.json
       - name: Scan Python runtime image
         id: python_image_scan
         continue-on-error: true
@@ -501,6 +498,18 @@ jobs:
           exit-code: "1"
           format: json
           output: java-image-report.json
+      - name: Scan vector database image
+        id: vector_image_scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: mneme-qdrant:1.20.0
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: json
+          output: vector-image-report.json
       - name: Generate Python CycloneDX SBOM
         id: python_sbom
         continue-on-error: true
@@ -527,6 +536,7 @@ jobs:
             *-audit.json
             *-vulnerability-report.json
             *-image-report.json
+            vector-image-provenance.json
             *.cdx.json
       - name: Enforce supply-chain policy
         if: always()
@@ -535,6 +545,7 @@ jobs:
           SECRET_SCAN: ${{ steps.secret_scan.outcome }}
           PYTHON_IMAGE: ${{ steps.python_image_scan.outcome }}
           JAVA_IMAGE: ${{ steps.java_image_scan.outcome }}
+          VECTOR_IMAGE: ${{ steps.vector_image_scan.outcome }}
           PYTHON_SBOM: ${{ steps.python_sbom.outcome }}
           JAVA_SBOM: ${{ steps.java_sbom.outcome }}
         run: |
@@ -542,5 +553,6 @@ jobs:
           test "$SECRET_SCAN" = success
           test "$PYTHON_IMAGE" = success
           test "$JAVA_IMAGE" = success
+          test "$VECTOR_IMAGE" = success
           test "$PYTHON_SBOM" = success
           test "$JAVA_SBOM" = success

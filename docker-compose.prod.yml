@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
   redis:
     restart: unless-stopped
-  chroma:
+  qdrant:
     restart: unless-stopped
   python-agent:
     restart: unless-stopped

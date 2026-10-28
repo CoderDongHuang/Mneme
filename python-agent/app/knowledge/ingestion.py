@@ -568,7 +568,7 @@ def ingest_document(
     documents = [chunk.page_content for chunk in valid_chunks]
     vectors = embeddings(documents)
     # Provider calls can outlast a lease. Confirm ownership after embedding and
-    # before each persistent mutation, rather than inside Chroma's callback.
+    # before each persistent mutation, rather than inside Qdrant's callback.
     check_cancelled()
     collection.upsert(
         ids=ids,

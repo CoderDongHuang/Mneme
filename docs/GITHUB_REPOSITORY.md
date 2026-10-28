@@ -21,7 +21,7 @@ langgraph
 fastapi
 spring-boot
 react
-chroma
+qdrant
 llm
 knowledge-base
 personalized-learning
@@ -34,7 +34,7 @@ docker-compose
 - Frontend：React 19、Vite 8、React Router、React Markdown、Lucide
 - Gateway：Java 17、Spring Boot 4.0.9 / Spring 7.0.10、MyBatis-Plus、Flyway、JWT、SSE
 - Agent：Python 3.11、FastAPI、LangGraph、LangChain、Pydantic
-- AI：DeepSeek、Qwen、DashScope Embedding、Chroma
+- AI：DeepSeek、Qwen、DashScope Embedding、Qdrant
 - Data：MySQL 8、Redis 7
 - DevOps：Docker Compose、Caddy、GitHub Actions
 - Test：Pytest、Ruff、Maven Test、ESLint、Vitest、Playwright

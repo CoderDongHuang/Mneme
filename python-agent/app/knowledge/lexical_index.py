@@ -1,4 +1,4 @@
-"""持久化词法索引，使用 SQLite FTS5 避免查询时扫描 Chroma。"""
+"""持久化词法索引，使用 SQLite FTS5 避免查询时扫描 Qdrant。"""
 
 import re
 import sqlite3
@@ -53,7 +53,7 @@ class LexicalIndex:
                 )
         except sqlite3.Error as error:
             self._available = False
-            logger.warning("SQLite FTS5 不可用，词法检索将降级到 Chroma 扫描: %s", error)
+            logger.warning("SQLite FTS5 不可用，词法检索将降级到 Qdrant 扫描: %s", error)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10)
@@ -104,7 +104,7 @@ class LexicalIndex:
                     ],
                 )
         except sqlite3.Error as error:
-            logger.warning("写入 SQLite 词法索引失败，继续使用 Chroma: %s", error)
+            logger.warning("写入 SQLite 词法索引失败，继续使用 Qdrant: %s", error)
 
     def delete_document(self, user_id: str, kb_id: str, document_id: str) -> int:
         if not self._available:
@@ -177,7 +177,7 @@ class LexicalIndex:
                     (match_query, str(user_id), str(kb_id), *scope_args, max(1, int(limit))),
                 ).fetchall()
         except sqlite3.Error as error:
-            logger.warning("SQLite 词法检索失败，继续使用 Chroma: %s", error)
+            logger.warning("SQLite 词法检索失败，继续使用 Qdrant: %s", error)
             return []
         return [
             {

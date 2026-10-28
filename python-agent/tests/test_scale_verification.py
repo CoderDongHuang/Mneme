@@ -57,6 +57,6 @@ def test_restart_vector_shard_recreates_container_and_waits_for_readiness(monkey
     scale_verification._restart_vector_shard()
 
     assert calls == [
-        ("compose", ("up", "-d", "--force-recreate", "chroma-2")),
+        ("compose", ("up", "-d", "--force-recreate", "qdrant-2")),
         ("wait_http", "http://127.0.0.1:8002/health/ready"),
     ]

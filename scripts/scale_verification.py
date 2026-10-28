@@ -85,7 +85,7 @@ def compose(*args: str) -> str:
     return result.stdout
 
 
-def _restart_vector_shard(service: str = "chroma-2", agent_port: int = 8002) -> None:
+def _restart_vector_shard(service: str = "qdrant-2", agent_port: int = 8002) -> None:
     compose("up", "-d", "--force-recreate", service)
     wait_http(f"http://127.0.0.1:{agent_port}/health/ready")
 
@@ -170,7 +170,7 @@ def distributed_vectors(user_id: str, client) -> list[str]:
 
     failed_kb = kb_by_shard[1]
     healthy_kb = kb_by_shard[0]
-    compose("stop", "chroma-2")
+    compose("stop", "qdrant-2")
     healthy_query = urllib.parse.urlencode({
         "user_id": user_id, "kb_id": healthy_kb, "query": "QZ-7294", "top_k": 3,
     })

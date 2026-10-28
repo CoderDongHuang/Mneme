@@ -58,7 +58,7 @@ jobs:
           --requests "${{ inputs.requests || '600' }}"
           --duration-seconds "${{ inputs.duration_seconds || '120' }}"
           --fault-rounds "${{ inputs.fault_rounds || '5' }}"
-          --fault-matrix redis,chroma-1,chroma-2,chroma-1+redis,chroma-2+redis
+          --fault-matrix redis,qdrant-1,qdrant-2,qdrant-1+redis,qdrant-2+redis
           --concurrency 24
           --max-errors 0
           --max-p95-ms 2000

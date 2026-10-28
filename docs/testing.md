@@ -19,7 +19,7 @@ python -m pip install pip-audit==2.9.0
 pip-audit --requirement python-agent/requirements.windows.lock
 ```
 
-Linux/Docker 使用 `python-agent/requirements.lock`。两个锁文件使用官方兼容 wheel 的 SHA-256，jieba 上游仅提供平台无关 sdist，固定其官方源码包 SHA-256；安装时构建 wheel。Windows 锁文件不安装 Linux 专用 `uvloop`。生成器已实测 jieba 源码包分支，全新 Linux 镜像安装和导入通过。
+Linux/Docker 使用 `python-agent/requirements.lock`。两个锁文件使用官方兼容 wheel 的 SHA-256，jieba 上游仅提供平台无关 sdist，固定其官方源码包 SHA-256；安装时构建 wheel。Windows 锁文件不安装 Linux 专用 `uvloop`；生成器递归读取 wheel 元数据并以 Windows/Python 3.11 marker 补齐 colorama、tzdata 等平台依赖，遇到锁定版本冲突拒绝生成。生成器已实测 jieba 源码包分支，全新 Linux 镜像安装和导入通过。
 
 ## Java
 
@@ -44,7 +44,7 @@ npm --prefix frontend run build
 
 ## 真实全链路 E2E
 
-`frontend/e2e/real-stack.spec.js` 覆盖真实注册、创建资料库、上传、任务轮询、Embedding、RAG、流式回答、引用、多轮对话和刷新恢复。常规 CI 使用显式启用的确定性验收模型，MySQL、Redis、Chroma、MinIO、Java、Python、Caddy 和浏览器仍为真实组件，不访问付费模型：
+`frontend/e2e/real-stack.spec.js` 覆盖真实注册、创建资料库、上传、任务轮询、Embedding、RAG、流式回答、引用、多轮对话和刷新恢复。常规 CI 使用显式启用的确定性验收模型，MySQL、Redis、Qdrant、MinIO、Java、Python、Caddy 和浏览器仍为真实组件，不访问付费模型：
 
 ```powershell
 $env:MNEME_OFFLINE_EMBEDDINGS='true'
@@ -67,7 +67,7 @@ $env:MNEME_NODE_BASE_IMAGE='public.ecr.aws/docker/library/node:22-alpine'
 $env:MNEME_CADDY_BASE_IMAGE='public.ecr.aws/docker/library/caddy:2.9-alpine'
 ```
 
-Python 基础镜像可同样设置 `MNEME_PYTHON_BASE_IMAGE=public.ecr.aws/docker/library/python:3.11-slim`；本机若已缓存 `python:3.11-slim` 则无需替换。其他服务镜像（MySQL、Redis、Mailpit、Chroma）也必须已缓存或来自经核准的可信仓库；CI 的 RustFS 镜像可通过 `MNEME_CI_RUSTFS_IMAGE` 覆盖。镜像来源变更不绕过应用依赖的 npm/Maven/PyPI/apt 校验，仍需实际构建与真实栈测试。不要在 Windows Docker Desktop 上执行 Linux `systemd` 代理命令；如需企业代理，应在 Docker Desktop 的代理设置中填入实际受控代理地址并复测。
+Python 基础镜像可同样设置 `MNEME_PYTHON_BASE_IMAGE=public.ecr.aws/docker/library/python:3.11-slim`；本机若已缓存 `python:3.11-slim` 则无需替换。其他服务镜像（MySQL、Redis、Mailpit、Qdrant）也必须已缓存或来自经核准的可信仓库；CI 的 RustFS 镜像可通过 `MNEME_CI_RUSTFS_IMAGE` 覆盖。镜像来源变更不绕过应用依赖的 npm/Maven/PyPI/apt 校验，仍需实际构建与真实栈测试。不要在 Windows Docker Desktop 上执行 Linux `systemd` 代理命令；如需企业代理，应在 Docker Desktop 的代理设置中填入实际受控代理地址并复测。
 
 `MNEME_DETERMINISTIC_TEST_LLM` 只能用于验收环境，不能用于生产。验证外部模型质量和供应商连通性时不要设置该变量，并显式设置：
 
@@ -79,7 +79,7 @@ npm run test:e2e:real
 
 外部模型模式会把 `test-fixtures/rag-fixture.txt` 的虚构内容发送给配置的 Embedding 和 LLM 供应商，并产生调用费用。
 
-同一真实 URL 的扩展回归：`npx playwright test e2e/roadmap-stack.spec.js --retries=0`，同时运行桌面与移动端。它覆盖八种格式、联合筛选、历史版本、跨用户隔离、测验/复习导出、损坏 PDF、扫描 OCR、运行中取消重试、标签/空结果/切库和供应商 UI。完整测验需要真实模型；确定性 CI 仅运行 `--grep '真实解析异常|真实界面交互'`。不要把性能基线与故障注入、多个浏览器同时运行；保留失败日志后在固定资源条件下复核。当前验收见 [最终回归记录](ACCEPTANCE_2026-10-28.md)。
+同一真实 URL 的扩展回归：`npx playwright test e2e/roadmap-stack.spec.js --retries=0`，同时运行桌面与移动端。它覆盖八种格式、联合筛选、历史版本、跨用户隔离、测验/复习导出、损坏 PDF、扫描 OCR、运行中取消重试、标签/空结果/切库和供应商 UI。完整测验需要真实模型；确定性 CI 仅运行 `--grep '真实解析异常|真实界面交互'`。不要把性能基线与故障注入、多个浏览器同时运行；保留失败日志后在固定资源条件下复核。当前验收见 [最终回归记录](ACCEPTANCE_2026-10-29.md)。
 
 ## 跨存储删除与恢复演练
 
@@ -100,7 +100,7 @@ python scripts/alertmanager_drill.py --url http://127.0.0.1:9093 --report artifa
 
 两个脚本均返回非零表示演练失败，并生成可上传的 JSON 证据。
 
-完整 CI 栈启动后，可运行 MySQL、Redis、Chroma、MinIO 和 SQLite 辅助状态联合清理及故障注入：
+完整 CI 栈启动后，可运行 MySQL、Redis、Qdrant、MinIO 和 SQLite 辅助状态联合清理及故障注入：
 
 生产/双节点验收将 `AUXILIARY_STORE_BACKEND=mysql` 打开，确认轨迹和记忆版本不依赖单个 Python 容器的本地 SQLite；本地单元测试默认仍使用临时 SQLite。
 
@@ -117,7 +117,7 @@ python scripts/full_stack_verification.py deletion \
   --compose-file docker-compose.ci.yml
 ```
 
-该演练覆盖 Chroma、MinIO、Redis 中断和 Java 重启，要求删除 Saga 最终完成且各存储无用户残留。备份恢复演练会创建真实数据、备份、删除、恢复并重新登录执行 RAG：
+该演练覆盖 Qdrant、MinIO、Redis 中断和 Java 重启，要求删除 Saga 最终完成且各存储无用户残留。备份恢复演练会创建真实数据、备份、删除、恢复并重新登录执行 RAG：
 
 ```bash
 python scripts/full_stack_verification.py backup-restore \
@@ -171,7 +171,7 @@ python scripts/evaluate_quiz_quality.py evaluation/external_quiz_workspace.json 
 
 ## 容量与组合故障测试
 
-`.github/workflows/capacity.yml` 每周运行，也支持通过手动参数扩大请求数、持续时间和故障轮数。默认在双节点拓扑中写入小/中/大三档共 61 份文档，对真实检索执行 600 请求、24 并发和 120 秒负载窗口，然后连续执行 3 轮 Chroma 与 Redis 联合中断、恢复及逐库检索复查。结果和完整服务日志保留 30 天。
+`.github/workflows/capacity.yml` 每周运行，也支持通过手动参数扩大请求数、持续时间和故障轮数。默认在双节点拓扑中写入小/中/大三档共 61 份文档，对真实检索执行 600 请求、24 并发和 120 秒负载窗口，然后连续执行 3 轮 Qdrant 与 Redis 联合中断、恢复及逐库检索复查。结果和完整服务日志保留 30 天。
 
 当前测试结果以 [GitHub Actions](https://github.com/CoderDongHuang/Mneme/actions) 和对应运行的 artifact 为准，不在说明文档中维护固定通过数量。
 
@@ -191,7 +191,7 @@ python scripts/evaluate_quiz_quality.py evaluation/external_quiz_workspace.json 
 1. 上传文档并等待 `ready`，确认 chunk 数大于 0。
 2. 点击文档“重新解析”，确认状态回到 `parsing`，完成后仍为同一文档且片段被替换而不是重复累加。
 3. 删除文档，确认状态短暂为 `deleting`，任务完成后文档消失、原文件删除、检索不再返回该文档。
-4. 创建账号、资料库、会话和长期记忆后删除账号；删除请求先冻结账号并持久化清理任务。任务最终完成后，确认 MySQL 业务数据、Chroma 集合、Redis 会话和本地用户文件均被清理。外部清理失败时任务保留并重试，不能把已入队的异步请求误判为同步清理完成。
+4. 创建账号、资料库、会话和长期记忆后删除账号；删除请求先冻结账号并持久化清理任务。任务最终完成后，确认 MySQL 业务数据、Qdrant 集合、Redis 会话和本地用户文件均被清理。外部清理失败时任务保留并重试，不能把已入队的异步请求误判为同步清理完成。
 
 
 ## 租约与四组检索回归

@@ -7,7 +7,7 @@
 3. Python 解析并建立索引，Java 根据调用结果推进任务状态；失败任务保留重试信息。
 4. 解析器按格式还原页码、章节、表格和正文。
 5. 切片器保持结构化元素完整，对正文执行带重叠的语义段落切分。
-6. Chroma 按用户和知识库隔离存储；SQLite FTS5 同步维护持久化词法索引。
+6. Qdrant 按用户和知识库隔离存储；SQLite FTS5 同步维护持久化词法索引。
 7. 检索使用 Dense、FTS5 词法召回和 RRF；可通过配置懒加载 Cross Encoder。
 8. 前端轮询 Java 文档状态，读取 `ready / partial / failed`、chunk 数量与 `parseReport`。部分成功保留逐页警告，不冒充完整解析。
 
@@ -30,7 +30,7 @@
 
 - `LEXICAL_INDEX_PATH`：SQLite 文件路径，默认 `python-agent/data/lexical-index.sqlite3`。
 - `RERANKER_ENABLED=true`、`RERANKER_PROVIDER=dashscope` 与 `RERANKER_MODEL=gte-rerank-v2`：使用现有 DashScope SDK 在线重排；也可将 provider 设为 `cross_encoder` 使用本地模型。失败时自动降级到 RRF。默认关闭。`RERANKER_MIN_SCORE` 默认 0，仅过滤 DashScope 的归一化 0–1 分数；不应用于 CrossEncoder logits。成功的空结果保持为空。0.25 阈值在完整 110 题云实验中导致召回下降，不能直接照搬小样本阈值。
-- `VECTOR_SHARD_URLS=http://chroma-0:8000,http://chroma-1:8000`：按 `user_id + kb_id` 稳定哈希到独立 Chroma 节点；`VECTOR_SHARD_COUNT` 应与地址数量一致。
+- `VECTOR_SHARD_URLS=http://qdrant-1:6333,http://qdrant-2:6333`：按 `user_id + kb_id` 稳定哈希到独立 Qdrant 节点；`VECTOR_SHARD_COUNT` 应与地址数量一致。
 
 ## 生产评测建议
 
@@ -72,7 +72,7 @@ python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 
 资料问答在展示前检查是否存在证据、引用是否缺失或越界；空资料直接拒答且不调用模型。随后将回答拆分为声明单元，要求核验模型逐项判断全部声明是否成立，并返回对应来源的逐字引文；程序验证引文确实属于指定片段。缺漏、异常、超时或不支持会拒绝展示。SSE 先缓存正文再核验，增加首段延迟和一次模型调用；闲聊继续逐段输出。相同模型的生成/核验存在相关性错误，逐字引文存在不代表严格蕴含证明；重要结论仍需原文复核。离线演示只摘录原文，确定性 CI 模型不验证语义。
 
-词法索引属于派生数据，候选必须在当前租户的 Chroma 集合内重新读取原文和元数据。删除中断留下的旧词法条目不会成为来源；Chroma 不可用时不能绕过校验展示缓存内容。RRF 候选记录各通道排名；`RETRIEVER_REWRITE_ENABLED=false` 可独立关闭确定性查询改写。
+词法索引属于派生数据，候选必须在当前租户的 Qdrant 集合内重新读取原文和元数据。删除中断留下的旧词法条目不会成为来源；Qdrant 不可用时不能绕过校验展示缓存内容。RRF 候选记录各通道排名；`RETRIEVER_REWRITE_ENABLED=false` 可独立关闭确定性查询改写。
 
 报告现为 schema 4（无答案评分 version 2），记录数据集 SHA-256、Prompt/核验摘要、模型 profile、唯一运行集合与稳定用例 ID。原 `citation_precision` 等候选指标已更名；schema/数据集变化拒绝直接比较。真实模型样本使用生产 Prompt、相同上下文与核验器，保留生成/最终答案、评审理由及实际拒答指标；8 题抽样包含 2 道无答案题。流程改变后必须重新 bootstrap 可比模型历史，不能拼接旧分数声称提升。合成集不代表真实用户准确率。
 
@@ -87,6 +87,8 @@ python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 真实模型裁判对 expected_answer_points 逐项语义评分，保留 index/matched/reason 与 coverage（scoring version 1）。要点缺失、重复索引或无理由拒绝通过。比较报告额外检查模型配置、QA/核验摘要与评分版本；瞬时熔断计数不参与版本一致性判断。小样本裁判仍非人工质量保证。
 
 2026-10-28 最终离线 110 题 P95=13.88ms、Recall@K=1.0、MRR=0.9556，四组共 140 题均通过原门禁，见 [回归记录](ACCEPTANCE_2026-10-28.md)。报告记录 retrieval 开关、provider/model/min_score；比较脚本拒绝配置不一致。云 embedding/重排报告不得与离线 embedding 基线直接比较；失败实验一并保留。
+
+2026-10-29 更换 Qdrant 后，四组 140 题再次通过原门禁；110 题 P95=5.47ms、Recall@K=1.0、MRR=0.9556。结果仅为本轮环境测量，不将不同运行条件下的耗时差异宣称为数据库普遍性能提升。原始 JSON 见 [release-evidence-2026-10-29](../python-agent/evaluation/release-evidence-2026-10-29/)，当前验收见 [回归记录](ACCEPTANCE_2026-10-29.md)。
 
 
 ## 2026-10-28 无答案与云端延迟

@@ -39,5 +39,8 @@ services:
       MNEME_OFFLINE_EMBEDDINGS: "true"
       MNEME_DETERMINISTIC_TEST_LLM: "true"
 
-  chroma:
+  qdrant-init:
+    command: ["-R", "${MNEME_CI_UID:-1000}:${MNEME_CI_GID:-1000}", "/qdrant/storage"]
+
+  qdrant:
     user: "${MNEME_CI_UID:-1000}:${MNEME_CI_GID:-1000}"

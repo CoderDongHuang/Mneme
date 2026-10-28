@@ -17,21 +17,13 @@ services:
   mailpit:
     image: axllent/mailpit:v1.21
     ports: ["127.0.0.1:${DEMO_MAIL_PORT:-8025}:8025"]
-  chroma:
-    image: ghcr.io/chroma-core/chroma:0.6.3
+  qdrant:
+    build: ./docker/qdrant
+    image: mneme-qdrant:1.20.0
     networks: [vector-backend]
-    environment:
-      CHROMA_SERVER_HOST: 0.0.0.0
-      CHROMA_SERVER_HTTP_PORT: "8000"
-      CHROMA_LOG_CONFIG: /etc/chroma/log_config.yml
-      IS_PERSISTENT: "TRUE"
-      PERSIST_DIRECTORY: /chroma/data
-      ANONYMIZED_TELEMETRY: "FALSE"
-    volumes:
-      - demo-chroma:/chroma/data
-      - ./config/chroma-log-config.yml:/etc/chroma/log_config.yml:ro
+    volumes: [demo-qdrant:/qdrant/storage]
     healthcheck:
-      test: [CMD, python, -c, "from urllib.request import urlopen; urlopen('http://localhost:8000/api/v1/heartbeat', timeout=2)"]
+      test: [CMD-SHELL, 'bash -c ''exec 3<>/dev/tcp/127.0.0.1/6333; printf "GET /readyz HTTP/1.0\r\n\r\n" >&3; read -r status <&3; [[ "$$status" == *"200"* ]]''']
       interval: 3s
       timeout: 3s
       retries: 40
@@ -45,11 +37,10 @@ services:
       DEEPSEEK_API_KEY: ""
       DASHSCOPE_API_KEY: ""
       INTERNAL_SERVICE_TOKEN: ${DEMO_SERVICE_TOKEN:?Missing demo configuration}
-      CHROMA_MODE: http
-      CHROMA_HOST: chroma
-      CHROMA_PORT: "8000"
+      VECTOR_STORE_MODE: http
+      QDRANT_URL: http://qdrant:6333
       REDIS_HOST: redis
-      CHROMA_PATH: /data/chroma
+      CHROMA_PATH: /legacy-chroma
       SESSION_DATA_PATH: /data/sessions
       LEXICAL_INDEX_PATH: /data/lexical.sqlite3
       MEMORY_VERSION_STORE_PATH: /data/versions.sqlite3
@@ -60,10 +51,11 @@ services:
       RETRIEVER_REWRITE_ENABLED: "false"
     volumes:
       - demo-agent:/data
+      - demo-chroma:/legacy-chroma:ro
       # Java sends this absolute path to the ingestion service.
       - demo-files:/uploads:ro
     depends_on:
-      chroma: {condition: service_healthy}
+      qdrant: {condition: service_healthy}
       redis: {condition: service_started}
   java-gateway:
     build: ./java-gateway
@@ -103,6 +95,7 @@ volumes:
   demo-mysql:
   demo-redis:
   demo-chroma:
+  demo-qdrant:
   demo-agent:
   demo-files:
 networks:

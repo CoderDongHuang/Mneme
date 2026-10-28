@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from chromadb.errors import InvalidCollectionException
+from app.knowledge.qdrant_store import InvalidCollectionException
 from langchain_core.documents import Document
 
 from app.knowledge import vector_store as module

@@ -4,9 +4,9 @@
 
 ## 数据与扩展
 
-- MySQL、Redis 和 Chroma 应使用独立托管实例或持久化卷，定期做快照。
+- MySQL、Redis 和 Qdrant 应使用独立托管实例或持久化卷，定期做快照。
 - 多主机部署时，`FILE_STORAGE_PATH` 必须指向所有 Java 和 Python 实例都可访问的共享卷，例如 NFS、云文件系统或挂载后的对象存储网关。
-- Java 限流状态存储在 Redis，可以水平扩展；Python 会话存储使用 Redis，向量服务使用独立 Chroma HTTP 服务。
+- Java 限流状态存储在 Redis，可以水平扩展；Python 会话存储使用 Redis，向量服务使用独立 Qdrant HTTP 服务。
 - Python 轨迹和记忆版本的辅助状态使用 `AUXILIARY_STORE_BACKEND=mysql` 写入共享 MySQL；SQLite 仅用于单机开发和迁移兼容。SQLite 词法索引是可重建的派生数据，多实例部署应使用一致的共享索引卷或在发布后重建。
 - 文件处理任务具有幂等键，可启动多个任务消费者，但同一文档只允许一个任务成功提交。
 
@@ -19,7 +19,7 @@
 
 ## 备份恢复
 
-统一工具会先停止写入服务和 Redis，再创建 MySQL、Redis 持久化目录（含待处理反思 Stream）、原文件、头像、Chroma、内置 MinIO 和 Python SQLite/会话状态的一致快照。归档内的版本化 `manifest.json` 记录每个文件的大小和 SHA-256；恢复前会拒绝校验失败、缺项、未知文件、链接和路径穿越。
+统一工具会先停止写入服务和 Redis，再创建 MySQL、Redis 持久化目录（含待处理反思 Stream）、原文件、头像、Qdrant、内置 MinIO 和 Python SQLite/会话状态的一致快照。归档内的版本化 `manifest.json` 记录每个文件的大小和 SHA-256；恢复前会拒绝校验失败、缺项、未知文件、链接和路径穿越。
 
 ```powershell
 python scripts/backup_restore.py backup --output-dir backups
@@ -29,7 +29,7 @@ python scripts/backup_restore.py restore backups/mneme-YYYYMMDD-HHMMSS.tar.gz --
 
 PowerShell 可继续使用 `scripts/backup-data.ps1` 和 `scripts/restore-data.ps1 -Archive <path> -Force`，Shell 使用 `scripts/backup.sh`，它们均调用同一个 Python 实现，不再维护独立恢复逻辑或固定数据库密码。
 
-执行恢复的系统用户必须对 `data/files`、`data/avatars`、`data/chroma`、`data/redis`、`data/minio` 和 `python-agent/data` 拥有读写权限。Linux 部署应让容器与备份进程使用一致 UID/GID，或由受控的运维账号执行恢复；不要长期将数据目录设为全局可写。
+执行恢复的系统用户必须对 `data/files`、`data/avatars`、`data/qdrant`、`data/redis`、`data/minio` 和 `python-agent/data` 拥有读写权限。Linux 部署应让容器与备份进程使用一致 UID/GID，或由受控的运维账号执行恢复；不要长期将数据目录设为全局可写。
 
 每天创建备份并同步到异地不可变存储；每月至少在隔离环境恢复一次。`restore-report.json` 记录本次 RPO（备份创建至恢复完成的时间）和 RTO（恢复执行耗时），应纳入 SLO 审查。使用外部 S3 而非内置 MinIO 时，还必须通过供应商快照或版本化复制独立备份对象桶；本工具只能直接归档本机 `data/minio`。
 
@@ -37,14 +37,8 @@ PowerShell 可继续使用 `scripts/backup-data.ps1` 和 `scripts/restore-data.p
 
 Prometheus 和 Alertmanager 可通过 `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.observability.yml up -d` 启动。目标值、记录规则和告警位于 `observability/slo.json` 与 `observability/prometheus/`；应用错误率、可用性和 p95 延迟进入统一告警。启动 Alertmanager 前，必须在部署主机的环境中设置有效 HTTP(S) `ALERTMANAGER_WEBHOOK_URL`，运行 `python scripts/render_alertmanager_config.py`，再执行 Compose 命令。生成的 `data/alertmanager/alertmanager.yml` 包含通知地址（可能含令牌），已被 Git 忽略；应限制数据目录的主机访问权限，勿上传为日志或 artifact。更新地址后重新生成并重启 Alertmanager。模板 `observability/alertmanager.yml` 不直接作为容器配置使用；未生成配置时 Alertmanager 应启动失败，不会静默丢失通知。
 
-### Chroma 升级
+### 向量存储升级
 
-当前 Python 依赖和 Chroma 服务镜像固定为 `0.6.3`。从 `0.5.3` 升级现有持久化目录前，先完成一次可验证备份并停止读写，再在维护窗口运行一次数据库整理：
-
-```bash
-docker compose run --rm chroma chroma utils vacuum --path /chroma/data --force
-```
-
-`vacuum` 会阻塞该 Chroma 数据目录的读写，完成后再启动完整栈并执行检索回归。新部署无需单独执行；若升级前无法停机，应先在隔离副本完成恢复和检索验证。
+当前固定 Qdrant 服务与客户端 1.20.0；旧 Chroma 数据不能直接挂入 Qdrant。先按[迁移指南](VECTOR_STORE_MIGRATION.md)停写、导出、迁入空目标并逐条验证。保留原始数据与匹配的整栈备份，禁止通过删除旧目录绕过启动保护。
 
 每月 GitHub Actions 会在隔离栈执行备份、删除、恢复和恢复后 RAG 验证，上传 90 天证据。变更前也可手动运行 `Disaster recovery and SLO evidence`，不能以“备份文件存在”替代恢复演练。

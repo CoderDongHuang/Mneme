@@ -103,7 +103,7 @@ def arguments(**overrides):
     values = dict(
         data_profile="small,medium,large", agent_url="http://one", agent_url_2="http://two",
         requests=12, concurrency=2, duration_seconds=0, compose_file=["compose.yml"],
-        fault_services=["redis"], fault_matrix=[["redis"], ["chroma-1", "redis"]],
+        fault_services=["redis"], fault_matrix=[["redis"], ["qdrant-1", "redis"]],
         fault_rounds=2, max_errors=0, max_p95_ms=2000.0, max_recovery_seconds=20,
         fault_hold_seconds=0,
     )
@@ -143,7 +143,7 @@ def test_run_probes_every_profile_on_both_agents_and_gates_recovery(monkeypatch)
     monkeypatch.setattr(MODULE, "load_test", load_test)
     monkeypatch.setattr(MODULE, "recover_faults", lambda *_args: [
         {"round": 1, "services": ["redis"], "status": "passed", "recovery_seconds": 5},
-        {"round": 2, "services": ["chroma-1", "redis"], "status": "passed", "recovery_seconds": 25},
+        {"round": 2, "services": ["qdrant-1", "redis"], "status": "passed", "recovery_seconds": 25},
     ])
     result = MODULE.run(arguments())
     assert len(urls) == 6
@@ -163,7 +163,7 @@ def test_fault_cleanup_attempts_every_service_even_on_failure(monkeypatch, failu
     def compose(_files, *args, **_kwargs):
         calls.append(args)
         if (failure == "stop" and args == ("stop", "redis")) or (
-            failure == "restart" and args[0] == "up" and args[-1] == "chroma-1"
+            failure == "restart" and args[0] == "up" and args[-1] == "qdrant-1"
         ):
             raise MODULE.CapacityVerificationError(f"{failure} failed")
 
@@ -175,9 +175,9 @@ def test_fault_cleanup_attempts_every_service_even_on_failure(monkeypatch, failu
     monkeypatch.setattr(MODULE, "compose", compose)
     monkeypatch.setattr(MODULE, "request_json", request)
     with pytest.raises(MODULE.CapacityVerificationError, match=f"{failure} failed"):
-        MODULE.recover_faults(["compose.yml"], ["chroma-1", "redis"], ["http://one"],
+        MODULE.recover_faults(["compose.yml"], ["qdrant-1", "redis"], ["http://one"],
                               ["http://probe"], 1, hold_seconds=0)
-    assert [call[-1] for call in calls if call[0] == "up"] == ["chroma-1", "redis"]
+    assert [call[-1] for call in calls if call[0] == "up"] == ["qdrant-1", "redis"]
 
 
 def test_fault_matrix_executes_every_group_and_excludes_hold_from_recovery(monkeypatch):
@@ -189,7 +189,7 @@ def test_fault_matrix_executes_every_group_and_excludes_hold_from_recovery(monke
 
     monkeypatch.setattr(MODULE, "request_json", lambda _url: {"status": "ok", "chunks": [1]})
     monkeypatch.setattr(MODULE, "wait_http", lambda _url, **_kwargs: None)
-    matrix = [["redis"], ["chroma-1", "redis"]]
+    matrix = [["redis"], ["qdrant-1", "redis"]]
     result = MODULE.recover_faults(["compose.yml"], [], ["http://one", "http://two"],
                                    ["http://probe"], 2, matrix, hold_seconds=7)
     assert [item["services"] for item in result] == matrix
@@ -247,7 +247,7 @@ def test_operational_failure_report_retains_comparable_provenance(monkeypatch):
     assert MODULE.RUN_DEADLINE is None
 
 
-@pytest.mark.parametrize("matrix", ["", "redis,,chroma-1", "redis+", "+redis"])
+@pytest.mark.parametrize("matrix", ["", "redis,,qdrant-1", "redis+", "+redis"])
 def test_cli_rejects_empty_matrix_groups_and_writes_failed_evidence(tmp_path, monkeypatch, matrix):
     output = tmp_path / "capacity.json"
     monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--compose-file", "compose.yml", "--fault-matrix", matrix,

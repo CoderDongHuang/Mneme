@@ -406,10 +406,10 @@ def main() -> None:
     parser.add_argument("--max-recovery-seconds", type=float, default=240.0)
     parser.add_argument("--fault-hold-seconds", type=float, default=2.0)
     parser.add_argument("--runtime-timeout-seconds", type=float, default=1200.0)
-    parser.add_argument("--fault-services", default="chroma-2,redis", type=lambda value: [item.strip() for item in value.split(",")])
+    parser.add_argument("--fault-services", default="qdrant-2,redis", type=lambda value: [item.strip() for item in value.split(",")])
     parser.add_argument(
         "--fault-matrix",
-        default="redis,chroma-1,chroma-2,chroma-1+redis,chroma-2+redis",
+        default="redis,qdrant-1,qdrant-2,qdrant-1+redis,qdrant-2+redis",
         type=lambda value: [[item.strip() for item in group.split("+")] for group in value.split(",")],
     )
     parser.add_argument("--data-profile", default="small,medium,large")
