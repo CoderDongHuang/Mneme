@@ -17,9 +17,10 @@ langchain-deepseek==1.1.0
 langchain-openai==1.6.2
 dashscope==1.25.21
 
-# Vector store. 0.6.3 includes the current single-node API and security fixes.
+# Vector store; outstanding upstream advisories: docs/SECURITY_RESPONSE_POLICY.md.
 chromadb==0.6.3
 posthog==5.4.0
+jieba==0.42.1
 
 # Structured document parsing
 pypdf==6.21.2

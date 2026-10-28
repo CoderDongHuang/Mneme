@@ -1,6 +1,9 @@
 import math
 import re
 from collections import Counter
+from functools import lru_cache
+
+import jieba.posseg
 
 from app.core.config import settings
 from app.core.privacy import require_cloud_processing
@@ -140,20 +143,24 @@ def _semantic_candidates(collection, queries: list[str], limit: int) -> list[dic
 
 
 def _ann_semantic_candidates(collection, queries: list[str], limit: int) -> list[dict]:
+    if not queries:
+        return []
+    # Send all rewrites in one embedding request and one vector-store query.
+    # Sequential query_texts calls paid the provider round trip for every rewrite.
+    results = collection.query(
+        query_embeddings=embeddings(queries), n_results=min(limit, collection.count()),
+        include=["documents", "metadatas", "distances"],
+    )
     candidates = []
-    for query_index, query in enumerate(queries):
-        results = collection.query(
-            query_texts=[query], n_results=min(limit, collection.count()),
-            include=["documents", "metadatas", "distances"],
-        )
+    for query_index in range(len(queries)):
         query_candidates = []
-        for index, chunk_id in enumerate(results.get("ids", [[]])[0]):
+        for index, chunk_id in enumerate(results["ids"][query_index]):
             query_candidates.append(
                 {
                     "id": chunk_id,
-                    "content": results.get("documents", [[]])[0][index],
-                    "metadata": results.get("metadatas", [[]])[0][index] or {},
-                    "distance": float(results.get("distances", [[]])[0][index]),
+                    "content": results["documents"][query_index][index],
+                    "metadata": results["metadatas"][query_index][index] or {},
+                    "distance": float(results["distances"][query_index][index]),
                     "query_index": query_index,
                 }
             )
@@ -193,6 +200,60 @@ def _term_coverage(query: str, item: dict) -> float:
     )
     content_terms = set(_terms(searchable))
     return len(query_terms & content_terms) / len(query_terms)
+
+
+_ABSTRACT_NOUNS = frozenset({
+    "内容", "资料", "文档", "文件", "项目", "计划", "目标", "定义", "名称", "英文名称",
+    "字段", "信息", "结构", "方式", "方法", "方案", "情况", "原因", "问题", "作用",
+    "关系", "含义", "意义", "结果", "零点", "主题", "功能", "系统", "模型",
+    "目标值", "指标", "答案", "证据", "能力", "记录",
+})
+
+# Bounded lexical equivalents, not a semantic entailment model. Keep the
+# original term too; answer-level verification remains mandatory.
+_FOCUS_EQUIVALENTS = {
+    "售价": ("价格", "定价", "售价"),
+    "价格": ("价格", "定价", "售价"),
+    "作者": ("作者", "撰写", "著者", "编写"),
+    "地点": ("地点", "地址", "位于", "举行", "举办"),
+    "续航": ("续航", "连续工作", "持续运行", "使用时长"),
+    "时间": ("时间", "日期", "时刻", "小时", "分钟", "天", "周", "月", "年"),
+}
+
+
+@lru_cache(maxsize=512)
+def _question_focus(query: str) -> tuple[str, ...]:
+    """Concrete nouns in explicit field/containment questions, not answer labels.
+
+    Open semantic questions and abstract relations are left to hybrid retrieval.
+    Negated verbs are deliberately not treated as evidence requirements.
+    """
+    if not re.search(r"的|是否|有没有", query):
+        return ()
+    query = re.sub(r"(?:资料|文档|文件)中", " ", query)
+    return tuple(dict.fromkeys(
+        token.word for token in jieba.posseg.cut(query)
+        if token.flag.startswith("n") and len(token.word) >= 2 and token.word not in _ABSTRACT_NOUNS
+    ))
+
+
+def _supported_candidates(query: str, candidates: list[dict]) -> list[dict]:
+    if not settings.retriever_focus_gate_enabled:
+        return candidates
+    terms = _question_focus(query)
+    if not terms:
+        return candidates
+    supported = []
+    for item in candidates:
+        # Filenames and headings may mention the topic but are not answer evidence.
+        content = str(item.get("content", "")).casefold()
+        coverage = sum(
+            any(alias.casefold() in content for alias in _FOCUS_EQUIVALENTS.get(term, (term,)))
+            for term in terms
+        ) / len(terms)
+        if coverage == 1:
+            supported.append({**item, "focus_coverage": coverage})
+    return supported
 
 
 def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None, document_ids: list[str] | None = None) -> list[dict]:
@@ -256,7 +317,7 @@ def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None, do
             str(item["id"]),
         ),
     )
-    candidates = _deduplicate(ranked, pool_size)
+    candidates = _supported_candidates(query, _deduplicate(ranked, pool_size))
     return rerank(query, candidates, limit)
 
 

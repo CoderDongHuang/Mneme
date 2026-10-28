@@ -2,7 +2,8 @@
 
 The project keeps separate locks because pip hashes identify distributions, and
 platform-specific wheels legitimately have different hashes. This command
-downloads only compatible Windows wheels and writes their SHA-256 values.
+downloads compatible Windows wheels (and jieba's platform-independent source
+distribution, for which upstream publishes no wheel) and writes SHA-256 values.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import tempfile
 from pathlib import Path
 
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name, parse_wheel_filename
+from packaging.utils import canonicalize_name, parse_wheel_filename, parse_sdist_filename
 
 
 REQUIREMENT = re.compile(r"^([A-Za-z0-9_.-]+(?:\[[^]]+\])?==[^\s]+)")
@@ -60,6 +61,7 @@ def main() -> int:
             "download",
             "--disable-pip-version-check",
             "--only-binary=:all:",
+            "--no-binary=jieba",
             "--no-deps",
             "--platform",
             "win_amd64",
@@ -76,7 +78,12 @@ def main() -> int:
         subprocess.run(command, check=True)
         wheels = {}
         for path in Path(directory).iterdir():
-            name, version, _build, _tags = parse_wheel_filename(path.name)
+            if path.suffix == ".whl":
+                name, version, _build, _tags = parse_wheel_filename(path.name)
+            else:
+                name, version = parse_sdist_filename(path.name)
+                if canonicalize_name(name) != "jieba":
+                    raise SystemExit(f"Unexpected source distribution: {path.name}")
             wheels[(canonicalize_name(name), str(version))] = path
         if len(wheels) != len(requirements):
             raise SystemExit(f"Expected {len(requirements)} Windows wheels, found {len(wheels)}")

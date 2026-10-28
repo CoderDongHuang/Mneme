@@ -1,0 +1,9 @@
+{
+  "recall@5": {"min": 0.95},
+  "mrr": {"min": 0.85},
+  "top_evidence_term_support": {"min": 0.85},
+  "top_evidence_precision": {"min": 0.8},
+  "evidence_hit_recall": {"min": 0.85},
+  "no_answer_evidence_absence": {"min": 1.0},
+  "p95_latency_ms": {"max": 3000.0}
+}

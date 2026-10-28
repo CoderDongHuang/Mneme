@@ -107,6 +107,7 @@ class Settings:
     memory_version_retention_days: int = int(os.getenv("MEMORY_VERSION_RETENTION_DAYS", "180"))
     retriever_rewrite_enabled: bool = _bool("RETRIEVER_REWRITE_ENABLED", True)
     reranker_enabled: bool = _bool("RERANKER_ENABLED", False)
+    retriever_focus_gate_enabled: bool = _bool("RETRIEVER_FOCUS_GATE_ENABLED", True)
     reranker_provider: str = os.getenv("RERANKER_PROVIDER", "dashscope").strip().lower()
     reranker_model: str = os.getenv("RERANKER_MODEL", "gte-rerank-v2").strip()
     # DashScope normalized relevance only; local CrossEncoder logits use another scale.

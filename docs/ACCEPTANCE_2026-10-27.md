@@ -60,6 +60,15 @@ npx playwright test e2e/roadmap-stack.spec.js --retries=0
 - 独立验收栈曾被旧源码挂载覆盖镜像；同步本轮源码后重新通过 Chroma/S3 兼容存储/Redis/Java 重启四类删除故障，以及加密备份—删除—恢复—登录—引用问答。日志 `artifacts/pr34-deletion-verifier-fix.log` 与 `artifacts/pr34-backup-final.log`。主项目数据未参与破坏性演练。
 - 最后日志修复的提交仍须 PR 最新检查全部通过后才合并；最终状态以 PR 检查和合并提交为准。
 
+## 2026-10-28 续租修复回归
+
+- 修复 Python 进程强杀后 Redis 活动锁可能残留 12 小时的问题：活动锁保存随机 owner token，租约 60 秒、每 20 秒续期；续期和释放均通过 Redis Lua 校验 owner，续租失败后在下一个解析检查点停止处理。
+- `.venv` 全量 Python 回归 625 通过、1 跳过；取消/租约定向测试 5 通过；Ruff 检查通过。
+- 使用主项目实际 Redis 与 Python Agent 容器验证取得租约、同 task 重入被拒绝、重复 worker 不影响 owner、owner 退出后 key 删除。Python Agent 重启后 `/health` 返回 200；`http://localhost:3000/auth`、Java 健康入口和 Python 健康入口均返回 HTTP 200。
+- 主项目真实 URL Playwright 桌面端全链路 1/1 通过：注册唯一验收账号、错误密码拒绝、重新登录、创建资料库、上传合成 TXT、等待解析 ready、两轮流式 RAG 引用回答及刷新后历史恢复。
+- Docker 重建尝试因 PyPI `hf-xet` 连接超时中止；Compose 将本地源码挂载到运行容器，本次改动通过重启现有 Agent 加载，无需重装依赖。容器未安装 pytest，自动化套件在本机项目虚拟环境运行，容器仅执行真实 Redis 集成探针。
+- 已重新核对路线图前言、共通要求和 Mneme 第 1 章：租约问题改为已实现并实测；RAG 无答案候选、Chroma/Spring 上游公告、生产云资源、复杂 OCR 与许可证人工审查仍如实标记为未完全解决。原始 RAG 失败报告及用户个人调试记录保持不变。
+
 ## 文档对照
 
-逐项核对原文的 P0/P1，实现、验收和未完成边界统一写入 ROADMAP_COVERAGE；同步 README、API、自部署、rollout、RAG、测试、当前状态与发布说明。没有把旧解析报告补造、同主题无答案召回、强杀锁、上游公告、生产云和许可证审查写成“已解决”。当前仍是私有部署 Beta，不能据此宣称生产风险全消除。
+逐项核对原文的 P0/P1，实现、验收和未完成边界统一写入 ROADMAP_COVERAGE；同步 README、API、自部署、rollout、RAG、测试、当前状态与发布说明。没有把旧解析报告补造、同主题无答案候选、上游公告、生产云和许可证审查写成“已解决”。当前仍是私有部署 Beta，不能据此宣称生产风险全消除。

@@ -1,10 +1,13 @@
 from unittest.mock import patch
+from dataclasses import replace
+from app.knowledge import retriever
 
 from app.knowledge.retriever import (
     _ann_semantic_candidates,
     _exact_semantic_candidates,
     retrieve,
     rewrite_queries,
+    _supported_candidates,
 )
 
 
@@ -29,8 +32,8 @@ class FakeCollection:
             ],
         }
 
-    def query(self, query_texts, n_results, include):
-        del query_texts, n_results, include
+    def query(self, query_embeddings, n_results, include):
+        del query_embeddings, n_results, include
         return {
             "ids": [["pomodoro", "gradient", "chain"]],
             "documents": [[self.documents[1], self.documents[0], self.documents[2]]],
@@ -98,6 +101,30 @@ def test_exact_semantic_candidates_rank_stored_vectors(monkeypatch):
     assert [chunk["distance"] for chunk in chunks] == [0.0, 2.0]
 
 
+def test_query_rewrites_share_one_embedding_request_and_keep_channel_ranks(monkeypatch):
+    from unittest.mock import Mock
+
+    embed = Mock(return_value=[[1.0, 0.0], [0.0, 1.0]])
+    monkeypatch.setattr(retriever, "embeddings", embed)
+    collection = Mock()
+    collection.count.return_value = 2
+    collection.query.return_value = {
+        "ids": [["a", "b"], ["b", "a"]],
+        "documents": [["A", "B"], ["B", "A"]],
+        "metadatas": [[{}, {}], [{}, {}]],
+        "distances": [[0.1, 0.9], [0.2, 0.8]],
+    }
+    chunks = _ann_semantic_candidates(collection, ["original", "rewritten"], 5)
+    embed.assert_called_once_with(["original", "rewritten"])
+    collection.query.assert_called_once_with(
+        query_embeddings=embed.return_value, n_results=2,
+        include=["documents", "metadatas", "distances"],
+    )
+    assert [(item["id"], item["query_index"]) for item in chunks] == [
+        ("a", 0), ("b", 0), ("b", 1), ("a", 1),
+    ]
+
+
 def test_stale_lexical_hits_are_never_returned(monkeypatch):
     class LiveCollection:
         def count(self):
@@ -120,3 +147,31 @@ def test_stale_lexical_hits_are_never_returned(monkeypatch):
     assert results[0]["content"] == "current version"
     assert results[0]["metadata"]["visual_region"] == "0,0,1,1"
     assert results[0]["retrieval_ranks"] == {"bm25": 1}
+
+
+def test_topic_overlap_cannot_support_a_missing_requested_field():
+    candidate = {"id": "a", "content": "飞羽计划的负责人为李安，校验编号为 FY-928。",
+                 "metadata": {"source": "银行账户余额.md"}}
+    assert _supported_candidates("飞羽计划的银行账户余额是多少？", [candidate]) == []
+    assert _supported_candidates("飞羽计划的负责人是谁？", [candidate])
+
+
+def test_focus_gate_preserves_open_semantic_queries_and_can_be_disabled(monkeypatch):
+    candidate = {"id": "a", "content": "参数更新沿着损失下降方向进行"}
+    assert _supported_candidates("解释梯度下降", [candidate]) == [candidate]
+    monkeypatch.setattr(retriever, "settings", replace(retriever.settings, retriever_focus_gate_enabled=False))
+    assert _supported_candidates("飞羽计划的银行卡密码是什么", [candidate]) == [candidate]
+
+
+def test_focus_gate_accepts_common_field_paraphrases():
+    candidates = [
+        {"content": "这个产品定价为 320 元。"},
+        {"content": "这份讲义由陈安撰写。"},
+        {"content": "会议在中心大楼举行。"},
+        {"content": "电池可连续工作 10 小时。"},
+    ]
+    for question, candidate in zip([
+        "这个产品的售价是多少？", "讲义的作者是谁？",
+        "会议的举办地点在哪里？", "电池的续航时间是多少？",
+    ], candidates):
+        assert _supported_candidates(question, [candidate])

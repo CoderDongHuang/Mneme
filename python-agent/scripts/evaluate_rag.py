@@ -293,7 +293,7 @@ async def _evaluate(
                 )
             )
         else:
-            abstention_hits += int(not relevant_ranks)
+            abstention_hits += int(not chunks)
 
         details.append(
             {
@@ -306,7 +306,11 @@ async def _evaluate(
                 "citations": len(final_citations),
                 "relevant_citations": len(relevant_citations),
                 "latency_ms": round(latency_ms, 2),
-                "passed": bool(rank) if answerable else not relevant_ranks,
+                "passed": bool(rank) if answerable else not chunks,
+                "candidates": [
+                    {key: chunk[key] for key in ("id", "distance", "term_coverage", "focus_coverage", "retrieval_ranks") if key in chunk}
+                    for chunk in chunks
+                ],
             }
         )
         if case_index in sample_indices:
@@ -332,7 +336,7 @@ async def _evaluate(
         + llm_output_tokens / 1_000_000 * max(0.0, output_cost_per_million)
     )
     report = {
-        "schema_version": 3,
+        "schema_version": 4,
         "dataset": {"path": dataset_path.name, "sha256": hashlib.sha256(dataset_path.read_bytes()).hexdigest()},
         "evaluation_scope": "retrieval baseline; optional production-prompt generation + claim verification + model judge",
         "configuration": {"embedding_model": embeddings.profile(), "top_k": top_k, "chat_models": llm.status,
@@ -342,6 +346,8 @@ async def _evaluate(
                                         "reranker_model": settings.reranker_model,
                                         "reranker_min_score": settings.reranker_min_score},
                           "answer_point_scoring_version": 1,
+                          "no_answer_scoring_version": 2,
+                          "focus_gate_enabled": settings.retriever_focus_gate_enabled,
                           "qa_prompt_sha256": hashlib.sha256(QA_PROMPT.encode()).hexdigest(),
                           "verification_prompt_sha256": hashlib.sha256(VERIFICATION_PROMPT.encode()).hexdigest()},
         "cases": len(cases),

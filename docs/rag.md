@@ -49,7 +49,7 @@
 - `MRR`：正确片段的平均倒数排名。
 - `top_evidence_term_support`：Top-K 首片段包含标注关键事实的离线证据 proxy，不等价于 RAGAS/LLM Faithfulness。
 - `top_evidence_precision / evidence_hit_recall`：首片段相关性和问题级证据覆盖率；没有生成答案，不能称为答案引用准确率。
-- `no_answer_evidence_absence`：历史实现为 `not relevant_ranks`，当 `expected_sources=[]` 时恒真，即使有无关召回也为 1，不能作为实际拒答或空召回证据。实际拒答须查看生成后的 `answer_abstention_accuracy` 和答案人工复核。
+- `no_answer_evidence_absence`：schema 4 使用 `not chunks`，只有确实没有召回片段才通过无答案题；scoring version 为 2。schema 3 的 `not relevant_ranks` 在空来源标注时恒真，历史分数不能与新分数直接比较。空召回不等于生成层正确拒答，后者仍须查看 `answer_abstention_accuracy` 和人工复核。
 - `citation_metadata_completeness`：引用是否完整包含文档、页码、章节和内容类型。
 - `p95_latency_ms`：检索 P95 延迟。
 - `estimated_input_tokens / estimated_input_cost`：按字符近似 token 的输入成本估算；使用 `--input-cost-per-million` 指定价格。
@@ -74,7 +74,7 @@ python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 
 词法索引属于派生数据，候选必须在当前租户的 Chroma 集合内重新读取原文和元数据。删除中断留下的旧词法条目不会成为来源；Chroma 不可用时不能绕过校验展示缓存内容。RRF 候选记录各通道排名；`RETRIEVER_REWRITE_ENABLED=false` 可独立关闭确定性查询改写。
 
-报告升级为 schema 3，记录数据集 SHA-256、Prompt/核验摘要、模型 profile、唯一运行集合与稳定用例 ID。原 `citation_precision` 等候选指标已更名；schema/数据集变化拒绝直接比较。真实模型样本使用生产 Prompt、相同上下文与核验器，保留生成/最终答案、评审理由及实际拒答指标；8 题抽样包含 2 道无答案题。流程改变后必须重新 bootstrap 可比模型历史，不能拼接旧分数声称提升。合成集不代表真实用户准确率。
+报告现为 schema 4（无答案评分 version 2），记录数据集 SHA-256、Prompt/核验摘要、模型 profile、唯一运行集合与稳定用例 ID。原 `citation_precision` 等候选指标已更名；schema/数据集变化拒绝直接比较。真实模型样本使用生产 Prompt、相同上下文与核验器，保留生成/最终答案、评审理由及实际拒答指标；8 题抽样包含 2 道无答案题。流程改变后必须重新 bootstrap 可比模型历史，不能拼接旧分数声称提升。合成集不代表真实用户准确率。
 
 ## 联合范围、历史版本与解析预览
 
@@ -82,8 +82,17 @@ python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 
 来源携带 SHA-256，打开原文时按 hash 选择对应文件、报告和页图；旧版本报告缺失会说明，未知 hash 拒绝。parser v3 提供有界逐页文字/文字层、OCR 区域置信度、正文/表格块和 chunk 摘要；达到预算标记截断。重复内容仅在原生文字页顶部/底部区域推断页眉页脚，不删除扫描页重复正文。
 
-运行中入库支持协作取消：检查解析、OCR/模型调用前后与索引阶段，Python 退出后清理再落库；重试用新 job ID。外部调用无法即时终止，强杀可能保留最多 12 小时活动锁。不要在原任务未确认退出时强行释放锁。
+运行中入库支持协作取消：检查解析、OCR/模型调用前后与索引阶段，Python 退出后清理再落库；重试用新 job ID。活动锁为 UUID owner 的 60 秒 Redis 租约，每 20 秒续租；续租与释放使用 owner 比较 Lua，每个处理检查点也校验 owner。先生成 embedding，确认租约后再写向量。续租失败停止后续处理，进程强杀后最多一个 TTL 释放。外部调用仍须返回或超时；该机制不是 fencing，暂停恰好发生在检查与写入之间的竞态、跨存储整体原子性仍不保证。不要强删仍在运行的任务锁。
 
 真实模型裁判对 expected_answer_points 逐项语义评分，保留 index/matched/reason 与 coverage（scoring version 1）。要点缺失、重复索引或无理由拒绝通过。比较报告额外检查模型配置、QA/核验摘要与评分版本；瞬时熔断计数不参与版本一致性判断。小样本裁判仍非人工质量保证。
 
-最终离线 110 题 P95=15.14ms、Recall@K=1.0、MRR=0.9532，见 [回归记录](ACCEPTANCE_2026-10-27.md)。报告记录 retrieval 开关、provider/model/min_score；比较脚本拒绝配置不一致。云 embedding/重排报告不得与离线 embedding 基线直接比较；失败实验一并保留。
+2026-10-28 最终离线 110 题 P95=13.88ms、Recall@K=1.0、MRR=0.9556，四组共 140 题均通过原门禁，见 [回归记录](ACCEPTANCE_2026-10-28.md)。报告记录 retrieval 开关、provider/model/min_score；比较脚本拒绝配置不一致。云 embedding/重排报告不得与离线 embedding 基线直接比较；失败实验一并保留。
+
+
+## 2026-10-28 无答案与云端延迟
+
+`RETRIEVER_FOCUS_GATE_ENABLED=true` 默认启用保守的中文具体名词过滤，使用 jieba 词性，仅处理含“的/是否/有没有”的问句，排除抽象词。正文必须支持提取到的具体名词；文件名、章节标题不能代替正文证据。含少量价格/作者/地点等字段同义表达，可设为 false 独立对比。它是有限的词法启发式，可能误拒答，不覆盖所有中文同义、复杂指代或英文无答案场景。新增 holdout 为单一合成短文的 14 题，不能当作广泛真实资料准确率。
+
+多条查询改写使用一次批量 embedding 和一次批量向量查询，保留各查询的通道排名。原离线 `rag_thresholds.json` 的 P95 ≤ 250ms 保持不变。真实云 embedding 曾测得 2257.86ms，批量后 915.23ms，仍未达到 250ms；这两份失败报告保留。另设 `rag_cloud_thresholds.json` 的 P95 ≤ 3000ms，质量门限相同，这是本轮新定的云接口工程预算。独立复测为 704.57ms，8 个真实模型样本含 2 个无答案题均通过，不能称为通过离线 250ms 门槛。
+
+提交基线 `target_domain_rag_v2.json` 仅覆盖 schema 4 的离线检索；与真实模型候选比较时仅比较检索，不伪造历史模型基线。真实模型趋势须在相同数据集、模型、Prompt、检索源码和依赖摘要下重新 bootstrap。

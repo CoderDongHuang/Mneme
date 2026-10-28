@@ -40,11 +40,16 @@ def _get(value: dict[str, Any], path: str) -> Any:
 def compare(baseline: dict, candidate: dict, max_regression: float = 0.05) -> dict:
     metrics = {}
     failures = []
-    for path in ("schema_version", "dataset.version", "dataset.sha256", "configuration.embedding_model", "configuration.top_k"):
+    for path in ("schema_version", "dataset.version", "dataset.sha256", "configuration.embedding_model", "configuration.top_k",
+                 "configuration.no_answer_scoring_version", "configuration.focus_gate_enabled"):
         before, after = _get(baseline, path), _get(candidate, path)
         if before is not None and after != before:
             failures.append(f"{path} changed; reports are not comparable")
-    if any(_get(report, "real_llm_evaluation.status") == "completed" for report in (baseline, candidate)):
+    baseline_has_model = _get(baseline, "real_llm_evaluation.status") == "completed"
+    candidate_has_model = _get(candidate, "real_llm_evaluation.status") == "completed"
+    if baseline_has_model and not candidate_has_model:
+        failures.append("candidate is missing the baseline's real model evaluation")
+    if baseline_has_model and candidate_has_model:
         for path in ("configuration.chat_models.configured", "configuration.chat_models.primary",
                      "configuration.chat_models.fallback", "configuration.qa_prompt_sha256",
                      "configuration.verification_prompt_sha256", "configuration.answer_point_scoring_version"):
@@ -75,6 +80,7 @@ def compare(baseline: dict, candidate: dict, max_regression: float = 0.05) -> di
         failures.append("no comparable metrics")
     return {
         "status": "failed" if failures else "passed",
+        "comparison_scope": "retrieval_and_model" if baseline_has_model else "retrieval_only",
         "baseline_version": baseline_version,
         "candidate_version": candidate_version,
         "max_regression": max_regression,
