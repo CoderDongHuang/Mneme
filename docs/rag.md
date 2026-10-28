@@ -88,6 +88,8 @@ python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 
 2026-10-28 最终离线 110 题 P95=13.88ms、Recall@K=1.0、MRR=0.9556，四组共 140 题均通过原门禁，见 [回归记录](ACCEPTANCE_2026-10-28.md)。报告记录 retrieval 开关、provider/model/min_score；比较脚本拒绝配置不一致。云 embedding/重排报告不得与离线 embedding 基线直接比较；失败实验一并保留。
 
+2026-10-29 更换 Qdrant 后，四组 140 题再次通过原门禁；110 题 P95=5.47ms、Recall@K=1.0、MRR=0.9556。结果仅为本轮环境测量，不将不同运行条件下的耗时差异宣称为数据库普遍性能提升。原始 JSON 见 [release-evidence-2026-10-29](../python-agent/evaluation/release-evidence-2026-10-29/)，当前验收见 [回归记录](ACCEPTANCE_2026-10-29.md)。
+
 
 ## 2026-10-28 无答案与云端延迟
 
