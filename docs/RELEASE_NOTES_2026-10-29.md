@@ -4,7 +4,7 @@
 
 这是有迁移要求的变更。已有数据不能直接挂载给新库；请先按[迁移指南](VECTOR_STORE_MIGRATION.md)停写、备份、导出、迁入空目标并核对后再启动。脚本默认 dry-run，拒绝覆盖、校验快照及全部迁移记录；发现旧数据但未完成迁移时，应用拒绝静默切换为空索引。新安装直接按 README 执行。
 
-配置改为 `VECTOR_STORE_MODE`、`QDRANT_URL`、`QDRANT_PATH` 和可选 `QDRANT_API_KEY`。原 `CHROMA_*` 不再选择运行库；`CHROMA_PATH` 仅用于旧数据检测。HTTP 服务端口为内部 6333，不对主机或公网开放。Linux/Windows Python 3.11 锁文件分别为 116/119 包；Windows 生成器递归验证目标平台依赖元数据，保留强制哈希校验。
+配置改为 `VECTOR_STORE_MODE`、`QDRANT_URL`、`QDRANT_PATH` 和可选 `QDRANT_API_KEY`。原 `CHROMA_*` 不再选择运行库；`CHROMA_PATH` 仅用于旧数据检测。HTTP 服务端口为内部 6333，不对主机或公网开放。Compose 构建固定官方摘要的 API 专用镜像，实际移除有漏洞的未用 Dashboard，保留完整数据库 SBOM；快照与启动标记移入可写数据卷，主栈自动初始化目录归属，数据库以非 root 用户运行。Linux/Windows Python 3.11 锁文件分别为 116/119 包；Windows 生成器递归验证目标平台依赖元数据，保留强制哈希校验。
 
 原始 Word 前言、通用要求及 Mneme 第一章再次对照，部署、开发、RAG、测试、安全策略和当前状态同步更新，历史失败报告保留。验证结果见[本轮验收](ACCEPTANCE_2026-10-29.md)。无新增 Flyway 迁移，不修改已有迁移校验和。
 

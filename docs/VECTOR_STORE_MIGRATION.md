@@ -4,7 +4,9 @@
 
 ## 新安装
 
-直接按 README 启动。容器使用 `VECTOR_STORE_MODE=http`、`QDRANT_URL=http://qdrant:6333`；原生开发默认 `VECTOR_STORE_MODE=local`，数据位于 `QDRANT_PATH`。本地模式共享同进程客户端，不支持多个进程同时打开相同目录。Qdrant 不发布宿主机端口，仅 Agent 可访问内部网络。外部服务须单独配置受控地址、TLS 和 `QDRANT_API_KEY`。
+直接按 README 启动。Compose 构建 `docker/qdrant` 的 `mneme-qdrant:1.20.0` 镜像：固定官方基础摘要，移除未使用且含已知漏洞的 Dashboard，保留数据库及完整 Rust SBOM。数据库以 UID/GID 10001 运行，快照和启动标记位于数据卷；主栈先运行无网络的 `qdrant-init`，仅调整 `/qdrant/storage` 归属，兼容空目录和旧 root 数据。CI 将归属与数据库用户统一为 runner UID/GID；自定义覆盖用户时必须同步调整初始化命令。不要在数据库运行中手动递归修改归属。
+
+容器使用 `VECTOR_STORE_MODE=http`、`QDRANT_URL=http://qdrant:6333`；原生开发默认 `VECTOR_STORE_MODE=local`，数据位于 `QDRANT_PATH`。本地模式共享同进程客户端，不支持多个进程同时打开相同目录。Qdrant 不发布宿主机端口，仅 Agent 可访问内部网络。外部服务须单独配置受控地址、TLS 和 `QDRANT_API_KEY`。
 
 ## 现有单节点部署
 
@@ -13,7 +15,7 @@
 3. 保留旧镜像后构建新 Agent。导出工具仅使用 HTTP 标准库，可在能访问旧库的隔离网络中执行。默认源为 `http://chroma:8000`，仅导出 Chroma v2 API 的 `default_tenant/default_database`；自定义租户/数据库必须逐一适配导出，不能当作已覆盖。
 
 ```sh
-docker compose build python-agent
+docker compose build python-agent qdrant qdrant-init
 docker compose run --rm --no-deps --entrypoint python python-agent scripts/migrate_vector_store.py export --snapshot /data/legacy-vector.json --source-url http://chroma:8000 --services-stopped
 ```
 

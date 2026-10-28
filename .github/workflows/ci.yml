@@ -470,8 +470,9 @@ jobs:
           }
           build_image mneme-python-agent:p1 python-agent
           build_image mneme-java-gateway:p1 java-gateway
-          docker pull qdrant/qdrant:v1.20.0
-          docker image inspect qdrant/qdrant:v1.20.0 > vector-image-provenance.json
+          docker pull qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2
+          build_image mneme-qdrant:1.20.0 docker/qdrant
+          docker image inspect qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2 mneme-qdrant:1.20.0 > vector-image-provenance.json
       - name: Scan Python runtime image
         id: python_image_scan
         continue-on-error: true
@@ -502,7 +503,7 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: qdrant/qdrant:v1.20.0
+          image-ref: mneme-qdrant:1.20.0
           scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: true

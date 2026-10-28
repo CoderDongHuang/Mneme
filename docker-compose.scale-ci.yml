@@ -14,7 +14,8 @@ services:
     image: redis:7-alpine
 
   qdrant-1:
-    image: ${MNEME_QDRANT_IMAGE:-qdrant/qdrant:v1.20.0}
+    build: ./docker/qdrant
+    image: ${MNEME_QDRANT_IMAGE:-mneme-qdrant:1.20.0}
     networks: [vector-backend]
     volumes:
       - scale-qdrant-1:/qdrant/storage
@@ -25,7 +26,8 @@ services:
       retries: 40
 
   qdrant-2:
-    image: ${MNEME_QDRANT_IMAGE:-qdrant/qdrant:v1.20.0}
+    build: ./docker/qdrant
+    image: ${MNEME_QDRANT_IMAGE:-mneme-qdrant:1.20.0}
     networks: [vector-backend]
     volumes:
       - scale-qdrant-2:/qdrant/storage

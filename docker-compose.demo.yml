@@ -18,7 +18,8 @@ services:
     image: axllent/mailpit:v1.21
     ports: ["127.0.0.1:${DEMO_MAIL_PORT:-8025}:8025"]
   qdrant:
-    image: qdrant/qdrant:v1.20.0
+    build: ./docker/qdrant
+    image: mneme-qdrant:1.20.0
     networks: [vector-backend]
     volumes: [demo-qdrant:/qdrant/storage]
     healthcheck:
