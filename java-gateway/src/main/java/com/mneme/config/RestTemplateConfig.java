@@ -1,6 +1,6 @@
 package com.mneme.config;
 
-import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.boot.restclient.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -29,7 +29,7 @@ public class RestTemplateConfig {
             .additionalInterceptors((request, body, execution) -> {
                 request.getHeaders().set("X-Internal-Service-Token", tokens.current());
                 var span = tracer.currentSpan();
-                if (span != null && !request.getHeaders().containsKey("traceparent")) {
+                if (span != null && !request.getHeaders().containsHeader("traceparent")) {
                     var context = span.context();
                     var flags = Boolean.TRUE.equals(context.sampled()) ? "01" : "00";
                     request.getHeaders().set(

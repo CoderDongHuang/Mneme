@@ -3,6 +3,7 @@ package com.mneme.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mneme.entity.KnowledgeBase;
 import com.mneme.entity.KnowledgeDocument;
+import com.mneme.entity.ProcessingTask;
 import com.mneme.mapper.KnowledgeBaseMapper;
 import com.mneme.mapper.KnowledgeDocumentMapper;
 import com.mneme.mapper.ProcessingTaskMapper;
@@ -28,7 +29,7 @@ class KnowledgeServiceSecurityTest {
             "file", "attack.pdf", "application/pdf", "MZ executable".getBytes());
 
         assertThrows(IllegalArgumentException.class, () -> fixture.service.uploadDocument(7L, 3L, file));
-        verify(fixture.documents, never()).insert(any());
+        verify(fixture.documents, never()).insert(any(KnowledgeDocument.class));
     }
 
     @Test
@@ -51,7 +52,7 @@ class KnowledgeServiceSecurityTest {
         verify(fixture.jdbc).update(
             contains("INSERT INTO knowledge_document_version"),
             eq(42L), eq(1), eq("notes.txt"), anyString(), anyString(), eq(5L));
-        verify(fixture.tasks).insert(any());
+        verify(fixture.tasks).insert(any(ProcessingTask.class));
     }
 
     private Fixture fixture() {

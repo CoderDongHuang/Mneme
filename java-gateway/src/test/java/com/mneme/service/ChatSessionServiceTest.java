@@ -27,7 +27,7 @@ class ChatSessionServiceTest {
 
         assertThat(exchange.completed()).isTrue();
         assertThat(exchange.assistantMessage().getContent()).isEqualTo("answer");
-        verify(fixture.messages, never()).insert(any());
+        verify(fixture.messages, never()).insert(any(ChatMessage.class));
     }
 
     @Test
@@ -82,7 +82,7 @@ class ChatSessionServiceTest {
         assertThat(exchange.userMessage().getSessionId()).isEqualTo(9L);
         assertThat(exchange.assistantMessage().getStatus()).isEqualTo("processing");
         assertThat(session.getTitle()).isEqualTo("question");
-        verify(fixture.messages, times(2)).insert(any());
+        verify(fixture.messages, times(2)).insert(any(ChatMessage.class));
         verify(fixture.sessions).updateById(session);
     }
 

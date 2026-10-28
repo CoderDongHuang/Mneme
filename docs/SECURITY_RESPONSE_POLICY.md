@@ -23,11 +23,11 @@
 
 2026-10-27 Java 镜像复扫：Brotli `CVE-2026-111497` 通过构建时 `apk upgrade --no-cache` 获取发行版补丁，镜像扫描继续强制拦截。
 
-Spring `CVE-2026-47884`（XSLT/wildcard view）和 `CVE-2026-47890`（SSE view fragments）在 6.2.19 尚无公开修复版，公开补丁在 7.0.9。当前 REST 网关不提供模板渲染或 XSLT，也不使用 `FragmentsRendering`/`ModelAndView`；通知 SSE 仅发送 JSON Map，对话 SSE 是原始 HTTP 转发。因此保留**仅这两项**依赖扫描例外，并用 CI 检查受影响的用法/模板依赖不得加入。负责人：项目维护者；复核：2026-10-27；到期：2026-11-10。若引入视图、WebFlux、模板依赖或到期，检查失败，须先迁移到有补丁的框架版本并做兼容性验收。此处是当前用途的适用性判断，不宣称依赖本身已修复；Spring Boot 4/Spring 7 迁移仍需单独验收。
+2026-10-28：Spring `CVE-2026-47884`（XSLT/wildcard view）和 `CVE-2026-47890`（SSE view fragments）通过 Spring Boot 4.0.9 / Spring Framework 7.0.10 迁移处理。删除两项 `.trivyignore` 忽略及旧版适用性检查，继续执行普通 Java 依赖和镜像扫描。MyBatis、springdoc、RestClient、Flyway 和 OpenTelemetry 使用兼容的 Boot 4 模块；JSON 暂沿官方 Jackson 2 兼容模块维持已有持久化契约。验收证据见 [本轮记录](ACCEPTANCE_2026-10-28.md)。
 
 2026-10-01 镜像复扫发现 Jackson Databind `2.21.6` 的 `CVE-2026-91776` 和 `CVE-2026-91777`（High），已将 Jackson BOM 升级到修复版本 `2.21.7`；保持镜像 High/Critical 门禁，不增加例外。
 
-2026-10-01 复核：PyJWT 的 `GHSA-42vr-xj54-vc7v` / `CVE-2026-101918` 已通过升级 `2.14.0` 到 `2.15.0` 修复，锁文件使用核实的官方 wheel 哈希，并覆盖未验签深层 JSON 载荷应返回 `DecodeError` 的回归。启用 LLM 日预算时拒绝非有限预算、价格和共享计数值，且预留的输出 token 上限实际传给模型。备份恢复拒绝目标目录链接及 Windows 特殊文件路径。当时剩余三项 Chroma 例外；2026-10-27 又记录下文两项 Spring 的受影响 API 适用性例外，当前合计五项。
+2026-10-01 复核：PyJWT 的 `GHSA-42vr-xj54-vc7v` / `CVE-2026-101918` 已通过升级 `2.14.0` 到 `2.15.0` 修复，锁文件使用核实的官方 wheel 哈希，并覆盖未验签深层 JSON 载荷应返回 `DecodeError` 的回归。启用 LLM 日预算时拒绝非有限预算、价格和共享计数值，且预留的输出 token 上限实际传给模型。备份恢复拒绝目标目录链接及 Windows 特殊文件路径。2026-10-27 曾有五项例外；Spring 7 迁移后当前剩余下文三项 Chroma 例外。
 
 本轮复核确认 `PYSEC-2026-3813` / `CVE-2026-45830`（认证用户跨租户集合操作）、`PYSEC-2026-3814` / `CVE-2026-45833`（有集合更新权限时恶意模型仓库可执行代码）、`PYSEC-2026-3815` / `CVE-2026-45831`（SimpleRBAC 资源作用域检查不足）仍覆盖 Chroma `0.6.3`，OSV 影响范围直到 `1.5.9`，目前没有官方修复版本或已确认的官方 workaround。没有以升级到仍受影响的版本冒充修复。
 
@@ -37,4 +37,4 @@ Spring `CVE-2026-47884`（XSLT/wildcard view）和 `CVE-2026-47890`（SSE view f
 
 2026-10-27 复核：逐项查询 OSV 的 PYSEC-2026-3813/3814/3815，仍未提供 fixed 事件，影响范围包含当前上游最新 1.5.9；保留上述隔离条件，继续阻止其他新增高危依赖。升级 aiohttp、Pillow、pypdf、filelock、certifi 和 OpenTelemetry 至本轮扫描的修复版本；Linux/Windows 分别使用兼容 wheel 的真实 SHA-256 锁定。
 
-2026-10-28 PR #35 供应链门禁发现新增公告：Guava 33.4.8-jre 的 CVE-2026-102554 与 Snappy Java 1.1.10.7 的 CVE-2026-108106、CVE-2026-93451。通过 Maven dependencyManagement 分别固定官方修复版 33.7.2-jre、1.1.10.9；未增加扫描忽略项。Java 完整回归及依赖/运行镜像扫描必须通过后才合并。Spring/Chroma 的既有有期例外由后续独立批次处理。
+2026-10-28 PR #35 供应链门禁发现新增公告：Guava 33.4.8-jre 的 CVE-2026-102554 与 Snappy Java 1.1.10.7 的 CVE-2026-108106、CVE-2026-93451。通过 Maven dependencyManagement 分别固定官方修复版 33.7.2-jre、1.1.10.9；未增加扫描忽略项。Java 完整回归及依赖/运行镜像扫描通过后合并。本批 Spring 迁移移除原两项例外，剩余 Chroma 处理见上文。

@@ -34,7 +34,7 @@ class AuthServiceSecurityTest {
         AuthService service = new AuthService(users, tokens, mock(AuthSessionService.class));
         assertThatThrownBy(() -> service.confirmPasswordReset("expired", "new-password"))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("过期");
-        verify(users, never()).updateById(any());
+        verify(users, never()).updateById(any(User.class));
     }
 
     @Test void resetTokenMustBeClaimedBeforePasswordChanges() {
@@ -49,7 +49,7 @@ class AuthServiceSecurityTest {
         assertThatThrownBy(() -> service.confirmPasswordReset("contended", "new-password"))
             .isInstanceOf(IllegalArgumentException.class);
 
-        verify(users, never()).updateById(any());
+        verify(users, never()).updateById(any(User.class));
         verify(sessions, never()).revokeAll(any());
     }
 
@@ -90,6 +90,41 @@ class AuthServiceSecurityTest {
         assertThat(response.maxAgeSeconds()).isEqualTo(2_592_000L);
         assertThat(response.token()).isNotBlank();
         verify(sessions).create(eq(7L), any(LocalDateTime.class), eq(true));
+    }
+
+    @Test void concurrentFirstAuthenticatedRequestsParseAndRevokeTokens() throws Exception {
+        UserMapper users = mock(UserMapper.class);
+        AuthSessionService sessions = mock(AuthSessionService.class);
+        User user = new User();
+        user.setId(7L); user.setUsername("alice"); user.setStatus("active");
+        when(users.selectById(7L)).thenReturn(user);
+        when(sessions.isActive("session-7", 7L)).thenReturn(true);
+        AuthService service = new AuthService(users, mock(PasswordResetTokenMapper.class), sessions);
+        String secret = "01234567890123456789012345678901";
+        ReflectionTestUtils.setField(service, "jwtSecret", secret);
+        String token = io.jsonwebtoken.Jwts.builder()
+            .json(new io.jsonwebtoken.jackson.io.JacksonSerializer<>())
+            .claim("userId", 7L).claim("sessionId", "session-7")
+            .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+            .compact();
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(16);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            var jobs = new java.util.ArrayList<java.util.concurrent.Future<Long>>();
+            for (int i = 0; i < 64; i++) jobs.add(executor.submit(() -> {
+                start.await();
+                Long id = service.parseUserId(token);
+                service.revokeToken(token);
+                return id;
+            }));
+            start.countDown();
+            for (var job : jobs) assertThat(job.get(10, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(7L);
+        } finally {
+            executor.shutdownNow();
+        }
+        verify(sessions, times(64)).revoke("session-7");
+        assertThatThrownBy(() -> service.parseUserId(token + "invalid"))
+            .isInstanceOf(io.jsonwebtoken.JwtException.class);
     }
 
     private PasswordResetToken validToken() {

@@ -22,4 +22,4 @@
 
 当前 schema 4 指标 `no_answer_evidence_absence` 使用 `not chunks`（version 2），无答案题须实际空召回才通过。历史 schema 3 的 `not relevant_ranks` 在空来源标注时恒真，不能直接比较或作为拒答证据。真实拒答看生成后的 `answer_abstention_accuracy` 与人工复核。原始 top-1 相关性包含无答案题的召回，不等于最终答案引用精度。
 
-定位仍为个人私有部署 Beta。三项 Chroma 和两项 Spring 公告有期例外至 2026-11-10，禁用受影响 API 不等于修补；Spring 7 迁移尚未完成。复杂 OCR、强杀恢复、生产 KMS/异地存储、许可证人工审查保留上述边界，不能宣称全部生产风险已消除。
+定位仍为个人私有部署 Beta。三项 Chroma 公告有期例外至 2026-11-10，隔离不等于修补；Spring 已迁移至 Boot 4.0.9 / Framework 7.0.10 并移除两项忽略。复杂 OCR、强杀恢复、生产 KMS/异地存储、许可证人工审查保留上述边界，不能宣称全部生产风险已消除。
