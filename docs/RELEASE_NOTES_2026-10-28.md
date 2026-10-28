@@ -21,3 +21,5 @@ Spring Boot 4.0.9 / Spring Framework 7.0.10 替换 Boot 3 / Spring 6，Java 最�
 重建并启动 `java-gateway`：`docker compose build java-gateway`、`docker compose up -d --no-deps java-gateway`。自定义配置须将旧 `management.otlp.tracing.endpoint` 迁移至 `management.opentelemetry.tracing.export.otlp.endpoint`，`management.tracing.enabled` 迁移至 `management.tracing.export.enabled`；现有 `OTEL_EXPORTER_OTLP_ENDPOINT` 和 `OTEL_TRACING_ENABLED` 环境变量保持可用。回归注册登录、上传检索、SSE、来源版本、邮件及追踪后再放行写入。删除原 Spring 漏洞例外，Java 依赖和镜像扫描继续启用。
 
 若升级失败，停写后恢复升级前记录的网关镜像与配置；旧网关存在已记录的 Spring 安全公告，仅可隔离诊断，不作为长期安全版本。其他数据服务无需为本次框架升级降级。
+
+JWT 解析及注销显式复用 Jackson JSON 编解码器，修复首次并发鉴权时自动发现组件偶发抛出异常的问题。新增 64 并发回归，完整 Java 86 项及实际项目 URL 桌面/手机 8 项回归通过。

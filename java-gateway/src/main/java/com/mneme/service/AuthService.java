@@ -9,6 +9,8 @@ import com.mneme.mapper.PasswordResetTokenMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.jackson.io.JacksonDeserializer;
+import io.jsonwebtoken.jackson.io.JacksonSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,9 @@ import jakarta.annotation.PostConstruct;
 
 @Service
 public class AuthService {
+    // Explicit JSON codecs avoid JJWT's shared ServiceLoader on concurrent first requests.
+    private static final JacksonDeserializer<java.util.Map<String, ?>> JWT_JSON_READER = new JacksonDeserializer<>();
+    private static final JacksonSerializer<java.util.Map<String, ?>> JWT_JSON_WRITER = new JacksonSerializer<>();
     private final UserMapper userMapper;
     private final PasswordResetTokenMapper resetTokens;
     private final AuthSessionService sessions;
@@ -128,7 +133,7 @@ public class AuthService {
     }
 
     public Long parseUserId(String token) {
-        Claims claims = Jwts.parser().verifyWith(signingKey()).build()
+        Claims claims = Jwts.parser().json(JWT_JSON_READER).verifyWith(signingKey()).build()
             .parseSignedClaims(token).getPayload();
         Long userId = claims.get("userId", Long.class);
         String sessionId = claims.get("sessionId", String.class);
@@ -149,7 +154,7 @@ public class AuthService {
     public void revokeToken(String token) {
         if (token == null || token.isBlank()) return;
         try {
-            Claims claims = Jwts.parser().verifyWith(signingKey()).build()
+            Claims claims = Jwts.parser().json(JWT_JSON_READER).verifyWith(signingKey()).build()
                 .parseSignedClaims(token).getPayload();
             sessions.revoke(claims.get("sessionId", String.class));
         } catch (JwtException ignored) {
@@ -171,6 +176,7 @@ public class AuthService {
 
     private String generateToken(User user, String sessionId, long lifetime) {
         return Jwts.builder()
+            .json(JWT_JSON_WRITER)
             .subject(user.getUsername())
             .claim("userId", user.getId())
             .claim("sessionId", sessionId)

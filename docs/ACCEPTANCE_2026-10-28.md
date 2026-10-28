@@ -40,4 +40,12 @@
 
 ## Spring 7 安全迁移
 
-网关迁移至 Spring Boot 4.0.9 / Spring Framework 7.0.10，配套 MyBatis Plus 3.5.18.1、springdoc 3.2.0。Flyway、RestClient 和 OpenTelemetry 使用 Boot 4 模块，Jackson 2 兼容模块保持已有 JSON 契约，OTLP tracing 使用新配置路径；Prometheus 保留且不额外启用 OTLP metrics exporter。最终依赖下 Java 85 tests passed、0 skipped，含真实 MySQL/Flyway。删除两项 Spring CVE 忽略及到期适用性 guard，后续依赖和镜像扫描继续阻断漏洞。
+网关迁移至 Spring Boot 4.0.9 / Spring Framework 7.0.10，配套 MyBatis Plus 3.5.18.1、springdoc 3.2.0。Flyway、RestClient 和 OpenTelemetry 使用 Boot 4 模块，Jackson 2 兼容模块保持已有 JSON 契约，OTLP tracing 使用新配置路径；Prometheus 保留且不额外启用 OTLP metrics exporter。最终依赖下 Java 86 tests passed、0 skipped，含真实 MySQL/Flyway。删除两项 Spring CVE 忽略及到期适用性 guard，后续依赖和镜像扫描继续阻断漏洞。
+
+## 新公告依赖修复
+
+PR #35 初次供应链检查发现 Guava/Snappy 新公告；Java 依赖现固定 Guava 33.7.2-jre 与 Snappy Java 1.1.10.9。此为本批额外 Java 依赖变动，覆盖完整 Java 回归和镜像扫描，不将原先的未变更说明用于该依赖补丁。
+
+真实 URL 首轮 8 项回归发现首次并发 JWT 解析偶发 `ServiceLoader` 异常；显式共享 Jackson JSON 编解码器替代自动发现，新增 64 并发解析/注销及签名校验测试。完整 Java 回归 86 passed、0 skipped。
+
+2026-10-29 重建最终测试 jar 的网关运行镜像后，在 `http://localhost:3000` 运行 `MNEME_REAL_E2E=true` 的 `real-stack.spec.js` 和 `roadmap-stack.spec.js`，4 workers、0 retries：8 passed（2.0m），涵盖桌面/手机的鉴权、入库检索、历史版本、解析失败/取消/重试和界面交互。原失败日志保留。本机正式源码 Docker 构建遇 Maven Central 502；本机页面回归使用同一最终 jar 的运行层，正式 Dockerfile 完整构建交由本批 CI 验证。
