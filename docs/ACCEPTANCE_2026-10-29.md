@@ -9,7 +9,7 @@
 | 旧库迁移 | 停止 Java/Python 写入后，经旧 Chroma v2 API 导出 92 集合、400 点；迁入 Qdrant 并逐条核对 ID、正文、元数据、向量、集合属性与计数。源库、快照及校验文件保留且不提交 Git；旧 Chroma 容器在新页面回归通过后停止 |
 | Python 正式镜像 | Dockerfile 按 Linux Python 3.11 哈希锁全新构建通过，`pip check` 无冲突；运行时不再安装 Chroma。PyPI 超时使用清华镜像，包哈希校验未放宽 |
 | Python 回归 | Windows Python 3.10.11：644 passed、1 skipped（本机无 Tesseract）；正式镜像的隔离 Python 3.11 容器：645 passed、0 skipped，含真实 OCR。Ruff 通过 |
-| 真实项目页面 | `http://localhost:3000`，桌面/手机 8 passed，4 workers，2.3 分钟，`--retries=0`。包含真实注册/登录、多格式入库、检索引用、流式回答、联合过滤、历史版本、越权、学习与删除、扫描 OCR、损坏文件、运行中取消/重试、供应商诊断 |
+| 真实项目页面 | `http://localhost:3000`，桌面/手机 8 passed，4 workers，2.1 分钟，`--retries=0`。包含真实注册/登录、多格式入库、检索引用、流式回答、联合过滤、历史版本、越权、学习与删除、扫描 OCR、损坏文件、运行中取消/重试、供应商诊断 |
 | 网络与配置 | 主栈、CI、生产和分片四种拓扑私有网络检查通过；主/分片 Compose 解析通过；旧库未迁移启动保护、迁移失败清理、空目标限制和 checksum 篡改回归通过 |
 | 前批网关 | PR #36 的全部 9 项 CI 已通过并合并，含 Java 86 项、真实 MySQL/Flyway、正式 Docker 构建、供应链和分布式追踪；本批未改 Java 或前端业务代码 |
 
@@ -19,7 +19,7 @@
 
 四组共 140 题在 Qdrant 本地模式通过原有门禁，P95 ≤ 250ms，未修改阈值。原始报告见 [release-evidence-2026-10-29](../python-agent/evaluation/release-evidence-2026-10-29/)。这是离线检索验证，不重新计算或覆盖此前真实模型的小样本成绩；HTTP 云模型语义与复杂 OCR 不保证普遍准确。
 
-Linux 与 Windows 锁文件分别按 Python 3.11 解析、下载和计算哈希，各 116 包。删除三个 Chroma pip-audit 忽略；CI 增加 Qdrant 镜像扫描及官方镜像 provenance 产物。新扫描不扩大 `ignore-unfixed` 原策略，扫描通过不等于零漏洞。
+Linux Python 3.11 锁文件 116 包；Windows wheel 按目标平台元数据递归补齐依赖闭包后为 119 包，均计算 SHA-256。首次 Windows CI 发现原生成器只复制 Linux 清单而遗漏平台依赖，已修复生成器并增加平台 marker、传递依赖和冲突回归；补入 colorama、tzdata 和兼容 Python 3.11 早期补丁版本的 async-timeout。删除三个 Chroma pip-audit 忽略；CI 增加 Qdrant 镜像扫描及官方镜像 provenance 产物。新扫描不扩大 `ignore-unfixed` 原策略，扫描通过不等于零漏洞。
 
 本机 Docker Hub 拉取超时，临时使用 DaoCloud 镜像缓存启动 Qdrant，缓存摘要 `sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2`。Docker 官方 API 和 GitHub 大文件下载不可达，不能据此宣称已完成本地镜像来源核验；正式配置固定官方仓库，CI 直接拉取官方镜像并输出摘要供核对。
 

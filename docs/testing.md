@@ -19,7 +19,7 @@ python -m pip install pip-audit==2.9.0
 pip-audit --requirement python-agent/requirements.windows.lock
 ```
 
-Linux/Docker 使用 `python-agent/requirements.lock`。两个锁文件使用官方兼容 wheel 的 SHA-256，jieba 上游仅提供平台无关 sdist，固定其官方源码包 SHA-256；安装时构建 wheel。Windows 锁文件不安装 Linux 专用 `uvloop`。生成器已实测 jieba 源码包分支，全新 Linux 镜像安装和导入通过。
+Linux/Docker 使用 `python-agent/requirements.lock`。两个锁文件使用官方兼容 wheel 的 SHA-256，jieba 上游仅提供平台无关 sdist，固定其官方源码包 SHA-256；安装时构建 wheel。Windows 锁文件不安装 Linux 专用 `uvloop`；生成器递归读取 wheel 元数据并以 Windows/Python 3.11 marker 补齐 colorama、tzdata 等平台依赖，遇到锁定版本冲突拒绝生成。生成器已实测 jieba 源码包分支，全新 Linux 镜像安装和导入通过。
 
 ## Java
 
