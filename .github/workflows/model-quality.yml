@@ -145,7 +145,7 @@ jobs:
         working-directory: python-agent
         run: |
           python scripts/compare_quality_reports.py \
-            --baseline evaluation/baselines/target_domain_rag_v1.json \
+            --baseline evaluation/baselines/target_domain_rag_v2.json \
             --candidate ../artifacts/real-rag-quality-report.json \
             --report ../artifacts/target-domain-regression.json
       - name: Evaluate real model trends
@@ -199,7 +199,9 @@ jobs:
             if [ "$kind" = rag ]; then
               extra_provenance+=(--provenance-input python-agent/app/agents/prompts.py
                 --provenance-input python-agent/app/knowledge/grounding.py
-                --provenance-input python-agent/app/knowledge/citations.py)
+                --provenance-input python-agent/app/knowledge/citations.py
+                --provenance-input python-agent/app/knowledge/retriever.py
+                --provenance-input python-agent/app/utils/embedding.py)
             fi
             if ! python scripts/quality_trend.py --kind "$kind" --record-provenance \
               --reports "artifacts/$name" --configuration "$configuration" \

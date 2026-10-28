@@ -1,0 +1,586 @@
+{
+  "schema_version": 4,
+  "dataset": {
+    "path": "retrieval_holdout_cases.json",
+    "sha256": "62cde79f9983213a16e27e982f7d50ff28a3c94971585b28483e6290e1c7d24e",
+    "version": "independent-holdout-v1"
+  },
+  "evaluation_scope": "retrieval baseline; optional production-prompt generation + claim verification + model judge",
+  "configuration": {
+    "embedding_model": "dashscope:text-embedding-v3:1024",
+    "top_k": 5,
+    "chat_models": {
+      "configured": true,
+      "primary": "deepseek-chat",
+      "fallback": "qwen-plus",
+      "circuit_open": false,
+      "failure_count": 0
+    },
+    "retrieval": {
+      "rewrite_enabled": true,
+      "reranker_enabled": false,
+      "reranker_provider": "dashscope",
+      "reranker_model": "gte-rerank-v2",
+      "reranker_min_score": 0.0
+    },
+    "answer_point_scoring_version": 1,
+    "no_answer_scoring_version": 2,
+    "focus_gate_enabled": true,
+    "qa_prompt_sha256": "e31d7d2574aa4a87ef39d70e0a39e8e4628c6966a49b9b501db1814fcfef69c3",
+    "verification_prompt_sha256": "7a55ece583d3f0f2ade7e76b1719d11c8b734627c69ba5ff55817222ae2e74b4"
+  },
+  "cases": 14,
+  "answerable_cases": 10,
+  "unanswerable_cases": 4,
+  "hit@5": 1.0,
+  "recall@5": 1.0,
+  "mrr": 1.0,
+  "top_evidence_term_support": 1.0,
+  "citation_metadata_completeness": 1.0,
+  "top_evidence_precision": 1.0,
+  "evidence_hit_recall": 1.0,
+  "no_answer_evidence_absence": 1.0,
+  "mean_latency_ms": 1444.73,
+  "p95_latency_ms": 2257.86,
+  "estimated_input_tokens": 460,
+  "estimated_input_cost": 0.000138,
+  "cost_assumption_usd_per_million_input_tokens": 0.3,
+  "category_stats": {
+    "numeric": {
+      "cases": 1,
+      "hits": 1
+    },
+    "entity": {
+      "cases": 1,
+      "hits": 1
+    },
+    "paraphrase": {
+      "cases": 2,
+      "hits": 2
+    },
+    "date": {
+      "cases": 2,
+      "hits": 2
+    },
+    "contract": {
+      "cases": 1,
+      "hits": 1
+    },
+    "negation": {
+      "cases": 1,
+      "hits": 1
+    },
+    "identifier": {
+      "cases": 1,
+      "hits": 1
+    },
+    "cross_language": {
+      "cases": 1,
+      "hits": 1
+    },
+    "unanswerable": {
+      "cases": 4,
+      "hits": 0
+    }
+  },
+  "details": [
+    {
+      "id": "case-001",
+      "question": "青杉观测站的电池容量是多少？",
+      "category": "numeric",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 3431.07,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_0d6148397d05e849_00000",
+          "distance": 0.5933987241128884,
+          "term_coverage": 0.6666666666666666,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-002",
+      "question": "青杉观测站的维护人是谁？",
+      "category": "entity",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 1824.45,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_0d6148397d05e849_00000",
+          "distance": 0.8445944254618645,
+          "term_coverage": 0.7,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-003",
+      "question": "青杉观测站何时检查设备？",
+      "category": "paraphrase",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 1513.11,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_0d6148397d05e849_00000",
+          "distance": 0.5559040798543012,
+          "term_coverage": 0.7,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-004",
+      "question": "雪岭合同的发货日期是什么？",
+      "category": "date",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 1077.58,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_0d6148397d05e849_00000",
+          "distance": 0.7350119803331459,
+          "term_coverage": 0.5454545454545454,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-005",
+      "question": "雪岭合同的退款申请何时提交？",
+      "category": "contract",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 1178.06,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_0d6148397d05e849_00000",
+          "distance": 0.6716607093474408,
+          "term_coverage": 0.5833333333333334,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-006",
+      "question": "雪岭合同是否授权代签？",
+      "category": "negation",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 898.17,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_0d6148397d05e849_00000",
+          "distance": 0.8871595966418161,
+          "term_coverage": 0.6666666666666666,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-007",
+      "question": "远帆课程的补考时间是什么？",
+      "category": "date",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 1690.05,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_0d6148397d05e849_00000",
+          "distance": 0.6393931001781253,
+          "term_coverage": 0.7272727272727273,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-008",
+      "question": "远帆课程的考场编号是什么？",
+      "category": "identifier",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 2257.86,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_0d6148397d05e849_00000",
+          "distance": 0.7825387397845682,
+          "term_coverage": 0.6363636363636364,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-009",
+      "question": "北湾展馆星期一可以参观吗？",
+      "category": "paraphrase",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 1297.87,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_0d6148397d05e849_00000",
+          "distance": 0.79628444772389,
+          "term_coverage": 0.2727272727272727,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-010",
+      "question": "What is the battery capacity at Qingshan station?",
+      "category": "cross_language",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 1072.84,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_0d6148397d05e849_00000",
+          "distance": 0.942005241969403,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-011",
+      "question": "青杉观测站的银行账户余额是多少？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 0,
+      "citations": 0,
+      "relevant_citations": 0,
+      "latency_ms": 930.45,
+      "passed": true,
+      "candidates": []
+    },
+    {
+      "id": "case-012",
+      "question": "雪岭合同的违约金比例是多少？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 0,
+      "citations": 0,
+      "relevant_citations": 0,
+      "latency_ms": 1050.02,
+      "passed": true,
+      "candidates": []
+    },
+    {
+      "id": "case-013",
+      "question": "远帆课程的任课教师是谁？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 0,
+      "citations": 0,
+      "relevant_citations": 0,
+      "latency_ms": 942.73,
+      "passed": true,
+      "candidates": []
+    },
+    {
+      "id": "case-014",
+      "question": "北湾展馆是否提供飞机租赁？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 0,
+      "citations": 0,
+      "relevant_citations": 0,
+      "latency_ms": 1061.92,
+      "passed": true,
+      "candidates": []
+    }
+  ],
+  "failed_examples": [],
+  "real_llm_evaluation": {
+    "answer_point_scoring_version": 1,
+    "answer_point_coverage": null,
+    "status": "completed",
+    "samples": 8,
+    "unanswerable_samples": 2,
+    "answer_abstention_accuracy": 1.0,
+    "answerable_refusal_rate": 0.0,
+    "cost_estimate_method": "UTF-8 byte upper bounds plus maximum verification output; not provider billing",
+    "faithfulness": 1.0,
+    "answer_relevance": 1.0,
+    "estimated_input_tokens": 29690,
+    "estimated_output_tokens": 16433,
+    "estimated_cost": 0.018767,
+    "reserved_cost": 0.031838,
+    "max_cost": 0.15,
+    "cost_assumption_usd_per_million_output_tokens": 0.6,
+    "details": [
+      {
+        "question": "青杉观测站的电池容量是多少？",
+        "answer": "青杉观测站的备用电池容量为 720 Wh[1]。",
+        "generated_answer": "青杉观测站的备用电池容量为 720 Wh[1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答直接给出青杉观测站备用电池容量720 Wh，且完全由证据[1]支持。",
+        "estimated_input_tokens": 4057,
+        "estimated_output_tokens": 2016
+      },
+      {
+        "question": "青杉观测站的维护人是谁？",
+        "answer": "青杉观测站的维护人是宋宁[1]。",
+        "generated_answer": "青杉观测站的维护人是宋宁[1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答直接给出维护人宋宁，且该信息完全由证据[1]支持。",
+        "estimated_input_tokens": 4031,
+        "estimated_output_tokens": 1991
+      },
+      {
+        "question": "青杉观测站何时检查设备？",
+        "answer": "每周三检查设备。[1]",
+        "generated_answer": "每周三检查设备。[1]",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答直接给出检查时间“每周三”，与证据[1]完全一致，且引用了来源，无任何无依据内容。",
+        "estimated_input_tokens": 4001,
+        "estimated_output_tokens": 2024
+      },
+      {
+        "question": "雪岭合同的发货日期是什么？",
+        "answer": "雪岭合同约定发货日期为 2034-09-22 [1]。",
+        "generated_answer": "雪岭合同约定发货日期为 2034-09-22 [1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答直接给出雪岭合同的发货日期，且该日期完全由证据[1]支持。",
+        "estimated_input_tokens": 4052,
+        "estimated_output_tokens": 2012
+      },
+      {
+        "question": "雪岭合同的退款申请何时提交？",
+        "answer": "雪岭合同的退款申请应在收货后 14 天内提交[1]。",
+        "generated_answer": "雪岭合同的退款申请应在收货后 14 天内提交[1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答完全依据证据[1]陈述退款申请应在收货后14天内提交，未添加无依据信息；且直接回答了退款申请提交时间的问题。",
+        "estimated_input_tokens": 4081,
+        "estimated_output_tokens": 2096
+      },
+      {
+        "question": "雪岭合同是否授权代签？",
+        "answer": "雪岭合同未授权代签[1]。",
+        "generated_answer": "雪岭合同未授权代签[1]。",
+        "answerable": true,
+        "refused": false,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "回答直接说明雪岭合同未授权代签，且完全由证据[1]中“合同未授权代签”支持。",
+        "estimated_input_tokens": 4010,
+        "estimated_output_tokens": 2015
+      },
+      {
+        "question": "青杉观测站的银行账户余额是多少？",
+        "answer": "当前资料没有足够的可核查证据回答这个问题。请补充相关文档，或说明需要查询的具体范围。",
+        "generated_answer": "当前资料没有足够的可核查证据回答这个问题。请补充相关文档，或说明需要查询的具体范围。",
+        "answerable": false,
+        "refused": true,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "该问题被标记为不可回答，且证据为空；回答正确拒绝作答并请求补充信息，因此既忠实于证据，也与问题相关。",
+        "estimated_input_tokens": 2732,
+        "estimated_output_tokens": 2150
+      },
+      {
+        "question": "雪岭合同的违约金比例是多少？",
+        "answer": "当前资料没有足够的可核查证据回答这个问题。请补充相关文档，或说明需要查询的具体范围。",
+        "generated_answer": "当前资料没有足够的可核查证据回答这个问题。请补充相关文档，或说明需要查询的具体范围。",
+        "answerable": false,
+        "refused": true,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "expected_answer_points": [],
+        "answer_points": [],
+        "answer_point_coverage": null,
+        "reason": "样本标注为不可回答且无证据，回答明确说明资料不足并请求补充，未编造信息，符合拒答要求。",
+        "estimated_input_tokens": 2726,
+        "estimated_output_tokens": 2129
+      }
+    ]
+  },
+  "quality_gate": {
+    "status": "failed",
+    "thresholds": {
+      "recall@5": {
+        "min": 0.95
+      },
+      "mrr": {
+        "min": 0.85
+      },
+      "top_evidence_term_support": {
+        "min": 0.85
+      },
+      "top_evidence_precision": {
+        "min": 0.8
+      },
+      "evidence_hit_recall": {
+        "min": 0.85
+      },
+      "no_answer_evidence_absence": {
+        "min": 1.0
+      },
+      "p95_latency_ms": {
+        "max": 250.0
+      }
+    },
+    "real_llm_thresholds": {
+      "samples": {
+        "min": 5
+      },
+      "unanswerable_samples": {
+        "min": 2
+      },
+      "answer_abstention_accuracy": {
+        "min": 1.0
+      },
+      "answerable_refusal_rate": {
+        "max": 0.34
+      },
+      "faithfulness": {
+        "min": 0.7
+      },
+      "answer_relevance": {
+        "min": 0.7
+      }
+    },
+    "failures": [
+      "p95_latency_ms=2257.86 exceeds 250.0"
+    ]
+  }
+}

@@ -1,0 +1,124 @@
+[
+  {
+    "question": "青杉观测站的电池容量是多少？",
+    "expected_source": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_terms": [
+      "720"
+    ],
+    "category": "numeric",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "青杉观测站的维护人是谁？",
+    "expected_source": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_terms": [
+      "宋宁"
+    ],
+    "category": "entity",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "青杉观测站何时检查设备？",
+    "expected_source": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_terms": [
+      "周三"
+    ],
+    "category": "paraphrase",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "雪岭合同的发货日期是什么？",
+    "expected_source": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_terms": [
+      "2034-09-22"
+    ],
+    "category": "date",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "雪岭合同的退款申请何时提交？",
+    "expected_source": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_terms": [
+      "14 天"
+    ],
+    "category": "contract",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "雪岭合同是否授权代签？",
+    "expected_source": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_terms": [
+      "未授权"
+    ],
+    "category": "negation",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "远帆课程的补考时间是什么？",
+    "expected_source": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_terms": [
+      "2035-01-16"
+    ],
+    "category": "date",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "远帆课程的考场编号是什么？",
+    "expected_source": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_terms": [
+      "RF-308"
+    ],
+    "category": "identifier",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "北湾展馆星期一可以参观吗？",
+    "expected_source": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_terms": [
+      "周一闭馆"
+    ],
+    "category": "paraphrase",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "What is the battery capacity at Qingshan station?",
+    "expected_source": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_terms": [
+      "720"
+    ],
+    "category": "cross_language",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "青杉观测站的银行账户余额是多少？",
+    "fixture": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_sources": [],
+    "answerable": false,
+    "category": "unanswerable",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "雪岭合同的违约金比例是多少？",
+    "fixture": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_sources": [],
+    "answerable": false,
+    "category": "unanswerable",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "远帆课程的任课教师是谁？",
+    "fixture": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_sources": [],
+    "answerable": false,
+    "category": "unanswerable",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  },
+  {
+    "question": "北湾展馆是否提供飞机租赁？",
+    "fixture": "evaluation/fixtures/retrieval-holdout.md",
+    "expected_sources": [],
+    "answerable": false,
+    "category": "unanswerable",
+    "source_name": "evaluation/fixtures/retrieval-holdout.md"
+  }
+]

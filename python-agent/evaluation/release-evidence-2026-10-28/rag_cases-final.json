@@ -1,0 +1,6252 @@
+{
+  "schema_version": 4,
+  "dataset": {
+    "path": "rag_cases.json",
+    "sha256": "68e19685548d58c55fcfc0b4194deb0a3a5671f6bea95abdfe9b73193e96d588"
+  },
+  "evaluation_scope": "retrieval baseline; optional production-prompt generation + claim verification + model judge",
+  "configuration": {
+    "embedding_model": "local-trigram-sha256-v1:1024",
+    "top_k": 5,
+    "chat_models": {
+      "configured": true,
+      "primary": "deepseek-chat",
+      "fallback": "qwen-plus",
+      "circuit_open": false,
+      "failure_count": 0
+    },
+    "retrieval": {
+      "rewrite_enabled": true,
+      "reranker_enabled": false,
+      "reranker_provider": "dashscope",
+      "reranker_model": "gte-rerank-v2",
+      "reranker_min_score": 0.0
+    },
+    "answer_point_scoring_version": 1,
+    "no_answer_scoring_version": 2,
+    "focus_gate_enabled": true,
+    "qa_prompt_sha256": "e31d7d2574aa4a87ef39d70e0a39e8e4628c6966a49b9b501db1814fcfef69c3",
+    "verification_prompt_sha256": "7a55ece583d3f0f2ade7e76b1719d11c8b734627c69ba5ff55817222ae2e74b4"
+  },
+  "cases": 110,
+  "answerable_cases": 105,
+  "unanswerable_cases": 5,
+  "hit@5": 1.0,
+  "recall@5": 1.0,
+  "mrr": 0.9556,
+  "top_evidence_term_support": 0.9429,
+  "citation_metadata_completeness": 1.0,
+  "top_evidence_precision": 0.9238,
+  "evidence_hit_recall": 0.9238,
+  "no_answer_evidence_absence": 1.0,
+  "mean_latency_ms": 15.02,
+  "p95_latency_ms": 13.88,
+  "estimated_input_tokens": 10561,
+  "estimated_input_cost": 0.0,
+  "cost_assumption_usd_per_million_input_tokens": 0.0,
+  "category_stats": {
+    "identifier": {
+      "cases": 1,
+      "hits": 1
+    },
+    "entity": {
+      "cases": 1,
+      "hits": 1
+    },
+    "date": {
+      "cases": 1,
+      "hits": 1
+    },
+    "pdf": {
+      "cases": 1,
+      "hits": 1
+    },
+    "table": {
+      "cases": 1,
+      "hits": 1
+    },
+    "spreadsheet": {
+      "cases": 1,
+      "hits": 1
+    },
+    "markdown": {
+      "cases": 1,
+      "hits": 1
+    },
+    "slides": {
+      "cases": 1,
+      "hits": 1
+    },
+    "roadmap": {
+      "cases": 23,
+      "hits": 23
+    },
+    "metrics": {
+      "cases": 25,
+      "hits": 25
+    },
+    "parser": {
+      "cases": 24,
+      "hits": 24
+    },
+    "memory": {
+      "cases": 25,
+      "hits": 25
+    },
+    "unanswerable": {
+      "cases": 5,
+      "hits": 0
+    }
+  },
+  "details": [
+    {
+      "id": "case-001",
+      "question": "星桥计划的核心识别码是什么？",
+      "category": "identifier",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 4,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 342.92,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.1214046170041536,
+          "term_coverage": 0.8333333333333334,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 3,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.1214046170041536,
+          "term_coverage": 0.8333333333333334,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 4,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.136424481294557,
+          "term_coverage": 0.8333333333333334,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 5,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.2324774890468775,
+          "term_coverage": 0.8333333333333334,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 6,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-002",
+      "question": "星桥计划的负责人是谁？",
+      "category": "entity",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.48,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.3443898814504598,
+          "term_coverage": 0.7777777777777778,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 4,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.3443898814504598,
+          "term_coverage": 0.7777777777777778,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 5,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.355597756478983,
+          "term_coverage": 0.7777777777777778,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 6,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.5000000434875989,
+          "term_coverage": 0.7777777777777778,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 9,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.7534014522297476,
+          "term_coverage": 0.5555555555555556,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 1,
+            "bm25": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-003",
+      "question": "星桥计划计划在哪一年完成？",
+      "category": "date",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.34,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.5811460488147349,
+          "term_coverage": 0.5,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 5,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.7316719109005514,
+          "term_coverage": 0.5,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 4,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.5811460488147349,
+          "term_coverage": 0.5,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 6,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.5883065188309642,
+          "term_coverage": 0.5,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 7,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00000",
+          "distance": 1.1055727826475792,
+          "term_coverage": 0.3,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 8,
+            "bm25": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-004",
+      "question": "PDF 第 1 页的星桥计划识别码是什么？",
+      "category": "pdf",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.73,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.625365648634602,
+          "term_coverage": 0.5384615384615384,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 4,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.631770173996054,
+          "term_coverage": 0.46153846153846156,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.625365648634602,
+          "term_coverage": 0.46153846153846156,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 5,
+            "bm25": 6
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.7808013205804905,
+          "term_coverage": 0.38461538461538464,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.7333334201129373,
+          "term_coverage": 0.46153846153846156,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 9,
+            "bm25": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-005",
+      "question": "CSV 中星桥计划 林舟 对应什么字段？",
+      "category": "table",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.72,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.7744463834204809,
+          "term_coverage": 0.45454545454545453,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 4,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.6145043999824065,
+          "term_coverage": 0.36363636363636365,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.6210946003672788,
+          "term_coverage": 0.36363636363636365,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 1,
+            "bm25": 6
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.6145043999824065,
+          "term_coverage": 0.36363636363636365,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 7
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00000",
+          "distance": 1.314005614682629,
+          "term_coverage": 0.2727272727272727,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 7,
+            "bm25": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-006",
+      "question": "XLSX 资料中的星桥计划完成年份是什么？",
+      "category": "spreadsheet",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 2,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.25,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.8904006461827665,
+          "term_coverage": 0.3333333333333333,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 2,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.8904006461827665,
+          "term_coverage": 0.26666666666666666,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-007",
+      "question": "Markdown 资料中星桥计划的识别码是什么？",
+      "category": "markdown",
+      "answerable": true,
+      "rank": 2,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 0,
+      "latency_ms": 14.56,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.5953486790311004,
+          "term_coverage": 0.5,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.6022663524509817,
+          "term_coverage": 0.5,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 1,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.5953486790311004,
+          "term_coverage": 0.5,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.6913934106048967,
+          "term_coverage": 0.5,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 8,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.8477961121783697,
+          "term_coverage": 0.35714285714285715,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 4,
+            "bm25": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-008",
+      "question": "PPTX 资料中星桥计划由谁负责？",
+      "category": "slides",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.85,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.6460037728755035,
+          "term_coverage": 0.45454545454545453,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 4,
+            "bm25": 7
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00000",
+          "distance": 1.244071009386074,
+          "term_coverage": 0.36363636363636365,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 7,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.6460037728755035,
+          "term_coverage": 0.36363636363636365,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 3,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.6520554836115044,
+          "term_coverage": 0.36363636363636365,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 2,
+            "bm25": 6
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.875725975192116,
+          "term_coverage": 0.36363636363636365,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 5,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-009",
+      "question": "学习路线分成哪四个阶段？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.42,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.624747957808807,
+          "term_coverage": 0.7,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 10,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999457436983,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 2,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999457436983,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 2.0000000045674726,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 8,
+            "dense:2": 7,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 2.000000078768418,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 9,
+            "dense:2": 9,
+            "bm25": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-010",
+      "question": "学习路线的第一阶段是什么？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.14,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8220022490959562,
+          "term_coverage": 0.36363636363636365,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 6,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-011",
+      "question": "学习路线的第二阶段是什么？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.0,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8220022490959562,
+          "term_coverage": 0.36363636363636365,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 6,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-012",
+      "question": "学习路线的第三阶段是什么？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.47,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8220022490959562,
+          "term_coverage": 0.36363636363636365,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 7,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-013",
+      "question": "学习路线的第四阶段是什么？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.06,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8665016629174835,
+          "term_coverage": 0.36363636363636365,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 9,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-014",
+      "question": "输入阶段负责做什么？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.48,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.787251997090459,
+          "term_coverage": 0.625,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 4,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 5,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 6,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.8985307422357882,
+          "term_coverage": 0.125,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 1,
+            "bm25": 6
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9999999837825184,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 7,
+            "dense:2": 8,
+            "bm25": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-015",
+      "question": "理解阶段要求学习者做什么？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.99,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.6440045938098469,
+          "term_coverage": 0.7272727272727273,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9999999837825184,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 7,
+            "dense:2": 5,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 2.000000057983464,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 10,
+            "dense:2": 6,
+            "bm25": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-016",
+      "question": "理解阶段要标记什么内容？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.58,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8592804700722394,
+          "term_coverage": 0.5,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 10,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999457436983,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 2,
+            "dense:2": 2,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999457436983,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 6
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 2.0000000045674726,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 8,
+            "dense:2": 5,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 2.000000078768418,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 10,
+            "dense:2": 7,
+            "bm25": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-017",
+      "question": "练习阶段优先使用什么题目？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.65,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.7330034214529015,
+          "term_coverage": 0.6363636363636364,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999253789928,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999253789928,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 6
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9999999842027671,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 7,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 2.0000000062059526,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 8,
+            "dense:2": 10,
+            "bm25": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-018",
+      "question": "复盘阶段根据什么安排回顾？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.77,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.787857300894221,
+          "term_coverage": 0.7272727272727273,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9162291663579056,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 8,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.917661307420171,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 7,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9162291663579056,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 9,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 2.000000078768418,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 9,
+            "dense:2": 10,
+            "bm25": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-019",
+      "question": "低评分卡片何时再次出现？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.88,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.7654674651668665,
+          "term_coverage": 0.7,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9456272977878166,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 10,
+            "dense:2": 2,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9490187013560625,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.928525907432686,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 6
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9490187013560625,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-020",
+      "question": "可执行目标需要包含哪些要素？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.09,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.7454287739046337,
+          "term_coverage": 0.6666666666666666,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 3,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9101067329891506,
+          "term_coverage": 0.08333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 2,
+            "dense:2": 10,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9214931674154725,
+          "term_coverage": 0.08333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 3,
+            "dense:2": 7,
+            "bm25": 7
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9595277746152315,
+          "term_coverage": 0.08333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 8,
+            "dense:2": 1,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999232908232,
+          "term_coverage": 0.08333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 4,
+            "bm25": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-021",
+      "question": "为什么需要明确完成条件？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.04,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.812373967619553,
+          "term_coverage": 0.5,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 10,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 2.0000000192528216,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 7,
+            "dense:2": 9,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999889896085,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 9,
+            "dense:2": 2,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 2.0000000478133826,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 8,
+            "dense:2": 7,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999889896085,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 10,
+            "dense:1": 10,
+            "dense:2": 3,
+            "bm25": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-022",
+      "question": "学习资料整理属于哪个阶段？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.44,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9110010767390109,
+          "term_coverage": 0.45454545454545453,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9455668932511387,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 5,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9032697623067092,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 2,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9032697623067092,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 3,
+            "bm25": 6
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.8967204994888935,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 1,
+            "bm25": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-023",
+      "question": "用自己的话解释概念属于哪个阶段？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.65,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.7658285083841903,
+          "term_coverage": 0.7142857142857143,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-024",
+      "question": "迁移题属于学习路线哪一步？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.81,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.7330034214529015,
+          "term_coverage": 0.5454545454545454,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 1,
+            "dense:2": 10,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999253789928,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999253789928,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 5,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.948360278946303,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 10,
+            "dense:1": 10,
+            "dense:2": 1,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9999999842027671,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 9,
+            "dense:2": 9,
+            "bm25": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-025",
+      "question": "间隔重复服务于哪一个阶段？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.62,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.7775028352744289,
+          "term_coverage": 0.5454545454545454,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999253789928,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 6
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9528595664843167,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 9,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999253789928,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4,
+            "bm25": 8
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.948360278946303,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 10,
+            "dense:1": 10,
+            "dense:2": 2,
+            "bm25": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-026",
+      "question": "低评分复习卡片的复习间隔是什么？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.86,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9758666832421086,
+          "term_coverage": 0.3076923076923077,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 2,
+            "dense:2": 5,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-027",
+      "question": "目标的截止日期为什么重要？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.25,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9555004905605382,
+          "term_coverage": 0.36363636363636365,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999253789928,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999253789928,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 7
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9999999842027671,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 5,
+            "bm25": 6
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 2.0000000584037125,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 6,
+            "bm25": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-028",
+      "question": "如何验证学习目标是否可执行？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.03,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9151428818629825,
+          "term_coverage": 0.4166666666666667,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 10,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.9015269373767398,
+          "term_coverage": 0.16666666666666666,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 3,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9077714085151296,
+          "term_coverage": 0.16666666666666666,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 4,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9077714085151296,
+          "term_coverage": 0.16666666666666666,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 5,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9093481380379913,
+          "term_coverage": 0.16666666666666666,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 6,
+            "bm25": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-029",
+      "question": "学习路线是否包含练习阶段？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.26,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.7330034214529015,
+          "term_coverage": 0.6363636363636364,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 2,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-030",
+      "question": "学习路线是否包含复盘阶段？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.36,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.7330034214529015,
+          "term_coverage": 0.6363636363636364,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-031",
+      "question": "学习路线中的目标记录哪些字段？",
+      "category": "roadmap",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.55,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.7968887779943405,
+          "term_coverage": 0.46153846153846156,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 4,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-032",
+      "question": "Recall@5 的定义是什么？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.3,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.647624444914851,
+          "term_coverage": 0.16666666666666666,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.999999921723023,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.999999921723023,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 4,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9677166134678765,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 2,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999264024733,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 5,
+            "dense:2": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-033",
+      "question": "Recall@5 的目标值是多少？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.91,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.6979638056433497,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.950431820570064,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.950431820570064,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9247821434164032,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 11,
+            "bm25": 8
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999761556486,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 9,
+            "dense:2": 6,
+            "bm25": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-034",
+      "question": "MRR 的定义是什么？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.86,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9058237420548216,
+          "term_coverage": 0.16666666666666666,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 5,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999296381943,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 3,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9648200420345803,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 2,
+            "dense:2": 1
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.9999999296381943,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00000",
+          "distance": 1.9999999315429164,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 5,
+            "dense:2": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-035",
+      "question": "MRR 的目标值是多少？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.43,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.8919723222266311,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 2,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.946661853134034,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.946661853134034,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 4,
+            "dense:2": 4,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9061869725249259,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 8
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 2.0597347496924145,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 8,
+            "dense:2": 7,
+            "bm25": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-036",
+      "question": "Citation Precision 表示什么？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.12,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.298159142660355,
+          "term_coverage": 0.4,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8693451099098166,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999529273356,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 9
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00000",
+          "distance": 1.9999999344505046,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 5
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999529273356,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-037",
+      "question": "Citation Precision 的目标是多少？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.38,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.3656515600442214,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999998907920729,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 3,
+            "dense:2": 6,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999998907920729,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 4,
+            "dense:2": 7,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9999999496158472,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 6,
+            "dense:2": 9,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9458369711011108,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 5,
+            "bm25": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-038",
+      "question": "Citation Recall 表示什么？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.41,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.2654119615792419,
+          "term_coverage": 0.4,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.937560914027094,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.937560914027094,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.9333334301259684,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 11
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.937068219664511,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 6,
+            "dense:2": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-039",
+      "question": "Citation Recall 的目标是多少？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.37,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.3340728520582739,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.9333334301259684,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.937560914027094,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.937560914027094,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9386283839404812,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 5,
+            "bm25": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-040",
+      "question": "P95 Latency 表示什么？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.58,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.7568377711518843,
+          "term_coverage": 0.4,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 2,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8673283053084626,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 2,
+            "dense:2": 1
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9426931571896044,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 3,
+            "dense:2": 5
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9452003089839045,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.999999921723023,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-041",
+      "question": "P95 Latency 的目标是多少？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.83,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.8077634605202817,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999253075433,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 5,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999253075433,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 6,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9999999841313176,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 9,
+            "dense:2": 8,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.905084233362691,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 2,
+            "bm25": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-042",
+      "question": "评测表是否包含 Recall@5？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.97,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.6727941252791003,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9999998803613903,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 8,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.960159041483519,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 11,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.9244071580766273,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9292006919535192,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-043",
+      "question": "评测表是否包含 MRR？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 3,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 0,
+      "latency_ms": 11.51,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9061869725249259,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 5,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9503096902594679,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 10,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9783944409366159,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 8,
+            "dense:2": 4,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.946661853134034,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.999999922322793,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-044",
+      "question": "评测表是否包含引用精确率？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 4,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 0,
+      "latency_ms": 11.36,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9743081357303232,
+          "term_coverage": 0.18181818181818182,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 5,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9528595664843165,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 4,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.882555942769737,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 9,
+            "dense:2": 1,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 2.028395255291369,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 11,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9575522946627228,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-045",
+      "question": "评测表是否包含引用召回率？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 4,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 0,
+      "latency_ms": 11.48,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9555004905605382,
+          "term_coverage": 0.18181818181818182,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 5,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.8202134197582576,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 4,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.921703957126907,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 9,
+            "dense:2": 1,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 2.02839525529137,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 11,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9575522946627228,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-046",
+      "question": "评测表是否包含 P95 延迟？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 2,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 0,
+      "latency_ms": 28.38,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9187554403552505,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9999999715821424,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 9,
+            "dense:2": 9,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9569668483625269,
+          "term_coverage": 0.125,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 10,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9235280149336846,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9235280149336846,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-047",
+      "question": "哪个指标衡量相关证据进入前五片段？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.75,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.7645592019242151,
+          "term_coverage": 0.3333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 6,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9007417720347768,
+          "term_coverage": 0.13333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 1,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9769979371321456,
+          "term_coverage": 0.06666666666666667,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 2,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9296401662435074,
+          "term_coverage": 0.06666666666666667,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 11,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999299869935,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-048",
+      "question": "哪个指标衡量第一个相关片段的排名？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.4,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.811647363035093,
+          "term_coverage": 0.5333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8293524235628884,
+          "term_coverage": 0.06666666666666667,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 11,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9463943923809872,
+          "term_coverage": 0.06666666666666667,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 7,
+            "dense:2": 8,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.8698111058578162,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 7
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9337733426854777,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 5,
+            "dense:2": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-049",
+      "question": "哪个指标衡量引用内容是否相关？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.61,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9496606092858435,
+          "term_coverage": 0.15384615384615385,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9203180877348913,
+          "term_coverage": 0.07692307692307693,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 6,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9426931571896044,
+          "term_coverage": 0.07692307692307693,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 5,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999264024733,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.999999921723023,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-050",
+      "question": "哪个指标衡量答案是否带有相关证据？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.09,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.7645592019242151,
+          "term_coverage": 0.4,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8944602904524346,
+          "term_coverage": 0.06666666666666667,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 11,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999299869935,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999253075433,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 7
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.9999999299869935,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-051",
+      "question": "哪个指标衡量慢请求尾延迟？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.98,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9728136095770796,
+          "term_coverage": 0.18181818181818182,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 8,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999232908232,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 6
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9187554403552505,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999279702734,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00000",
+          "distance": 1.9999999298749955,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-052",
+      "question": "Recall@5 的英文名称是什么？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.25,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.6703828797024591,
+          "term_coverage": 0.125,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999434374875,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999387580374,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 9
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.9999999434374875,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 5
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999387580374,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-053",
+      "question": "MRR 目标是否为零点七？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.68,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.8580238765138002,
+          "term_coverage": 0.125,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 3,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.900863660305029,
+          "term_coverage": 0.125,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 1,
+            "bm25": 6
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999457436983,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 8,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.900863660305029,
+          "term_coverage": 0.125,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 2,
+            "bm25": 7
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999457436983,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 9,
+            "bm25": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-054",
+      "question": "Citation Precision 目标是否为 0.80？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.02,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.2388445234923136,
+          "term_coverage": 0.42857142857142855,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9524213877902108,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 7,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.9492000734519181,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 11,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9524213877902108,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 8,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9532348146887655,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 10,
+            "bm25": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-055",
+      "question": "Citation Recall 目标是否为 0.85？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.69,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.1926062773463328,
+          "term_coverage": 0.42857142857142855,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.884530101631594,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.8918524161548627,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.8918524161548627,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4,
+            "bm25": 5
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.8937012852783708,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 5,
+            "bm25": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-056",
+      "question": "尾延迟目标是否为 250ms？",
+      "category": "metrics",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.58,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.8912545235618914,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.918350395923698,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 10,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9235280149336846,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 8,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9248353799864892,
+          "term_coverage": 0.25,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 7,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8375109987813105,
+          "term_coverage": 0.125,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 5,
+            "bm25": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-057",
+      "question": "PDF 文本页使用什么方式解析？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.83,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.643179394782592,
+          "term_coverage": 0.5454545454545454,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 2.075217617306377,
+          "term_coverage": 0.18181818181818182,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 11,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.8929041532791504,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9265281233356184,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 5
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.9215536330298932,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-058",
+      "question": "扫描页在什么情况下进入 OCR？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.68,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.5242391870174856,
+          "term_coverage": 0.45454545454545453,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 3,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9173102063651697,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 1,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.999999921723023,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 9
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999264024733,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 5
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00000",
+          "distance": 1.9999999283071954,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-059",
+      "question": "表格解析需要保留什么关系？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.46,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9608519714840769,
+          "term_coverage": 0.36363636363636365,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 8,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.972783446069627,
+          "term_coverage": 0.18181818181818182,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 9,
+            "dense:2": 2,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9555004905605382,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999253789928,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999253789928,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-060",
+      "question": "引用元数据保留哪些定位信息？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.49,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.8143046470845139,
+          "term_coverage": 0.4166666666666667,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9999999715821424,
+          "term_coverage": 0.08333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 9,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 2.075592857931566,
+          "term_coverage": 0.08333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 10,
+            "dense:1": 11,
+            "dense:2": 8,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999998907920729,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999998907920729,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-061",
+      "question": "解析失败的任务进入什么状态？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.53,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.6120951200594797,
+          "term_coverage": 0.75,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 6,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-062",
+      "question": "重复解析前需要做什么？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.89,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.848380377810449,
+          "term_coverage": 0.3333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 9,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9425514919167903,
+          "term_coverage": 0.2222222222222222,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 2,
+            "dense:2": 2,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.939142040021104,
+          "term_coverage": 0.2222222222222222,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 10,
+            "dense:2": 1,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 5
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9525421350064813,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-063",
+      "question": "文档策略是否支持 PDF？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.06,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.8628549378421715,
+          "term_coverage": 0.375,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-064",
+      "question": "文档策略是否支持 OCR？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.87,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.8643873050609872,
+          "term_coverage": 0.375,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-065",
+      "question": "文档策略是否提到表格？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.36,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.8686936535048244,
+          "term_coverage": 0.3333333333333333,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-066",
+      "question": "文档策略是否提到页码？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.98,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9124624664809082,
+          "term_coverage": 0.3333333333333333,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-067",
+      "question": "文档策略是否提到章节？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.99,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9124624664809082,
+          "term_coverage": 0.3333333333333333,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 8,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-068",
+      "question": "文档策略是否提到重试？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.11,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9124624664809082,
+          "term_coverage": 0.3333333333333333,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-069",
+      "question": "为什么重复解析要清理片段？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.36,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.93219365563347,
+          "term_coverage": 0.45454545454545453,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.8639172347956736,
+          "term_coverage": 0.18181818181818182,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 1,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9702188262473326,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 10,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9486163874432862,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 6,
+            "bm25": 4
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9032697623067092,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-070",
+      "question": "扫描 PDF 的文本不足时使用什么能力？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.24,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.739974503873733,
+          "term_coverage": 0.5384615384615384,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-071",
+      "question": "表格引用如何定位？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.21,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9124624664809082,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 6,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 2.0000000153969113,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 10,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9004962104173369,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.937560914027094,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.937560914027094,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-072",
+      "question": "布局排序服务于哪类文件？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 14.05,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.8570517356111862,
+          "term_coverage": 0.3,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9437121455235056,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999457436983,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999457436983,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999504231485,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-073",
+      "question": "失败解析是否直接丢弃？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.0,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.956231279456992,
+          "term_coverage": 0.2222222222222222,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 6,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9391420400211046,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.945926224062842,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.945926224062842,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9468506880364833,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-074",
+      "question": "旧片段在重新解析时如何处理？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.88,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.8060475788627623,
+          "term_coverage": 0.3333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 5,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9728136095770796,
+          "term_coverage": 0.08333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 9,
+            "dense:2": 8,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.9015269373767398,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9077714085151296,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9077714085151296,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-075",
+      "question": "引用是否记录页码？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.49,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9124624664809082,
+          "term_coverage": 0.2857142857142857,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 10,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-076",
+      "question": "引用是否记录章节？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.43,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9124624664809082,
+          "term_coverage": 0.2857142857142857,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 10,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-077",
+      "question": "解析策略包含哪些主要处理对象？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 2,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 0,
+      "latency_ms": 11.9,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.999999878461753,
+          "term_coverage": 0.07692307692307693,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 7,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.99999998028564,
+          "term_coverage": 0.23076923076923078,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9728136095770796,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 6
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9545688366022156,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9545688366022156,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-078",
+      "question": "任务失败后可以重试吗？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.04,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9999999854209982,
+          "term_coverage": 0.3333333333333333,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 7,
+            "dense:2": 4,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 6
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00000",
+          "distance": 1.9999999315429164,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9999998835971113,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 10
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-079",
+      "question": "文档解析如何避免重复召回？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.48,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.8643873050609872,
+          "term_coverage": 0.2727272727272727,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 8,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9999999043820655,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 2,
+            "dense:2": 9,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 2.0000000192528207,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 10,
+            "dense:1": 9,
+            "dense:2": 10,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.8998746952062522,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.8998746952062522,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-080",
+      "question": "文档解析是否保存结构信息？",
+      "category": "parser",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.15,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9353492180649503,
+          "term_coverage": 0.18181818181818182,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 7,
+            "dense:2": 10,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.8945907426828357,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 8,
+            "dense:2": 1,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 2,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 3,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9833517945174315,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 5,
+            "dense:2": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-081",
+      "question": "工作记忆保存什么？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.99,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.4522775224337605,
+          "term_coverage": 0.7142857142857143,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999263852573,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999263852573,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999310647074,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.9999999310647074,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-082",
+      "question": "短期记忆保存什么？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 10.91,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.330561397599455,
+          "term_coverage": 0.7142857142857143,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.937560914027094,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.937560914027094,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999310647074,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 6
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.9999999310647074,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-083",
+      "question": "长期记忆保存哪些内容？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.01,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.4037152777361273,
+          "term_coverage": 0.6666666666666666,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 2,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.945926224062842,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 2,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.945926224062842,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 3,
+            "dense:2": 5
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.8462107844686535,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 7,
+            "dense:2": 1
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999296381943,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 4,
+            "dense:2": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-084",
+      "question": "薄弱点候选记忆默认是什么状态？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.51,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.7418011061754306,
+          "term_coverage": 0.6923076923076923,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 2.035737165164936,
+          "term_coverage": 0.07692307692307693,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 5,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.8375109987813105,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 11
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9235280149336846,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 7
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.918350395923698,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-085",
+      "question": "什么情况下记忆进入长期上下文？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.66,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.7848342546128502,
+          "term_coverage": 0.5384615384615384,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9381015381968894,
+          "term_coverage": 0.07692307692307693,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 8,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9235280149336846,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.918350395923698,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 6
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9235280149336846,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-086",
+      "question": "冻结的记忆还会保留吗？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.87,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.6837722363811292,
+          "term_coverage": 0.5555555555555556,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 4,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-087",
+      "question": "冻结的记忆会进入检索吗？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.77,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.7515480870601767,
+          "term_coverage": 0.6,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-088",
+      "question": "记忆写入需要记录什么来源？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.8,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.8114382081788016,
+          "term_coverage": 0.6363636363636364,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9555004905605382,
+          "term_coverage": 0.18181818181818182,
+          "retrieval_ranks": {
+            "dense:0": 8,
+            "dense:1": 8,
+            "dense:2": 10,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 2.0000000062059518,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 8,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9162291663579056,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.9105573561457958,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-089",
+      "question": "重复记忆如何处理？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 2,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 0,
+      "latency_ms": 11.41,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9999999868475118,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 4,
+            "dense:2": 9,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 2.0351364599501705,
+          "term_coverage": 0.2857142857142857,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 11,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9668320206350853,
+          "term_coverage": 0.14285714285714285,
+          "retrieval_ranks": {
+            "dense:0": 10,
+            "dense:1": 10,
+            "dense:2": 5,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999310647074,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 1,
+            "dense:2": 6
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.9999999310647074,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 2,
+            "dense:2": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-090",
+      "question": "删除记忆时需要清理什么？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.9,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9713112820536918,
+          "term_coverage": 0.4,
+          "retrieval_ranks": {
+            "dense:0": 10,
+            "dense:1": 11,
+            "dense:2": 5,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.928525907432686,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 10,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9999999335483267,
+          "term_coverage": 0.1,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 10,
+            "dense:2": 6,
+            "bm25": 3
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9490187013560625,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9490187013560625,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-091",
+      "question": "当前会话窗口属于哪一级记忆？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.35,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9550533918510309,
+          "term_coverage": 0.4166666666666667,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 10,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9353492180649496,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999082813888,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999082813888,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 5
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.999999912960839,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-092",
+      "question": "近期会话摘要属于哪一级记忆？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.99,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.685373438679745,
+          "term_coverage": 0.5,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.856572588988675,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9104451631141872,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9104451631141872,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.9119761822062165,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-093",
+      "question": "确认后的薄弱点属于哪一级记忆？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.86,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.8709005514876884,
+          "term_coverage": 0.38461538461538464,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 4,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-094",
+      "question": "候选记忆是否自动进入上下文？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 12.14,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.8202134152653888,
+          "term_coverage": 0.5,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-095",
+      "question": "用户确认对记忆有什么影响？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 13.15,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.8114382128909634,
+          "term_coverage": 0.36363636363636365,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 8,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9162291663579056,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 1
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9162291663579056,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.9105573561457958,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 7
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999296381943,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-096",
+      "question": "冻结操作会删除记忆吗？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 28.03,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.969571072750525,
+          "term_coverage": 0.4444444444444444,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 11,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.950248026982242,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9241901816157236,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 9
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999249587441,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-097",
+      "question": "为什么冻结记忆不会被检索？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.14,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.8911337876141618,
+          "term_coverage": 0.5454545454545454,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9999999940350175,
+          "term_coverage": 0.09090909090909091,
+          "retrieval_ranks": {
+            "dense:0": 10,
+            "dense:1": 10,
+            "dense:2": 11,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.7486876075863202,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00000",
+          "distance": 1.552786367487725,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 7
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.7486876075863202,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-098",
+      "question": "记忆记录需要关联主题吗？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 2,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 0,
+      "latency_ms": 10.98,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9718560465757407,
+          "term_coverage": 0.3,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 6,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9105573401566764,
+          "term_coverage": 0.4,
+          "retrieval_ranks": {
+            "dense:0": 10,
+            "dense:1": 10,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9470186949986792,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9470186949986792,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.9404376584596477,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-099",
+      "question": "记忆记录需要关联消息吗？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.31,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9169545210495411,
+          "term_coverage": 0.4,
+          "retrieval_ranks": {
+            "dense:0": 11,
+            "dense:1": 10,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.9999999043820655,
+          "term_coverage": 0.2,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.9999999278663323,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.9999999278663323,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999325457825,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-100",
+      "question": "语义去重解决什么问题？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.72,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9472953705753508,
+          "term_coverage": 0.2222222222222222,
+          "retrieval_ranks": {
+            "dense:0": 6,
+            "dense:1": 6,
+            "dense:2": 6,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_3585d9bfa4625f86_00000",
+          "distance": 1.7171574178719156,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 10
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.735093544889871,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 8
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.735093544889871,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 9
+          }
+        },
+        {
+          "id": "doc_2bec394952214004_00000",
+          "distance": 1.739622245549354,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-101",
+      "question": "删除操作是否清理向量库？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 1,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.43,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.8012384841347093,
+          "term_coverage": 0.6,
+          "focus_coverage": 1.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 11,
+            "bm25": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-102",
+      "question": "三级记忆分别是什么？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.21,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.9999999676652458,
+          "term_coverage": 0.125,
+          "retrieval_ranks": {
+            "dense:0": 9,
+            "dense:1": 8,
+            "dense:2": 7,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_478a504b9758bd2e_00000",
+          "distance": 1.999999894156123,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9515212837236466,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 1
+          }
+        },
+        {
+          "id": "doc_c73206e1e4300fc2_00001",
+          "distance": 1.999999894156123,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.9515212837236466,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-103",
+      "question": "哪类记忆保存学习进度？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.46,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.5783629805960975,
+          "term_coverage": 0.4444444444444444,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.950248026982242,
+          "term_coverage": 0.1111111111111111,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 11,
+            "bm25": 2
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9241901816157234,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 8
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999296381943,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 4
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.9999999296381943,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-104",
+      "question": "哪类记忆保存薄弱点？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.66,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.4929074501817092,
+          "term_coverage": 0.625,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.946812913040333,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 2
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.9189558975331664,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 7
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 1.9999999296381943,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 4,
+            "dense:2": 3
+          }
+        },
+        {
+          "id": "doc_b202a9ef83ea04ce_00000",
+          "distance": 1.9999999296381943,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 5,
+            "dense:1": 5,
+            "dense:2": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-105",
+      "question": "哪类记忆保存近期摘要？",
+      "category": "memory",
+      "answerable": true,
+      "rank": 1,
+      "chunks": 5,
+      "citations": 1,
+      "relevant_citations": 1,
+      "latency_ms": 11.57,
+      "passed": true,
+      "candidates": [
+        {
+          "id": "doc_b78245aea06e7515_00000",
+          "distance": 1.6310676084886138,
+          "term_coverage": 0.6666666666666666,
+          "retrieval_ranks": {
+            "dense:0": 1,
+            "dense:1": 1,
+            "dense:2": 1,
+            "bm25": 1
+          }
+        },
+        {
+          "id": "doc_c169571e86a9d42c_00000",
+          "distance": 1.950248026982242,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 3,
+            "dense:1": 3,
+            "dense:2": 7
+          }
+        },
+        {
+          "id": "doc_db37636941443d0a_00000",
+          "distance": 1.8570517356111857,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 2,
+            "dense:1": 2,
+            "dense:2": 11
+          }
+        },
+        {
+          "id": "doc_925ace69c0c06625_00000",
+          "distance": 2.0000000234713817,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 4,
+            "dense:1": 6,
+            "dense:2": 8
+          }
+        },
+        {
+          "id": "doc_6c29f81cd1dcda52_00000",
+          "distance": 1.961552756313769,
+          "term_coverage": 0.0,
+          "retrieval_ranks": {
+            "dense:0": 7,
+            "dense:1": 5,
+            "dense:2": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "case-106",
+      "question": "这个资料是否定义了量子纠缠识别码？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 0,
+      "citations": 0,
+      "relevant_citations": 0,
+      "latency_ms": 15.06,
+      "passed": true,
+      "candidates": []
+    },
+    {
+      "id": "case-107",
+      "question": "评测资料是否给出了 Mneme 的股价？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 0,
+      "citations": 0,
+      "relevant_citations": 0,
+      "latency_ms": 12.87,
+      "passed": true,
+      "candidates": []
+    },
+    {
+      "id": "case-108",
+      "question": "文档策略是否规定了火星天气？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 0,
+      "citations": 0,
+      "relevant_citations": 0,
+      "latency_ms": 11.95,
+      "passed": true,
+      "candidates": []
+    },
+    {
+      "id": "case-109",
+      "question": "记忆模型是否包含银行卡密码？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 0,
+      "citations": 0,
+      "relevant_citations": 0,
+      "latency_ms": 12.6,
+      "passed": true,
+      "candidates": []
+    },
+    {
+      "id": "case-110",
+      "question": "星桥计划是否使用了太阳能电池？",
+      "category": "unanswerable",
+      "answerable": false,
+      "rank": null,
+      "chunks": 0,
+      "citations": 0,
+      "relevant_citations": 0,
+      "latency_ms": 12.35,
+      "passed": true,
+      "candidates": []
+    }
+  ],
+  "failed_examples": [],
+  "real_llm_evaluation": {
+    "answer_point_scoring_version": 1,
+    "answer_point_coverage": null,
+    "status": "disabled",
+    "samples": 0,
+    "unanswerable_samples": 0,
+    "answer_abstention_accuracy": 0.0,
+    "answerable_refusal_rate": 0.0,
+    "cost_estimate_method": "UTF-8 byte upper bounds plus maximum verification output; not provider billing",
+    "faithfulness": 0.0,
+    "answer_relevance": 0.0,
+    "estimated_input_tokens": 0,
+    "estimated_output_tokens": 0,
+    "estimated_cost": 0.0,
+    "reserved_cost": 0.0,
+    "max_cost": 0.0,
+    "cost_assumption_usd_per_million_output_tokens": 0.0,
+    "details": []
+  },
+  "quality_gate": {
+    "status": "passed",
+    "thresholds": {
+      "recall@5": {
+        "min": 0.95
+      },
+      "mrr": {
+        "min": 0.85
+      },
+      "top_evidence_term_support": {
+        "min": 0.85
+      },
+      "top_evidence_precision": {
+        "min": 0.8
+      },
+      "evidence_hit_recall": {
+        "min": 0.85
+      },
+      "no_answer_evidence_absence": {
+        "min": 1.0
+      },
+      "p95_latency_ms": {
+        "max": 250.0
+      }
+    },
+    "real_llm_thresholds": null,
+    "failures": []
+  }
+}

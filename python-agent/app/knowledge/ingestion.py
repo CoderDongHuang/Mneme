@@ -15,6 +15,7 @@ from app.knowledge.chunking import chunk_documents
 from app.knowledge.cancellation import check_cancelled, IngestionCancelled
 from app.knowledge.lexical_index import lexical_index
 from app.knowledge.vector_store import vector_store
+from app.utils.embedding import embeddings
 
 
 logger = setup_logger("ingestion")
@@ -564,16 +565,24 @@ def ingest_document(
             metadata["ocr_confidence"] = float(chunk.metadata["ocr_confidence"])
         metadatas.append(metadata)
     check_cancelled()
+    documents = [chunk.page_content for chunk in valid_chunks]
+    vectors = embeddings(documents)
+    # Provider calls can outlast a lease. Confirm ownership after embedding and
+    # before each persistent mutation, rather than inside Chroma's callback.
+    check_cancelled()
     collection.upsert(
         ids=ids,
-        documents=[chunk.page_content for chunk in valid_chunks],
+        documents=documents,
         metadatas=metadatas,
+        embeddings=vectors,
     )
     # Upsert computes embeddings before changing data. Do not delete good evidence
     # until it succeeds; then remove tail chunks left by a shorter replacement.
     stale_ids = sorted(set(old_ids) - set(ids))
+    check_cancelled()
     if stale_ids:
         collection.delete(ids=stale_ids)
+    check_cancelled()
     lexical_index.replace_document(
         user_id,
         kb_id,

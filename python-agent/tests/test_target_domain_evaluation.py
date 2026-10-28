@@ -50,3 +50,38 @@ def test_report_comparison_rejects_changed_retrieval_configuration():
     assert result["status"] == "failed"
     assert "configuration.retrieval changed; reports are not comparable" in result["failures"]
     assert module.compare(candidate, candidate)["status"] == "passed"
+
+
+def test_offline_baseline_compares_only_retrieval_with_real_candidate():
+    module = _load("compare_quality_reports", "compare_quality_reports.py")
+    baseline = {"mrr": 1, "configuration": {"top_k": 5}}
+    candidate = {
+        "mrr": 1,
+        "configuration": {"top_k": 5, "chat_models": {"primary": "real-model"}},
+        "real_llm_evaluation": {"status": "completed", "faithfulness": 0.9},
+    }
+    result = module.compare(baseline, candidate)
+    assert result["status"] == "passed"
+    assert result["comparison_scope"] == "retrieval_only"
+    assert "real_llm_evaluation.faithfulness" not in result["metrics"]
+
+
+def test_model_baseline_cannot_silently_drop_real_evaluation():
+    module = _load("compare_quality_reports", "compare_quality_reports.py")
+    baseline = {"mrr": 1, "real_llm_evaluation": {"status": "completed"}}
+    result = module.compare(baseline, {"mrr": 1})
+    assert result["status"] == "failed"
+    assert result["comparison_scope"] == "retrieval_and_model"
+    assert any("missing the baseline's real model" in failure for failure in result["failures"])
+
+
+def test_report_comparison_rejects_scoring_and_focus_changes():
+    module = _load("compare_quality_reports", "compare_quality_reports.py")
+    baseline = {"mrr": 1, "configuration": {"no_answer_scoring_version": 2, "focus_gate_enabled": True}}
+    for configuration in (
+        {"no_answer_scoring_version": 1, "focus_gate_enabled": True},
+        {"no_answer_scoring_version": 2, "focus_gate_enabled": False},
+    ):
+        result = module.compare(baseline, {"mrr": 1, "configuration": configuration})
+        assert result["status"] == "failed"
+        assert any("reports are not comparable" in failure for failure in result["failures"])

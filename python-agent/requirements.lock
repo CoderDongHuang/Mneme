@@ -1,6 +1,9 @@
 # Generated for Linux CPython 3.11 from the verified runtime dependency resolution.
 # Install with: pip install --require-hashes -r requirements.lock
 
+jieba==0.42.1 \
+    --hash=sha256:055ca12f62674fafed09427f176506079bc135638a14e23e25be909131928db2
+
 hf-xet==1.6.0 \
     --hash=sha256:d62671bb130879cef0ee4c9ebe47a14af6c66ec53e6d84dc15936e5ffdfac82f
 httpx2==2.13.0 \

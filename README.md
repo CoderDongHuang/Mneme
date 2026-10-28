@@ -58,7 +58,7 @@ python scripts/demo.py clean --confirm-delete-demo-data
 - **复杂文档解析**：PDF 版面块排序、中英文 OCR、独立表格提取，可选 Qwen-VL；逐页文本/表格/chunk 预览与 OCR 区域置信度叠加，部分成功和取消重试可追踪。
 - **可追溯回答**：保留文档名、页码、章节、原文、文件 SHA-256 和解析器版本；引用核验后展示，并按 hash 打开对应历史版本。
 - **联合检索筛选**：知识库、指定文档、标签和导入日期共同限定范围；聊天与检索调试均可使用。
-- **回归证据**：[路线图对照](docs/ROADMAP_COVERAGE.md)与[实际运行验收](docs/ACCEPTANCE_2026-10-27.md)，包含已通过和未达标项。
+- **回归证据**：[路线图对照](docs/ROADMAP_COVERAGE.md)与[实际运行验收](docs/ACCEPTANCE_2026-10-28.md)，包含已通过和未达标项。
 - **Agent 决策链**：LangGraph 编排意图识别、条件检索、个性化推理和记忆回写。
 - **三级记忆**：工作记忆、短期会话记忆、长期偏好/薄弱点/进度记忆。
 - **记忆质量控制**：高置信度自动写入，中置信度由用户确认，低置信度丢弃。
@@ -204,7 +204,7 @@ CI 会分别执行 Python、Java 和前端检查，并使用 mock API 验证关�
 
 ## 路线图与贡献
 
-本轮通用工程与 Mneme 第一章的逐项对应、测试入口和实际限制见 [路线图落实记录](docs/ROADMAP_COVERAGE.md)，升级前阅读 [发布说明](docs/RELEASE_NOTES_2026-10-27.md) 和 [迁移流程](docs/rollout.md)。优先完善真实资料评测与恢复可靠性；暂不扩张为公网多租户 SaaS。
+本轮通用工程与 Mneme 第一章的逐项对应、测试入口和实际限制见 [路线图落实记录](docs/ROADMAP_COVERAGE.md)，升级前阅读 [发布说明](docs/RELEASE_NOTES_2026-10-28.md) 和 [迁移流程](docs/rollout.md)。优先完善真实资料评测与恢复可靠性；暂不扩张为公网多租户 SaaS。
 
 提交问题请使用 [Bug / 功能建议模板](https://github.com/CoderDongHuang/Mneme/issues/new/choose)，附环境、复现步骤和脱敏日志。提交代码请先阅读 [开发指南](docs/development.md)，为实际行为增加回归，说明迁移及兼容性；MIT 仅覆盖本仓库代码，第三方依赖和模型仍遵守各自许可证与服务条款。
 

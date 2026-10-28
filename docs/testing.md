@@ -19,7 +19,7 @@ python -m pip install pip-audit==2.9.0
 pip-audit --requirement python-agent/requirements.windows.lock
 ```
 
-Linux/Docker 使用 `python-agent/requirements.lock`。两个锁文件均由官方兼容 wheel 的 SHA-256 固定，Windows 锁文件不安装 Linux 专用 `uvloop`。
+Linux/Docker 使用 `python-agent/requirements.lock`。两个锁文件使用官方兼容 wheel 的 SHA-256，jieba 上游仅提供平台无关 sdist，固定其官方源码包 SHA-256；安装时构建 wheel。Windows 锁文件不安装 Linux 专用 `uvloop`。生成器已实测 jieba 源码包分支，全新 Linux 镜像安装和导入通过。
 
 ## Java
 
@@ -79,7 +79,7 @@ npm run test:e2e:real
 
 外部模型模式会把 `test-fixtures/rag-fixture.txt` 的虚构内容发送给配置的 Embedding 和 LLM 供应商，并产生调用费用。
 
-同一真实 URL 的扩展回归：`npx playwright test e2e/roadmap-stack.spec.js --retries=0`，同时运行桌面与移动端。它覆盖八种格式、联合筛选、历史版本、跨用户隔离、测验/复习导出、损坏 PDF、扫描 OCR、运行中取消重试、标签/空结果/切库和供应商 UI。完整测验需要真实模型；确定性 CI 仅运行 `--grep '真实解析异常|真实界面交互'`。不要把性能基线与故障注入、多个浏览器同时运行；保留失败日志后在固定资源条件下复核。当前验收见 [最终回归记录](ACCEPTANCE_2026-10-27.md)。
+同一真实 URL 的扩展回归：`npx playwright test e2e/roadmap-stack.spec.js --retries=0`，同时运行桌面与移动端。它覆盖八种格式、联合筛选、历史版本、跨用户隔离、测验/复习导出、损坏 PDF、扫描 OCR、运行中取消重试、标签/空结果/切库和供应商 UI。完整测验需要真实模型；确定性 CI 仅运行 `--grep '真实解析异常|真实界面交互'`。不要把性能基线与故障注入、多个浏览器同时运行；保留失败日志后在固定资源条件下复核。当前验收见 [最终回归记录](ACCEPTANCE_2026-10-28.md)。
 
 ## 跨存储删除与恢复演练
 
@@ -134,7 +134,7 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml exec \
   python scripts/evaluate_rag.py
 ```
 
-历史 `no_answer_evidence_absence` 在空 `expected_sources` 标注时恒真，即使仍有无关召回，不可当作实际拒答证据。需要查看真实模型拒答指标与答案。
+schema 4 的 `no_answer_evidence_absence` 使用实际空召回 `not chunks`（评分 version 2），已修复旧空来源标注恒真问题。历史 schema 3 分数不可直接比较。空召回仍不等于生成层拒答；需要查看真实模型拒答指标与答案。
 
 离线基线包括 Recall@5、MRR、top_evidence_term_support、top_evidence_precision、evidence_hit_recall、no_answer_evidence_absence 和延迟。这些是检索代理指标，没有生成答案，不能称为最终引用准确率或真实拒答。报告由 CI 作为 artifact 保存。
 
@@ -165,7 +165,7 @@ python scripts/evaluate_quiz_quality.py evaluation/external_quiz_workspace.json 
 
 `.github/workflows/model-quality.yml` 每周运行真实 OCR、多模态、RAG 和测验抽检，也支持手动触发。预算守卫会在每次模型调用前预留最坏情况下的输出成本；脱敏扫描发现邮箱、手机号、身份证号或 API Key 形态时会在发送前失败。真实模型报告保留 30 天，并包含失败样例和评审理由。
 
-目标领域评测集由 `evaluation/target_domain_manifest.json` 统一声明版本、数据分类、来源和样本下限。周期任务额外抽检真实 Embedding 的语义对间隔，并设置 `MNEME_REQUIRE_REAL_EMBEDDINGS=true`，API 失败时不会降级成本地向量。RAG 报告通过 `compare_quality_reports.py` 比较同 schema/数据集的提交检索基线。真实生成和核验趋势额外检查模型配置与源码摘要；首次手动运行需 bootstrap_baseline=true，仅采集基线并保留 insufficient_history，不代表趋势通过。下次独立同配置运行才判断回退。schema 3 增加生产 Prompt 和逐项引文核验，必须重新采集；预算为 UTF-8 字节上界及最大核验输出估算，不能作为供应商账单。
+目标领域评测集由 `evaluation/target_domain_manifest.json` 统一声明版本、数据分类、来源和样本下限。周期任务额外抽检真实 Embedding 的语义对间隔，并设置 `MNEME_REQUIRE_REAL_EMBEDDINGS=true`，API 失败时不会降级成本地向量。RAG 报告通过 `compare_quality_reports.py` 比较同 schema/数据集的提交检索基线。真实生成和核验趋势额外检查模型配置与源码摘要；首次手动运行需 bootstrap_baseline=true，仅采集基线并保留 insufficient_history，不代表趋势通过。下次独立同配置运行才判断回退。schema 4 修复无答案评分并记录 focus gate，提交检索基线升级为 `target_domain_rag_v2.json`；检索源码/依赖改变必须重新采集真实趋势，不得拼接旧模型分数；预算为 UTF-8 字节上界及最大核验输出估算，不能作为供应商账单。
 
 离线演示的干净安装由 CI `Offline demo clean install` 使用独立空卷构建后运行 `frontend/e2e/demo-stack.spec.js`，覆盖注册、入库、原文问答、引用和受保护的供应商检测；操作见 [演示指南](DEMO.md)。故障回归 `test_backup_restore.py` 覆盖导入中断、恢复旧存储及回滚失败保持服务停止；真实 Docker 演练验证正常备份恢复链路。`test_grounding.py` 覆盖缺漏声明、伪造逐字引文、超时和同步/SSE 共用核验。
 
@@ -192,3 +192,35 @@ python scripts/evaluate_quiz_quality.py evaluation/external_quiz_workspace.json 
 2. 点击文档“重新解析”，确认状态回到 `parsing`，完成后仍为同一文档且片段被替换而不是重复累加。
 3. 删除文档，确认状态短暂为 `deleting`，任务完成后文档消失、原文件删除、检索不再返回该文档。
 4. 创建账号、资料库、会话和长期记忆后删除账号；删除请求先冻结账号并持久化清理任务。任务最终完成后，确认 MySQL 业务数据、Chroma 集合、Redis 会话和本地用户文件均被清理。外部清理失败时任务保留并重试，不能把已入队的异步请求误判为同步清理完成。
+
+
+## 租约与四组检索回归
+
+在完整服务中验证真实 Redis 续租、强杀恢复、重复拒绝及旧 owner 隔离（只使用唯一测试 key）：
+
+```bash
+docker compose exec -T python-agent python scripts/check_ingestion_lease.py
+```
+
+四组共 140 题均使用原离线门限，CI 同样逐组执行：
+
+```powershell
+$env:MNEME_OFFLINE_EMBEDDINGS='true'
+foreach ($dataset in @('rag_cases','adversarial_rag_cases','target_domain_rag_cases','retrieval_holdout_cases')) {
+  python python-agent/scripts/evaluate_rag.py --dataset "python-agent/evaluation/$dataset.json" --report "artifacts/rag-$dataset.json"
+  if ($LASTEXITCODE -ne 0) { throw "RAG gate failed: $dataset" }
+}
+```
+
+真实云检索需关闭离线 embedding，显式选取云预算；下面在 python-agent 目录运行，模型密钥仅从服务端环境读取：
+
+```bash
+python scripts/evaluate_rag.py --dataset evaluation/retrieval_holdout_cases.json \
+  --llm-sample-size 8 --require-sanitized \
+  --input-cost-per-million 0.30 --output-cost-per-million 0.60 \
+  --max-estimated-cost 0.15 --thresholds evaluation/rag_cloud_thresholds.json \
+  --real-llm-thresholds evaluation/real_rag_thresholds.json \
+  --report ../artifacts/holdout-cloud-profile.json
+```
+
+云 P95 ≤ 3000ms 是单独的新工程预算，原离线 P95 ≤ 250ms 保留。2257.86ms/915.23ms 的离线延迟门限失败报告与 704.57ms 的云预算通过报告一起保存，详见本轮验收；不得把不同预算结果混比。

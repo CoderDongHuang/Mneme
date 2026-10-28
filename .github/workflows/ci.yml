@@ -84,11 +84,14 @@ jobs:
           python --version
           python -m pip freeze
           python -m pytest tests/ -x -vv --tb=long
-      - name: Run offline RAG baseline
+      - name: Run offline RAG regression datasets
         working-directory: python-agent
         env:
           MNEME_OFFLINE_EMBEDDINGS: "true"
-        run: python scripts/evaluate_rag.py --report ../artifacts/rag-quality-report.json
+        run: |
+          for dataset in rag_cases adversarial_rag_cases target_domain_rag_cases retrieval_holdout_cases; do
+            python scripts/evaluate_rag.py --dataset "evaluation/$dataset.json" --report "../artifacts/rag-$dataset.json"
+          done
       - name: Run OCR quality gate
         working-directory: python-agent
         env:
@@ -101,7 +104,7 @@ jobs:
         with:
           name: rag-quality-report
           path: |
-            artifacts/rag-quality-report.json
+            artifacts/rag-*.json
             artifacts/document-ai-ocr-report.json
 
   python-windows:
@@ -284,6 +287,8 @@ jobs:
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-real
         run: npx playwright test e2e/real-stack.spec.js --project=桌面端 --reporter=html
+      - name: Verify Redis lease renewal and crash recovery
+        run: $COMPOSE exec -T python-agent python scripts/check_ingestion_lease.py
       - name: Regress parsing, cancellation, filters and provider UI
         working-directory: frontend
         env:
