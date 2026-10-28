@@ -26,8 +26,8 @@ if not defined MYSQL_ROOT_PASSWORD if not defined SPRING_DATASOURCE_PASSWORD (
   exit /b 1
 )
 
-echo [Mneme] Starting MySQL, Redis and Chroma...
-docker compose up -d mysql redis chroma
+echo [Mneme] Starting MySQL, Redis and Qdrant...
+docker compose up -d mysql redis qdrant
 if errorlevel 1 (
   echo [Mneme] Failed to start infrastructure. Check Docker Desktop.
   pause

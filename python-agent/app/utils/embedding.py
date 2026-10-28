@@ -3,11 +3,11 @@ import math
 import os
 from typing import Any
 
-from chromadb import Documents, EmbeddingFunction, Embeddings
-
 from app.core.config import settings
 from app.core.logging import setup_logger
 
+Documents = list[str]
+Embeddings = list[list[float]]
 
 logger = setup_logger("embedding")
 EMBEDDING_DIMENSION = 1024
@@ -28,7 +28,7 @@ def _offline_embedding(text: str) -> list[float]:
     return [value / norm for value in vector]
 
 
-class DashScopeEmbeddingFunction(EmbeddingFunction):
+class DashScopeEmbeddingFunction:
     def __init__(self) -> None:
         self._warned_offline = False
 

@@ -15,7 +15,7 @@
 | python-agent | Agent、RAG 与记忆 | 8001（仅本机） |
 | mysql | 业务数据 | 3306（仅本机） |
 | redis | 缓存和短期状态 | 6379（仅本机） |
-| chroma | 向量数据 | 不发布端口，仅 Python Agent 可通过内部网络访问 |
+| qdrant | 向量数据 | 不发布端口，仅 Python Agent 可通过内部网络访问 |
 | mailpit | 本地密码重置邮箱 | 8025（仅本机） |
 
 正常使用只需访问 <http://localhost:3000>。该地址仅在运行 Docker Compose 的这台电脑上有效，不是公网链接；公网访问需要按生产部署指南配置域名、HTTPS 和服务器。
@@ -158,7 +158,7 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d --forc
 ```text
 data/mysql
 data/redis
-data/chroma
+data/qdrant
 data/files
 data/avatars
 ```
@@ -180,7 +180,7 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d --buil
 
 ### 文档一直处于解析中或解析失败
 
-同时查看 Java 和 Python 日志；确认文件格式受支持、文件未损坏、模型 Key 有效，并确认 Chroma 可用。
+同时查看 Java 和 Python 日志；确认文件格式受支持、文件未损坏、模型 Key 有效，并确认 Qdrant 可用。
 
 ### 回答没有引用资料
 

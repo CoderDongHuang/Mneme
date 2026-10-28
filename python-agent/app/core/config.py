@@ -61,12 +61,10 @@ class Settings:
     demo_mode: bool = _bool("MNEME_DEMO_MODE", False)
     deterministic_test_llm: bool = _bool("MNEME_DETERMINISTIC_TEST_LLM", False)
 
-    chroma_mode: str = os.getenv("CHROMA_MODE", "local").lower()
-    chroma_host: str = os.getenv("CHROMA_HOST", "localhost")
-    chroma_port: int = int(os.getenv("CHROMA_PORT", "8000"))
-    chroma_path: str = os.getenv(
-        "CHROMA_PATH", str(PYTHON_AGENT_DIR / "data" / "chroma")
-    )
+    vector_store_mode: str = os.getenv("VECTOR_STORE_MODE", "local").lower()
+    qdrant_url: str = os.getenv("QDRANT_URL", "http://localhost:6333")
+    qdrant_api_key: str = os.getenv("QDRANT_API_KEY", "")
+    qdrant_path: str = os.getenv("QDRANT_PATH", str(PYTHON_AGENT_DIR / "data" / "qdrant"))
     session_data_path: str = os.getenv(
         "SESSION_DATA_PATH", str(PYTHON_AGENT_DIR / "data" / "sessions")
     )
@@ -164,8 +162,6 @@ class Settings:
     LLM_CIRCUIT_BREAKER_THRESHOLD = property(
         lambda self: self.circuit_breaker_threshold
     )
-    CHROMA_HOST = property(lambda self: self.chroma_host)
-    CHROMA_PORT = property(lambda self: self.chroma_port)
     REDIS_HOST = property(lambda self: self.redis_host)
     REDIS_PORT = property(lambda self: self.redis_port)
     REDIS_DB = property(lambda self: self.redis_db)

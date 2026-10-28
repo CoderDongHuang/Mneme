@@ -30,7 +30,7 @@
 
 - `/operations` 受 active admin + 管理令牌双重保护，凭证不进入浏览器存储。
 - Prometheus 固定查询现有 5 分钟 SLO recording rules，显示实际可用率、P95、pending/firing 告警；未配置或无样本不伪造数值。
-- 展示网关本地磁盘容量（不是 S3 配额）、共享限流策略、MySQL/Redis/Agent/Chroma/模型依赖健康、失败任务和删除 Saga 逐步状态。
+- 展示网关本地磁盘容量（不是 S3 配额）、共享限流策略、MySQL/Redis/Agent/Qdrant/模型依赖健康、失败任务和删除 Saga 逐步状态。
 - 单独运行需设置 `PROMETHEUS_URL`；使用 observability Compose 覆盖时自动接入 Prometheus。
 - 页面只读，不提供跳过删除步骤、修改用户角色或未经确认的生产恢复按钮。
 

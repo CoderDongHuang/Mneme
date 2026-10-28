@@ -3,7 +3,7 @@
 
 职责：
 - 管理用户的三类长期记忆：偏好(preference)、薄弱点(weak_point)、学习进度(progress)
-- 通过 Chroma 向量库持久化存储，服务重启不丢失
+- 通过 Qdrant 向量库持久化存储，服务重启不丢失
 - 内存缓存层加速热数据读取
 - 写入时进行语义去重检查
 """
@@ -24,12 +24,12 @@ CACHE_TTL_SECONDS = 300  # 5 分钟
 MAX_PREFERENCES = 30
 MAX_WEAK_POINTS = 30
 
-# 语义去重距离阈值（Chroma 距离，越小越相似）
+# 语义去重距离阈值（Qdrant 距离，越小越相似）
 DEDUP_THRESHOLD = 0.15
 
 
 class LongTermMemoryManager:
-    """长期记忆管理器（Chroma 持久化 + 内存缓存）
+    """长期记忆管理器（Qdrant 持久化 + 内存缓存）
 
     使用方式：
         from app.memory.long_term_memory import long_term_memory
@@ -95,7 +95,7 @@ class LongTermMemoryManager:
         self, user_id: str, content: str, source_session_id: str = "",
         evidence_hashes: list[str] | None = None
     ) -> Optional[str]:
-        """添加用户偏好。语义去重通过后写入 Chroma。返回记忆 ID，重复时返回 None。"""
+        """添加用户偏好。语义去重通过后写入 Qdrant。返回记忆 ID，重复时返回 None。"""
         # 语义去重
         if self._is_duplicate(user_id, "preference", content):
             return None

@@ -5,7 +5,7 @@
 - Python 3.11
 - Java 17、Maven 3.9+
 - Node.js 22、npm 10+
-- Docker Desktop（推荐用于 MySQL、Redis、Chroma）
+- Docker Desktop（推荐用于 MySQL、Redis、Qdrant）
 
 首次运行前先检查项目本地工具、缓存写权限和 Docker 配置：
 
@@ -32,20 +32,20 @@ npm ci
 
 ## 启动顺序
 
-1. `docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d mysql redis chroma`
+1. `docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d mysql redis qdrant`
 2. `cd python-agent && python main.py`
 3. `cd java-gateway && mvn clean spring-boot:run`
 4. `cd frontend && npm run dev`
 
 也可以运行根目录 `start.bat` 打开三个独立终端。
 
-原生 Python 开发默认 `CHROMA_MODE=local`，使用本地持久化客户端；Compose 中的 Chroma 仅供容器内 Python 访问，不发布宿主机端口。若从宿主机连接远端 Chroma，应单独配置受控地址，不要把默认隔离网络暴露到公网。
+原生 Python 开发默认 `VECTOR_STORE_MODE=local`，使用本地持久化客户端；数据目录由 `QDRANT_PATH` 配置；HTTP 模式另设 `VECTOR_STORE_MODE=http` 和 `QDRANT_URL`。Compose 中的 Qdrant 仅供容器内 Python 访问，不发布宿主机端口。若从宿主机连接远端 Qdrant，应单独配置受控地址，不要把默认隔离网络暴露到公网。
 
 ## 常见问题
 
 无需外部模型的完整部署见 [隔离演示](DEMO.md)。它独立于正式栈，不要把 demo 卷接到生产。设置页可检测供应商配置；修改模型后重启服务。Embedding 更换须按 [迁移说明](EMBEDDING_MIGRATION.md) dry-run 和重建，不允许把不同向量空间混写。
 
-- `localhost:8000/health` 返回 404：8000 是 Chroma，Python 健康检查在 8001。
+- Python 健康检查在 `localhost:8001/health`；Qdrant 的 6333 仅在容器内部网络可用。
 - Java 启动失败：先确认 MySQL 已创建 `mneme` 数据库，密码与 `.env`/环境变量一致。
 - Java 测试临时目录：Surefire 默认使用 `java-gateway/target`，避免 Windows 隔离账户无法访问用户临时目录；若使用自定义 Maven 配置，请保留该项目内临时目录设置。
 - Redis 认证失败：检查 `REDIS_PASSWORD` 和服务状态。完整工作流的限流、短期状态和反思队列依赖 Redis；Python 局部降级不代表完整部署可省略 Redis。

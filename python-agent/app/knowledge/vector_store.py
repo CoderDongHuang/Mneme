@@ -1,15 +1,9 @@
-import os
 import re
 import hashlib
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
-os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
-
-import chromadb
-from chromadb.errors import InvalidCollectionException
-from chromadb.config import Settings as ChromaSettings
+from app.knowledge.qdrant_store import VectorClient, InvalidCollectionException
 
 from app.core.config import settings
 from app.core.logging import setup_logger
@@ -51,42 +45,15 @@ class VectorStore:
     def _build_clients(self) -> list[Any]:
         urls = [item.strip() for item in settings.vector_shard_urls.split(",") if item.strip()]
         if urls:
-            clients = []
-            for raw_url in urls:
-                parsed = urlparse(raw_url if "://" in raw_url else f"http://{raw_url}")
-                if not parsed.hostname or not parsed.port:
-                    raise ValueError(f"无效的 VECTOR_SHARD_URLS 地址: {raw_url}")
-                clients.append(
-                    chromadb.HttpClient(
-                        host=parsed.hostname,
-                        port=parsed.port,
-                        ssl=parsed.scheme == "https",
-                        settings=ChromaSettings(anonymized_telemetry=False),
-                    )
-                )
-            if settings.vector_shard_count not in {1, len(clients)}:
+            if settings.vector_shard_count not in {1, len(urls)}:
                 raise ValueError("VECTOR_SHARD_COUNT 必须与 VECTOR_SHARD_URLS 数量一致")
-            return clients
-        if settings.chroma_mode == "http":
-            return [chromadb.HttpClient(
-                host=settings.chroma_host,
-                port=settings.chroma_port,
-                settings=ChromaSettings(anonymized_telemetry=False),
-            )]
-        shard_count = max(1, settings.vector_shard_count)
-        clients = []
-        for shard_id in range(shard_count):
-            path = Path(settings.chroma_path)
-            if shard_count > 1:
-                path = path / f"shard-{shard_id}"
-            path.mkdir(parents=True, exist_ok=True)
-            clients.append(
-                chromadb.PersistentClient(
-                    path=str(path),
-                    settings=ChromaSettings(anonymized_telemetry=False),
-                )
-            )
-        return clients
+            return [VectorClient(url=url, api_key=settings.qdrant_api_key, check_legacy=True) for url in urls]
+        if settings.vector_store_mode == "http":
+            return [VectorClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key, check_legacy=True)]
+        if settings.vector_store_mode != "local":
+            raise ValueError("VECTOR_STORE_MODE must be local or http")
+        count = max(1, settings.vector_shard_count)
+        return [VectorClient(path=str(Path(settings.qdrant_path) / f"shard-{i}") if count > 1 else settings.qdrant_path, check_legacy=True) for i in range(count)]
 
     def _client_for(self, user_id: str, kb_id: str) -> Any:
         return self.clients[resolve_vector_shard(user_id, kb_id) % len(self.clients)]

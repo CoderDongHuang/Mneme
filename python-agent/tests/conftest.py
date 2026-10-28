@@ -11,17 +11,18 @@ import pytest
 # 确保项目根目录在 sys.path 中
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# 测试前禁用 Chroma 遥测，避免日志噪音
+# 测试前禁用 Qdrant 遥测，避免日志噪音
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 os.environ["SKIP_INTERNAL_AUTH"] = "true"
 
-# 使用本地持久化 Chroma（避免依赖外部服务）
+# 使用本地持久化 Qdrant（避免依赖外部服务）
 # Never run tests against a developer's document/memory stores, even when a
-# production .env or CHROMA_PATH is present. Keep the temporary directory alive
-# for the process: Chroma can retain handles until interpreter shutdown.
+# production .env or QDRANT_PATH is present. Keep the temporary directory alive
+# for the process: Qdrant can retain handles until interpreter shutdown.
 _test_data = Path(tempfile.mkdtemp(prefix="mneme-pytest-"))
 for _name, _relative in {
-    "CHROMA_PATH": "chroma",
+    "QDRANT_PATH": "qdrant",
+    "CHROMA_PATH": "legacy-chroma",
     "SESSION_DATA_PATH": "sessions",
     "LEXICAL_INDEX_PATH": "lexical.sqlite3",
     "MEMORY_VERSION_STORE_PATH": "memory_versions.sqlite3",
@@ -29,7 +30,7 @@ for _name, _relative in {
     "UPLOAD_DIR": "uploads",
 }.items():
     os.environ[_name] = str(_test_data / _relative)
-os.environ["CHROMA_MODE"] = "local"
+os.environ["VECTOR_STORE_MODE"] = "local"
 os.environ["AUXILIARY_STORE_BACKEND"] = "sqlite"
 os.environ["REDIS_HOST"] = "127.0.0.1"
 os.environ["REDIS_PORT"] = "1"

@@ -279,7 +279,7 @@ def assert_deleted(files: list[str], state: dict, operation_id: str) -> None:
         raise VerificationError(f"Redis session remains for {state['session_id']}")
     py_state = python_state(files, user_id)
     if any(py_state.values()):
-        raise VerificationError(f"Python/Chroma state remains: {py_state}")
+        raise VerificationError(f"Python/Qdrant state remains: {py_state}")
     if state.get("file_path", "").startswith("s3://"):
         digest = hashlib.sha256(state["file_path"].encode()).hexdigest()[:24]
         cache = ROOT / "data" / "files" / ".object-cache"
@@ -294,15 +294,15 @@ def assert_deleted(files: list[str], state: dict, operation_id: str) -> None:
 
 
 def deletion_drill(args: argparse.Namespace) -> None:
-    client, chroma_user = new_user(
-        args.base_url, args.compose_file, "p0_chroma", with_document=True
+    client, qdrant_user = new_user(
+        args.base_url, args.compose_file, "p0_qdrant", with_document=True
     )
-    compose(args.compose_file, "stop", "chroma")
+    compose(args.compose_file, "stop", "qdrant")
     operation = client.request("DELETE", "/api/v1/profile/account")["operation_id"]
     wait_task(args.compose_file, operation, {"retry"}, timeout=150)
-    compose(args.compose_file, "start", "chroma")
+    compose(args.compose_file, "start", "qdrant")
     wait_task(args.compose_file, operation, {"completed"})
-    assert_deleted(args.compose_file, chroma_user, operation)
+    assert_deleted(args.compose_file, qdrant_user, operation)
 
     minio_client, minio_user = new_user(
         args.base_url, args.compose_file, "p0_minio", with_document=True
@@ -335,7 +335,7 @@ def deletion_drill(args: argparse.Namespace) -> None:
     assert_deleted(args.compose_file, restart_user, operation)
     print(json.dumps({
         "status": "completed",
-        "scenarios": ["chroma", "minio", "redis", "java-restart"],
+        "scenarios": ["qdrant", "minio", "redis", "java-restart"],
     }))
 
 
@@ -379,7 +379,7 @@ def backup_restore_drill(args: argparse.Namespace) -> None:
     if marker["document_id"] not in {int(item["id"]) for item in documents}:
         raise VerificationError("restored document is not available through the API")
     if not python_state(args.compose_file, marker["user_id"])["collections"]:
-        raise VerificationError("restored Chroma collection is missing")
+        raise VerificationError("restored Qdrant collection is missing")
     session = restored.request("POST", "/api/v1/sessions", {"title": "restored RAG"})
     stream = restored.stream(session["id"], marker["kb_id"])
     if "QZ-7294" not in stream or '"sources": []' in stream:

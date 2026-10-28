@@ -1,25 +1,19 @@
 """
-长期记忆 Chroma 持久化存储层
+长期记忆 Qdrant 持久化存储层
 
 设计：
-- 单一 Chroma collection: mneme_long_term_memory
+- 单一 Qdrant collection: mneme_long_term_memory
 - 通过 metadata 字段 (user_id, category, topic) 实现多租户隔离和多类型过滤
 - 语义检索：用 embedding 相似度匹配语义相近的记忆
 - 支持 CRUD + 语义去重 + 重要性更新
 """
 
-import os
 import uuid
 import json
-from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Dict
 
-os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
-
-import chromadb
-from chromadb.errors import InvalidCollectionException
-from chromadb.config import Settings as ChromaSettings
+from app.knowledge.qdrant_store import VectorClient, InvalidCollectionException
 
 from app.core.config import settings
 from app.core.privacy import require_cloud_processing
@@ -34,21 +28,13 @@ VALID_CATEGORIES = {"preference", "weak_point", "progress"}
 
 
 def _build_client():
-    """根据环境变量构建 Chroma 客户端（优先远程，本地降级 PersistentClient）"""
-    if settings.chroma_mode == "http":
-        return chromadb.HttpClient(
-            host=settings.CHROMA_HOST,
-            port=settings.CHROMA_PORT,
-            settings=ChromaSettings(anonymized_telemetry=False),
-        )
-    Path(settings.chroma_path).mkdir(parents=True, exist_ok=True)
-    return chromadb.PersistentClient(
-        path=settings.chroma_path, settings=ChromaSettings(anonymized_telemetry=False)
-    )
+    if settings.vector_store_mode == "http":
+        return VectorClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key, check_legacy=True)
+    return VectorClient(path=settings.qdrant_path, check_legacy=True)
 
 
 class MemoryVectorStore:
-    """长期记忆的 Chroma 向量存储层"""
+    """长期记忆的 Qdrant 向量存储层"""
 
     COLLECTION_NAME = "mneme_long_term_memory"
 
@@ -264,7 +250,7 @@ class MemoryVectorStore:
         """
         require_cloud_processing(user_id)
         self._require_embedding_profile()
-        # Chroma 多条件过滤需 $and 语法，兼容各版本
+        # Qdrant 多条件过滤需 $and 语法，兼容各版本
         if category:
             where_filter = {"$and": [{"user_id": user_id}, {"category": category}]}
         else:
@@ -379,7 +365,7 @@ class MemoryVectorStore:
     ) -> List[Dict]:
         """查找与给定内容语义高度相似的已有记忆。
 
-        Chroma 返回的是距离（越小越相似），threshold 是距离阈值。
+        Qdrant 返回的是距离（越小越相似），threshold 是距离阈值。
         距离 < threshold 视为重复。
         """
         similar = self.search(user_id, query=content, category=category, top_k=5)

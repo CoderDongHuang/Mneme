@@ -19,18 +19,18 @@ async def health() -> dict:
 
 @router.get("/health/ready")
 async def readiness(response: Response) -> dict:
-    chroma_ok = False
+    vector_ok = False
     try:
-        chroma_ok = vector_store.heartbeat()
+        vector_ok = vector_store.heartbeat()
     except Exception:
-        chroma_ok = False
-    ready = chroma_ok and llm.configured
+        vector_ok = False
+    ready = vector_ok and llm.configured
     if not ready:
         response.status_code = 503
     return {
         "status": "ready" if ready else "degraded",
         "components": {
-            "chroma": "up" if chroma_ok else "down",
+            "qdrant": "up" if vector_ok else "down",
             "llm": llm.status,
             "redis": "up" if session_persistence.available else "optional_down",
         },

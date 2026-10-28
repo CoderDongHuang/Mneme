@@ -7,8 +7,8 @@
 ## 升级顺序
 
 1. 按 [自托管指南](SELF_HOSTING.md) 的备份恢复流程备份关系库、文件、向量库及辅助状态，并验证备份。
-2. 停止网关、Agent 和所有后台 worker，保留 Chroma 服务。迁移期间不得写入。
-3. 配置目标模型和原来的 `CHROMA_MODE/HOST/PORT/PATH`。离线选择必须明确设置
+2. 停止网关、Agent 和所有后台 worker，保留 Qdrant 服务。迁移期间不得写入。
+3. 配置目标模型和原来的 `VECTOR_STORE_MODE/QDRANT_URL/QDRANT_PATH`。离线选择必须明确设置
    `MNEME_OFFLINE_EMBEDDINGS=true`；云端需有效 `DASHSCOPE_API_KEY`。
 4. 使用 Agent 的 Python 3.11 环境运行（Docker 中可用同一 Agent 镜像执行一次性命令）：
 

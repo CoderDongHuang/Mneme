@@ -58,7 +58,7 @@ python scripts/demo.py clean --confirm-delete-demo-data
 - **复杂文档解析**：PDF 版面块排序、中英文 OCR、独立表格提取，可选 Qwen-VL；逐页文本/表格/chunk 预览与 OCR 区域置信度叠加，部分成功和取消重试可追踪。
 - **可追溯回答**：保留文档名、页码、章节、原文、文件 SHA-256 和解析器版本；引用核验后展示，并按 hash 打开对应历史版本。
 - **联合检索筛选**：知识库、指定文档、标签和导入日期共同限定范围；聊天与检索调试均可使用。
-- **回归证据**：[路线图对照](docs/ROADMAP_COVERAGE.md)与[实际运行验收](docs/ACCEPTANCE_2026-10-28.md)，包含已通过和未达标项。
+- **回归证据**：[路线图对照](docs/ROADMAP_COVERAGE.md)与[实际运行验收](docs/ACCEPTANCE_2026-10-29.md)，包含已通过和未达标项。
 - **Agent 决策链**：LangGraph 编排意图识别、条件检索、个性化推理和记忆回写。
 - **三级记忆**：工作记忆、短期会话记忆、长期偏好/薄弱点/进度记忆。
 - **记忆质量控制**：高置信度自动写入，中置信度由用户确认，低置信度丢弃。
@@ -73,12 +73,12 @@ flowchart LR
     J --> M[(MySQL)]
     J --> R[(Redis)]
     J -->|"内部 HTTP"| P["FastAPI + LangGraph"]
-    P --> C[(Chroma)]
+    P --> C[(Qdrant)]
     P --> D["DeepSeek / Qwen"]
     P --> E["DashScope Embedding"]
 ```
 
-浏览器只访问 Java Gateway。Java 负责认证、业务数据和服务编排；Python 负责 Agent 推理、RAG 与语义记忆；MySQL 是业务事实来源，Redis 与 Chroma 分别承载短期状态和向量数据。
+浏览器只访问 Java Gateway。Java 负责认证、业务数据和服务编排；Python 负责 Agent 推理、RAG 与语义记忆；MySQL 是业务事实来源，Redis 与 Qdrant 分别承载短期状态和向量数据。
 
 ## Docker 自部署
 
@@ -138,16 +138,16 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml logs -f
 docker compose -f docker-compose.yml -f docker-compose.selfhost.yml down
 ```
 
-数据默认保存在 `data/mysql`、`data/redis`、`data/chroma` 和 `data/files`。不要使用 `down -v`，除非确认要删除数据。
+数据默认保存在 `data/mysql`、`data/redis`、`data/qdrant` 和 `data/files`。不要使用 `down -v`，除非确认要删除数据。
 
 更完整的配置、OCR 和故障排查见 [Docker 自部署指南](docs/SELF_HOSTING.md)。需要域名与 HTTPS 时再使用 [公网部署说明](docs/PRODUCTION_DEPLOYMENT.md)。
 
 ## 本地开发
 
-本地调试可让 Docker 只运行 MySQL、Redis 和 Chroma，再分别启动 Python、Java 和 React：
+本地调试可让 Docker 只运行 MySQL、Redis 和 Qdrant，再分别启动 Python、Java 和 React：
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d mysql redis chroma
+docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d mysql redis qdrant
 ./start.bat
 ```
 
@@ -196,15 +196,15 @@ CI 会分别执行 Python、Java 和前端检查，并使用 mock API 验证关�
 ## 使用边界
 
 - 默认模式优先使用本地版面解析和 OCR；图表、公式、图片与流程图需要设置 `MULTIMODAL_ENABLED=true`，会消耗 DashScope 多模态额度。
-- Chroma 与本地文件目录针对个人和小规模自部署设计，正好覆盖本项目当前定位。
+- Qdrant 与本地文件目录针对个人和小规模自部署设计，正好覆盖本项目当前定位。
 - Mailpit 是本地测试邮箱，不会向真实邮箱投递；验证码在 `http://localhost:8025` 查看。
 - 设置页可查看 Chat/Embedding/Rerank/OCR 脱敏配置并检测连通性；模型参数和密钥仍由服务端 `.env` 管理，界面不回显完整密钥。
 - 引用会经历编号、声明支持判定和逐字引文核验；模型核验失败时拒答。核验增加延迟和调用费用，仍不能证明语义绝对正确。
-- Chroma 三项公告保留到期受控例外；Spring 已升级到 7.0.10 并移除两项例外，详见 [安全策略](docs/SECURITY_RESPONSE_POLICY.md)。扫描通过不代表零漏洞。
+- 向量存储改为 Qdrant 1.20.0，移除旧 Chroma 三项扫描例外；Spring 已升级到 7.0.10。旧数据须按[迁移指南](docs/VECTOR_STORE_MIGRATION.md)显式迁移。扫描通过不代表零漏洞。
 
 ## 路线图与贡献
 
-本轮通用工程与 Mneme 第一章的逐项对应、测试入口和实际限制见 [路线图落实记录](docs/ROADMAP_COVERAGE.md)，升级前阅读 [发布说明](docs/RELEASE_NOTES_2026-10-28.md) 和 [迁移流程](docs/rollout.md)。优先完善真实资料评测与恢复可靠性；暂不扩张为公网多租户 SaaS。
+本轮通用工程与 Mneme 第一章的逐项对应、测试入口和实际限制见 [路线图落实记录](docs/ROADMAP_COVERAGE.md)，升级前阅读 [发布说明](docs/RELEASE_NOTES_2026-10-29.md) 和 [迁移流程](docs/rollout.md)。优先完善真实资料评测与恢复可靠性；暂不扩张为公网多租户 SaaS。
 
 提交问题请使用 [Bug / 功能建议模板](https://github.com/CoderDongHuang/Mneme/issues/new/choose)，附环境、复现步骤和脱敏日志。提交代码请先阅读 [开发指南](docs/development.md)，为实际行为增加回归，说明迁移及兼容性；MIT 仅覆盖本仓库代码，第三方依赖和模型仍遵守各自许可证与服务条款。
 

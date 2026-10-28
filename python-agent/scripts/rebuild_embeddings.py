@@ -1,4 +1,4 @@
-"""Offline maintenance: dry-run, snapshot, rebuild, or restore one Chroma collection.
+"""Offline maintenance: dry-run, snapshot, rebuild, or restore one Qdrant collection.
 
 Run with services stopped and the same storage/environment as the agent. Snapshots
 contain private source text and vectors; store them with your protected backups.
@@ -84,15 +84,12 @@ def main() -> None:
         parser.error("Stop gateway/agents/workers first, then pass --services-stopped")
     from app.core.config import settings
     from app.utils.embedding import embeddings
-    import chromadb
-    from chromadb.config import Settings
+    from app.knowledge.qdrant_store import VectorClient
 
     if settings.vector_shard_count > 1 or settings.vector_shard_urls:
         parser.error("For sharded stores, configure one shard endpoint per maintenance run")
-    client = (chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port,
-                                 settings=Settings(anonymized_telemetry=False))
-              if settings.chroma_mode == "http" else
-              chromadb.PersistentClient(path=settings.chroma_path, settings=Settings(anonymized_telemetry=False)))
+    client = (VectorClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+              if settings.vector_store_mode == "http" else VectorClient(path=settings.qdrant_path))
     collection = client.get_collection(args.collection, embedding_function=None)
     plan = {"collection": collection.name, "rows": collection.count(),
             "old_profile": (collection.metadata or {}).get("embedding_profile", "unknown"),
