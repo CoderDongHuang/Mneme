@@ -88,6 +88,10 @@ public class WorkspaceController {
     @GetMapping("/reviews") public Result<List<Map<String, Object>>> reviews(@RequestAttribute("userId") Long userId) { return Result.success(workspace.reviews(userId)); }
     @PostMapping("/reviews/{id}") public Result<Map<String, Object>> review(@RequestAttribute("userId") Long userId, @PathVariable Long id, @RequestBody Map<String, Object> body) { return Result.success(workspace.review(userId, id, Integer.parseInt(String.valueOf(body.getOrDefault("rating", 3))))); }
     @GetMapping("/quizzes") public Result<List<Map<String, Object>>> quizzes(@RequestAttribute("userId") Long userId) { return Result.success(workspace.quizzes(userId)); }
+    @GetMapping("/quizzes/{id}/draft") public Result<?> quizDraft(@RequestAttribute("userId") Long userId, @PathVariable Long id) { return Result.success(workspace.quizDraft(userId, id)); }
+    @PutMapping("/quizzes/{id}/draft") public Result<?> saveQuizDraft(@RequestAttribute("userId") Long userId, @PathVariable Long id, @RequestBody Map<String,Object> body) throws Exception { return Result.success(workspace.saveQuizDraft(userId, id, body)); }
+    @GetMapping("/quizzes/{id}/attempts") public Result<?> quizAttempts(@RequestAttribute("userId") Long userId, @PathVariable Long id) { return Result.success(workspace.quizAttempts(userId, id)); }
+    @PostMapping("/quizzes/{id}/reports") public Result<?> reportQuestion(@RequestAttribute("userId") Long userId, @PathVariable Long id, @RequestBody Map<String,Object> body) throws Exception { return Result.success(workspace.reportQuestion(userId, id, body)); }
     @PostMapping("/quizzes/generate") public Result<Map<String, Object>> generateQuiz(@RequestAttribute("userId") Long userId, @RequestBody Map<String, Object> body) throws Exception { return Result.success(workspace.generateQuiz(userId, body)); }
     @PostMapping("/quizzes/{id}/submit") public Result<Map<String, Object>> submitQuiz(@RequestAttribute("userId") Long userId, @PathVariable Long id, @RequestBody Map<String, Object> body) throws Exception { return Result.success(workspace.submitQuiz(userId, id, body)); }
     @GetMapping("/branches") public Result<List<Map<String, Object>>> branches(@RequestAttribute("userId") Long userId) { return Result.success(workspace.branches(userId)); }
@@ -132,8 +136,14 @@ public class WorkspaceController {
         return ResponseEntity.ok().header("Content-Disposition", "attachment; filename=mneme-workspace.zip").body(workspace.exportArchive(userId));
     }
     @PostMapping(value="/import/archive", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Result<Map<String, Object>> importArchive(@RequestAttribute("userId") Long userId, @RequestParam("archive") MultipartFile archive) throws Exception {
-        return Result.success(workspace.importArchive(userId, archive.getBytes()));
+    public Result<Map<String, Object>> importArchive(@RequestAttribute("userId") Long userId, @RequestParam("archive") MultipartFile archive,
+        @RequestParam(defaultValue="all") String scope, @RequestParam(required=false) String sha256) throws Exception {
+        return Result.success(workspace.importArchive(userId, archive.getBytes(), scope, sha256));
+    }
+    @PostMapping(value="/import/archive/preview", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<Map<String, Object>> previewArchive(@RequestAttribute("userId") Long userId, @RequestParam("archive") MultipartFile archive,
+        @RequestParam(defaultValue="all") String scope) throws Exception {
+        return Result.success(workspace.previewArchive(userId, archive.getBytes(), scope));
     }
     @PostMapping("/import") public Result<Map<String, Object>> importData(@RequestAttribute("userId") Long userId, @RequestBody Map<String, Object> body) throws Exception { return Result.success(workspace.importData(userId, body)); }
 }

@@ -38,6 +38,7 @@ Thumbs.db
 
 # Data (local development, not committed)
 data/
+backups/
 frontend/node_modules/
 frontend/.env.local
 frontend/test-results/

@@ -71,6 +71,8 @@ class MemoryConfirmRequest(BaseModel):
     category: str = ""
     content: str = ""
     topic: str = ""
+    source_session_id: str = ""
+    confidence: float | None = None
 
 
 class ChatResponse(BaseModel):

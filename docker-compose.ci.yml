@@ -21,6 +21,8 @@ services:
       retries: 30
 
   java-gateway:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     user: "${MNEME_CI_UID:-1000}:${MNEME_CI_GID:-1000}"
     environment:
       STORAGE_BACKEND: s3

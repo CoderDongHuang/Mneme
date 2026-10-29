@@ -1,3 +1,4 @@
+@layer legacy {
 .center-page { min-height: 100vh; padding: 32px; background: #f7f9f8; color: #18201c; }
 .center-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid #c7d1cc; padding-bottom: 16px; }
 .center-page h1 { font-size: 26px; margin: 0; }
@@ -32,3 +33,5 @@
 @media(max-width: 760px) { .center-feedback { grid-template-columns: 1fr; } }
 .center-page :focus-visible { outline: 3px solid #176447; outline-offset: 3px; }
 @media(max-width: 760px) { .center-page { padding: 72px 16px 24px; } .center-page dl { grid-template-columns: 1fr; gap: 8px; } }
+
+}

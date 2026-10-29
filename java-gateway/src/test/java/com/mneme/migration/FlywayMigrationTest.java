@@ -316,6 +316,7 @@ class FlywayMigrationTest {
         jdbc.update("INSERT INTO chat_session(user_id,title) VALUES(?, 'source')", userId);
         Long sessionId = value(jdbc, "SELECT id FROM chat_session WHERE user_id=?", Long.class, userId);
         jdbc.update("INSERT INTO chat_message(session_id,role,content) VALUES(?, 'user', 'source question')", sessionId);
+        jdbc.update("UPDATE chat_message SET sources_json=JSON_ARRAY(JSON_OBJECT('document_id','doc_42','chunk_content','source evidence')) WHERE session_id=?", sessionId);
         Long messageId = value(jdbc, "SELECT id FROM chat_message WHERE session_id=?", Long.class, sessionId);
         WorkspaceService service = new WorkspaceService(
             jdbc, new ObjectMapper().findAndRegisterModules(), new RestTemplate());
@@ -342,6 +343,19 @@ class FlywayMigrationTest {
                 SELECT COUNT(*) FROM chat_message m JOIN chat_branch b ON b.branch_session_id=m.session_id
                 WHERE b.user_id=? AND m.content='source question'
                 """, Integer.class, userId)).isEqualTo(2);
+            assertThat(value(jdbc, """
+                SELECT COUNT(*) FROM chat_message m JOIN chat_branch b ON b.branch_session_id=m.session_id
+                WHERE b.user_id=? AND JSON_UNQUOTE(JSON_EXTRACT(m.sources_json,'$[0].chunk_content'))='source evidence'
+                """, Integer.class, userId)).isEqualTo(2);
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                try { service.importData(userId, service.exportData(userId)); }
+                catch (Exception error) { throw new RuntimeException(error); }
+            });
+            assertThat(value(jdbc, """
+                SELECT COUNT(*) FROM chat_message m JOIN chat_session s ON s.id=m.session_id
+                WHERE s.user_id=? AND JSON_UNQUOTE(JSON_EXTRACT(m.sources_json,'$[0].original_document_id'))='doc_42'
+                AND JSON_EXTRACT(m.sources_json,'$[0].document_id') IS NULL
+                """, Integer.class, userId)).isEqualTo(3);
         } finally {
             executor.shutdownNow();
         }

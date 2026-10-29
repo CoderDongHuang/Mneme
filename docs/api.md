@@ -60,7 +60,29 @@ SSE 事件：
 
 ## 供应商配置检测
 
-`POST /health/providers/check` 必须登录，转发到 Python 内部保护接口。返回 Chat/Embedding/Rerank/OCR 的脱敏 profile、状态、延迟与缓存信息（60 秒缓存），可能执行少量合成请求并产生费用。状态区分 missing_credentials、authentication_failed、quota_or_rate_limit、model_unsupported、timeout、runtime_missing、disabled、ok；不回传密钥，也不能代替业务验收。密钥修改仍在服务端 `.env`，UI 不编辑秘密。
+`POST /health/providers/check` 必须登录，转发到 Python 内部保护接口。返回部署级 Chat/Embedding/Rerank/OCR 的脱敏 profile、状态、延迟与缓存信息（60 秒缓存），可能执行少量合成请求并产生费用。状态区分 missing_credentials、authentication_failed、quota_or_rate_limit、model_unsupported、timeout、runtime_missing、disabled、ok；不回传密钥，也不能代替业务验收。个人交互模型使用下列独立配置；共享索引和后台服务仍由部署方管理。
+
+## 个人偏好与模型
+
+- `GET/PUT /settings/preferences`：当前登录用户的 `language`（zh-CN/en）、IANA `timezone`、布尔 `notifications`、`theme`（system/light/dark）。
+- `GET/PUT /settings/models`：`provider`（deepseek/dashscope/openai）、`model`、`enabled`、写入时的 `apiKey`。读取仅返回 `hasKey`/`keyMask`，不含密钥；同服务商密钥留空保留旧值，`clearKey=true` 显式清除。切换服务商不能沿用旧密钥。
+- `POST /settings/models/test`：相同配置格式，实际调用模型但不保存；可能产生费用，返回模型及延迟。固定服务商地址不接受任意 URL。
+- 模型配置 AES-GCM 加密并绑定用户 ID；只通过受内部令牌保护的请求上下文传入 Python，不放入全局共享模型客户端。账号删除级联清理设置。
+
+## 学习交互补充
+
+- `PATCH /sessions/{id}`：重命名当前用户会话；历史消息保留真实来源信息。
+- 测验生成/列表响应隐藏答案与解释；`POST /workspace/quizzes/{id}/submit` 服务端评分后返回解释，支持 `request_id` 防止相同提交产生重复学习记录。
+- `GET/PUT /workspace/quizzes/{id}/draft`：`answers` 数组与 `current_question`，仅本人题集可读写。
+- `GET /workspace/quizzes/{id}/attempts`：已提交记录；`POST /workspace/quizzes/{id}/reports`：题目问题反馈。
+- `PATCH /workspace/memories/{id}`：编辑/确认/归档等操作同步派生检索；不以不存在的置信度充当事实保证。
+
+## 个人和整站恢复
+
+- `POST /workspace/import/archive/preview`：multipart `archive` ZIP 与 `scope`（all/knowledge/conversations/learning），验证后返回 SHA-256、版本、时间、数量、缺失原文和同名资料库冲突。个人 ZIP 未加密。
+- `POST /workspace/import/archive`：同一文件、scope 和预览的 `sha256`；新增副本，不覆盖现有数据，文件索引异步重建。旧客户端可省略摘要，仍执行完整归档校验。
+- `GET /admin/recovery/site`：宿主机归档及任务历史；`POST .../preview`：`archive`；`POST .../jobs`：`action`（backup/restore）、`confirmation`（BACKUP SITE/RESTORE SITE），恢复另需归档名及预览摘要。
+- 整站接口独立检查 active admin + `X-Admin-Token`；宿主机另验恢复令牌，网关不挂载 Docker socket。配置及真实恢复说明见 [宿主机恢复](HOST_RECOVERY.md)。现有 `/admin/recovery` GitHub 演练接口继续保留。
 
 ## 记忆
 

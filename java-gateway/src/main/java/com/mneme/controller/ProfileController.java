@@ -20,6 +20,8 @@ public class ProfileController {
     public ProfileController(ProfileService profiles) { this.profiles = profiles; }
 
     @GetMapping public Result<Map<String, Object>> get(@RequestAttribute("userId") Long userId) { return Result.success(profiles.profile(userId)); }
+    @GetMapping("/sessions") public Result<?> sessions(@RequestAttribute("userId") Long userId) { return Result.success(profiles.sessions(userId)); }
+    @DeleteMapping("/sessions/{sessionId}") public Result<?> revoke(@RequestAttribute("userId") Long userId, @PathVariable String sessionId) { profiles.revokeSession(userId, sessionId); return Result.success(null); }
     @PatchMapping public Result<Map<String, Object>> update(@RequestAttribute("userId") Long userId, @Valid @RequestBody ProfileUpdateRequest request) { return Result.success(profiles.update(userId, request)); }
     @PostMapping("/avatar") public Result<Map<String, Object>> avatar(@RequestAttribute("userId") Long userId, @RequestParam("file") MultipartFile file) throws IOException { return Result.success(profiles.uploadAvatar(userId, file)); }
     @GetMapping("/avatar") public ResponseEntity<byte[]> avatar(@RequestAttribute("userId") Long userId) throws IOException { return ResponseEntity.ok().contentType(MediaType.parseMediaType(profiles.avatarType(userId))).body(profiles.avatar(userId)); }

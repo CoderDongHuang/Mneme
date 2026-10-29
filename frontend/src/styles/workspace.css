@@ -1,3 +1,4 @@
+@layer legacy {
 .workspace-page { min-height: 100vh; padding: 14px; color: #22231f; }
 .workspace-head { min-height: 190px; padding: 36px clamp(24px,5vw,64px); display: flex; align-items: flex-end; justify-content: space-between; background: rgb(250 250 247 / 72%); border-radius: 7px; box-shadow: 0 24px 70px rgb(31 32 28 / 10%); backdrop-filter: blur(24px); }
 .workspace-head h1 { margin: 8px 0; font-family: Georgia,"Microsoft YaHei",serif; font-size: clamp(42px,6vw,72px); font-weight: 400; }
@@ -33,3 +34,5 @@
 @media(max-width:760px){.workspace-page{padding:0}.workspace-head{min-height:250px;padding:76px 20px 25px;border-radius:0}.workspace-head h1{font-size:48px}.workspace-modes{margin:0;padding:8px;grid-template-columns:repeat(4,1fr);border-radius:0;position:sticky;top:0;z-index:10}.workspace-modes button{min-height:52px}.workspace-metrics{grid-template-columns:repeat(2,1fr);padding:10px;margin:0}.workspace-metrics article{padding:12px}.workspace-metrics strong{font-size:22px}.workspace-canvas{border-radius:0}.studio-layout,.quiz-layout,.branch-layout{display:block}.studio-layout>aside{display:flex;gap:7px;overflow-x:auto}.studio-layout>aside h2{display:none}.studio-layout>aside select{flex:0 0 170px;margin:0}.studio-layout>aside>button{flex:0 0 190px;margin:0}.reader-pane{padding:25px 20px}.plan-grid,.data-transfer{padding:18px;grid-template-columns:1fr}.debugger form{grid-template-columns:1fr}.task-center,.memory-manager{padding:24px 18px}.task-center article{grid-template-columns:1fr auto}.task-center article p{grid-column:1/-1}.branch-compare{grid-template-columns:1fr}.quiz-sheet{padding:25px 18px}}
 @media(max-width:760px){.memory-manager article{grid-template-columns:1fr auto auto auto}.memory-versions{margin-left:0}.memory-versions button{grid-template-columns:48px 1fr}.memory-versions small{grid-column:1/-1}}
 @media(max-width:760px){.metric-trend{margin:0;padding:12px;grid-template-columns:1fr}.metric-trend>div{height:44px}}
+
+}

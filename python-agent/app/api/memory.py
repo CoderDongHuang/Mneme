@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Literal
 from app.models.memory import (
     MemoryReadRequest,
     MemoryWriteRequest,
@@ -18,9 +19,12 @@ logger = setup_logger("memory_api")
 
 class MemoryAdminUpdate(BaseModel):
     user_id: str
-    content: str | None = None
-    topic: str | None = None
+    content: str | None = Field(default=None, min_length=1, max_length=10000)
+    topic: str | None = Field(default=None, max_length=200)
     frozen: bool | None = None
+    status: Literal["active", "mastered", "reinforce", "archived", "ignored"] | None = None
+    confirmed: bool | None = None
+    tags: list[str] | None = Field(default=None, max_length=20)
 
 
 class MemoryRestoreRequest(BaseModel):
@@ -43,10 +47,23 @@ async def list_memories(user_id: str):
 @router.patch("/admin/{memory_id}")
 async def update_memory(memory_id: str, request: MemoryAdminUpdate):
     _owned_memory(memory_id, request.user_id)
+    if request.tags is not None and any(len(tag) > 80 for tag in request.tags):
+        raise HTTPException(status_code=422, detail="标签过长")
     if request.content is not None or request.topic is not None:
         memory_store.update_memory(memory_id, request.content, request.topic)
     if request.frozen is not None:
         memory_store.set_frozen(memory_id, request.frozen)
+    changes = {}
+    if request.status is not None:
+        changes["status"] = request.status
+    if request.confirmed is not None:
+        changes["confirmed"] = request.confirmed
+    if request.tags is not None:
+        import json
+        changes["tags"] = json.dumps(request.tags, ensure_ascii=False)
+    if changes:
+        memory_store.update_metadata(memory_id, changes)
+    long_term_memory._invalidate_cache(request.user_id)
     return {"status": "updated", "memory": memory_store.get_memory(memory_id)}
 
 
@@ -54,6 +71,7 @@ async def update_memory(memory_id: str, request: MemoryAdminUpdate):
 async def delete_memory(memory_id: str, user_id: str):
     _owned_memory(memory_id, user_id)
     memory_store.delete_memory(memory_id)
+    long_term_memory._invalidate_cache(user_id)
     return {"status": "deleted", "id": memory_id}
 
 
@@ -83,12 +101,14 @@ async def restore_memory(memory_id: str, request: MemoryRestoreRequest):
     restored = memory_store.restore_memory(
         memory_id, version["content"], version["metadata"]
     )
+    long_term_memory._invalidate_cache(request.user_id)
     return {"status": "restored", "version": version["version"], "memory": restored}
 
 
 @router.delete("/admin/user/{user_id}")
 async def delete_user_memories(user_id: str):
     memory_store.delete_user_memories(user_id)
+    long_term_memory._invalidate_cache(user_id)
     versions = memory_version_store.delete_user(user_id)
     from app.tools.registry import tool_registry
 
@@ -153,18 +173,27 @@ async def confirm_memory(request: MemoryConfirmRequest):
     )
 
     if request.action == "confirm":
-        # 写入长期记忆
-        if request.category == "preference":
-            long_term_memory.add_preference(request.user_id, request.content)
-        elif request.category == "weak_point":
-            long_term_memory.add_weak_point(
-                request.user_id, request.content, request.topic or request.content
-            )
-        elif request.category == "progress":
-            parts = request.content.split("/")
-            chapter = parts[0] if parts else ""
-            section = parts[1] if len(parts) > 1 else ""
-            long_term_memory.update_progress(request.user_id, chapter, section)
+        # A deterministic vector ID makes a gateway retry safe even if SQL commit failed
+        # after the vector write. Reconfirming never increments topic importance.
+        import hashlib
+        from datetime import datetime, timezone
+
+        memory_id = "mem_confirm_" + hashlib.sha256(
+            f"{request.user_id}:{request.temp_id}".encode()
+        ).hexdigest()
+        store = long_term_memory._store
+        existing = store.get_memory(memory_id)
+        if existing is None:
+            now = datetime.now(timezone.utc).isoformat()
+            store.restore_memory(memory_id, request.content, {
+                "user_id": request.user_id, "category": request.category,
+                "topic": request.topic or "", "importance": 0.5,
+                "created_at": now, "updated_at": now, "confirmed": True,
+                "confirmation_id": request.temp_id, "source_session_id": request.source_session_id,
+                **({"confidence": request.confidence} if request.confidence is not None else {}),
+                "evidence_hashes": "[]",
+            })
+        long_term_memory._invalidate_cache(request.user_id)
         return {"status": "confirmed", "action": "written"}
 
     elif request.action == "dismiss":

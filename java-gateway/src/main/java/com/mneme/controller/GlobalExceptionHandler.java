@@ -10,10 +10,17 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.mneme.exception.RequestInProgressException;
+import com.mneme.exception.AdminAccessDeniedException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(AdminAccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Result<Void> forbidden(AdminAccessDeniedException exception) {
+        return Result.error(403, exception.getMessage());
+    }
 
     @ExceptionHandler({SecurityException.class, JwtException.class})
     @ResponseStatus(HttpStatus.UNAUTHORIZED)

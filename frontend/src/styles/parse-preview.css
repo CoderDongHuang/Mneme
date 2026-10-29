@@ -1,3 +1,4 @@
+@layer legacy {
 .parse-preview { padding: 16px 0; border-top: 1px solid #deded6; }
 .parse-preview form { display: flex; gap: 10px; align-items: end; }
 .parse-preview label { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
@@ -7,3 +8,5 @@
 .ocr-page { position: relative; max-width: 850px; }
 .ocr-page img { width: 100%; display: block; }
 .ocr-page span { position: absolute; border: 1px solid rgba(100,110,90,.3); }
+
+}

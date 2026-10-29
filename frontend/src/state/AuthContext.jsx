@@ -14,6 +14,17 @@ function storedSession() {
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(storedSession)
+  const [verifiedRole, setVerifiedRole] = useState(null)
+  const userId = session?.userId
+  useEffect(() => {
+    setVerifiedRole(null)
+    if (!userId) return
+    let active = true
+    endpoints.profile().then(profile => {
+      if (active) { setVerifiedRole(profile.role || 'user'); setSession(current => current?.userId === userId ? { ...current, ...profile } : current) }
+    }).catch(() => { if (active) setVerifiedRole('unavailable') })
+    return () => { active = false }
+  }, [userId])
 
   useEffect(() => {
     const logout = () => setSession(null)
@@ -28,6 +39,8 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(() => ({
     session,
+    isAdmin: verifiedRole === 'admin',
+    roleLoading: !!userId && verifiedRole === null,
     async login(credentials) {
       const result = await endpoints.login(credentials)
       localStorage.setItem('mneme_auth', JSON.stringify(result))
@@ -47,7 +60,7 @@ export function AuthProvider({ children }) {
       endpoints.logout().catch(() => {})
       setSession(null)
     },
-  }), [session])
+  }), [session, verifiedRole, userId])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

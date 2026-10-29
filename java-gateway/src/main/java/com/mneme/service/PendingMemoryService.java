@@ -50,7 +50,8 @@ public class PendingMemoryService {
         }
         PendingMemory memory = mapper.selectOne(new LambdaQueryWrapper<PendingMemory>()
             .eq(PendingMemory::getMemoryId, memoryId)
-            .eq(PendingMemory::getUserId, userId));
+            .eq(PendingMemory::getUserId, userId)
+            .last("FOR UPDATE"));
         if (memory == null) throw new IllegalArgumentException("待确认记忆不存在");
         if (!"pending".equals(memory.getStatus())) {
             return new MemoryContracts.OperationResult(memory.getStatus(), null, null);
@@ -58,12 +59,18 @@ public class PendingMemoryService {
         MemoryContracts.OperationResult result = memoryService.confirmMemory(
             new MemoryContracts.ConfirmRequest(
                 userId.toString(), memory.getMemoryId(), action, memory.getCategory(),
-                memory.getContent(), memory.getTopic()
+                memory.getContent(), memory.getTopic(), memory.getSessionId() == null ? "" : memory.getSessionId().toString(), memory.getConfidence()
             )
         );
         memory.setStatus("confirm".equals(action) ? "confirmed" : "dismissed");
         memory.setResolvedAt(LocalDateTime.now());
         mapper.updateById(memory);
         return result;
+    }
+
+    public List<PendingMemory> list(Long userId) {
+        return mapper.selectList(new LambdaQueryWrapper<PendingMemory>()
+            .eq(PendingMemory::getUserId, userId).eq(PendingMemory::getStatus, "pending")
+            .orderByDesc(PendingMemory::getCreatedAt));
     }
 }

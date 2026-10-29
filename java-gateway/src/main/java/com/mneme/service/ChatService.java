@@ -32,6 +32,8 @@ public class ChatService {
     private final PendingMemoryService pendingMemoryService;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private RetrievalScopeService retrievalScope;
+    @org.springframework.beans.factory.annotation.Autowired
+    private UserSettingsService userSettings;
 
     @Value("${mneme.python-agent-url}")
     private String pythonAgentUrl;
@@ -63,6 +65,7 @@ public class ChatService {
         if (exchange.completed()) {
             ChatResponse replay = new ChatResponse();
             replay.setAnswer(assistant.getContent());
+            replay.setSources(readSources(assistant.getSourcesJson()));
             return replay;
         }
         ChatResponse response;
@@ -72,6 +75,7 @@ public class ChatService {
             );
             if (response == null) throw new IllegalStateException("Python Agent 返回空响应");
             sessionService.finishMessage(assistant.getId(), response.getAnswer());
+            sessionService.saveSources(assistant.getId(), serializeSources(response.getSources()));
             pendingMemoryService.store(userId, sessionId, assistant.getId(), response.getPendingMemories());
         } catch (Exception error) {
             sessionService.failMessage(assistant.getId(), "", error.getClass().getSimpleName());
@@ -95,12 +99,26 @@ public class ChatService {
         );
         ChatMessage assistant = exchange.assistantMessage();
         if (exchange.completed()) {
-            return output -> replayStream(assistant.getContent(), output);
+            return output -> replayStream(assistant, output);
         }
         return output -> proxyStream(userId, sessionId, assistant.getId(), request, output);
     }
 
-    private void replayStream(String answer, OutputStream output) throws java.io.IOException {
+    private java.util.List<ChatResponse.Source> readSources(String value) {
+        if (value == null || value.isBlank()) return java.util.List.of();
+        try { return objectMapper.readValue(value, objectMapper.getTypeFactory().constructCollectionType(java.util.List.class, ChatResponse.Source.class)); }
+        catch (Exception ignored) { return java.util.List.of(); }
+    }
+
+    private String serializeSources(java.util.List<ChatResponse.Source> sources) {
+        try { return objectMapper.writeValueAsString(sources == null ? java.util.List.of() : sources); }
+        catch (Exception error) { throw new IllegalStateException("引用保存失败", error); }
+    }
+
+    private void replayStream(ChatMessage assistant, OutputStream output) throws java.io.IOException {
+        String answer = assistant.getContent();
+        String meta = objectMapper.writeValueAsString(java.util.Map.of("sources", readSources(assistant.getSourcesJson())));
+        output.write(("event: meta\ndata: " + meta + "\n\n").getBytes(StandardCharsets.UTF_8));
         String token = objectMapper.writeValueAsString(java.util.Map.of("content", answer));
         output.write(("event: token\ndata: " + token + "\n\n").getBytes(StandardCharsets.UTF_8));
         output.write("event: done\ndata: {\"ok\":true,\"replayed\":true}\n\n".getBytes(StandardCharsets.UTF_8));
@@ -110,6 +128,8 @@ public class ChatService {
     private void proxyStream(Long userId, Long sessionId, Long assistantMessageId, ChatRequest request, OutputStream output) {
         HttpURLConnection connection = null;
         StringBuilder answer = new StringBuilder();
+        boolean completed = false;
+        boolean failed = false;
         try {
             connection = (HttpURLConnection) URI.create(
                 pythonAgentUrl + "/api/v1/chat/stream"
@@ -118,6 +138,10 @@ public class ChatService {
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json");
             connection.setRequestProperty("X-Internal-Service-Token", internalServiceToken);
+            if (userSettings != null) {
+                String model = userSettings.modelHeader(userId);
+                if (!model.isEmpty()) connection.setRequestProperty("X-Mneme-Model", model);
+            }
             connection.setConnectTimeout(10_000);
             connection.setReadTimeout(180_000);
             try (OutputStream requestBody = connection.getOutputStream()) {
@@ -140,6 +164,13 @@ public class ChatService {
                     } else if (line.startsWith("data: ") && "token".equals(eventType)) {
                         JsonNode payload = objectMapper.readTree(line.substring(6));
                         answer.append(payload.path("content").asText(""));
+                    } else if (line.startsWith("data: ") && "done".equals(eventType)) {
+                        completed = true;
+                    } else if (line.startsWith("data: ") && "error".equals(eventType)) {
+                        failed = true;
+                    } else if (line.startsWith("data: ") && "meta".equals(eventType)) {
+                        JsonNode payload = objectMapper.readTree(line.substring(6));
+                        sessionService.saveSources(assistantMessageId, payload.path("sources").isArray() ? payload.path("sources").toString() : "[]");
                     } else if (line.startsWith("data: ") && "memory".equals(eventType)) {
                         JsonNode payload = objectMapper.readTree(line.substring(6));
                         java.util.List<ChatResponse.PendingMemory> pending = objectMapper.convertValue(
@@ -152,10 +183,10 @@ public class ChatService {
                     }
                 }
             }
-            if (!answer.isEmpty()) {
+            if (completed && !failed && !answer.isEmpty()) {
                 sessionService.finishMessage(assistantMessageId, answer.toString());
             } else {
-                sessionService.failMessage(assistantMessageId, "", "EMPTY_RESPONSE");
+                sessionService.failMessage(assistantMessageId, answer.toString(), failed ? "AGENT_ERROR" : "INCOMPLETE_RESPONSE");
             }
         } catch (Exception error) {
             sessionService.failMessage(assistantMessageId, answer.toString(), error.getClass().getSimpleName());

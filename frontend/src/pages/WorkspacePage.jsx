@@ -1,66 +1,19 @@
-import {
-  ArchiveRestore,
-  BookMarked,
-  BrainCircuit,
-  Check,
-  ClipboardCheck,
-  Download,
-  GitBranch,
-  History,
-  Play,
-  RefreshCw,
-  Search,
-  Snowflake,
-  Trash2,
-  TrendingUp,
-  Upload,
-} from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
-import { documentFileUrl, downloadWorkspaceArchive, downloadWorkspaceExport, endpoints } from "../api/client";
+import { t, useI18n } from '../i18n'
+import { BookMarked, GitBranch, RefreshCw, Search } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { documentFileUrl, endpoints } from '../api/client';
 import LoadingState from "../components/LoadingState";
 import ParsePreview from '../components/ParsePreview';
 import RetrievalFilters, { emptyFilters } from '../components/RetrievalFilters';
 import StatusBadge from "../components/StatusBadge";
 import "../styles/workspace.css";
 
-const modes = [
-  ["reader", "引用阅读", BookMarked],
-  ["plan", "计划复习", ClipboardCheck],
-  ["quiz", "知识测验", Check],
-  ["tasks", "处理中心", RefreshCw],
-  ["debug", "检索调试", Search],
-  ["memory", "记忆管理", BrainCircuit],
-  ["branch", "分支对比", GitBranch],
-  ["data", "数据迁移", ArchiveRestore],
-];
-
-function json(value, fallback = []) {
-  if (typeof value !== "string") return value || fallback;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-}
-
-const statusLabels = {
-  active: "进行中",
-  completed: "已完成",
-  pending: "等待中",
-  processing: "处理中",
-  retry: "等待重试",
-  failed: "处理失败",
-};
-
+const modes = [["reader", "引用阅读", BookMarked], ["debug", "检索调试", Search], ["branch", "分支对比", GitBranch]];
 const roleLabels = { user: "我", assistant: "忆知", system: "系统" };
-const categoryLabels = {
-  preference: "表达偏好",
-  weak_point: "薄弱点",
-  progress: "学习进度",
-};
 
 export default function WorkspacePage() {
+  useI18n();
   const location = useLocation();
   const [mode, setMode] = useState("reader");
   const [loading, setLoading] = useState(true);
@@ -71,108 +24,59 @@ export default function WorkspacePage() {
   const [kbId, setKbId] = useState("");
   const [documents, setDocuments] = useState([]);
   const [preview, setPreview] = useState(null);
-  const [tasks, setTasks] = useState([]);
-  const [plans, setPlans] = useState([]);
-  const [metrics, setMetrics] = useState(null);
-  const [metricHistory, setMetricHistory] = useState([]);
-  const [reviews, setReviews] = useState([]);
-  const [quizzes, setQuizzes] = useState([]);
-  const [quiz, setQuiz] = useState(null);
-  const [answers, setAnswers] = useState([]);
-  const [quizResult, setQuizResult] = useState(null);
-  const [memories, setMemories] = useState([]);
-  const [memoryVersions, setMemoryVersions] = useState({});
   const [sessions, setSessions] = useState([]);
   const [branches, setBranches] = useState([]);
   const [comparison, setComparison] = useState(null);
   const [debugResult, setDebugResult] = useState(null);
   const [retrievalFilters, setRetrievalFilters] = useState({ ...emptyFilters });
-  const [planForm, setPlanForm] = useState({
-    title: "",
-    goal: "",
-    target_date: "",
-  });
-  const [topic, setTopic] = useState("");
   const [debugQuery, setDebugQuery] = useState("");
   const [branchForm, setBranchForm] = useState({
     source_session_id: "",
     label: "",
   });
-  const [importText, setImportText] = useState("");
   const [highlight, setHighlight] = useState("");
   const [previewPage, setPreviewPage] = useState("");
-  const archiveRef = useRef(null);
 
+  const mounted = useRef(false);
+  const documentRequest = useRef(0);
+  const previewRequest = useRef(0);
+  const actionLock = useRef(false);
   async function loadAll() {
-    setLoading(true);
-    setError("");
-    try {
-      const [
-        kbs,
-        taskItems,
-        metricData,
-        planItems,
-        reviewItems,
-        quizItems,
-        memoryData,
-        sessionItems,
-        branchItems,
-      ] = await Promise.all([
-        endpoints.knowledgeBases(),
-        endpoints.tasks(),
-        endpoints.metrics(),
-        endpoints.plans(),
-        endpoints.reviews(),
-        endpoints.quizzes(),
-        endpoints.managedMemories(),
-        endpoints.sessions(),
-        endpoints.branches(),
-      ]);
-      setKnowledgeBases(kbs || []);
-      setTasks(taskItems || []);
-      setMetrics(metricData || null);
-      setMetricHistory(metricData?.history || []);
-      setPlans(planItems || []);
-      setReviews(reviewItems || []);
-      setQuizzes(quizItems || []);
-      setMemories(memoryData?.memories || memoryData?.data?.memories || []);
-      setSessions(sessionItems || []);
-      setBranches(branchItems || []);
-      const initialKb = String(kbs?.[0]?.id || "");
-      setKbId((current) => current || initialKb);
-      if (initialKb) setDocuments(await endpoints.documents(initialKb));
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true); setError("");
+    const results = await Promise.allSettled([endpoints.knowledgeBases(), endpoints.sessions(), endpoints.branches()]);
+    if (!mounted.current) return;
+    if (results[0].status === 'fulfilled') { setKnowledgeBases(results[0].value || []); setKbId(current => current || String(results[0].value?.[0]?.id || '')); }
+    if (results[1].status === 'fulfilled') setSessions(results[1].value || []);
+    if (results[2].status === 'fulfilled') setBranches(results[2].value || []);
+    setError(results.filter(r => r.status === 'rejected').map(r => r.reason.message).join(' · ')); setLoading(false);
   }
-
+  useEffect(() => { const previews = previewRequest, documents = documentRequest; mounted.current = true; void loadAll(); return () => { mounted.current = false; previews.current++; documents.current++; } }, []);
   useEffect(() => {
-    loadAll();
-  }, []);
-
+    const version = ++documentRequest.current;
+    setDocuments([]);
+    if (kbId) endpoints.documents(kbId).then(items => { if (mounted.current && version === documentRequest.current) setDocuments(items || []); }).catch(e => { if (mounted.current && version === documentRequest.current) setError(e.message); });
+  }, [kbId]);
+  async function openDocument(id, page = '', text = '', sha) {
+    const version = ++previewRequest.current;
+    setPreview(null); setError(''); setHighlight(text); setPreviewPage(page);
+    try { const data = await endpoints.documentPreview(id, sha); if (mounted.current && version === previewRequest.current) setPreview(data); }
+    catch (e) { if (mounted.current && version === previewRequest.current) setError(e.message); }
+  }
   useEffect(() => {
-    if (mode !== 'tasks') return;
-    let active = true;
-    const timer = setInterval(() => {
-      endpoints.tasks().then(items => { if (active) setTasks(items || []); })
-        .catch(error => { if (active) setError(error.message); });
-    }, 3000);
-    return () => { active = false; clearInterval(timer); };
-  }, [mode]);
-
-  useEffect(() => {
+    const request = previewRequest;
     const params = new URLSearchParams(location.search);
     const documentId = params.get("document");
     if (!documentId) return;
     setMode("reader");
     setHighlight(params.get("highlight") || "");
     setPreviewPage(params.get("page") || "");
-    endpoints.documentPreview(documentId, params.get('sha256')).then(setPreview).catch((requestError) => setError(requestError.message));
+    void openDocument(documentId, params.get('page') || '', params.get('highlight') || '', params.get('sha256'));
+    return () => { request.current++; };
   }, [location.search]);
 
   async function run(action) {
+    if (actionLock.current) return;
+    actionLock.current = true;
     setBusy(true);
     setError("");
     setNotice("");
@@ -181,7 +85,7 @@ export default function WorkspacePage() {
     } catch (requestError) {
       setError(requestError.message);
     } finally {
-      setBusy(false);
+      actionLock.current = false; setBusy(false);
     }
   }
 
@@ -189,49 +93,7 @@ export default function WorkspacePage() {
     setKbId(value);
     setRetrievalFilters({ ...emptyFilters });
     setDebugResult(null);
-    setDocuments(value ? await endpoints.documents(value) : []);
-  }
-  async function loadMemoryVersions(memoryId) {
-    await run(async () => {
-      const data = await endpoints.memoryVersions(memoryId);
-      setMemoryVersions((current) => ({
-        ...current,
-        [memoryId]: data?.versions || data?.data?.versions || [],
-      }));
-    });
-  }
-  async function restoreMemory(memoryId, version) {
-    await run(async () => {
-      const data = await endpoints.restoreMemory(memoryId, version);
-      setMemories(data?.memories || data?.data?.memories || []);
-      setMemoryVersions((current) => ({ ...current, [memoryId]: [] }));
-      setNotice("记忆已恢复到所选版本。");
-    });
-  }
-  async function createPlan(event) {
-    event.preventDefault();
-    await run(async () => {
-      await endpoints.createPlan(planForm);
-      setPlanForm({ title: "", goal: "", target_date: "" });
-      setPlans(await endpoints.plans());
-      setReviews(await endpoints.reviews());
-    });
-  }
-  async function generateQuiz(event) {
-    event.preventDefault();
-    await run(async () => {
-      const created = await endpoints.generateQuiz({ kb_id: kbId, topic });
-      setQuiz(created);
-      setAnswers([]);
-      setQuizResult(null);
-      setQuizzes(await endpoints.quizzes());
-    });
-  }
-  async function submitQuiz() {
-    await run(async () => {
-      setQuizResult(await endpoints.submitQuiz(quiz.id, answers));
-      setReviews(await endpoints.reviews());
-    });
+    previewRequest.current++; setPreview(null);
   }
   async function createBranch(event) {
     event.preventDefault();
@@ -242,91 +104,44 @@ export default function WorkspacePage() {
     });
   }
 
-  const questions = useMemo(() => json(quiz?.questions_json, []), [quiz]);
 
   return (
     <div className="workspace-page">
       <header className="workspace-head">
         <div>
-          <p className="eyebrow">一体化学习工作台</p>
-          <h1>学习工作台</h1>
-          <p>从资料依据到复习、测验与长期记忆，在一个连续工作流中完成。</p>
+          <p className="eyebrow">{t("一体化学习工作台")}</p>
+          <h1>{t("学习工作台")}</h1>
+          <p>{t("阅读原文、核对引用，探索检索结果与对话分支。")}</p>
         </div>
-        <button onClick={loadAll} title="刷新" disabled={busy}>
+        <button onClick={loadAll} title={t("刷新")} disabled={busy}>
           <RefreshCw size={18} />
         </button>
       </header>
-      <nav className="workspace-modes" aria-label="工作台模式">
+      <nav className="workspace-modes" aria-label={t("工作台模式")}>
         {modes.map(([id, label, Icon]) => (
           <button
             key={id}
             className={mode === id ? "active" : ""}
             onClick={() => setMode(id)}
-            aria-label={label}
-            title={label}
+            aria-label={t(label)}
+            title={t(label)}
           >
             <Icon size={17} />
-            <span>{label}</span>
+            <span>{t(label)}</span>
           </button>
         ))}
       </nav>
-      {metrics && (
-        <section className="workspace-metrics" aria-label="学习指标">
-          <article>
-            <span>计划完成率</span>
-            <strong>{Math.round(Number(metrics.plans?.completion_rate || 0) * 100)}%</strong>
-            <small>{metrics.plans?.completed || 0}/{metrics.plans?.total || 0} 个计划</small>
-          </article>
-          <article>
-            <span>待复习</span>
-            <strong>{metrics.reviews?.due || 0}</strong>
-            <small>已复习 {metrics.reviews?.reviewed || 0}/{metrics.reviews?.total || 0}</small>
-          </article>
-          <article>
-            <span>平均复习间隔</span>
-            <strong>{Number(metrics.reviews?.average_interval_days || 0).toFixed(1)} 天</strong>
-            <small>按复习卡统计</small>
-          </article>
-          <article>
-            <span>测验平均分</span>
-            <strong>{Number(metrics.quizzes?.average_score || 0).toFixed(0)} 分</strong>
-            <small>{metrics.quizzes?.attempts || 0} 次作答</small>
-          </article>
-          <article>
-            <span>错题转卡</span>
-            <strong>{metrics.mistakes?.cards_created || 0}</strong>
-            <small>待确认薄弱点 {metrics.mistakes?.pending_weak_points || 0}</small>
-          </article>
-        </section>
-      )}
-      {metricHistory.length > 0 && (
-        <section className="metric-trend" aria-label="近 30 天学习趋势">
-          <header>
-            <TrendingUp size={17} />
-            <span>近 30 天测验趋势</span>
-          </header>
-          <div>
-            {metricHistory.map((point) => (
-              <span
-                key={point.snapshot_date}
-                style={{ height: `${Math.max(4, Number(point.quiz_average_score || 0))}%` }}
-                title={`${point.snapshot_date}: ${Number(point.quiz_average_score || 0).toFixed(0)} 分`}
-              />
-            ))}
-          </div>
-        </section>
-      )}
       {error && <div className="page-error">{error}</div>}
       {notice && <div className="page-notice">{notice}</div>}
       {loading ? (
-        <LoadingState label="正在装载学习工作台" />
+        <LoadingState label={t("正在装载学习工作台")} />
       ) : (
-        <main className="workspace-canvas">
+        <div className="workspace-canvas">
           {mode === "reader" && (
             <section className="studio-layout">
               <aside>
-                <h2>文档</h2>
-                <select value={kbId} onChange={(e) => changeKb(e.target.value)}>
+                <h2>{t("文档")}</h2>
+                <select aria-label={t("资料库")} value={kbId} onChange={(e) => changeKb(e.target.value)}>
                   {knowledgeBases.map((k) => (
                     <option key={k.id} value={k.id}>
                       {k.name}
@@ -337,13 +152,7 @@ export default function WorkspacePage() {
                   <button
                     key={d.id}
                     className={preview?.document?.id === d.id ? "active" : ""}
-                    onClick={() =>
-                      run(async () => {
-                        setHighlight("");
-                        setPreviewPage("");
-                        setPreview(await endpoints.documentPreview(d.id));
-                      })
-                    }
+                    onClick={() => openDocument(d.id)}
                   >
                     <span>{d.fileName}</span>
                     <StatusBadge status={d.status} />
@@ -355,7 +164,7 @@ export default function WorkspacePage() {
                   <>
                     <header>
                       <div>
-                        <span>文档编号 {preview.document.id}</span>
+                        <span>{t("文档编号 ")}{preview.document.id}</span>
                         <h2>{preview.document.file_name}</h2>
                       </div>
                       <small>{preview.extension.toUpperCase()}</small>
@@ -364,20 +173,18 @@ export default function WorkspacePage() {
                       page.ocr_confidence_min != null && page.ocr_confidence_min < 0.7
                     ) && (
                       <div className="parse-warning" role="alert">
-                        <strong>部分页面识别置信度较低</strong>
-                        <span>
-                          请重点核对第 {(preview.parse_report.pages || [])
+                        <strong>{t("部分页面识别置信度较低")}</strong>
+                        <span>{t(" 请重点核对第 ")}{(preview.parse_report.pages || [])
                             .filter((page) => page.ocr_confidence_min != null && page.ocr_confidence_min < 0.7)
                             .map((page) => page.page)
-                            .join("、")} 页的引用原文。
-                        </span>
+                            .join("、")}{t(" 页的引用原文。 ")}</span>
                       </div>
                     )}
                     {preview.extension === "pdf" ? (
                       <iframe
                         className="document-frame"
                         src={documentFileUrl(preview.document.id, previewPage, preview.document.sha256)}
-                        title={`${preview.document.file_name} PDF 预览`}
+                        title={t("{0} PDF 预览", [preview.document.file_name])}
                       />
                     ) : (
                       <pre>{highlight && preview.content.includes(highlight) ? preview.content.split(highlight).map((part, index, parts) => <span key={`${index}-${part.slice(0, 12)}`}>{part}{index < parts.length - 1 && <mark>{highlight}</mark>}</span>) : preview.content}</pre>
@@ -387,222 +194,11 @@ export default function WorkspacePage() {
                 ) : (
                   <div className="studio-empty">
                     <BookMarked size={32} />
-                    <h2>选择文档开始阅读</h2>
-                    <p>回答中的页码、章节和语义片段可与这里的原文交叉核对。</p>
+                    <h2>{t("选择文档开始阅读")}</h2>
+                    <p>{t("回答中的页码、章节和语义片段可与这里的原文交叉核对。")}</p>
                   </div>
                 )}
               </article>
-            </section>
-          )}
-
-          {mode === "plan" && (
-            <section className="plan-grid">
-              <form onSubmit={createPlan}>
-                <p className="eyebrow">新学习计划</p>
-                <h2>建立学习节奏</h2>
-                <input
-                  placeholder="计划名称"
-                  value={planForm.title}
-                  onChange={(e) =>
-                    setPlanForm({ ...planForm, title: e.target.value })
-                  }
-                  required
-                />
-                <textarea
-                  placeholder="学习目标"
-                  value={planForm.goal}
-                  onChange={(e) =>
-                    setPlanForm({ ...planForm, goal: e.target.value })
-                  }
-                  required
-                />
-                <input
-                  type="date"
-                  value={planForm.target_date}
-                  onChange={(e) =>
-                    setPlanForm({ ...planForm, target_date: e.target.value })
-                  }
-                />
-                <button disabled={busy}>生成计划与复习卡</button>
-              </form>
-              <div className="review-stream">
-                <header>
-                  <h2>今日复习</h2>
-                  <span>{reviews.length} 张卡片</span>
-                </header>
-                {reviews.map((card) => (
-                  <article key={card.id}>
-                    <div>
-                      <small>
-                        {card.due_at
-                          ? new Date(card.due_at).toLocaleDateString("zh-CN")
-                          : "今天"}
-                      </small>
-                      <strong>{card.prompt}</strong>
-                      <p>{card.answer}</p>
-                    </div>
-                    <div className="rating">
-                      {[1, 3, 5].map((rate) => (
-                        <button
-                          key={rate}
-                          title={`掌握度 ${rate}`}
-                          onClick={() =>
-                            run(async () => {
-                              await endpoints.reviewCard(card.id, rate);
-                              setReviews(await endpoints.reviews());
-                            })
-                          }
-                        >
-                          {rate}
-                        </button>
-                      ))}
-                    </div>
-                  </article>
-                ))}
-              </div>
-              <div className="plan-list">
-                <h2>计划</h2>
-                {plans.map((plan) => (
-                  <article key={plan.id}>
-                      <span>{statusLabels[plan.status] || plan.status}</span>
-                    <strong>{plan.title}</strong>
-                    <p>{plan.goal}</p>
-                  </article>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {mode === "quiz" && (
-            <section className="quiz-layout">
-              <form onSubmit={generateQuiz}>
-                <h2>从资料生成测验</h2>
-                <select value={kbId} onChange={(e) => { setKbId(e.target.value); setRetrievalFilters({ ...emptyFilters }); setDebugResult(null); }}>
-                  {knowledgeBases.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  placeholder="测验主题"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  required
-                />
-                <button disabled={busy || !kbId}>生成测验</button>
-                <div className="quiz-history">
-                  {quizzes.map((item) => (
-                    <button
-                      type="button"
-                      key={item.id}
-                      onClick={() => {
-                        setQuiz(item);
-                        setAnswers([]);
-                        setQuizResult(null);
-                      }}
-                    >
-                      {item.title}
-                    </button>
-                  ))}
-                </div>
-              </form>
-              <div className="quiz-sheet">
-                {quiz ? (
-                  <>
-                    <header>
-                      <h2>{quiz.title}</h2>
-                      {quizResult && <strong>{quizResult.score} 分</strong>}
-                    </header>
-                    {questions.map((q, index) => (
-                      <article key={q.id}>
-                        <span>0{index + 1}</span>
-                        <h3>{q.prompt}</h3>
-                        {q.type === "choice" ? (
-                          q.options.map((option, optionIndex) => (
-                            <label key={option}>
-                              <input
-                                type="radio"
-                                name={`q-${index}`}
-                                checked={answers[index] === String(optionIndex)}
-                                onChange={() =>
-                                  setAnswers((current) => {
-                                    const next = [...current];
-                                    next[index] = String(optionIndex);
-                                    return next;
-                                  })
-                                }
-                              />
-                              {option}
-                            </label>
-                          ))
-                        ) : (
-                          <textarea
-                            value={answers[index] || ""}
-                            onChange={(e) =>
-                              setAnswers((current) => {
-                                const next = [...current];
-                                next[index] = e.target.value;
-                                return next;
-                              })
-                            }
-                          />
-                        )}
-                      </article>
-                    ))}
-                    {quizResult?.feedback?.map((item) => (
-                      <article className="quiz-feedback" key={`feedback-${item.question_id}`}>
-                        <strong>{item.correct ? "回答正确" : "需要复习"}</strong>
-                        <p>{item.evidence}</p>
-                      </article>
-                    ))}
-                    <button onClick={submitQuiz} disabled={busy}>
-                      提交答案
-                    </button>
-                  </>
-                ) : (
-                  <div className="studio-empty">
-                    <ClipboardCheck size={32} />
-                    <h2>生成一次针对性测验</h2>
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-
-          {mode === "tasks" && (
-            <section className="task-center">
-              <header>
-                <h2>文档处理中心</h2>
-                <p>查看持久化任务的尝试次数、错误和重试状态。</p>
-              </header>
-              {tasks.map((task) => (
-                <article key={task.task_id}>
-                  <div>
-                    <StatusBadge status={task.status} />
-                    <strong>{task.file_name || task.task_type}</strong>
-                    <small>{task.task_id}</small>
-                  </div>
-                  <span>
-                    {task.attempt_count}/{task.max_attempts}
-                  </span>
-                  <p>{task.error_message || "处理链路正常"}</p>
-                  {task.task_type === 'document_ingest' && ['pending', 'retry', 'processing'].includes(task.status) && <button onClick={() => run(async () => { await endpoints.cancelTask(task.task_id); setTasks(await endpoints.tasks()); })}>取消解析</button>}
-                  {["failed", "retry", "cancelled"].includes(task.status) && (
-                    <button
-                      onClick={() =>
-                        run(async () => {
-                          await endpoints.retryTask(task.task_id);
-                          setTasks(await endpoints.tasks());
-                        })
-                      }
-                    >
-                      <RefreshCw size={15} />
-                      重试
-                    </button>
-                  )}
-                </article>
-              ))}
             </section>
           )}
 
@@ -618,7 +214,7 @@ export default function WorkspacePage() {
                   );
                 }}
               >
-                <select value={kbId} onChange={(e) => { setKbId(e.target.value); setRetrievalFilters({ ...emptyFilters }); setDebugResult(null); }}>
+                <select aria-label={t("资料库")} value={kbId} onChange={(e) => { setKbId(e.target.value); setRetrievalFilters({ ...emptyFilters }); setDebugResult(null); }}>
                   {knowledgeBases.map((k) => (
                     <option key={k.id} value={k.id}>
                       {k.name}
@@ -629,26 +225,22 @@ export default function WorkspacePage() {
                 <input
                   value={debugQuery}
                   onChange={(e) => setDebugQuery(e.target.value)}
-                  placeholder="输入检索问题"
+                  placeholder={t("输入检索问题")}
                   required
                 />
-                <button>
-                  <Search size={17} />
-                  运行检索
-                </button>
+                <button disabled={busy || !kbId}>
+                  <Search size={17} />{t(" 运行检索 ")}</button>
               </form>
               <div className="retrieval-results">
-                {debugResult?.chunks?.length === 0 && <p role="status">当前筛选范围没有命中资料，请调整筛选条件或检索问题。</p>}
+                {debugResult?.chunks?.length === 0 && <p role="status">{t("当前筛选范围没有命中资料，请调整筛选条件或检索问题。")}</p>}
                 {debugResult?.chunks?.map((chunk, index) => (
                   <article key={chunk.id || index}>
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <div>
                       <header>
-                        <strong>{chunk.metadata?.source || "未知来源"}</strong>
-                        <small>
-                          排序信号 {Number(chunk.score || 0).toFixed(4)} · 第{" "}
-                          {chunk.metadata?.page || "-"} 页
-                        </small>
+                        <strong>{chunk.metadata?.source || t("未知来源")}</strong>
+                        <small>{t(" 排序信号 ")}{Number(chunk.score || 0).toFixed(4)}{t(" · 第")}{" "}
+                          {chunk.metadata?.page || "-"}{t(" 页 ")}</small>
                       </header>
                       <p>{chunk.content}</p>
                       <small>{Object.entries(chunk.retrieval_ranks || {}).map(([channel, rank]) => `${channel} #${rank}`).join(' · ')}</small>
@@ -660,106 +252,17 @@ export default function WorkspacePage() {
                 )) || (
                   <div className="studio-empty">
                     <Search size={32} />
-                    <h2>观察真实召回结果</h2>
+                    <h2>{t("观察真实召回结果")}</h2>
                   </div>
                 )}
               </div>
             </section>
           )}
 
-          {mode === "memory" && (
-            <section className="memory-manager">
-              <header>
-                <h2>长期记忆控制</h2>
-                <p>冻结后该记忆仍保留，但不会进入助手上下文。</p>
-              </header>
-              {memories.map((memory) => (
-                <article key={memory.id}>
-                  <div>
-                    <span>{categoryLabels[memory.category] || memory.category}</span>
-                    <input
-                      defaultValue={memory.content}
-                      onBlur={(e) => {
-                        if (e.target.value !== memory.content)
-                          run(async () => {
-                            const data = await endpoints.updateManagedMemory(
-                              memory.id,
-                              { content: e.target.value },
-                            );
-                            setMemories(
-                              data?.memories || data?.data?.memories || [],
-                            );
-                          });
-                      }}
-                    />
-                    <small>{memory.topic || "未分类"}</small>
-                  </div>
-                  <button
-                    onClick={() => loadMemoryVersions(memory.id)}
-                    title="版本历史"
-                  >
-                    <History size={17} />
-                  </button>
-                  <button
-                    onClick={() =>
-                      run(async () => {
-                        const data = await endpoints.updateManagedMemory(
-                          memory.id,
-                          { frozen: !memory.frozen },
-                        );
-                        setMemories(
-                          data?.memories || data?.data?.memories || [],
-                        );
-                      })
-                    }
-                    title={memory.frozen ? "解冻" : "冻结"}
-                  >
-                    {memory.frozen ? (
-                      <Play size={17} />
-                    ) : (
-                      <Snowflake size={17} />
-                    )}
-                  </button>
-                  <button
-                    onClick={() =>
-                      run(async () => {
-                        const data = await endpoints.deleteManagedMemory(
-                          memory.id,
-                        );
-                        setMemories(
-                          data?.memories || data?.data?.memories || [],
-                        );
-                      })
-                    }
-                    title="删除"
-                  >
-                    <Trash2 size={17} />
-                  </button>
-                  {memoryVersions[memory.id]?.length ? (
-                    <div className="memory-versions">
-                      {memoryVersions[memory.id].map((version) => (
-                        <button
-                          key={version.version}
-                          onClick={() =>
-                            restoreMemory(memory.id, version.version)
-                          }
-                        >
-                          <span>v{version.version}</span>
-                          <strong>{version.action}</strong>
-                          <small>{version.content}</small>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </article>
-              ))}
-            </section>
-          )}
-
           {mode === "branch" && (
             <section className="branch-layout">
               <form onSubmit={createBranch}>
-                <h2>从会话创建分支</h2>
+                <h2>{t("从会话创建分支")}</h2>
                 <select
                   value={branchForm.source_session_id}
                   onChange={(e) =>
@@ -770,7 +273,7 @@ export default function WorkspacePage() {
                   }
                   required
                 >
-                  <option value="">选择原会话</option>
+                  <option value="">{t("选择原会话")}</option>
                   {sessions.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.title}
@@ -778,14 +281,14 @@ export default function WorkspacePage() {
                   ))}
                 </select>
                 <input
-                  placeholder="分支名称"
+                  placeholder={t("分支名称")}
                   value={branchForm.label}
                   onChange={(e) =>
                     setBranchForm({ ...branchForm, label: e.target.value })
                   }
                   required
                 />
-                <button>创建分支</button>
+                <button disabled={busy}>{t("创建分支")}</button>
                 <div>
                   {branches.map((branch) => (
                     <button
@@ -811,7 +314,7 @@ export default function WorkspacePage() {
                     {["source_messages", "branch_messages"].map(
                       (side, index) => (
                         <section key={side}>
-                          <h2>{index ? "分支回答" : "原始回答"}</h2>
+                          <h2>{index ? t("分支回答") : t("原始回答")}</h2>
                           {comparison[side].map((message) => (
                             <article key={message.id}>
                                 <span>{roleLabels[message.role] || message.role}</span>
@@ -825,83 +328,19 @@ export default function WorkspacePage() {
                 ) : (
                   <div className="studio-empty">
                     <GitBranch size={32} />
-                    <h2>选择分支并排比较</h2>
+                    <h2>{t("选择分支并排比较")}</h2>
                   </div>
                 )}
               </div>
             </section>
           )}
 
-          {mode === "data" && (
-            <section className="data-transfer">
-              <article>
-                <Download size={30} />
-                <h2>导出完整学习档案</h2>
-                <p>包含会话、资料库目录、计划、复习、测验和分支元数据。</p>
-                <div className="data-actions">
-                  <button onClick={() => run(downloadWorkspaceExport)}>
-                    <Download size={17} />
-                    导出 JSON
-                  </button>
-                  <button onClick={() => run(downloadWorkspaceArchive)}>
-                    <ArchiveRestore size={17} />
-                    导出归档包
-                  </button>
-                </div>
-              </article>
-              <article>
-                <Upload size={30} />
-                <h2>导入完整学习档案</h2>
-                <p>
-                  JSON 恢复关系数据；归档包会校验并恢复原始文件，随后自动重建向量索引。
-                </p>
-                <textarea
-                  value={importText}
-                  onChange={(e) => setImportText(e.target.value)}
-                  placeholder="粘贴导出数据"
-                />
-                <button
-                  onClick={() =>
-                    run(async () => {
-                      await endpoints.importData(JSON.parse(importText));
-                      await loadAll();
-                      setImportText("");
-                    })
-                  }
-                >
-                  <Upload size={17} />
-                  导入 JSON
-                </button>
-                <input
-                  ref={archiveRef}
-                  type="file"
-                  accept=".zip,application/zip"
-                  hidden
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    run(async () => {
-                      const result = await endpoints.importArchive(file);
-                      await loadAll();
-                      setImportText("");
-                      setNotice(result.message || "归档包已导入并加入索引重建队列");
-                    });
-                    event.target.value = "";
-                  }}
-                />
-                <button onClick={() => archiveRef.current?.click()}>
-                  <ArchiveRestore size={17} />
-                  导入归档包
-                </button>
-              </article>
-            </section>
-          )}
-        </main>
+        </div>
       )}
       {busy && (
         <div className="workspace-busy">
           <RefreshCw size={18} />
-          <span>正在处理</span>
+          <span>{t("正在处理")}</span>
         </div>
       )}
     </div>
