@@ -69,6 +69,10 @@
   .settings-content { padding: 24px 28px; background: var(--mn-surface); border: 1px solid var(--mn-border); border-radius: var(--mn-radius); min-height: 450px; }
   .settings-content h2 { margin-top: 0; }
   .settings-content .form-stack { max-width: 570px; margin-top: 24px; }
+  .provider-diagnostics { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--mn-border); }
+  .provider-results { display: grid; gap: 12px; margin-top: 20px; }
+  .provider-results > div { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .provider-results > div > span:first-child { flex: 1; min-width: 90px; }
   .context-panel { min-width: 0; padding: 20px; border-left: 1px solid var(--mn-border); }
   .context-panel h3 { margin-top: 0; }
   .context-panel p { font-size: 13px; }

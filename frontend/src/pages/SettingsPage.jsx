@@ -8,22 +8,26 @@ import { usePreferences } from '../state/PreferencesContext'
 
 const models = { deepseek: 'deepseek-chat', dashscope: 'qwen-plus', openai: 'gpt-4.1-mini' }
 const storageLabels = { backend: '存储方式', object_storage_ready: '文件存储', file_root_exists: '原文件目录', tenant_scoped_paths: '用户数据隔离', traversal_guard: '路径保护', archive_import_guard: '归档导入校验' }
+const serviceLabels = { chat: '问答模型', embedding: '文本向量', rerank: '检索重排', ocr: '文字识别' }
+const probeLabels = { ok: '连接正常', disabled: '未启用', missing_credentials: '未配置密钥', model_not_loaded: '模型尚未加载', timeout: '连接超时', authentication_failed: '密钥验证失败', quota_or_rate_limit: '额度不足或请求过多', model_unsupported: '模型不可用', runtime_missing: '运行依赖缺失', provider_or_network_error: '服务或网络异常' }
 export default function SettingsPage() {
   useI18n();
   const { preferences, save } = usePreferences()
   const [tab, setTab] = useState('model')
   const [form, setForm] = useState(null)
   const [health, setHealth] = useState(null)
+  const [healthLoading, setHealthLoading] = useState(true)
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState('')
   const lock = useRef(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [probe, setProbe] = useState(null)
+  const [services, setServices] = useState(null)
   useEffect(() => {
     let active = true
     endpoints.modelSettings().then(value => { if (active) setForm({ ...value, apiKey: '' }) }).catch(e => { if (active) setError(e.message) })
-    endpoints.healthConfig().then(value => { if (active) setHealth(value) }).catch(e => { if (active) setError(e.message) })
+    endpoints.healthConfig().then(value => { if (active) setHealth(value) }).catch(e => { if (active) setError(e.message) }).finally(() => { if (active) setHealthLoading(false) })
     return () => { active = false }
   }, [])
   async function run(name, action) {
@@ -35,7 +39,7 @@ export default function SettingsPage() {
   return <div className="standard-page">
     <PageHeader eyebrow={t("你的工作空间")} title={t("设置")} description={t("模型、外观和数据管理，各归其位。")} />
     <div className="settings-layout">
-      <nav className="section-nav" aria-label={t("设置分组")}>{[['model', t("模型与服务")], ['appearance', t("外观")], ['data', t("数据与隐私")], ['account', t("账户")]].map(([id, label]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined}>{t(label)}</button>)}</nav>
+      <nav className="section-nav" aria-label={t("设置分组")}>{[['model', t("模型与服务")], ['appearance', t("外观")], ['data', t("数据与隐私")], ['backup', t("备份与恢复")], ['account', t("账户")]].map(([id, label]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined}>{t(label)}</button>)}</nav>
       <section className="settings-content">
         <FeedbackBlock error={error} message={notice} />
         {tab === 'model' && <><h2>{t("个人模型服务")}</h2><p className="muted">{t("个人模型仅用于你的交互请求。文档解析、向量化和后台任务使用部署方的共享服务。密钥加密保存，不回传明文；测试会实际调用模型，可能产生少量费用。")}</p>
@@ -48,12 +52,22 @@ export default function SettingsPage() {
             <div className="action-row"><button type="button" disabled={!!busy} onClick={() => run('test', async () => { const result = await endpoints.testModelSettings(form); setProbe(result); setNotice(t("模型连接测试通过，配置尚未保存")) })}><Zap size={16} />{busy === 'test' ? t("测试中…") : t("测试连接")}</button><button className="primary-button" disabled={!!busy}><Save size={16} />{busy === 'save' ? t("保存中…") : t("保存配置")}</button></div>
             {probe && <p role="status"><StatusPill tone="success">{t("实际模型调用通过")}</StatusPill> {probe.model} · {probe.latency_ms} ms</p>}
           </form>}
+          <section className="provider-diagnostics" aria-labelledby="provider-diagnostics-title">
+            <h3 id="provider-diagnostics-title">{t('共享服务检测')}</h3>
+            <p className="muted">{t('检测部署方的问答、向量、重排与文字识别服务，使用合成内容，不读取你的文档。模型调用可能产生少量费用，结果缓存 60 秒。个人模型请使用上方测试连接。')}</p>
+            <button disabled={!!busy} onClick={() => run('providers', async () => { setServices(null); setServices(await endpoints.checkProviders()) })}><Zap size={16} />{busy === 'providers' ? t('检测中…') : t('检测连通性')}</button>
+            {services && <div className="provider-results" role="status" aria-label={t('共享服务检测结果')}>{Object.entries(serviceLabels).map(([name, label]) => {
+              const result = services.results?.[name]
+              return <div key={name}><span>{t(label)}</span><StatusPill tone={result?.state === 'ok' ? 'success' : ['disabled', 'model_not_loaded'].includes(result?.state) ? 'warning' : 'danger'}>{t(probeLabels[result?.state] || '服务状态暂不可用')}</StatusPill>{result && <small className="muted">{result.latency_ms} ms</small>}</div>
+            })}{services.cached && <p className="muted">{t('显示最近 60 秒内的检测结果')}</p>}</div>}
+          </section>
         </>}
         {tab === 'appearance' && <><h2>{t("外观")}</h2><p className="muted">{t("主题会保存到你的账户，下一次登录自动应用。")}</p><div className="theme-choices">{[['light', t("浅色")], ['dark', t("深色")], ['system', t("跟随系统")]].map(([id, label]) => <button key={id} aria-pressed={preferences.theme === id} onClick={() => run('theme', async () => { await save({ ...preferences, theme: id }); setNotice(t("主题已保存")) })} disabled={!!busy}>{t(label)}</button>)}</div></>}
-        {tab === 'data' && <><h2>{t("数据与隐私")}</h2><p>{t("了解模型调用的数据流，导出个人档案，或管理数据保留。")}</p><div className="link-list"><Link to="/privacy">{t("打开数据与隐私中心 →")}</Link><Link to="/recovery">{t("备份与恢复向导 →")}</Link></div></>}
+        {tab === 'data' && <><h2>{t("数据与隐私")}</h2><p>{t("了解模型调用的数据流，导出个人档案，或管理数据保留。")}</p><div className="link-list"><Link to="/privacy">{t("打开数据与隐私中心 →")}</Link></div></>}
+        {tab === 'backup' && <><h2>{t("备份与恢复")}</h2><p>{t("验证个人归档、预览恢复范围和冲突，再确认执行。管理员还可在恢复中心管理整站灾备。")}</p><Link className="text-link" to="/recovery">{t("备份与恢复向导 →")}</Link></>}
         {tab === 'account' && <><h2>{t("账户与安全")}</h2><p>{t("修改资料、语言、时区、通知偏好，查看并撤销登录会话。")}</p><Link className="text-link" to="/profile">{t("管理个人资料 →")}</Link></>}
       </section>
-      <aside className="context-panel"><h3>{t("运行状态")}</h3>{health ? <><StatusPill tone={health.demo_mode ? 'warning' : 'success'}>{health.demo_mode ? t("离线演示") : t("服务已连接")}</StatusPill><p className="muted">{t("连接状态不代表所有学习流程已通过端到端验证。")}</p><dl>{Object.entries(health.storage || {}).filter(([key]) => storageLabels[key]).map(([key, value]) => <div key={key}><dt>{t(storageLabels[key])}</dt><dd>{typeof value === 'boolean' ? (value ? t("已就绪") : t("未就绪")) : value === 'local' ? t("本地存储") : value === 's3' ? t("对象存储") : String(value)}</dd></div>)}</dl></> : <p className="muted">{t("服务状态暂不可用")}</p>}<button disabled={!!busy} onClick={() => run('health', async () => setHealth(await endpoints.healthConfig()))}><RefreshCw size={16} />{t("刷新状态")}</button><p className="muted">{t("Embedding 与 OCR 属于共享索引服务，需由管理员部署与维护。")}</p></aside>
+      <aside className="context-panel"><h3>{t("运行状态")}</h3>{health ? <><StatusPill tone={health.status === 'unavailable' ? 'danger' : health.demo_mode ? 'warning' : 'success'}>{health.status === 'unavailable' ? t("服务状态暂不可用") : health.demo_mode ? t("离线演示") : t("服务已连接")}</StatusPill><p className="muted">{t("连接状态不代表所有学习流程已通过端到端验证。")}</p><dl>{Object.entries(health.storage || {}).filter(([key]) => storageLabels[key]).map(([key, value]) => <div key={key}><dt>{t(storageLabels[key])}</dt><dd>{typeof value === 'boolean' ? (value ? t("已就绪") : t("未就绪")) : value === 'local' ? t("本地存储") : value === 's3' ? t("对象存储") : String(value)}</dd></div>)}</dl></> : <p className="muted" role="status">{healthLoading ? t("加载中...") : t("服务状态暂不可用")}</p>}<button disabled={!!busy || healthLoading} onClick={() => run('health', async () => { setHealthLoading(true); try { setHealth(await endpoints.healthConfig()) } catch (e) { setHealth(null); throw e } finally { setHealthLoading(false) } })}><RefreshCw size={16} />{t("刷新状态")}</button><p className="muted">{t("Embedding 与 OCR 属于共享索引服务，需由管理员部署与维护。")}</p></aside>
     </div>
   </div>
 }

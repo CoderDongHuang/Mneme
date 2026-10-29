@@ -32,6 +32,13 @@ test('个人配置隔离、双语持久化与真实个人归档恢复向导', as
   expect(JSON.stringify(config)).not.toContain(key)
   await page.reload()
   await expect(page.getByLabel('API 密钥', { exact: true })).toHaveValue('')
+  await page.getByRole('button', { name: '检测连通性', exact: true }).click()
+  const diagnostics = page.getByRole('status', { name: '共享服务检测结果' })
+  await expect(diagnostics.locator('.status-pill')).toHaveCount(4, { timeout: 25_000 })
+  await expect(diagnostics).toContainText('问答模型')
+  await expect(diagnostics).toContainText('文字识别')
+  await page.getByRole('button', { name: '备份与恢复', exact: true }).click()
+  await expect(page.getByRole('link', { name: '备份与恢复向导 →', exact: true })).toHaveAttribute('href', '/recovery')
   const other = await playwright.request.newContext({ baseURL: process.env.MNEME_E2E_BASE_URL })
   await data(await other.post('/api/v1/auth/register', { data: { username: `isolated_${Date.now()}`, password: 'Mneme_123456!' } }))
   expect((await data(await other.get('/api/v1/settings/models'))).hasKey).toBe(false)
@@ -96,9 +103,16 @@ test('全部页面在五种宽度与明暗主题下可读，英文导航和页�
           await expect(page.locator('#main-content')).toBeVisible()
           await expect(page.locator('#main-content h1'), `${language}/${theme}/${width}/${route}`).toBeVisible({ timeout: 30_000 })
           await expect(page.locator('#main-content .loading-state')).toHaveCount(0, { timeout: 30_000 })
-          if (route === 'settings') await expect(page.locator('.settings-content .form-stack')).toBeVisible({ timeout: 30_000 })
+          if (route === 'settings') {
+            await expect(page.locator('.settings-content .form-stack')).toBeVisible({ timeout: 30_000 })
+            await expect(page.locator('.context-panel .status-pill')).toBeVisible({ timeout: 30_000 })
+            await expect(page.locator('.context-panel .status-pill')).not.toHaveText(/不可用|unavailable/)
+          }
           if (route === 'review') await expect(page.getByRole('status').filter({ hasText: /正在读取复习卡|Loading review cards/ })).toHaveCount(0, { timeout: 30_000 })
           if (route === 'analytics') await expect(page.getByRole('status').filter({ hasText: /加载中|Loading/ })).toHaveCount(0, { timeout: 30_000 })
+          if (language === 'en' && route === 'memory') {
+            await expect(page.locator('select option[value=mastered]')).toHaveText('Mastered')
+          }
           expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${language}/${theme}/${width}/${route}`).toBeTruthy()
           if (language === 'zh-CN' && [375, 1440].includes(width)) await page.screenshot({ path: path.join(directory, `${route}-${theme}-${width}.png`), fullPage: true, animations: 'disabled' })
         }
@@ -111,6 +125,7 @@ test('真实复习与测验保留草稿和评分，认证及法律页可访问',
   const directory = path.resolve('../artifacts/frontend-review-20261029/populated')
   fs.mkdirSync(directory, { recursive: true })
   await page.goto('/auth')
+  await expect(page.getByRole('button', { name: '进入忆知', exact: true })).toBeVisible()
   for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 900 })
     await page.screenshot({ path: path.join(directory, `auth-${width}.png`), fullPage: true })
