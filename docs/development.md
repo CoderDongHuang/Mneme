@@ -43,7 +43,7 @@ npm ci
 
 ## 常见问题
 
-无需外部模型的完整部署见 [隔离演示](DEMO.md)。它独立于正式栈，不要把 demo 卷接到生产。设置页可检测供应商配置；修改模型后重启服务。Embedding 更换须按 [迁移说明](EMBEDDING_MIGRATION.md) dry-run 和重建，不允许把不同向量空间混写。
+无需外部模型的完整部署见 [隔离演示](DEMO.md)。它独立于正式栈，不要把 demo 卷接到生产。用户设置页的个人模型保存后对后续交互请求生效，无需重启；部署方环境配置变更需要重启对应服务。Embedding 更换须按 [迁移说明](EMBEDDING_MIGRATION.md) dry-run 和重建，不允许把不同向量空间混写。
 
 - Python 健康检查在 `localhost:8001/health`；Qdrant 的 6333 仅在容器内部网络可用。
 - Java 启动失败：先确认 MySQL 已创建 `mneme` 数据库，密码与 `.env`/环境变量一致。
