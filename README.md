@@ -198,13 +198,13 @@ CI 会分别执行 Python、Java 和前端检查，并使用 mock API 验证关�
 - 默认模式优先使用本地版面解析和 OCR；图表、公式、图片与流程图需要设置 `MULTIMODAL_ENABLED=true`，会消耗 DashScope 多模态额度。
 - Qdrant 与本地文件目录针对个人和小规模自部署设计，正好覆盖本项目当前定位。
 - Mailpit 是本地测试邮箱，不会向真实邮箱投递；验证码在 `http://localhost:8025` 查看。
-- 设置页可查看 Chat/Embedding/Rerank/OCR 脱敏配置并检测连通性；模型参数和密钥仍由服务端 `.env` 管理，界面不回显完整密钥。
+- 设置页支持每位用户独立保存和测试对话模型，密钥加密持久化且不回显。Embedding、OCR 与后台任务仍使用部署方配置；切换 Embedding 必须迁移索引。
 - 引用会经历编号、声明支持判定和逐字引文核验；模型核验失败时拒答。核验增加延迟和调用费用，仍不能证明语义绝对正确。
 - 向量存储改为 Qdrant 1.20.0，移除旧 Chroma 三项扫描例外；Spring 已升级到 7.0.10。旧数据须按[迁移指南](docs/VECTOR_STORE_MIGRATION.md)显式迁移。扫描通过不代表零漏洞。
 
 ## 路线图与贡献
 
-本轮通用工程与 Mneme 第一章的逐项对应、测试入口和实际限制见 [路线图落实记录](docs/ROADMAP_COVERAGE.md)，升级前阅读 [发布说明](docs/RELEASE_NOTES_2026-10-29.md) 和 [迁移流程](docs/rollout.md)。优先完善真实资料评测与恢复可靠性；暂不扩张为公网多租户 SaaS。
+通用工程与 Mneme 第一章见 [路线图落实记录](docs/ROADMAP_COVERAGE.md)；最新全界面、个人模型、独立复习/测验与双层恢复验收见 [界面整改记录](docs/FRONTEND_REVIEW_20261029.md)。升级前阅读 [发布说明](docs/RELEASE_NOTES_2026-10-29.md)、[迁移流程](docs/rollout.md) 和 [宿主机灾备配置](docs/HOST_RECOVERY.md)。优先完善真实资料评测与恢复可靠性；暂不扩张为公网多租户 SaaS。
 
 提交问题请使用 [Bug / 功能建议模板](https://github.com/CoderDongHuang/Mneme/issues/new/choose)，附环境、复现步骤和脱敏日志。提交代码请先阅读 [开发指南](docs/development.md)，为实际行为增加回归，说明迁移及兼容性；MIT 仅覆盖本仓库代码，第三方依赖和模型仍遵守各自许可证与服务条款。
 

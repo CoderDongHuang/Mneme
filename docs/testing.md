@@ -1,5 +1,9 @@
 # 测试说明
 
+最新两份界面报告的验收与本地证据见 [FRONTEND_REVIEW_20261029](FRONTEND_REVIEW_20261029.md)。完整栈启动后，在 frontend 目录设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/report-stack.spec.js --project=桌面端 --retries=0`：覆盖个人模型隔离、双语偏好、个人归档向导、240 组页面布局以及实际复习和测验草稿。它直接访问运行服务；认证和法律页面也保存截图。普通浏览器回归中这些真实栈测试会明确跳过，不能把跳过当成功。
+
+管理员真实整站恢复由 `scripts/verify_site_recovery.py --confirm-disposable-stack` 验证，必须使用可丢弃栈；会备份、删除测试账号、实际恢复并验证登录/文档/向量/引用。配置和完整命令见 [HOST_RECOVERY](HOST_RECOVERY.md)。GitHub CI 保留该报告、恢复日志和回滚检查点信息。
+
 ## Python
 
 ```powershell
@@ -40,7 +44,7 @@ npm --prefix frontend run build
 
 浏览器验收至少覆盖 1440x900 与 390x844：认证、会话切换、资料上传状态、SSE 回答、引用抽屉、记忆确认和导航抽屉。
 
-`npm run test:e2e` 使用 mock API 验证前端交互和响应式布局，不消耗模型额度。
+`npm run test:e2e` 自动构建并启动本地静态预览服务器，使用 mock API 验证前端交互和响应式布局，不消耗模型额度。
 
 ## 真实全链路 E2E
 

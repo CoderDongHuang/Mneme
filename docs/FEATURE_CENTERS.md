@@ -5,18 +5,18 @@
 ## 1. 任务中心
 
 - 已实现独立 `/tasks` 页面、状态筛选、SSE 通知与轮询恢复、错误原因、重试、等待时间及阶段记录。
-- 等待中的文档解析可取消；数据库条件更新与 worker 的 claim 竞争时只有一方能成功。运行中及删除 Saga 不允许取消。
+- 文档等待和运行阶段均可请求取消；运行中采用协作取消，必须等解析检查点确认后才显示已取消。删除 Saga 不允许取消。
 - Java 权限/并发条件测试和前端交互测试纳入回归。
 - 解析和向量化由同步 Agent 调用完成，页面显示合并阶段，不伪造百分比。
 - 原 JSON/归档导入为同步原子接口，其历史由工作台操作日志记录，不包装成不存在的后台任务。
 
 ## 2. 备份恢复管理
 
-- 已实现 `/recovery`，列出既有 `disaster-recovery.yml` 工作流历史、校验/恢复步骤结果、附件状态和 GitHub 报告下载入口。
-- 只有 active admin + X-Admin-Token 可读取或发起。凭证仅留在页面内存，锁定/离开即丢弃，不写浏览器存储。
-- 发起必须输入 `ISOLATED DRILL`，固定 main/ref 和固定工作流，只运行合成数据隔离演练，不提供生产覆盖接口。
+- `/recovery` 提供个人 ZIP 验证/范围/冲突预览/确认/恢复结果向导，以及管理员宿主机整站备份和恢复；另保留 `disaster-recovery.yml` 演练历史、附件和报告入口。执行器配置见 [HOST_RECOVERY](HOST_RECOVERY.md)。
+- 管理员整站和 GitHub 演练仅 active admin + X-Admin-Token 可读取或发起；个人恢复仅操作当前用户的数据。凭证仅留在页面内存，锁定/离开即丢弃，不写浏览器存储。
+- GitHub 演练发起必须输入 `ISOLATED DRILL`，固定 main/ref 和固定工作流，只运行合成数据隔离演练；实际整站恢复是单独的宿主机入口，必须验证摘要并输入 `RESTORE SITE`。
 - 部署需设置 `RECOVERY_GITHUB_REPOSITORY=owner/repo`、`RECOVERY_GITHUB_TOKEN`（该仓库 Actions 读写权限的细粒度令牌）。不向浏览器返回此令牌。
-- 此页面展示演练所生成备份和恢复历史，不冒充生产 S3 备份清单。生产 S3 归档继续通过 AWS recovery 审批工作流执行。
+- GitHub 演练、宿主机整站归档与个人归档明确分开。生产 S3 归档继续通过 AWS recovery 审批工作流执行。
 
 ## 3. 数据与隐私控制
 
@@ -44,7 +44,7 @@
 
 ## 6. 前端性能与可访问性
 
-- 全部 13 个页面路由使用 lazy + Suspense，页面访问前不下载该页面代码；壳层和路由加载均保留状态反馈。
+- 全部 15 个页面模块使用 lazy + Suspense，包含独立学习记忆、复习计划和测验；页面访问前不下载该页面代码，壳层和路由加载均保留状态反馈。
 - `npm run build` 自动读取 Vite manifest，递归检查静态依赖和去重后的 CSS。公共入口限制 gzip JS 120 KiB/CSS 24 KiB；每个路由首屏（入口+该路由全部静态依赖）限制 JS 140 KiB/CSS 16 KiB。缺失依赖、非懒加载路由、超过预算均使构建失败，失败路径有单测。
 - 移动导航支持 Escape、焦点循环、关闭后焦点恢复、背景 inert；隐藏导航和会话侧栏不可聚焦。路由变化聚焦主内容，提供跳转链接；导航列表独立滚动，避免十项导航挤出头像。
 - 聊天会话删除改为独立可键盘操作按钮；引用抽屉具备 dialog 名称、焦点循环、Escape 和焦点恢复；中文输入法组合期间 Enter 不发送。
@@ -56,6 +56,6 @@
 
 六项实现与本地验收完成，分别交付 [#15 任务中心](https://github.com/CoderDongHuang/Mneme/pull/15)、[#16 备份恢复](https://github.com/CoderDongHuang/Mneme/pull/16)、[#17 数据隐私](https://github.com/CoderDongHuang/Mneme/pull/17)、[#18 管理运维](https://github.com/CoderDongHuang/Mneme/pull/18)、[#19 学习分析](https://github.com/CoderDongHuang/Mneme/pull/19)、[#20 性能与可访问性](https://github.com/CoderDongHuang/Mneme/pull/20)。最终 CI 和合并状态以各 PR 的实际记录为准；失败不得合并。
 
-本地 Python 528 项通过/1 项跳过，Java 77 项通过（含 7 项实际 MySQL 集成测试），前端 21 项单测和 30 项浏览器测试通过/2 项真实栈用例跳过。构建体积、ESLint、Ruff 和 npm audit 均通过。GitHub 另执行真实栈、Windows 哈希锁/审计、OCR/Qwen-VL、分布式和供应链检查。具体故障修复与安全例外见根目录 `调试问题记录.md`，自动化成功不代替生产配置或人工可访问性验收。
+以下为原六项功能批次的历史验收数量，当前界面整改见 [全界面验收表](FRONTEND_REVIEW_20261029.md)。当时本地 Python 528 项通过/1 项跳过，Java 77 项通过（含 7 项实际 MySQL 集成测试），前端 21 项单测和 30 项浏览器测试通过/2 项真实栈用例跳过。构建体积、ESLint、Ruff 和 npm audit 均通过。GitHub 另执行真实栈、Windows 哈希锁/审计、OCR/Qwen-VL、分布式和供应链检查。具体故障修复与安全例外见根目录 `调试问题记录.md`，自动化成功不代替生产配置或人工可访问性验收。
 
 2026-10-04 第六项功能验收 [Run 37136759600](https://github.com/CoderDongHuang/Mneme/actions/runs/37136759600) 全部 8 个作业成功，含实际完整栈浏览器、跨存储删除和备份恢复演练。六项功能验收全部完成；证据补充提交按同一完整门禁验证后合并，最终状态见 PR #20。
