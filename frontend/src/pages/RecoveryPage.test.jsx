@@ -1,10 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, test, vi } from 'vitest'
-import RecoveryPage from './RecoveryPage'
+import RecoveryPage from '../components/RecoveryDrill'
 import { api } from '../api/client'
 vi.mock('../api/client', () => ({ api: vi.fn() }))
 test('requires credential and explicit isolation confirmation before dispatch', async () => {
-  api.mockResolvedValue({ runs: [] })
+  api.mockImplementation(path => Promise.resolve(path.includes('/site') ? { jobs: [], archives: [] } : { runs: [] }))
   render(<RecoveryPage />)
   expect(api).not.toHaveBeenCalled()
   fireEvent.change(screen.getByLabelText('管理员凭证'), { target: { value: 'a'.repeat(32) } })

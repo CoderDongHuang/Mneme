@@ -58,6 +58,7 @@ export async function api(path, options = {}) {
       }),
     })
   } catch (error) {
+    if (error?.name === 'AbortError') throw error
     throw new ApiError('无法连接服务，请确认 Mneme 服务已启动后重试', 0, { cause: error?.message })
   }
   return parseResponse(response)
@@ -81,32 +82,66 @@ export async function streamChat(payload, { signal, onEvent }) {
   const decoder = new TextDecoder()
   let buffer = ''
   let eventName = 'message'
+  let dataLines = []
+  let completed = false
+  const dispatch = () => {
+    if (!dataLines.length) { eventName = 'message'; return }
+    const raw = dataLines.join('\n')
+    dataLines = []
+    const name = eventName
+    eventName = 'message'
+    let data
+    try { data = JSON.parse(raw) } catch { data = { content: raw } }
+    onEvent(name, data)
+    if (name === 'error') throw new ApiError(data.message || '回答生成失败', 200, data)
+    if (name === 'done') completed = true
+  }
   const consumeLine = (line) => {
+    line = line.replace(/\r$/, '')
     if (line.startsWith('event:')) {
       eventName = line.slice(6).trim()
     } else if (line.startsWith('data:')) {
-      const raw = line.slice(5).trim()
-      if (!raw) return
-      let data
-      try { data = JSON.parse(raw) } catch { data = { content: raw } }
-      onEvent(eventName, data)
-    } else if (!line.trim()) {
-      eventName = 'message'
+      dataLines.push(line.slice(5).replace(/^ /, ''))
+    } else if (!line) {
+      dispatch()
     }
   }
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-    lines.forEach(consumeLine)
+  try {
+    while (!completed) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        consumeLine(line)
+        if (completed) break
+      }
+    }
+    if (!completed) {
+      buffer += decoder.decode()
+      if (buffer) buffer.split('\n').forEach(consumeLine)
+      dispatch()
+    }
+    if (!completed) throw new ApiError('连接已中断，回答未完成，请重试', 0)
+  } finally {
+    try { await reader.cancel?.() } catch { /* the stream may already be closed */ }
+    reader.releaseLock?.()
   }
-  buffer += decoder.decode()
-  if (buffer) buffer.split('\n').forEach(consumeLine)
 }
 
 export const endpoints = {
+  preferences: () => api('/settings/preferences'),
+  savePreferences: (body) => api('/settings/preferences', { method: 'PUT', body: JSON.stringify(body) }),
+  modelSettings: () => api('/settings/models'),
+  saveModelSettings: (body) => api('/settings/models', { method: 'PUT', body: JSON.stringify(body) }),
+  testModelSettings: (body) => api('/settings/models/test', { method: 'POST', body: JSON.stringify(body) }),
+  authSessions: () => api('/profile/sessions'),
+  revokeAuthSession: (id) => api(`/profile/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  quizDraft: (id) => api(`/workspace/quizzes/${id}/draft`),
+  saveQuizDraft: (id, body) => api(`/workspace/quizzes/${id}/draft`, { method: 'PUT', body: JSON.stringify(body) }),
+  quizAttempts: (id) => api(`/workspace/quizzes/${id}/attempts`),
+  reportQuestion: (id, body) => api(`/workspace/quizzes/${id}/reports`, { method: 'POST', body: JSON.stringify(body) }),
   login: (body) => api('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   register: (body) => api('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => api('/auth/logout', { method: 'POST' }),
@@ -127,6 +162,7 @@ export const endpoints = {
   createSession: (title = '新对话') => api('/sessions', { method: 'POST', body: JSON.stringify({ title }) }),
   sessionMessages: (id) => api(`/sessions/${id}/messages`),
   deleteSession: (id) => api(`/sessions/${id}`, { method: 'DELETE' }),
+  renameSession: (id, title) => api(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   knowledgeBases: () => api('/knowledge/base/list'),
   createKnowledgeBase: (body) => api('/knowledge/base', { method: 'POST', body: JSON.stringify(body) }),
   deleteKnowledgeBase: (id) => api(`/knowledge/base/${id}`, { method: 'DELETE' }),
@@ -148,6 +184,7 @@ export const endpoints = {
     return api('/knowledge/document/upload', { method: 'POST', body: form })
   },
   memory: () => api('/memory'),
+  pendingMemories: () => api('/memory/pending'),
   writeMemory: (body) => api('/memory/write', { method: 'POST', body: JSON.stringify(body) }),
   confirmMemory: (body) => api('/memory/confirm', { method: 'POST', body: JSON.stringify(body) }),
   documentPreview: (id, sha256) => api(`/workspace/documents/${id}/preview${sha256 ? `?sha256=${encodeURIComponent(sha256)}` : ''}`),
@@ -173,7 +210,7 @@ export const endpoints = {
   reviewCard: (id, rating) => api(`/workspace/reviews/${id}`, { method: 'POST', body: JSON.stringify({ rating }) }),
   quizzes: () => api('/workspace/quizzes'),
   generateQuiz: (body) => api('/workspace/quizzes/generate', { method: 'POST', body: JSON.stringify(body) }),
-  submitQuiz: (id, answers) => api(`/workspace/quizzes/${id}/submit`, { method: 'POST', body: JSON.stringify({ answers }) }),
+  submitQuiz: (id, answers, requestId) => api(`/workspace/quizzes/${id}/submit`, { method: 'POST', body: JSON.stringify({ answers, request_id: requestId }) }),
   managedMemories: () => api('/workspace/memories'),
   updateManagedMemory: (id, body) => api(`/workspace/memories/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteManagedMemory: (id) => api(`/workspace/memories/${id}`, { method: 'DELETE' }),
@@ -186,9 +223,17 @@ export const endpoints = {
   createBranch: (body) => api('/workspace/branches', { method: 'POST', body: JSON.stringify(body) }),
   compareBranch: (id) => api(`/workspace/branches/${id}/compare`),
   importData: (body) => api('/workspace/import', { method: 'POST', body: JSON.stringify(body) }),
-  importArchive: (file) => {
+  previewArchive: (file, scope = 'all') => {
     const form = new FormData()
     form.append('archive', file)
+    form.append('scope', scope)
+    return api('/workspace/import/archive/preview', { method: 'POST', body: form })
+  },
+  importArchive: (file, scope = 'all', sha256) => {
+    const form = new FormData()
+    form.append('archive', file)
+    form.append('scope', scope)
+    if (sha256) form.append('sha256', sha256)
     return api('/workspace/import/archive', { method: 'POST', body: form })
   },
 }

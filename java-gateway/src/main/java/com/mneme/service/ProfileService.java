@@ -45,10 +45,13 @@ public class ProfileService {
         User user = requireUser(userId);
         return Map.of(
             "userId", user.getId(), "username", user.getUsername(),
-            "nickname", value(user.getNickname()), "email", value(user.getEmail()),
+            "nickname", value(user.getNickname()), "email", value(user.getEmail()), "role", user.getRole(),
             "hasAvatar", user.getAvatarPath() != null && Files.isRegularFile(Path.of(user.getAvatarPath()))
         );
     }
+
+    public java.util.List<Map<String,Object>> sessions(Long userId) { return sessions.list(userId); }
+    public void revokeSession(Long userId, String sessionId) { sessions.revokeOwned(userId, sessionId); }
 
     public Map<String, Object> update(Long userId, ProfileUpdateRequest request) {
         User user = requireUser(userId);

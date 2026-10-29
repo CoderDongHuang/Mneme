@@ -1,3 +1,4 @@
+@layer legacy {
 .chat-page { height: 100vh; display: grid; grid-template-columns: 264px minmax(0, 1fr); position: relative; overflow: hidden; background: #f6f7f3; color: #1b1e19; }
 .chat-page.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
 .chat-history { min-width: 0; display: flex; flex-direction: column; overflow: hidden; background: #ecefe9; border-right: 1px solid #d8ddd5; transition: opacity .16s ease; }
@@ -202,4 +203,6 @@
 @media (max-width: 760px) {
   .composer, .sidebar-collapsed .composer { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); min-height: 92px; }
   .composer textarea { font-size: 16px; }
+}
+
 }

@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator
 from langchain_core.messages import AIMessage, AIMessageChunk
 
 from app.core.config import settings
+from app.core.user_model import user_model
 from app.core.logging import setup_logger
 from app.core.metrics import (
     LLM_ACTIVE,
@@ -68,6 +69,8 @@ class FallbackLLM:
 
     @property
     def configured(self) -> bool:
+        if user_model.get() is not None:
+            return True
         return bool(
             getattr(settings, "demo_mode", False)
             or settings.deterministic_test_llm
@@ -77,6 +80,10 @@ class FallbackLLM:
 
     @property
     def status(self) -> dict[str, Any]:
+        personal = user_model.get()
+        if personal is not None:
+            return {"configured": True, "primary": personal.model, "fallback": None,
+                    "circuit_open": False, "failure_count": 0, "scope": "personal"}
         if getattr(settings, "demo_mode", False):
             return {"configured": True, "primary": "local-extractive-demo", "fallback": None,
                     "circuit_open": False, "failure_count": 0}
@@ -311,6 +318,10 @@ class FallbackLLM:
             }
 
     def invoke(self, messages: Any, **kwargs: Any) -> Any:
+        personal = user_model.get()
+        if personal is not None:
+            self._acquire_quota()
+            return personal.get_client().invoke(messages, **kwargs)
         model, using_fallback = self._selected()
         self._reserve_budget(messages, kwargs, using_fallback)
         try:
@@ -339,6 +350,10 @@ class FallbackLLM:
             return result
 
     async def ainvoke(self, messages: Any, **kwargs: Any) -> Any:
+        personal = user_model.get()
+        if personal is not None:
+            self._acquire_quota()
+            return await personal.get_client().ainvoke(messages, **kwargs)
         model, using_fallback = self._selected()
         self._reserve_budget(messages, kwargs, using_fallback)
         try:
@@ -368,6 +383,15 @@ class FallbackLLM:
 
     async def astream(self, messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
         self._acquire_quota()
+        personal = user_model.get()
+        if personal is not None:
+            LLM_ACTIVE.inc()
+            try:
+                async for chunk in personal.get_client().astream(messages, **kwargs):
+                    yield chunk
+            finally:
+                LLM_ACTIVE.dec()
+            return
         LLM_ACTIVE.inc()
         emitted = False
         try:

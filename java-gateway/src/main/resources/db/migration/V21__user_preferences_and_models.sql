@@ -1,0 +1,15 @@
+CREATE TABLE user_preference (
+    user_id BIGINT PRIMARY KEY,
+    language VARCHAR(8) NOT NULL DEFAULT 'zh-CN',
+    timezone VARCHAR(80) NOT NULL DEFAULT 'Asia/Shanghai',
+    notifications BOOLEAN NOT NULL DEFAULT TRUE,
+    theme VARCHAR(10) NOT NULL DEFAULT 'system',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_preference_user FOREIGN KEY(user_id) REFERENCES `user`(id) ON DELETE CASCADE
+);
+CREATE TABLE user_model_config (
+    user_id BIGINT PRIMARY KEY,
+    config_encrypted TEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_model_config_user FOREIGN KEY(user_id) REFERENCES `user`(id) ON DELETE CASCADE
+);

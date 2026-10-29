@@ -47,4 +47,10 @@ public class ChatSessionController {
         sessionService.deleteSession(userId, sessionId);
         return Result.success(Map.of("deleted", true));
     }
+
+    @PatchMapping("/{sessionId}")
+    public Result<ChatSession> rename(@RequestAttribute("userId") Long userId,
+        @PathVariable Long sessionId, @RequestBody Map<String,String> body) {
+        return Result.success(sessionService.renameSession(userId, sessionId, body.get("title")));
+    }
 }

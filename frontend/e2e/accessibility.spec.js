@@ -18,11 +18,13 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/**', route => {
     const path = new URL(route.request().url()).pathname
     const fixtures = {
-      '/api/v1/profile': { userId: 1, username: 'tester', nickname: '测试用户' },
+      '/api/v1/profile': { userId: 1, username: 'tester', nickname: '测试用户', role: 'admin' },
       '/api/v1/workspace/tasks': [], '/api/v1/workspace/operations': [], '/api/v1/sessions': [],
       '/api/v1/knowledge/base/list': [{ id: 1, name: '资料库' }],
       '/api/v1/privacy': { providers: ['DeepSeek'], sending_scope: ['检索片段'], cloud_allowed: true, trace_days: 30, trace_max_days: 30 },
       '/api/v1/analytics': analytics,
+      '/api/v1/settings/preferences': { language: 'zh-CN', timezone: 'Asia/Shanghai', theme: 'light', notifications: true },
+      '/api/v1/admin/recovery/site': { configured: false, archives: [], jobs: [] },
       '/api/v1/admin/recovery': { runs: [{ id: 1, run_number: 1, created_at: '2026-10-03', conclusion: 'success' }] },
       '/api/v1/admin/operations': {
         checked_at: '2026-10-03T10:00:00Z', health: { mysql: 'up', redis: 'up', agent: { status: 'up' } },
@@ -35,10 +37,11 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-for (const [path, title] of [['tasks', '任务中心'], ['recovery', '备份恢复管理'], ['privacy', '数据与隐私'], ['operations', '管理员运维中心'], ['analytics', '学习分析']]) {
+for (const [path, title] of [['tasks', '任务中心'], ['recovery', '备份与恢复'], ['privacy', '数据与隐私'], ['operations', '管理员运维中心'], ['analytics', '学习分析']]) {
   test(`${title} WCAG AA、资源与响应式验收`, async ({ page }, testInfo) => {
     await page.goto(`/${path}`)
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible()
+    if (path === 'recovery') await page.getByRole('button', { name: '管理员整站灾备' }).click()
     if (['recovery', 'operations'].includes(path)) {
       await page.getByLabel('管理员凭证').fill('test-admin-token-'.repeat(3))
       await page.getByRole('button', { name: '验证权限' }).click()
@@ -112,7 +115,7 @@ test('初始请求不加载未访问的页面', async ({ page }) => {
 test('聊天 IME 不误发送，引用抽屉可键盘关闭并恢复焦点', async ({ page }) => {
   await page.route('**/api/v1/sessions', route => route.fulfill(ok(route.request().method() === 'POST' ? { id: 1 } : [])))
   await page.route('**/api/v1/chat/stream', route => route.fulfill({ status: 200, contentType: 'text/event-stream', body:
-    'event: meta\ndata: {"sources":[{"document_id":"1","document_name":"资料","chunk_content":"原文证据"}]}\n\nevent: token\ndata: {"content":"回答"}\n\n' }))
+    'event: meta\ndata: {"sources":[{"document_id":"1","document_name":"资料","chunk_content":"原文证据"}]}\n\nevent: token\ndata: {"content":"回答"}\n\nevent: done\ndata: {}\n\n' }))
   await page.goto('/chat')
   const composer = page.getByRole('textbox', { name: '向忆知提问...' })
   await composer.fill('中文输入')
@@ -121,10 +124,12 @@ test('聊天 IME 不误发送，引用抽屉可键盘关闭并恢复焦点', asy
   await page.getByRole('button', { name: '发送', exact: true }).click()
   const trigger = page.getByRole('button', { name: '查看 1 条资料依据' })
   await trigger.click()
-  await expect(page.getByRole('dialog', { name: '资料依据' })).toBeVisible()
+  await expect(page.getByRole(page.viewportSize().width < 1100 ? 'dialog' : 'complementary', { name: '资料依据' })).toBeVisible()
   await expect(page.getByRole('button', { name: '关闭资料依据' })).toBeFocused()
-  await page.keyboard.press('Shift+Tab')
-  await expect(page.getByRole('button', { name: '打开原文定位' })).toBeFocused()
+  if (page.viewportSize().width < 1100) {
+    await page.keyboard.press('Shift+Tab')
+    await expect(page.getByRole('button', { name: '打开原文定位' })).toBeFocused()
+  }
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(trigger).toBeFocused()

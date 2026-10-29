@@ -86,7 +86,7 @@ test('真实资料闭环：多格式、联合过滤、历史版本、权限、�
   expect((await other.get(base)).status()).toBe(400)
   await other.dispose()
 
-  const plan = await data(await page.request.post('/api/v1/workspace/plans', { data: { title: '复习计划', goal: '核对资料来源' } }))
+  const plan = await data(await page.request.post('/api/v1/workspace/plans', { data: { title: '复习计划', goal: '核对资料来源', cards: [{ prompt: '核心识别码是什么？', answer: 'QZ-7294' }] } }))
   const reviews = await data(await page.request.get('/api/v1/workspace/reviews'))
   const card = reviews.find(card => String(card.plan_id) === String(plan.id))
   const reviewed = await data(await page.request.post(`/api/v1/workspace/reviews/${card.id}`, { data: { rating: 4 } }))
@@ -94,21 +94,26 @@ test('真实资料闭环：多格式、联合过滤、历史版本、权限、�
   const quiz = await data(await page.request.post('/api/v1/workspace/quizzes/generate', { data: { kb_id: kb.id, topic: '星桥计划' }, timeout: 120_000 }))
   const questions = typeof quiz.questions_json === 'string' ? JSON.parse(quiz.questions_json) : quiz.questions_json
   expect(questions.length).toBeGreaterThan(0)
-  expect(questions.every(question => question.evidence && question.source)).toBeTruthy()
-  const result = await data(await page.request.post(`/api/v1/workspace/quizzes/${quiz.id}/submit`, { data: { answers: questions.map(question => question.answer) } }))
-  expect(result.raw_score).toBe(100)
+  expect(questions.every(question => !('answer' in question) && !('evidence' in question) && !('key_points' in question))).toBeTruthy()
+  const request_id = `roadmap-${suffix}`
+  const answers = questions.map(() => '')
+  const result = await data(await page.request.post(`/api/v1/workspace/quizzes/${quiz.id}/submit`, { data: { answers, request_id } }))
+  expect(result.raw_score).toBe(0)
+  expect(result.feedback.every(item => item.expected && item.evidence && item.source)).toBeTruthy()
+  expect(await data(await page.request.post(`/api/v1/workspace/quizzes/${quiz.id}/submit`, { data: { answers, request_id } }))).toEqual(result)
+  expect(await data(await page.request.get(`/api/v1/workspace/quizzes/${quiz.id}/attempts`))).toHaveLength(1)
   const exported = await data(await page.request.get('/api/v1/workspace/export'))
   expect(exported.reviews.some(item => String(item.id) === String(card.id) && item.review_count === 1)).toBeTruthy()
   expect((await page.request.get('/api/v1/workspace/export/archive')).ok()).toBeTruthy()
 
-  for (const route of ['/chat', '/knowledge', '/workspace', '/tasks', '/memory', '/recovery', '/privacy', '/operations', '/analytics', '/profile', '/settings']) {
+  for (const route of ['/chat', '/knowledge', '/workspace', '/tasks', '/memory', '/review', '/quiz', '/recovery', '/privacy', '/analytics', '/profile', '/settings']) {
     await page.goto(route)
     await expect(page).toHaveURL(new RegExp(`${route}$`))
     await expect(page.locator('#main-content')).toBeVisible()
     expect(await page.locator('body').evaluate(body => body.scrollWidth <= window.innerWidth + 1)).toBeTruthy()
   }
   await page.goto('/workspace')
-  for (const name of ['引用阅读', '计划复习', '知识测验', '处理中心', '检索调试', '记忆管理', '分支对比', '数据迁移']) {
+  for (const name of ['引用阅读', '检索调试', '分支对比']) {
     await page.getByRole('button', { name, exact: true }).click()
     await expect(page.getByRole('button', { name, exact: true })).toHaveClass(/active/)
   }
@@ -212,11 +217,12 @@ test('真实界面交互：标签、筛选、空结果、切换知识库与配�
   await page.locator('.retrieval-filters summary').click()
   await expect(page.getByLabel('标签（逗号分隔，同时满足）')).toHaveValue('')
   await expect(page.locator('.retrieval-results article')).toHaveCount(0)
+  await page.goto('/operations')
+  await expect(page.getByRole('heading', { name: '无访问权限' })).toBeVisible()
+  expect((await page.request.get('/api/v1/admin/operations')).status()).toBe(403)
   await page.goto('/settings')
-  const response = page.waitForResponse(response => response.url().includes('/health/providers/check') && response.request().method() === 'POST', { timeout: 120_000 })
-  await page.getByRole('button', { name: '检测连通性', exact: true }).click()
-  const probe = await data(await response)
+  const probe = await data(await page.request.post('/api/v1/health/providers/check', { timeout: 120_000 }))
   expect(Object.keys(probe.results).sort()).toEqual(['chat', 'embedding', 'ocr', 'rerank'])
-  await expect(page.locator('.provider-card [role="status"]')).toHaveCount(4)
+  await expect(page.getByRole('heading', { name: '个人模型服务' })).toBeVisible()
   expect(await page.locator('body').evaluate(body => body.scrollWidth <= window.innerWidth + 1)).toBeTruthy()
 })

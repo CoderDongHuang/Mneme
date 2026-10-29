@@ -60,6 +60,7 @@ services:
       interval: 3s
       timeout: 3s
       retries: 40
+      start_period: 180s
 
   python-agent:
     build:
@@ -153,6 +154,9 @@ services:
       - ADMIN_API_TOKEN=${ADMIN_API_TOKEN:-}
       - RECOVERY_GITHUB_REPOSITORY=${RECOVERY_GITHUB_REPOSITORY:-}
       - RECOVERY_GITHUB_TOKEN=${RECOVERY_GITHUB_TOKEN:-}
+      - RECOVERY_WORKER_URL=${RECOVERY_WORKER_URL:-}
+      - RECOVERY_WORKER_TOKEN=${RECOVERY_WORKER_TOKEN:-}
+      - MODEL_CONFIG_ENCRYPTION_KEY=${MODEL_CONFIG_ENCRYPTION_KEY:-${JWT_SECRET}}
       - PROMETHEUS_URL=${PROMETHEUS_URL:-}
       - FILE_STORAGE_PATH=/data/files
       - STORAGE_BACKEND=${STORAGE_BACKEND:-local}

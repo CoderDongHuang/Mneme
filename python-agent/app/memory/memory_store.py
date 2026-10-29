@@ -167,6 +167,20 @@ class MemoryVectorStore:
         self._collection.update(ids=[mem_id], metadatas=[metadata])
         return True
 
+    def update_metadata(self, mem_id: str, changes: dict):
+        allowed = {"status", "confirmed", "tags"}
+        if not changes.keys() <= allowed:
+            raise ValueError("不可修改的元数据")
+        current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
+        if not current.get("ids"):
+            return False
+        memory_version_store.snapshot(self._memory_from_result(mem_id, current), "metadata")
+        metadata = dict((current.get("metadatas") or [{}])[0] or {})
+        metadata.update(changes)
+        metadata["updated_at"] = datetime.now().isoformat()
+        self._collection.update(ids=[mem_id], metadatas=[metadata])
+        return True
+
     def restore_memory(self, memory_id: str, content: str, metadata: dict):
         self._require_embedding_profile()
         require_cloud_processing(str(metadata.get("user_id", "")))
@@ -251,10 +265,10 @@ class MemoryVectorStore:
         require_cloud_processing(user_id)
         self._require_embedding_profile()
         # Qdrant 多条件过滤需 $and 语法，兼容各版本
+        conditions = [{"user_id": user_id}, {"status": {"$nin": ["archived", "ignored"]}}, {"frozen": {"$ne": True}}]
         if category:
-            where_filter = {"$and": [{"user_id": user_id}, {"category": category}]}
-        else:
-            where_filter = {"user_id": user_id}
+            conditions.append({"category": category})
+        where_filter = {"$and": conditions}
 
         try:
             results = self._collection.query(
@@ -293,7 +307,8 @@ class MemoryVectorStore:
         self, user_id: str, category: str, limit: int = 50
     ) -> List[Dict]:
         """获取某用户某类别的所有记忆"""
-        where_filter = {"$and": [{"user_id": user_id}, {"category": category}]}
+        where_filter = {"$and": [{"user_id": user_id}, {"category": category},
+            {"status": {"$nin": ["archived", "ignored"]}}, {"frozen": {"$ne": True}}]}
         try:
             results = self._collection.get(
                 where=where_filter,
@@ -314,7 +329,7 @@ class MemoryVectorStore:
         metadatas = results.get("metadatas", [])
         for index, mem_id in enumerate(ids):
             metadata = metadatas[index] or {}
-            if metadata.get("frozen", False):
+            if metadata.get("frozen", False) or metadata.get("status") in {"archived", "ignored"}:
                 continue
             entries.append(
                 {

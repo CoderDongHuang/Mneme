@@ -22,8 +22,14 @@ public final class MemoryContracts {
         String action,
         String category,
         String content,
-        String topic
-    ) {}
+        String topic,
+        @JsonProperty("source_session_id") String sourceSessionId,
+        Double confidence
+    ) {
+        public ConfirmRequest(String userId, String memoryId, String action, String category, String content, String topic) {
+            this(userId, memoryId, action, category, content, topic, "", null);
+        }
+    }
 
     public record ReadResult(
         @JsonProperty("user_id") String userId,

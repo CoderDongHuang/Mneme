@@ -1,261 +1,73 @@
-import {
-  ArrowUpRight,
-  BrainCircuit,
-  CalendarRange,
-  CheckCircle2,
-  Compass,
-  Plus,
-  Sparkles,
-  Target,
-  X,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { endpoints } from "../api/client";
-import LoadingState from "../components/LoadingState";
-import "../styles/memory.css";
+import { t, useI18n } from '../i18n'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { BrainCircuit, Plus, Search } from 'lucide-react'
+import { endpoints } from '../api/client'
+import { DangerZone, FeedbackBlock, Modal, PageHeader, SideDrawer, StatusPill } from '../components/ui'
+import { usePreferences } from '../state/PreferencesContext'
 
+const categories = { preference: '学习偏好', weak_point: '薄弱知识', progress: '学习进度' }
+const states = { active: '学习中', mastered: '已掌握', reinforce: '需巩固', archived: '已归档', ignored: '已忽略' }
+function tags(value) { try { return Array.isArray(value) ? value : JSON.parse(value || '[]') } catch { return [] } }
 export default function MemoryPage() {
-  const [memory, setMemory] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [dialog, setDialog] = useState(false);
-  const [form, setForm] = useState({
-    category: "preference",
-    content: "",
-    topic: "",
-  });
-  const [error, setError] = useState("");
-
+  useI18n();
+  const { preferences } = usePreferences()
+  const [items, setItems] = useState([])
+  const [pending, setPending] = useState([])
+  const [selected, setSelected] = useState(null)
+  const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState(new URLSearchParams(window.location.search).get('search') || '')
+  const [tagText, setTagText] = useState('')
+  const mounted = useRef(false)
+  const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState({ category: 'preference', content: '', topic: '' })
+  const [versions, setVersions] = useState([])
+  const lock = useRef(false)
+  const detailVersion = useRef(0)
   async function load() {
-    try {
-      setMemory(await endpoints.memory());
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setLoading(false);
-    }
+    const results = await Promise.allSettled([endpoints.managedMemories(), endpoints.pendingMemories()])
+    if (!mounted.current) return
+    if (results[0].status === 'fulfilled') setItems(results[0].value?.memories || [])
+    if (results[1].status === 'fulfilled') setPending(results[1].value || [])
+    setLoaded(true)
+    setError(results.filter(r => r.status === 'rejected').map(r => r.reason.message).join(' · '))
   }
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function addMemory(event) {
-    event.preventDefault();
-    try {
-      setError("");
-      await endpoints.writeMemory(form);
-      setDialog(false);
-      setForm({ category: "preference", content: "", topic: "" });
-      await load();
-    } catch (requestError) {
-      setError(requestError.message);
-    }
+  useEffect(() => { mounted.current = true; void load(); return () => { mounted.current = false } }, [])
+  async function run(action) {
+    if (lock.current) return
+    lock.current = true; setBusy(true); setError(''); setNotice('')
+    try { await action() } catch (e) { setError(e.message); throw e } finally { lock.current = false; setBusy(false) }
   }
-
-  const stats = useMemo(
-    () => ({
-      preferences: memory?.preferences?.length || 0,
-      weakPoints: memory?.weak_points?.length || 0,
-      progress: memory?.progress ? 1 : 0,
-    }),
-    [memory],
-  );
-
-  return (
-    <div className="memory-page">
-      <header className="memory-hero">
-        <div className="memory-orbit">
-          <BrainCircuit size={34} />
-        </div>
-        <div>
-          <p className="eyebrow">持续更新的学习画像</p>
-          <h1>你的学习画像</h1>
-          <p>由真实对话逐步形成。你始终可以确认、补充或忽略一条记忆。</p>
-        </div>
-        <button onClick={() => setDialog(true)}>
-          <Plus size={18} />
-          补充一条
-        </button>
-      </header>
-
-      {loading ? (
-        <LoadingState label="正在读取学习画像" />
-      ) : (
-        <>
-          <section className="memory-scoreboard">
-            <div>
-              <span>偏好信号</span>
-              <strong>{stats.preferences.toString().padStart(2, "0")}</strong>
-              <small>决定回答呈现方式</small>
-            </div>
-            <div>
-              <span>待加强主题</span>
-              <strong>{stats.weakPoints.toString().padStart(2, "0")}</strong>
-              <small>随掌握程度动态衰减</small>
-            </div>
-            <div>
-              <span>进度锚点</span>
-              <strong>{stats.progress.toString().padStart(2, "0")}</strong>
-              <small>定位下一步学习位置</small>
-            </div>
-          </section>
-
-          <div className="memory-grid">
-            <section className="preference-field">
-              <header>
-                <div>
-                  <Sparkles size={18} />
-                  <span>表达偏好</span>
-                </div>
-                <h2>我如何更好地向你解释</h2>
-              </header>
-              <div className="preference-map">
-                {memory?.preferences?.length ? (
-                  memory.preferences.map((item, index) => (
-                    <article key={item.id}>
-                      <span>{String(index + 1).padStart(2, "0")}</span>
-                      <p>{item.content}</p>
-                      <ArrowUpRight size={16} />
-                    </article>
-                  ))
-                ) : (
-                  <div className="memory-empty">
-                    <p>还没有明确偏好</p>
-                    <span>例如“先给例子，再解释公式”。</span>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className="progress-panel">
-              <div className="progress-symbol">
-                <Compass size={28} />
-              </div>
-              <span>当前学习位置</span>
-              <h2>{memory?.progress?.topic || "等待第一个进度锚点"}</h2>
-              <p>
-                {memory?.progress?.content ||
-                  "在对话中告诉忆知你正在学习的章节或主题。"}
-              </p>
-              <div className="progress-line">
-                <span />
-              </div>
-            </section>
-
-            <section className="weakpoint-ledger">
-              <header>
-                <div>
-                  <Target size={19} />
-                  <h2>待加强主题</h2>
-                </div>
-                <span>优先事项</span>
-              </header>
-              <div>
-                {memory?.weak_points?.length ? (
-                  memory.weak_points.map((item, index) => (
-                    <article key={item.id}>
-                      <span className="weak-rank">{index + 1}</span>
-                      <div>
-                        <strong>{item.topic || "未命名主题"}</strong>
-                        <p>{item.content}</p>
-                      </div>
-                      <span className="importance">
-                        <i
-                          style={{
-                            width: `${(item.importance || 0.5) * 100}%`,
-                          }}
-                        />
-                      </span>
-                    </article>
-                  ))
-                ) : (
-                  <div className="memory-empty">
-                    <CheckCircle2 size={27} />
-                    <p>暂未识别到薄弱点</p>
-                    <span>多轮学习对话后会在这里形成优先级。</span>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className="memory-method">
-              <CalendarRange size={21} />
-              <div>
-                <strong>记忆会随学习变化</strong>
-                <p>
-                  重复出现的困难会提高优先级，长期未出现的薄弱点会逐步衰减。
-                </p>
-              </div>
-            </section>
-          </div>
-        </>
-      )}
-      {error && <div className="page-error">{error}</div>}
-
-      {dialog && (
-        <div className="dialog-backdrop" onMouseDown={() => setDialog(false)}>
-          <form
-            className="memory-dialog"
-            onSubmit={addMemory}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <header>
-              <div>
-                <span>手动补充</span>
-                <h2>补充学习画像</h2>
-              </div>
-              <button type="button" onClick={() => setDialog(false)}>
-                <X size={18} />
-              </button>
-            </header>
-            <label>
-              <span>类型</span>
-              <select
-                value={form.category}
-                onChange={(event) =>
-                  setForm({ ...form, category: event.target.value })
-                }
-              >
-                <option value="preference">表达偏好</option>
-                <option value="weak_point">薄弱点</option>
-                <option value="progress">学习进度</option>
-              </select>
-            </label>
-            {form.category === "weak_point" && (
-              <label>
-                <span>主题</span>
-                <input
-                  required
-                  value={form.topic}
-                  onChange={(event) =>
-                    setForm({ ...form, topic: event.target.value })
-                  }
-                  placeholder="例如：梯度下降"
-                />
-              </label>
-            )}
-            <label>
-              <span>内容</span>
-              <textarea
-                required
-                rows={4}
-                value={form.content}
-                onChange={(event) =>
-                  setForm({ ...form, content: event.target.value })
-                }
-                placeholder={
-                  form.category === "progress"
-                    ? "第三章/第二节"
-                    : "写下一条真实、具体的信息"
-                }
-              />
-            </label>
-            <button className="dialog-submit">
-              写入画像
-              <ArrowUpRight size={17} />
-            </button>
-          </form>
-        </div>
-      )}
-    </div>
-  );
+  function act(action) { void run(action).catch(() => {}) }
+  async function choose(item) {
+    const version = ++detailVersion.current
+    setSelected({ ...item }); setTagText(tags(item.tags).join(', ')); setVersions([])
+    try { const data = await endpoints.memoryVersions(item.id); if (mounted.current && version === detailVersion.current) setVersions(data.versions || []) }
+    catch (e) { if (mounted.current && version === detailVersion.current) setError(e.message) }
+  }
+  async function update(body) {
+    const result = await endpoints.updateManagedMemory(selected.id, body)
+    const list = result.memories || []
+    setItems(list); setSelected(list.find(item => item.id === selected.id) || null); setNotice(t("记忆已保存，检索缓存已更新"))
+    try { const history = await endpoints.memoryVersions(selected.id); if (mounted.current) setVersions(history.versions || []) } catch { setNotice(t("记忆已保存，但版本列表未能刷新，请重新打开详情。")) }
+  }
+  const visible = items.filter(item => (filter === 'all' || (filter === 'confirmed' ? item.confirmed : (item.status || 'active') === filter)) && `${item.content} ${item.topic} ${tags(item.tags).join(' ')}`.toLowerCase().includes(search.toLowerCase()))
+  return <div className="standard-page"><PageHeader eyebrow={t("由你决定记住什么")} title={t("学习记忆")} description={t("查看来源、修正推断，管理用于后续学习的个人记忆。")}><button className="primary-button" onClick={() => setOpen(true)}><Plus size={17} />{t("添加记忆")}</button></PageHeader>
+    <FeedbackBlock error={error} message={notice} onRetry={error ? load : undefined} />
+    <div className="page-toolbar"><label className="search-field"><Search size={17} /><input aria-label={t("搜索记忆")} placeholder={t("搜索内容、主题或标签")} value={search} onChange={e => setSearch(e.target.value)} /></label><label>{t("记忆状态")}<select value={filter} onChange={e => setFilter(e.target.value)}><option value="all">{t("全部记忆")}</option><option value="pending">{t("待确认")}</option><option value="confirmed">{t("用户已确认")}</option>{Object.entries(states).map(([value, text]) => <option key={value} value={value}>{t(text)}</option>)}</select></label><span className="muted">{items.length}{t(" 条记忆 · ")}{pending.length}{t(" 条待确认")}</span></div>
+    {['all', 'pending'].includes(filter) && pending.length > 0 && <section className="pending-section"><h2>{t("等待你的确认")}</h2><p className="muted">{t("以下是模型推断，确认前不会作为已确认记忆使用。")}</p><ul className="record-list">{pending.filter(item => `${item.content} ${item.topic}`.includes(search)).map(item => <li key={item.memoryId}><div><StatusPill tone="warning">{t("待确认 · 模型推断")}</StatusPill><h3>{item.topic || t(categories[item.category])}</h3><p>{item.content}</p><small>{t("系统估计置信度：")}{item.confidence == null ? t("无数据") : `${Math.round(item.confidence * 100)}%`}{t("，不代表事实保证。")}</small>{item.sessionId && <Link className="text-link" to={`/chat?session=${item.sessionId}`}>{t("查看来源对话 →")}</Link>}</div><div className="action-row"><button disabled={busy} onClick={() => act(async () => { await endpoints.confirmMemory({ temp_id: item.memoryId, action: 'confirm' }); await load() })}>{t("确认记住")}</button><button disabled={busy} onClick={() => act(async () => { await endpoints.confirmMemory({ temp_id: item.memoryId, action: 'dismiss' }); await load() })}>{t("忽略")}</button></div></li>)}</ul></section>}
+    {filter !== 'pending' && <ul className="record-list">{visible.map(item => <li key={item.id}><button className="record-open" onClick={() => choose(item)}><span className="action-row"><BrainCircuit size={19} /><StatusPill tone={item.confirmed ? 'success' : 'neutral'}>{item.confirmed ? t("用户已确认") : t("自动记忆 / 待核验")}</StatusPill><StatusPill>{t(states[item.status || 'active'])}</StatusPill></span><h3>{item.topic || t(categories[item.category]) || t("学习记忆")}</h3><p>{item.content}</p><small>{tags(item.tags).join(' · ')} · {item.updated_at ? new Date(item.updated_at).toLocaleString(preferences.language, { timeZone: preferences.timezone }) : t("更新时间无数据")}</small></button></li>)}</ul>}
+    {loaded && (filter === 'pending' ? !pending.filter(item => `${item.content} ${item.topic}`.includes(search)).length : !visible.length && !(filter === 'all' && pending.some(item => `${item.content} ${item.topic}`.includes(search)))) && <div className="empty-state"><BrainCircuit size={34} /><h2>{t("暂无符合条件的记忆")}</h2><p>{t("可以手动补充学习偏好，也可以在对话后确认系统建议。")}</p></div>}{!loaded && <p role="status">{t("正在读取记忆…")}</p>}
+    <SideDrawer open={!!selected} title={t("记忆详情")} onClose={() => { detailVersion.current++; setSelected(null) }} busy={busy}>{selected && <><FeedbackBlock error={error} message={notice} /><p>{t("保存原因：")}{selected.confirmed ? t("用户已确认") : t("根据学习记录提取，尚未标记为用户确认")}。</p><p>{t("置信度：")}{selected.confidence == null ? t("未提供估计值") : t("{0}%（系统估计）", [Math.round(selected.confidence * 100)])}</p>{selected.source_session_id ? <Link className="text-link" to={`/chat?session=${selected.source_session_id}`}>{t("返回来源对话 →")}</Link> : <p className="muted">{t("此记录未提供来源链接。")}</p>}
+      <form className="form-stack" onSubmit={e => { e.preventDefault(); act(() => update({ content: selected.content, topic: selected.topic, tags: tagText.split(/[,，]/).map(s => s.trim()).filter(Boolean) })) }}><label>{t("主题")}<input maxLength={200} value={selected.topic || ''} onChange={e => setSelected({ ...selected, topic: e.target.value })} /></label><label>{t("内容")}<textarea required rows={6} maxLength={10000} value={selected.content} onChange={e => setSelected({ ...selected, content: e.target.value })} /></label><label>{t("标签（以逗号分隔）")}<input maxLength={1000} value={tagText} onChange={e => setTagText(e.target.value)} /></label><button className="primary-button" disabled={busy}>{t("保存修改")}</button></form>
+      <div className="action-row">{!selected.confirmed && <button disabled={busy} onClick={() => act(() => update({ confirmed: true }))}>{t("确认记忆")}</button>}<label>{t("学习状态")}<select disabled={busy} value={selected.status || 'active'} onChange={e => act(() => update({ status: e.target.value }))}>{Object.entries(states).map(([value, text]) => <option key={value} value={value}>{t(text)}</option>)}</select></label><Link className="text-link" to="/review">{t("安排复习 →")}</Link></div><p className="muted">{t("归档或忽略后不再参与记忆检索；原记录保留，可随时恢复为学习中。")}</p>
+      <details><summary>{t("历史版本（")}{versions.length}）</summary><ul className="plain-list">{versions.map(version => <li key={version.version}><p>{t("版本 ")}{version.version} · {version.reason || version.action}</p><p>{version.content}</p><button disabled={busy} onClick={() => act(async () => { const data = await endpoints.restoreMemory(selected.id, version.version); setItems(data.memories || []); setSelected((data.memories || []).find(item => item.id === selected.id)); setVersions((await endpoints.memoryVersions(selected.id)).versions || []); setNotice(t("历史版本已恢复")) })}>{t("恢复此版本")}</button></li>)}</ul></details>
+      <DangerZone title={t("删除此记忆")} description={t("从记忆检索中移除此条目并清除缓存。版本历史仍按保留策略保存，可用于恢复。")} action={t("删除记忆")} confirmText="DELETE MEMORY" busy={busy} onConfirm={() => run(async () => { const data = await endpoints.deleteManagedMemory(selected.id); setItems(data.memories || []); setSelected(null); setNotice(t("记忆已删除")) })} />
+    </>}</SideDrawer>
+    <Modal open={open} title={t("添加学习记忆")} busy={busy} onClose={() => setOpen(false)}><form className="form-stack" onSubmit={e => { e.preventDefault(); act(async () => { await endpoints.writeMemory(form); setOpen(false); setForm({ category: 'preference', content: '', topic: '' }); await load() }) }}><FeedbackBlock error={error} /><label>{t("类型")}<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{Object.entries(categories).map(([value, text]) => <option key={value} value={value}>{t(text)}</option>)}</select></label><label>{t("主题")}<input maxLength={200} value={form.topic} onChange={e => setForm({ ...form, topic: e.target.value })} /></label><label>{t("内容")}<textarea required maxLength={10000} rows={5} value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} /></label><button disabled={busy} className="primary-button">{t("保存记忆")}</button></form></Modal>
+  </div>
 }

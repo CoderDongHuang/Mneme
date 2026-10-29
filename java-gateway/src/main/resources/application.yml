@@ -59,6 +59,9 @@ management:
         http.server.requests: true
 
 mneme:
+  recovery-worker-url: ${RECOVERY_WORKER_URL:}
+  recovery-worker-token: ${RECOVERY_WORKER_TOKEN:}
+  model-config-encryption-key: ${MODEL_CONFIG_ENCRYPTION_KEY:${JWT_SECRET}}
   recovery-github-repository: ${RECOVERY_GITHUB_REPOSITORY:}
   recovery-github-token: ${RECOVERY_GITHUB_TOKEN:}
   prometheus-url: ${PROMETHEUS_URL:}

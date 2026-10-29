@@ -222,13 +222,16 @@ jobs:
   full-stack:
     name: Full-stack P0 acceptance
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 50
     needs: [python, java, frontend]
     env:
       MYSQL_ROOT_PASSWORD: ci-database-password
       SPRING_DATASOURCE_PASSWORD: ci-database-password
       JWT_SECRET: ci-jwt-secret-at-least-32-characters-long
       INTERNAL_SERVICE_TOKEN: ci-internal-token-at-least-32-characters
+      ADMIN_API_TOKEN: ci-admin-token-independent-at-least-32-characters
+      RECOVERY_WORKER_TOKEN: ci-host-recovery-independent-at-least-32-characters
+      RECOVERY_WORKER_URL: http://host.docker.internal:8091
       DEEPSEEK_API_KEY: ci-dummy-key
       DASHSCOPE_API_KEY: ci-dummy-key
       MNEME_OFFLINE_EMBEDDINGS: "true"
@@ -292,6 +295,12 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/roadmap-stack.spec.js --project=桌面端 --grep '真实解析异常|真实界面交互' --retries=0
+      - name: Verify report UI, personal settings and archive restoration
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/report-stack.spec.js --project=桌面端 --retries=0
       - name: Exercise input rejection metrics
         run: |
           status=$(head -c 70000 /dev/zero | curl --silent --output /dev/null --write-out '%{http_code}' \
@@ -329,6 +338,12 @@ jobs:
           --compose-file docker-compose.yml
           --compose-file docker-compose.selfhost.yml
           --compose-file docker-compose.ci.yml
+      - name: Verify authenticated host backup and actual site restore
+        run: >-
+          python scripts/verify_site_recovery.py --confirm-disposable-stack
+          --compose-file docker-compose.yml
+          --compose-file docker-compose.selfhost.yml
+          --compose-file docker-compose.ci.yml
       - name: Collect service logs
         if: failure()
         run: $COMPOSE logs --no-color > full-stack-services.log
@@ -343,10 +358,12 @@ jobs:
             frontend/test-results/
             docs/images/mneme-*.png
             backups/ci/
+            backups/worker-acceptance/
             artifacts/operational-trends.json
             artifacts/usage-policy-snapshot.json
             artifacts/usage-policy-config.json
             artifacts/usage-policy-report.json
+            artifacts/frontend-review-20261029/responsive/
             full-stack-services.log
       - name: Stop full stack
         if: always()

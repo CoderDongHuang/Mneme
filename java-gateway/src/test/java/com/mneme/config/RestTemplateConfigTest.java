@@ -25,13 +25,36 @@ class RestTemplateConfigTest {
     @Test
     void externalClientDoesNotCarryInternalCredentials() {
         RestTemplate template = new RestTemplateConfig().recoveryHttp();
-        assertThat(template.getInterceptors()).isEmpty();
         MockRestServiceServer server = MockRestServiceServer.bindTo(template).build();
         server.expect(requestTo("https://api.github.com/repos/test/repo/actions/runs"))
             .andExpect(request -> assertThat(request.getHeaders().getFirst("X-Internal-Service-Token")).isNull())
             .andRespond(withSuccess());
         template.getForObject("https://api.github.com/repos/test/repo/actions/runs", String.class);
         server.verify();
+    }
+
+    @Test
+    void recoveryRequestsUseBoundedContentLength() throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        var length = new java.util.concurrent.atomic.AtomicReference<String>();
+        var transfer = new java.util.concurrent.atomic.AtomicReference<String>();
+        var received = new java.util.concurrent.atomic.AtomicReference<byte[]>();
+        server.createContext("/site/jobs", exchange -> {
+            length.set(exchange.getRequestHeaders().getFirst("Content-Length"));
+            transfer.set(exchange.getRequestHeaders().getFirst("Transfer-Encoding"));
+            received.set(exchange.getRequestBody().readAllBytes());
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            new RestTemplateConfig().recoveryHttp().postForObject(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/site/jobs",
+                java.util.Map.of("action", "backup", "confirmation", "BACKUP SITE"), String.class);
+            assertThat(length.get()).isEqualTo(String.valueOf(received.get().length));
+            assertThat(transfer.get()).isNull();
+            assertThat(new String(received.get(), java.nio.charset.StandardCharsets.UTF_8)).contains("BACKUP SITE");
+        } finally { server.stop(0); }
     }
 
     @Test
@@ -59,7 +82,9 @@ class RestTemplateConfigTest {
         when(context.traceId()).thenReturn("0123456789abcdef0123456789abcdef");
         when(context.spanId()).thenReturn("0123456789abcdef");
         when(context.sampled()).thenReturn(true);
-        RestTemplate template = new RestTemplateConfig().restTemplate(
+        var config = new RestTemplateConfig();
+        ReflectionTestUtils.setField(config, "pythonAgentUrl", "http://python-agent");
+        RestTemplate template = config.restTemplate(
             new RestTemplateBuilder(), tokens, tracer
         );
         MockRestServiceServer server = MockRestServiceServer.bindTo(template).build();

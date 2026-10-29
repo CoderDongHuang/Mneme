@@ -1,3 +1,4 @@
+import { t, useI18n } from '../i18n'
 const labels = {
   parsing: '解析中',
   processing: '解析中',
@@ -16,5 +17,6 @@ const labels = {
 }
 
 export default function StatusBadge({ status }) {
-  return <span className={`status-badge status-${status || 'unknown'}`}>{labels[status] || status || '未知'}</span>
+  useI18n();
+  return <span className={`status-badge status-${status || 'unknown'}`}>{t(labels[status]) || status || t("未知")}</span>
 }

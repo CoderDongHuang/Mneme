@@ -46,6 +46,14 @@ public class AuthSessionService {
         jdbc.update("UPDATE auth_session SET revoked_at=COALESCE(revoked_at,NOW()) WHERE user_id=?", userId);
     }
 
+    public java.util.List<java.util.Map<String,Object>> list(Long userId) {
+        return jdbc.queryForList("SELECT session_id,remembered,created_at,last_seen_at,expires_at FROM auth_session WHERE user_id=? AND revoked_at IS NULL AND expires_at>NOW() ORDER BY last_seen_at DESC", userId);
+    }
+
+    public void revokeOwned(Long userId, String sessionId) {
+        jdbc.update("UPDATE auth_session SET revoked_at=COALESCE(revoked_at,NOW()) WHERE session_id=? AND user_id=?", sessionId, userId);
+    }
+
     @Scheduled(cron = "${mneme.auth-session-cleanup-cron:0 37 3 * * *}")
     public void cleanupExpired() {
         jdbc.update("DELETE FROM auth_session WHERE expires_at<DATE_SUB(NOW(), INTERVAL 7 DAY)");

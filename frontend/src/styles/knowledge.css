@@ -1,3 +1,4 @@
+@layer legacy {
 .knowledge-page { min-height: 100vh; background: #f7f6f1; color: #1d211c; }
 .knowledge-masthead { min-height: 238px; padding: 54px clamp(26px, 5vw, 72px) 38px; display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; background: #dce8df; border-bottom: 1px solid #adc2b3; }
 .knowledge-masthead > div { max-width: 720px; }
@@ -147,3 +148,5 @@
 .parse-report small { display: block; margin-block: .4rem; }
 
 .status-partial { background: #f0ece0; color: #786331; }
+
+}

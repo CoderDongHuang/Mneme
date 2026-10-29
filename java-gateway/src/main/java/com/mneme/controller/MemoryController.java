@@ -37,6 +37,11 @@ public class MemoryController {
         ));
     }
 
+    @GetMapping("/pending")
+    public Result<?> pending(@RequestAttribute("userId") Long userId) {
+        return Result.success(pendingMemoryService.list(userId));
+    }
+
     @PostMapping("/confirm")
     public Result<MemoryContracts.OperationResult> confirmMemory(
         @RequestAttribute("userId") Long userId,

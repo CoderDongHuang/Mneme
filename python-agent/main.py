@@ -12,7 +12,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from fastapi.responses import Response
 
-from app.api import agent, chat, chat_stream, health, knowledge, memory
+from app.api import agent, chat, chat_stream, health, knowledge, memory, models
+from app.core.user_model import UserModelMiddleware
 from app.core.config import settings
 from app.core.metrics import INPUT_REJECTIONS
 from app.core.logging import setup_logger, trace_id_var
@@ -219,6 +220,7 @@ class InternalServiceAuthMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(UserModelMiddleware)
 app.add_middleware(ChatRequestSizeMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(InternalServiceAuthMiddleware)
@@ -253,6 +255,7 @@ app.include_router(knowledge.router)
 app.include_router(memory.router)
 app.include_router(agent.router)
 app.include_router(health.router)
+app.include_router(models.router)
 
 
 @app.get("/metrics", include_in_schema=False)

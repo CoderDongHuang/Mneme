@@ -1,3 +1,4 @@
+@layer legacy {
 .memory-page { min-height: 100vh; padding: 0 0 70px; background: #171a17; color: #eef0ea; }
 .memory-hero { min-height: 270px; padding: 58px clamp(28px, 6vw, 82px) 42px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 28px; border-bottom: 1px solid #343a33; background: #20251f; }
 .memory-orbit { width: 84px; aspect-ratio: 1; display: grid; place-items: center; border: 1px solid #59655a; color: #f2c967; background: #181c18; }
@@ -109,3 +110,5 @@
 .memory-method { background: rgb(41 42 37 / 76%); box-shadow: 0 18px 50px rgb(28 29 25 / 13%); }
 .memory-dialog input, .memory-dialog textarea, .memory-dialog select { border: 0; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%); }
 .memory-dialog input:focus, .memory-dialog textarea:focus, .memory-dialog select:focus { border: 0; box-shadow: inset 0 0 0 2px rgb(239 218 165 / 35%); }
+
+}

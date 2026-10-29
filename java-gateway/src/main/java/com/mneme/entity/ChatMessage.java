@@ -15,6 +15,7 @@ public class ChatMessage {
     private String content;
     private String status;
     private String errorCode;
+    private String sourcesJson;
     private LocalDateTime createdAt;
 
     public Long getId() { return id; }
@@ -30,6 +31,8 @@ public class ChatMessage {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public String getErrorCode() { return errorCode; }
+    public String getSourcesJson() { return sourcesJson; }
+    public void setSourcesJson(String sourcesJson) { this.sourcesJson = sourcesJson; }
     public void setErrorCode(String errorCode) { this.errorCode = errorCode; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

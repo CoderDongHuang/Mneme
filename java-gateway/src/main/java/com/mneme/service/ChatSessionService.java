@@ -54,7 +54,7 @@ public class ChatSessionService {
         getOwnedSession(userId, sessionId);
         return messageMapper.selectList(new LambdaQueryWrapper<ChatMessage>()
             .eq(ChatMessage::getSessionId, sessionId)
-            .orderByAsc(ChatMessage::getCreatedAt));
+            .orderByAsc(ChatMessage::getCreatedAt, ChatMessage::getId));
     }
 
     @Transactional
@@ -111,6 +111,7 @@ public class ChatSessionService {
                 throw new RequestInProgressException("相同请求正在处理中");
             }
             assistant.setContent("");
+            assistant.setSourcesJson("[]");
             assistant.setStatus("processing");
             assistant.setErrorCode(null);
             messageMapper.updateById(assistant);
@@ -151,6 +152,23 @@ public class ChatSessionService {
     }
 
     public record Exchange(ChatMessage userMessage, ChatMessage assistantMessage, boolean completed) { }
+
+    public ChatSession renameSession(Long userId, Long sessionId, String title) {
+        if (title == null || title.isBlank() || title.trim().length() > 120) {
+            throw new IllegalArgumentException("标题不能为空，最多 120 个字符");
+        }
+        ChatSession session = getOwnedSession(userId, sessionId);
+        session.setTitle(title.trim());
+        sessionMapper.updateById(session);
+        return session;
+    }
+
+    public void saveSources(Long messageId, String sourcesJson) {
+        ChatMessage message = messageMapper.selectById(messageId);
+        if (message == null) return;
+        message.setSourcesJson(sourcesJson);
+        messageMapper.updateById(message);
+    }
 
     public void finishMessage(Long messageId, String content) {
         ChatMessage message = messageMapper.selectById(messageId);

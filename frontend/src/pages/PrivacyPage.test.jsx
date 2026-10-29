@@ -5,6 +5,7 @@ import { vi, test, expect } from 'vitest'
 import PrivacyPage from './PrivacyPage'
 import { api } from '../api/client'
 vi.mock('../api/client', () => ({ api: vi.fn(), endpoints: { operations: vi.fn(async () => []) }, downloadWorkspaceArchive: vi.fn(), downloadWorkspaceExport: vi.fn() }))
+vi.mock('../state/AuthContext', () => ({ useAuth: () => ({ logout: vi.fn() }) }))
 test('saves revoked consent and confirms trace deletion', async () => {
   api.mockResolvedValue({ cloud_allowed: true, trace_days: 30, trace_max_days: 30, providers: ['DeepSeek'], sending_scope: ['对话'] })
   render(<MemoryRouter><PrivacyPage /></MemoryRouter>)

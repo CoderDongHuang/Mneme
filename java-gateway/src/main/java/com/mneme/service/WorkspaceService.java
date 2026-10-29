@@ -400,16 +400,21 @@ public class WorkspaceService {
     public Map<String, Object> createPlan(Long userId, Map<String, Object> body) {
         String title = required(body, "title");
         String goal = required(body, "goal");
+        List<Map<String,Object>> cards = mapper.convertValue(body.getOrDefault("cards", List.of()), new TypeReference<>() {});
+        if (cards.size() > 100) throw new IllegalArgumentException("一次最多添加 100 张复习卡");
+        for (var card : cards) {
+            if (required(card, "prompt").length() > 10000 || required(card, "answer").length() > 10000)
+                throw new IllegalArgumentException("复习卡内容过长");
+        }
         LocalDate target = body.get("target_date") == null || String.valueOf(body.get("target_date")).isBlank()
             ? null : LocalDate.parse(String.valueOf(body.get("target_date")));
         jdbc.update("INSERT INTO learning_plan(user_id,title,goal,target_date) VALUES(?,?,?,?)",
             userId, title, goal, target == null ? null : Date.valueOf(target));
         Long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-        String[] prompts = {"用自己的话说明：" + goal, "列出核心概念：" + goal, "举一个实际例子：" + goal};
-        for (int index = 0; index < prompts.length; index++) {
+        for (var card : cards) {
             jdbc.update("INSERT INTO review_card(user_id,plan_id,prompt,answer,due_at,origin,topic) VALUES(?,?,?,?,?,?,?)",
-                userId, id, prompts[index], "完成学习后补充你的答案",
-                Timestamp.valueOf(LocalDateTime.now().plusDays(index)), "plan", abbreviate(goal, 200));
+                userId, id, required(card, "prompt"), required(card, "answer"),
+                Timestamp.valueOf(LocalDateTime.now()), "user", abbreviate(goal, 200));
         }
         return one("SELECT * FROM learning_plan WHERE id=? AND user_id=?", id, userId);
     }
@@ -438,7 +443,57 @@ public class WorkspaceService {
     }
 
     public List<Map<String, Object>> quizzes(Long userId) {
-        return rows("SELECT id,kb_id,title,topic,questions_json,created_at FROM knowledge_quiz WHERE user_id=? ORDER BY created_at DESC", userId);
+        return rows("SELECT id,kb_id,title,topic,questions_json,created_at FROM knowledge_quiz WHERE user_id=? ORDER BY created_at DESC", userId)
+            .stream().map(this::publicQuiz).toList();
+    }
+
+    private Map<String, Object> publicQuiz(Map<String, Object> quiz) {
+        var result = new LinkedHashMap<>(quiz);
+        try {
+            List<Map<String,Object>> questions = mapper.readValue(jsonText(quiz.get("questions_json")), new TypeReference<>() {});
+            List<Map<String,Object>> publicQuestions = new ArrayList<>();
+            for (var question : questions) {
+                var item = new LinkedHashMap<String,Object>();
+                for (String field : List.of("id", "type", "prompt", "options", "hint")) {
+                    if (question.containsKey(field)) item.put(field, question.get(field));
+                }
+                publicQuestions.add(item);
+            }
+            result.put("questions_json", mapper.writeValueAsString(publicQuestions));
+        } catch (Exception error) { throw new IllegalStateException("测验题目无法读取"); }
+        return result;
+    }
+
+    public Map<String,Object> quizDraft(Long userId, Long quizId) {
+        one("SELECT id FROM knowledge_quiz WHERE id=? AND user_id=?", quizId, userId);
+        var drafts = rows("SELECT answers_json,current_question,updated_at FROM quiz_draft WHERE user_id=? AND quiz_id=?", userId, quizId);
+        return drafts.isEmpty() ? Map.of("answers_json", "[]", "current_question", 0) : drafts.get(0);
+    }
+
+    public Map<String,Object> saveQuizDraft(Long userId, Long quizId, Map<String,Object> body) throws Exception {
+        var quiz = one("SELECT questions_json FROM knowledge_quiz WHERE id=? AND user_id=?", quizId, userId);
+        int count = mapper.readTree(jsonText(quiz.get("questions_json"))).size();
+        List<String> answers = mapper.convertValue(body.getOrDefault("answers", List.of()), new TypeReference<>() {});
+        int current = Integer.parseInt(String.valueOf(body.getOrDefault("current_question", 0)));
+        if (answers.size() > count || answers.stream().anyMatch(answer -> answer == null || answer.length() > 10000)
+            || current < 0 || current >= Math.max(1, count)) throw new IllegalArgumentException("测验草稿无效");
+        jdbc.update("INSERT INTO quiz_draft(user_id,quiz_id,answers_json,current_question) VALUES(?,?,CAST(? AS JSON),?) ON DUPLICATE KEY UPDATE answers_json=VALUES(answers_json),current_question=VALUES(current_question)", userId, quizId, mapper.writeValueAsString(answers), current);
+        return quizDraft(userId, quizId);
+    }
+
+    public List<Map<String,Object>> quizAttempts(Long userId, Long quizId) {
+        one("SELECT id FROM knowledge_quiz WHERE id=? AND user_id=?", quizId, userId);
+        return rows("SELECT id,answers_json,score,raw_score,feedback_json,created_at FROM quiz_attempt WHERE user_id=? AND quiz_id=? ORDER BY created_at DESC LIMIT 50", userId, quizId);
+    }
+
+    public Map<String,Object> reportQuestion(Long userId, Long quizId, Map<String,Object> body) throws Exception {
+        var quiz = one("SELECT questions_json FROM knowledge_quiz WHERE id=? AND user_id=?", quizId, userId);
+        int count = mapper.readTree(jsonText(quiz.get("questions_json"))).size();
+        int question = Integer.parseInt(String.valueOf(body.getOrDefault("question", -1)));
+        String reason = required(body, "reason");
+        if (question < 0 || question >= count || reason.length() > 2000) throw new IllegalArgumentException("题目反馈无效");
+        jdbc.update("INSERT INTO quiz_question_report(user_id,quiz_id,question_number,reason) VALUES(?,?,?,?)", userId, quizId, question, reason);
+        return Map.of("status", "recorded");
     }
 
     @Transactional
@@ -468,14 +523,27 @@ public class WorkspaceService {
         jdbc.update("INSERT INTO knowledge_quiz(user_id,kb_id,title,topic,questions_json) VALUES(?,?,?,?,CAST(? AS JSON))",
             userId, kbId, title, topic, mapper.writeValueAsString(questions));
         Long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-        return one("SELECT * FROM knowledge_quiz WHERE id=?", id);
+        return publicQuiz(one("SELECT * FROM knowledge_quiz WHERE id=?", id));
     }
 
     @Transactional
     public Map<String, Object> submitQuiz(Long userId, Long quizId, Map<String, Object> body) throws Exception {
-        Map<String, Object> quiz = one("SELECT * FROM knowledge_quiz WHERE id=? AND user_id=?", quizId, userId);
+        Map<String, Object> quiz = one("SELECT * FROM knowledge_quiz WHERE id=? AND user_id=? FOR UPDATE", quizId, userId);
+        String requestId = String.valueOf(body.getOrDefault("request_id", UUID.randomUUID().toString()));
+        if (!requestId.matches("[A-Za-z0-9_-]{8,64}")) throw new IllegalArgumentException("无效提交编号");
+        var previous = rows("SELECT answers_json,score,raw_score,feedback_json FROM quiz_attempt WHERE user_id=? AND quiz_id=? AND request_id=?", userId, quizId, requestId);
+        if (!previous.isEmpty()) {
+            var attempt = previous.get(0);
+            String answersJson = mapper.writeValueAsString(body.getOrDefault("answers", List.of()));
+            if (!mapper.readTree(jsonText(attempt.get("answers_json"))).equals(mapper.readTree(answersJson)))
+                throw new IllegalArgumentException("提交编号已用于不同答案");
+            return Map.of("score", attempt.get("score"), "raw_score", attempt.get("raw_score"),
+                "feedback", mapper.readValue(jsonText(attempt.get("feedback_json")), List.class));
+        }
         List<Map<String, Object>> questions = mapper.readValue(jsonText(quiz.get("questions_json")), new TypeReference<>() {});
         List<String> answers = mapper.convertValue(body.getOrDefault("answers", List.of()), new TypeReference<>() {});
+        if (answers.size() > questions.size() || answers.stream().anyMatch(answer -> answer == null || answer.length() > 10000))
+            throw new IllegalArgumentException("测验答案无效");
         List<Map<String, Object>> feedback = new ArrayList<>();
         int correct = 0;
         for (int index = 0; index < questions.size(); index++) {
@@ -491,20 +559,25 @@ public class WorkspaceService {
             Map<String, Object> itemFeedback = new LinkedHashMap<>();
             itemFeedback.put("question_id", index + 1);
             itemFeedback.put("correct", ok);
-            itemFeedback.put("expected", expected);
+            List<String> options = stringList(question.get("options"));
+            String displayAnswer = expected;
+            if ("choice".equals(question.get("type")) && expected.matches("\\d+") && Integer.parseInt(expected) < options.size())
+                displayAnswer = options.get(Integer.parseInt(expected));
+            itemFeedback.put("expected", displayAnswer);
             itemFeedback.put("covered_key_points", covered);
             itemFeedback.put("key_point_count", keyPoints.size());
             itemFeedback.put("evidence", question.getOrDefault("evidence", expected));
             itemFeedback.put("source", question.getOrDefault("source", Map.of()));
             feedback.add(itemFeedback);
-            if (!ok) createMistakeReview(userId, String.valueOf(question.get("prompt")), expected, String.valueOf(quiz.get("topic")));
+            if (!ok) createMistakeReview(userId, String.valueOf(question.get("prompt")), displayAnswer, String.valueOf(quiz.get("topic")));
         }
         int score = questions.isEmpty() ? 0 : correct * 100 / questions.size();
         int calibratedScore = Math.max(0, Math.min(100, (int) Math.round(score + quizCalibrationBias(userId, String.valueOf(quiz.get("topic"))))));
-        jdbc.update("INSERT INTO quiz_attempt(quiz_id,user_id,answers_json,score,feedback_json) VALUES(?,?,CAST(? AS JSON),?,CAST(? AS JSON))",
-            quizId, userId, mapper.writeValueAsString(answers), calibratedScore, mapper.writeValueAsString(feedback));
+        jdbc.update("INSERT INTO quiz_attempt(quiz_id,user_id,answers_json,score,feedback_json,request_id,raw_score) VALUES(?,?,CAST(? AS JSON),?,CAST(? AS JSON),?,?)",
+            quizId, userId, mapper.writeValueAsString(answers), calibratedScore, mapper.writeValueAsString(feedback), requestId, score);
         jdbc.update("INSERT INTO learning_outcome_event(user_id,event_type,topic,score,success,source_id) VALUES(?,?,?,?,?,?)",
             userId, "quiz", String.valueOf(quiz.get("topic")), score, score >= 70, quizId);
+        jdbc.update("DELETE FROM quiz_draft WHERE user_id=? AND quiz_id=?", userId, quizId);
         return Map.of("score", calibratedScore, "raw_score", score, "feedback", feedback);
     }
 
@@ -529,8 +602,8 @@ public class WorkspaceService {
         jdbc.update("INSERT INTO chat_session(user_id,title) VALUES(?,?)", userId, label);
         Long branchSessionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         String copySql = """
-            INSERT INTO chat_message(session_id,request_id,role,content,status,error_code,created_at)
-            SELECT ?,NULL,role,content,status,error_code,created_at FROM chat_message
+            INSERT INTO chat_message(session_id,request_id,role,content,status,error_code,sources_json,created_at)
+            SELECT ?,NULL,role,content,status,error_code,sources_json,created_at FROM chat_message
             WHERE session_id=? %s ORDER BY created_at
             """.formatted(sourceMessageId == null ? "" : "AND id <= ?");
         if (sourceMessageId == null) jdbc.update(copySql, branchSessionId, sourceSessionId);
@@ -557,10 +630,10 @@ public class WorkspaceService {
         data.put("exported_at", LocalDateTime.now().toString());
         data.put("knowledge_bases", rows("SELECT id,name,description,status,created_at FROM knowledge_base WHERE user_id=?", userId));
         data.put("sessions", rows("SELECT id,title,created_at,updated_at FROM chat_session WHERE user_id=?", userId));
-        data.put("messages", rows("SELECT m.id,m.session_id,m.role,m.content,m.status,m.created_at FROM chat_message m JOIN chat_session s ON s.id=m.session_id WHERE s.user_id=?", userId));
+        data.put("messages", rows("SELECT m.id,m.session_id,m.role,m.content,m.status,m.sources_json,m.created_at FROM chat_message m JOIN chat_session s ON s.id=m.session_id WHERE s.user_id=?", userId));
         data.put("plans", plans(userId));
         data.put("reviews", reviews(userId));
-        data.put("quizzes", quizzes(userId));
+        data.put("quizzes", rows("SELECT id,kb_id,title,topic,questions_json,created_at FROM knowledge_quiz WHERE user_id=? ORDER BY created_at DESC", userId));
         data.put("quiz_attempts", rows("SELECT a.id,a.quiz_id,a.answers_json,a.score,a.feedback_json,a.created_at FROM quiz_attempt a WHERE a.user_id=? ORDER BY a.created_at", userId));
         data.put("learning_outcomes", rows("SELECT event_type,topic,score,success,created_at FROM learning_outcome_event WHERE user_id=? ORDER BY created_at", userId));
         data.put("rag_feedback", rows("SELECT message_id,outcome,citation_rating,reason,note,updated_at FROM rag_quality_feedback WHERE user_id=? ORDER BY updated_at", userId));
@@ -642,11 +715,9 @@ public class WorkspaceService {
         return archive;
     }
 
-    @Transactional
-    public Map<String, Object> importArchive(Long userId, byte[] archive) throws Exception {
-        String operationId = operationId();
-        record(operationId, userId, "workspace_archive_import", null, "start", "started",
-            Map.of("bytes", archive.length), null);
+    private record VerifiedArchive(Map<String, Object> workspace, Map<String, byte[]> files, int entries) { }
+
+    private VerifiedArchive verifyPersonalArchive(byte[] archive) throws Exception {
         if (archive.length == 0 || archive.length > ARCHIVE_MAX_BYTES) {
             throw new IllegalArgumentException("归档包大小必须在 1B 至 50MB 之间");
         }
@@ -688,6 +759,81 @@ public class WorkspaceService {
         }
         if (workspaceJson == null) throw new IllegalArgumentException("归档包缺少 workspace.json");
         Map<String, Object> workspace = mapper.readValue(workspaceJson, new TypeReference<>() {});
+        int version = integer(workspace.getOrDefault("version", 1), 1);
+        if (version < 1 || version > 2 || (version == 2 && !"mneme.workspace".equals(workspace.get("schema")))) {
+            throw new IllegalArgumentException("归档版本或 schema 不兼容");
+        }
+        java.util.Set<String> expected = new java.util.HashSet<>();
+        java.util.Set<Long> kbIds = new java.util.HashSet<>();
+        for (Map<String, Object> kb : items(workspace, "knowledge_bases")) kbIds.add(longValue(kb.get("id")));
+        for (Map<String, Object> document : items(workspace, "documents")) {
+            String name = safeArchiveName(limited(document, "file_name", "file", 255));
+            String entry = "files/" + longValue(document.get("id")) + "/" + name;
+            if (!expected.add(entry)) throw new IllegalArgumentException("清单包含重复文档");
+            if (!kbIds.contains(longValue(document.get("kb_id")))) throw new IllegalArgumentException("归档文档引用了不存在的资料库");
+            byte[] content = archivedFiles.get(entry);
+            if (content != null && !sha256(content).equals(String.valueOf(document.get("sha256")).toLowerCase(java.util.Locale.ROOT))) {
+                throw new IllegalArgumentException("归档文件完整性校验失败: " + name);
+            }
+        }
+        if (!expected.containsAll(archivedFiles.keySet())) throw new IllegalArgumentException("归档包包含未在清单登记的文件");
+        return new VerifiedArchive(workspace, archivedFiles, entries);
+    }
+
+    private Map<String, Object> selectArchiveScope(Map<String, Object> source, String scope) {
+        if (!List.of("all", "knowledge", "conversations", "learning").contains(scope)) throw new IllegalArgumentException("无效恢复范围");
+        Map<String, Object> selected = new LinkedHashMap<>(source);
+        Map<String, List<String>> groups = Map.of(
+            "knowledge", List.of("knowledge_bases", "documents"),
+            "conversations", List.of("sessions", "messages", "branches"),
+            "learning", List.of("plans", "reviews", "quizzes", "quiz_attempts", "learning_outcomes"));
+        groups.forEach((group, keys) -> {
+            if (!scope.equals("all") && !scope.equals(group)) keys.forEach(key -> selected.put(key, List.of()));
+        });
+        // Quizzes retain their original library relationship in a new, empty library.
+        if (scope.equals("learning")) selected.put("knowledge_bases", source.getOrDefault("knowledge_bases", List.of()));
+        return selected;
+    }
+
+    public Map<String, Object> previewArchive(Long userId, byte[] archive, String scope) throws Exception {
+        VerifiedArchive verified = verifyPersonalArchive(archive);
+        Map<String, Object> workspace = selectArchiveScope(verified.workspace(), scope);
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String key : List.of("knowledge_bases", "documents", "sessions", "messages", "branches", "plans", "reviews", "quizzes", "quiz_attempts", "learning_outcomes")) {
+            counts.put(key, items(workspace, key).size());
+        }
+        List<String> existing = rows("SELECT name FROM knowledge_base WHERE user_id=?", userId).stream().map(row -> String.valueOf(row.get("name"))).toList();
+        List<String> collisions = items(workspace, "knowledge_bases").stream().map(row -> String.valueOf(row.get("name"))).filter(existing::contains).distinct().toList();
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("sha256", sha256(archive));
+        preview.put("bytes", archive.length);
+        preview.put("version", workspace.getOrDefault("version", 1));
+        preview.put("created_at", workspace.getOrDefault("exported_at", "unknown"));
+        preview.put("encrypted", false);
+        preview.put("compatible", true);
+        preview.put("scope", scope);
+        preview.put("counts", counts);
+        preview.put("missing_files", items(verified.workspace(), "documents").size() - verified.files().size());
+        preview.put("same_name_libraries", collisions);
+        preview.put("mode", "additive");
+        preview.put("overwritten", 0);
+        return preview;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> importArchive(Long userId, byte[] archive) throws Exception {
+        return importArchive(userId, archive, "all", null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> importArchive(Long userId, byte[] archive, String scope, String digest) throws Exception {
+        VerifiedArchive verified = verifyPersonalArchive(archive);
+        if (digest != null && !sha256(archive).equals(digest)) throw new IllegalArgumentException("归档与预览不一致，请重新验证");
+        Map<String, Object> workspace = selectArchiveScope(verified.workspace(), scope);
+        Map<String, byte[]> archivedFiles = scope.equals("all") || scope.equals("knowledge") ? verified.files() : Map.of();
+        int entries = verified.entries();
+        String operationId = operationId();
+        record(operationId, userId, "workspace_archive_import", null, "verified", "started", Map.of("bytes", archive.length, "scope", scope), null);
         ImportOutcome outcome = importDataInternal(userId, workspace);
         Map<String, Integer> restored = restoreArchivedDocuments(
             userId, items(workspace, "documents"), archivedFiles, outcome.knowledgeBaseIds());
@@ -949,7 +1095,7 @@ public class WorkspaceService {
         return ids;
     }
 
-    private Map<Long, Long> importMessages(List<Map<String, Object>> source, Map<Long, Long> sessions, Map<String, Integer> counts) {
+    private Map<Long, Long> importMessages(List<Map<String, Object>> source, Map<Long, Long> sessions, Map<String, Integer> counts) throws Exception {
         Map<Long, Long> ids = new HashMap<>();
         int imported = 0;
         for (Map<String, Object> item : source) {
@@ -957,8 +1103,15 @@ public class WorkspaceService {
             if (sessionId == null) continue;
             String role = String.valueOf(item.getOrDefault("role", "user"));
             if (!List.of("user", "assistant", "system").contains(role)) role = "user";
-            jdbc.update("INSERT INTO chat_message(session_id,role,content,status) VALUES(?,?,?,?)", sessionId, role,
-                limited(item, "content", "", IMPORT_MAX_TEXT_LENGTH), safeStatus(item, "status", "completed"));
+            List<Map<String, Object>> sources = mapper.readValue(validJson(item.get("sources_json"), List.of()), new TypeReference<>() {});
+            for (Map<String, Object> citation : sources) {
+                // Imported IDs belong to the source installation. Preserve the evidence snapshot,
+                // but never navigate to an unrelated document with the same numeric ID.
+                Object originalId = citation.remove("document_id");
+                if (originalId != null) citation.put("original_document_id", originalId);
+            }
+            jdbc.update("INSERT INTO chat_message(session_id,role,content,status,sources_json) VALUES(?,?,?,?,CAST(? AS JSON))", sessionId, role,
+                limited(item, "content", "", IMPORT_MAX_TEXT_LENGTH), safeStatus(item, "status", "completed"), mapper.writeValueAsString(sources));
             ids.put(longValue(item.get("id")), lastId());
             imported++;
         }

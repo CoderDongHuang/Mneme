@@ -146,4 +146,36 @@ describe('api client', () => {
     vi.runAllTimers()
     expect(sources).toHaveLength(2)
   })
+
+  it('preserves cancellation for callers instead of showing a connection error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('aborted', 'AbortError')))
+    await expect(api('/sessions')).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it.each([
+    ['event: token\ndata: {"content":"partial"}\n\n', '连接已中断'],
+    ['event: error\ndata: {"message":"模型不可用"}\n\n', '模型不可用'],
+    ['event: token\ndata: {"content":"partial"}\n\nevent: error\ndata: {"message":"输出失败"}\n\nevent: done\ndata: {"ok":true}\n\n', '输出失败'],
+  ])('rejects incomplete or failed streams: %s', async (body, message) => {
+    const reader = {
+      read: vi.fn().mockResolvedValueOnce({ value: new TextEncoder().encode(body), done: false }).mockResolvedValue({ done: true }),
+      cancel: vi.fn(), releaseLock: vi.fn(),
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => reader } }))
+    await expect(streamChat({}, { onEvent: vi.fn() })).rejects.toThrow(message)
+    expect(reader.cancel).toHaveBeenCalledOnce()
+    expect(reader.releaseLock).toHaveBeenCalledOnce()
+  })
+
+  it('parses CRLF, comments and multiline event data', async () => {
+    const reader = {
+      read: vi.fn().mockResolvedValueOnce({ value: new TextEncoder().encode(': heartbeat\r\nevent: token\r\ndata: {\r\ndata: "content":"你好"}\r\n\r\nevent: done\r\ndata: {"ok":true}\r\n\r\n'), done: false }),
+      cancel: vi.fn(), releaseLock: vi.fn(),
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => reader } }))
+    const onEvent = vi.fn()
+    await streamChat({}, { onEvent })
+    expect(onEvent).toHaveBeenCalledWith('token', { content: '你好' })
+    expect(onEvent).toHaveBeenCalledWith('done', { ok: true })
+  })
 })
