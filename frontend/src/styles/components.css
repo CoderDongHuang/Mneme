@@ -1,12 +1,29 @@
-@layer design {
-  :root {
-    --ink: var(--mn-text); --muted: var(--mn-muted); --line: var(--mn-border);
-    --green: var(--mn-accent); --coral: var(--mn-danger); --yellow: var(--mn-warning);
-    --blue: var(--mn-accent); --paper: var(--mn-surface); --nav: var(--mn-surface);
-    --mn-danger-soft: #fbefec; --mn-danger-text: #8e403b; --mn-code-bg: #24312b;
-    --mn-warning-soft: #f7f1e4; --mn-warning-text: #795a22; --mn-on-accent: #fff;
-  }
-  [data-theme="dark"] { --mn-danger-soft: #3f2825; --mn-danger-text: #edb0a8; --mn-warning-soft: #3c3423; --mn-warning-text: #dfc490; --mn-code-bg: #121b16; --mn-on-accent: #15251d; }
+@layer components {
+:root {
+  color: var(--mn-text);
+  background: var(--mn-bg);
+}
+
+html, body, #root { background: var(--mn-bg); color: var(--mn-text); }
+body { font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif; }
+button, input, textarea, select { color: inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, var(--mn-accent) 48%, transparent); outline-offset: 2px; }
+.route-stage :is(.knowledge-page, .memory-page, .workspace-page, .center-page, .settings-page) { background: var(--mn-bg); color: var(--mn-text); }
+.route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head, .settings-head, .center-head) {
+  background: var(--mn-bg); color: var(--mn-text); border-bottom: 1px solid var(--mn-border); box-shadow: none; backdrop-filter: none;
+}
+.route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head, .settings-head, .center-head) h1 { color: var(--mn-text); font-family: inherit; font-size: clamp(24px, 3vw, 32px); font-weight: 750; letter-spacing: 0; }
+.route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head, .settings-head, .center-head) p, .route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head, .settings-head, .center-head) span { color: var(--mn-muted); }
+.eyebrow { color: var(--mn-accent-dark); letter-spacing: .08em; }
+.route-stage :is(section, article, .document-workbench, .reader-pane, .quiz-sheet, .task-center, .memory-manager, .debugger, .config-group) { border-color: var(--mn-border); }
+.route-stage :is(.document-workbench, .reader-pane, .quiz-sheet, .task-center, .memory-manager, .debugger, .config-group) { background: var(--mn-surface); box-shadow: var(--mn-shadow-soft); }
+.route-stage :is(.kb-index, .chat-history, .studio-layout > aside, .quiz-layout > form, .branch-layout > form) { background: var(--mn-surface-soft); border-color: var(--mn-border); box-shadow: none; }
+.route-stage :is(button, input, textarea, select) { border-color: var(--mn-border-strong); }
+.route-stage :where(button:not(.logout-button):not(.profile-entry)) { border-radius: var(--mn-radius-sm); }
+.route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head) > button, .route-stage :is(.select-kb-empty, .drop-zone) button, .route-stage .dialog-submit, .route-stage .send-message { background: var(--mn-accent); color: white; border-color: var(--mn-accent); box-shadow: none; }
+.route-stage :is(.knowledge-masthead, .memory-hero, .workspace-head) > button:hover, .route-stage :is(.select-kb-empty, .drop-zone) button:hover, .route-stage .dialog-submit:hover, .route-stage .send-message:hover { background: var(--mn-accent-dark); }
+.page-error, .chat-error, .form-error { background: var(--mn-danger-soft); color: var(--mn-danger-text); border-left: 3px solid var(--mn-danger); border-radius: var(--mn-radius-sm); box-shadow: none; }
+.page-notice { background: var(--mn-teal-soft); color: var(--mn-accent-dark); border-left: 3px solid var(--mn-teal); border-radius: var(--mn-radius-sm); }
   body { line-height: 1.6; }
   button { min-height: 38px; padding: 8px 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--mn-border-strong); border-radius: var(--mn-radius-sm); background: var(--mn-surface); color: var(--mn-text); font-size: 13px; font-weight: 550; }
   button:hover:not(:disabled) { background: var(--mn-surface-soft); border-color: var(--mn-accent); }
@@ -26,11 +43,6 @@
   .icon-button { width: 38px; padding: 8px; flex-shrink: 0; }
   button > svg { flex-shrink: 0; }
   .history-head button, .collapse-history, .send-message, .stop-send, .danger-icon { padding: 0; }
-  .profile-input input { padding-left: 40px; }
-  .identity-panel strong { max-width: 100%; overflow-wrap: anywhere; text-align: center; }
-  .route-stage .avatar-editor { padding: 0; border-radius: 50%; }
-  .profile-hero { min-height: 170px; padding-block: 28px; }
-  .profile-hero h1 { font-size: clamp(28px, 3vw, 38px); }
   .text-button { border: 0; background: transparent; color: var(--mn-accent-dark); padding-inline: 4px; }
   .text-link, .link-list a { color: var(--mn-accent-dark); text-decoration: underline; text-underline-offset: 4px; }
   .muted { color: var(--mn-muted); font-size: 13px; }
@@ -52,11 +64,11 @@
   .as-drawer { justify-items: end; padding: 0; }
   .as-drawer .modal-panel { height: 100dvh; max-height: 100dvh; width: min(100%, 480px); border-radius: 0; }
   .form-stack { display: flex; flex-direction: column; gap: 18px; }
-  .form-stack label, .profile-form label { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 550; }
+  .form-stack label { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 550; }
   .form-stack input, .form-stack textarea, .form-stack select { width: 100%; }
   .input-action { display: flex; gap: 6px; }
   .input-action input { min-width: 0; flex: 1; }
-  .check-row, .form-stack .check-row, .profile-form .check-row { flex-direction: row; align-items: center; gap: 9px; }
+  .check-row, .form-stack .check-row { flex-direction: row; align-items: center; gap: 9px; }
   .check-row input { width: 17px; height: 17px; accent-color: var(--mn-accent); }
   .nav-group-label { color: var(--mn-muted); font-size: 10px; letter-spacing: .12em; margin: 17px 13px 8px; }
   .global-nav nav > div { flex-shrink: 0; }
@@ -113,11 +125,9 @@
   .danger-zone { padding: 22px; margin-top: 24px; border: 1px solid var(--mn-danger); border-radius: var(--mn-radius); display: flex; align-items: center; justify-content: space-between; gap: 24px; }
   .danger-zone h2 { margin-top: 0; }
   .danger-button, .route-stage .danger-button { color: var(--mn-danger-text); border-color: var(--mn-danger); background: var(--mn-danger-soft); }
-  .profile-form select { width: 100%; }
   @media (max-width: 1200px) { .settings-layout { grid-template-columns: 145px minmax(0, 1fr); } .settings-layout > .context-panel { grid-column: 2; border-left: 0; border-top: 1px solid var(--mn-border); } .quiz-workspace { grid-template-columns: 180px minmax(0, 1fr); } .quiz-workspace > .context-panel { grid-column: 2; } }
   @media (max-width: 950px) { .study-layout { grid-template-columns: 1fr; } .study-layout .context-panel { border-left: 0; border-top: 1px solid var(--mn-border); } }
   @media (max-width: 760px) {
-    .profile-hero { padding-top: 76px; }
     .standard-page { padding: 76px 16px 32px; }
     .page-header { flex-wrap: wrap; gap: 15px; margin-bottom: 18px; }
     .settings-layout, .quiz-workspace { display: flex; flex-direction: column; gap: 18px; }

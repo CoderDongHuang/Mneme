@@ -84,7 +84,7 @@ test('全部页面在五种宽度与明暗主题下可读，英文导航和页�
     await route.continue()
   })
   await register(page)
-  const directory = path.resolve('../artifacts/frontend-fidelity-20261030/responsive')
+  const directory = path.resolve(process.env.MNEME_E2E_IMAGE_DIRECTORY || '../artifacts/frontend-fidelity-20261030', 'responsive')
   fs.mkdirSync(directory, { recursive: true })
   const routes = ['chat', 'knowledge', 'memory', 'review', 'quiz', 'workspace', 'tasks', 'settings', 'privacy', 'recovery', 'analytics', 'profile']
   for (const language of ['zh-CN', 'en']) {
@@ -125,7 +125,7 @@ test('全部页面在五种宽度与明暗主题下可读，英文导航和页�
 })
 
 test('真实复习与测验保留草稿和评分，认证及法律页可访问', async ({ page }) => {
-  const directory = path.resolve('../artifacts/frontend-fidelity-20261030/populated')
+  const directory = path.resolve(process.env.MNEME_E2E_IMAGE_DIRECTORY || '../artifacts/frontend-fidelity-20261030', 'populated')
   fs.mkdirSync(directory, { recursive: true })
   await page.goto('/auth')
   await expect(page.getByRole('button', { name: '进入忆知', exact: true })).toBeVisible()

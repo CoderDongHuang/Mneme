@@ -1,4 +1,4 @@
-@layer legacy {
+@layer base {
 .memory-page { min-height: 100vh; padding: 0 0 70px; background: #171a17; color: #eef0ea; }
 .memory-hero { min-height: 270px; padding: 58px clamp(28px, 6vw, 82px) 42px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 28px; border-bottom: 1px solid #343a33; background: #20251f; }
 .memory-orbit { width: 84px; aspect-ratio: 1; display: grid; place-items: center; border: 1px solid #59655a; color: #f2c967; background: #181c18; }

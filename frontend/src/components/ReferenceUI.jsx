@@ -8,9 +8,9 @@ import { usePreferences } from '../state/PreferencesContext'
 // becomes a keyboard-trapped dialog when there is insufficient reading space.
 export function DetailPane({ open, title, onClose, busy, children, empty }) {
   useI18n()
-  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 1100px)').matches)
+  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 1279px)').matches)
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 1100px)')
+    const media = window.matchMedia('(max-width: 1279px)')
     const change = () => setNarrow(media.matches)
     media.addEventListener('change', change)
     return () => media.removeEventListener('change', change)

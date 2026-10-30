@@ -1,4 +1,4 @@
-@layer legacy {
+@layer base {
 .settings-page { max-width: 1100px; margin: 0 auto; padding: 64px 42px; }
 .settings-head { display:flex; justify-content:space-between; align-items:flex-end; gap:24px; margin-bottom:32px; }
 .settings-head h1 { margin:8px 0; font: 42px Georgia, serif; }

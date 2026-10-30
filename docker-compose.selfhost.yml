@@ -1,7 +1,8 @@
 services:
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         NODE_BASE_IMAGE: ${MNEME_NODE_BASE_IMAGE:-node:22-alpine}
         CADDY_BASE_IMAGE: ${MNEME_CADDY_BASE_IMAGE:-caddy:2.9-alpine}

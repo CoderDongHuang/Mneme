@@ -1,4 +1,4 @@
-@layer legacy {
+@layer base {
 .parse-preview { padding: 16px 0; border-top: 1px solid #deded6; }
 .parse-preview form { display: flex; gap: 10px; align-items: end; }
 .parse-preview label { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }

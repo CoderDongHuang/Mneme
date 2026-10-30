@@ -1,4 +1,4 @@
-@layer legacy {
+@layer base {
 .retrieval-filters { margin: 8px 0; color: var(--text-secondary, #62665f); font-size: 13px; }
 .retrieval-filters summary { cursor: pointer; padding: 8px 4px; }
 .retrieval-filter-fields { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; border: 1px solid var(--border-color, #deded6); border-radius: 12px; background: var(--surface, #fafaf6); }

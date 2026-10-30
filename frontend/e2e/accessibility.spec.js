@@ -39,7 +39,7 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-for (const path of ['chat', 'knowledge', 'memory', 'review', 'quiz', 'workspace', 'settings']) {
+for (const path of ['chat', 'knowledge', 'memory', 'review', 'quiz', 'workspace', 'settings', 'profile', 'legal/terms', 'legal/privacy', 'legal/license']) {
   test(`${path} 参考界面明暗主题 WCAG AA`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto(`/${path}`)
@@ -81,7 +81,7 @@ for (const [path, title] of [['tasks', '任务中心'], ['recovery', '备份与�
     const report = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
     expect(report.violations).toEqual([])
     expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false)
-    const image = page.locator('.brand-glyph')
+    const image = page.locator('.brand-lockup img')
     expect(await image.evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`${path}.png`), fullPage: true, animations: 'disabled' })
   })

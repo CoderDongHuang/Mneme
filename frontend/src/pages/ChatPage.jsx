@@ -12,7 +12,7 @@ import { Modal } from '../components/ui'
 import LoadingState from '../components/LoadingState'
 import RetrievalFilters, { emptyFilters } from '../components/RetrievalFilters'
 import useChatScroll from '../hooks/useChatScroll'
-import logo from '../assets/mneme-leaf.svg'
+import logo from '../assets/mneme-logo.svg'
 import '../styles/chat.css'
 import '../styles/reference-chat.css'
 
@@ -35,7 +35,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
   const [renaming, setRenaming] = useState(null)
   const [renameBusy, setRenameBusy] = useState(false)
   const renameLock = useRef(false)
-  const [narrow, setNarrow] = useState(window.innerWidth <= 1100)
+  const [narrow, setNarrow] = useState(window.innerWidth <= 1279)
   const [sessions, setSessions] = useState([])
   const [conversation, setConversation] = useState({ session: null, messages: [] })
   const { session: activeSession, messages } = conversation
@@ -49,7 +49,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
   const [loading, setLoading] = useState(true)
   const [streaming, setStreaming] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1280)
-  useEffect(() => { const resize = () => { setNarrow(window.innerWidth <= 1100); setSidebarOpen(window.innerWidth >= 1280) }; window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [])
+  useEffect(() => { const resize = () => { setNarrow(window.innerWidth <= 1279); setSidebarOpen(window.innerWidth >= 1280) }; window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [])
   const [kbMenuOpen, setKbMenuOpen] = useState(false)
   const [sourceDrawer, setSourceDrawer] = useState(null)
   const [error, setError] = useState('')
@@ -62,9 +62,9 @@ export default function ChatPage({ renderTools, workspace = false }) {
   const { unseen, scrollToBottom } = useChatScroll(conversationRef, messages)
   const drawerRef = useRef(null)
   const historyRef = useRef(null)
-  const [compact, setCompact] = useState(window.innerWidth <= 600)
+  const [compact, setCompact] = useState(window.innerWidth <= 819)
   useEffect(() => {
-    const resize = () => setCompact(window.innerWidth <= 600)
+    const resize = () => setCompact(window.innerWidth <= 819)
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
   }, [])
@@ -169,7 +169,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
     setConversation({ session: null, messages: [] })
     setInput('')
     setSourceDrawer(null)
-    if (window.innerWidth <= 600) setSidebarOpen(false)
+    if (window.innerWidth <= 819) setSidebarOpen(false)
     scrollToBottom()
   }
 
