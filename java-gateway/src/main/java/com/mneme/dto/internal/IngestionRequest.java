@@ -7,9 +7,13 @@ public record IngestionRequest(
     @JsonProperty("kb_id") String knowledgeBaseId,
     @JsonProperty("file_path") String filePath,
     @JsonProperty("document_id") String documentId,
-    @JsonProperty("task_id") String taskId
+    @JsonProperty("task_id") String taskId,
+    @JsonProperty("source_name") String sourceName
 ) {
+    public IngestionRequest(String userId, String knowledgeBaseId, String filePath, String documentId, String taskId) {
+        this(userId, knowledgeBaseId, filePath, documentId, taskId, null);
+    }
     public IngestionRequest(String userId, String knowledgeBaseId, String filePath, String documentId) {
-        this(userId, knowledgeBaseId, filePath, documentId, null);
+        this(userId, knowledgeBaseId, filePath, documentId, null, null);
     }
 }

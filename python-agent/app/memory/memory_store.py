@@ -16,6 +16,7 @@ from typing import List, Optional, Dict
 from app.knowledge.qdrant_store import VectorClient, InvalidCollectionException
 
 from app.core.config import settings
+from app.core.errors import MemoryIndexConflict
 from app.core.privacy import require_cloud_processing
 from app.utils.embedding import embeddings
 from app.core.logging import setup_logger
@@ -58,7 +59,7 @@ class MemoryVectorStore:
         metadata = self._collection.metadata or {}
         if metadata.get("embedding_profile") != embeddings.profile():
             if self._collection.count():
-                raise ValueError("长期记忆 Embedding 配置已改变；请按迁移指南重建索引，仍可查看、导出或删除记忆")
+                raise MemoryIndexConflict("长期记忆索引需要迁移，请联系管理员按 Embedding 迁移指南重建索引；仍可查看、导出或删除记忆")
             self._collection.modify(metadata={**metadata, "embedding_profile": embeddings.profile()})
 
     # ── 写操作 ──────────────────────────────────────────────

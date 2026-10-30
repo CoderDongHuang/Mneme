@@ -141,7 +141,7 @@ public class ProcessingTaskService {
             payload.path("user_id").asText(),
             payload.path("kb_id").asText(),
             localFile.toString(),
-            payload.path("document_id").asText(), task.getTaskId()
+            payload.path("document_id").asText(), task.getTaskId(), payload.path("source_name").asText(null)
         );
         IngestionResult result = restTemplate.postForObject(
             pythonAgentUrl + "/api/v1/knowledge/internal/ingest", request, IngestionResult.class

@@ -8,6 +8,7 @@ test.skip(process.env.MNEME_REAL_E2E !== 'true', '仅在完整 Docker 栈中显�
 test.setTimeout(180_000)
 
 test('真实注册、资料入库、检索引用和流式回答', async ({ page }) => {
+  await page.setViewportSize({ width: 1586, height: 992 })
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`
   const username = `e2e_${suffix}`
   const password = `Mneme_${suffix}!`
@@ -61,13 +62,14 @@ test('真实注册、资料入库、检索引用和流式回答', async ({ page 
   expect(document.chunkCount).toBeGreaterThan(0)
 
   await page.goto('/knowledge')
-  await expect(page.getByText('rag-fixture.txt')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'rag-fixture.txt', exact: true })).toBeVisible()
   await page.screenshot({ path: path.join(imageDirectory, 'mneme-knowledge.png'), fullPage: true, animations: 'disabled' })
   await page.goto('/chat')
   await page.getByPlaceholder('向忆知提问...').fill('星桥计划的核心识别码是什么？请引用资料。')
   await page.getByTitle('发送').click()
   await expect(page.locator('.message-assistant')).toContainText('QZ-7294', { timeout: 90_000 })
   await expect(page.getByRole('button', { name: /查看 \d+ 条资料依据/ })).toBeVisible()
+  await expect(page.locator('.source-drawer article strong').first()).toHaveText('rag-fixture.txt')
 
   await page.getByPlaceholder('向忆知提问...').fill('请结合上一轮，再用一句话确认识别码。')
   await page.getByTitle('发送').click()
@@ -84,4 +86,14 @@ test('真实注册、资料入库、检索引用和流式回答', async ({ page 
   await restoredAnswer.scrollIntoViewIfNeeded()
   await expect(restoredAnswer).toBeInViewport()
   await page.screenshot({ path: path.join(imageDirectory, 'mneme-rag-chat.png'), fullPage: true, animations: 'disabled' })
+  for (const width of [816, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(restoredAnswer).toContainText('QZ-7294')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+    await page.screenshot({ path: path.join(imageDirectory, `mneme-rag-chat-${width}.png`), fullPage: true, animations: 'disabled' })
+    await page.getByRole('button', { name: /查看 \d+ 条资料依据/ }).last().click()
+    await expect(page.getByRole('dialog', { name: '引用与原文', exact: true })).toBeVisible()
+    await page.screenshot({ path: path.join(imageDirectory, `mneme-citations-${width}.png`), fullPage: true, animations: 'disabled' })
+    await page.getByRole('button', { name: '关闭资料依据' }).click()
+  }
 })

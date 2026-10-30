@@ -1,10 +1,10 @@
 import { t, useI18n } from '../i18n'
 import {
   ArrowUp, BookOpen, Check, ChevronDown, CircleStop, FileText, MessageSquarePlus,
-  PanelLeftClose, PanelLeftOpen, Quote, Sparkles, Trash2, X,
+  PanelLeftClose, PanelLeftOpen, Quote, Search, SlidersHorizontal, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { endpoints, streamChat } from '../api/client'
@@ -12,23 +12,30 @@ import { Modal } from '../components/ui'
 import LoadingState from '../components/LoadingState'
 import RetrievalFilters, { emptyFilters } from '../components/RetrievalFilters'
 import useChatScroll from '../hooks/useChatScroll'
+import logo from '../assets/mneme-leaf.svg'
 import '../styles/chat.css'
+import '../styles/reference-chat.css'
 
 function formatTime(value) {
   if (!value) return ''
   return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(value))
 }
 
-export default function ChatPage() {
+export default function ChatPage({ renderTools, workspace = false }) {
   useI18n();
   const navigate = useNavigate()
+  const location = useLocation()
   const [historyQuery, setHistoryQuery] = useState('')
   const [historyDate, setHistoryDate] = useState('')
+  const [historyRange, setHistoryRange] = useState(0)
+  const [historyNow] = useState(Date.now)
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [toolMode, setToolMode] = useState(() => workspace && new URLSearchParams(window.location.search).has('document') ? 'reader' : null)
+  useEffect(() => { if (workspace && new URLSearchParams(location.search).has('document')) setToolMode('reader') }, [workspace, location.search])
   const [renaming, setRenaming] = useState(null)
   const [renameBusy, setRenameBusy] = useState(false)
   const renameLock = useRef(false)
-  const [narrow, setNarrow] = useState(window.innerWidth < 1024)
-  useEffect(() => { const resize = () => setNarrow(window.innerWidth < 1024); window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [])
+  const [narrow, setNarrow] = useState(window.innerWidth <= 1100)
   const [sessions, setSessions] = useState([])
   const [conversation, setConversation] = useState({ session: null, messages: [] })
   const { session: activeSession, messages } = conversation
@@ -41,7 +48,8 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [streaming, setStreaming] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 760)
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1280)
+  useEffect(() => { const resize = () => { setNarrow(window.innerWidth <= 1100); setSidebarOpen(window.innerWidth >= 1280) }; window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [])
   const [kbMenuOpen, setKbMenuOpen] = useState(false)
   const [sourceDrawer, setSourceDrawer] = useState(null)
   const [error, setError] = useState('')
@@ -53,6 +61,31 @@ export default function ChatPage() {
   const conversationRef = useRef(null)
   const { unseen, scrollToBottom } = useChatScroll(conversationRef, messages)
   const drawerRef = useRef(null)
+  const historyRef = useRef(null)
+  const [compact, setCompact] = useState(window.innerWidth <= 600)
+  useEffect(() => {
+    const resize = () => setCompact(window.innerWidth <= 600)
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
+  }, [])
+  useEffect(() => {
+    if (!compact || !sidebarOpen) return
+    const previous = document.activeElement
+    const panel = historyRef.current
+    panel.querySelector('button')?.focus()
+    const keydown = event => {
+      if (event.key === 'Escape') { event.preventDefault(); setSidebarOpen(false) }
+      if (event.key !== 'Tab') return
+      const items = [...panel.querySelectorAll('button:not(:disabled),input,summary')].filter(item => item.getClientRects().length)
+      const index = items.indexOf(document.activeElement)
+      if (index < 0 || (event.shiftKey && index === 0) || (!event.shiftKey && index === items.length - 1)) {
+        event.preventDefault()
+        items[event.shiftKey ? items.length - 1 : 0]?.focus()
+      }
+    }
+    panel.addEventListener('keydown', keydown)
+    return () => { panel.removeEventListener('keydown', keydown); if (previous?.isConnected) previous.focus() }
+  }, [compact, sidebarOpen])
   useEffect(() => {
     if (!sourceDrawer) return
     const previous = document.activeElement
@@ -96,6 +129,7 @@ export default function ChatPage() {
         return { ...message, status: message.status === 'completed' ? 'complete' : (message.status || 'complete'), sources, requestText: message.role === 'assistant' ? history.slice(0, index).findLast(item => item.role === 'user')?.content : undefined }
       }) })
       setSourceDrawer(null)
+      if (window.innerWidth < 900) setSidebarOpen(false)
       scrollToBottom()
     } catch (requestError) {
       if (selection === selectionRef.current) setError(requestError.message)
@@ -135,6 +169,7 @@ export default function ChatPage() {
     setConversation({ session: null, messages: [] })
     setInput('')
     setSourceDrawer(null)
+    if (window.innerWidth <= 600) setSidebarOpen(false)
     scrollToBottom()
   }
 
@@ -228,7 +263,8 @@ export default function ChatPage() {
     }
   }
 
-  const filteredSessions = sessions.filter(item => (item.title || '').toLowerCase().includes(historyQuery.toLowerCase()) && (!historyDate || String(item.updatedAt || item.createdAt).startsWith(historyDate)))
+  const filteredSessions = sessions.filter(item => (item.title || '').toLowerCase().includes(historyQuery.toLowerCase()) && (!historyDate || String(item.updatedAt || item.createdAt).startsWith(historyDate)) && (!historyRange || historyNow - new Date(item.updatedAt || item.createdAt).getTime() <= historyRange * 86400000))
+  const displaySources = sourceDrawer || messages.findLast(message => message.sources?.length)?.sources || []
   async function rename(event) {
     event.preventDefault()
     if (renameLock.current) return
@@ -248,13 +284,15 @@ export default function ChatPage() {
   }, [knowledgeBases, selectedKbIds])
 
   return (
-    <div className={`chat-page ${sidebarOpen ? '' : 'sidebar-collapsed'} ${sourceDrawer && !narrow ? 'with-sources' : ''}`}>
-      <aside className="chat-history" inert={!sidebarOpen || (!!sourceDrawer && narrow)} aria-label={t("对话记录")}>
+    <div className={`chat-page reference-chat ${sidebarOpen ? '' : 'sidebar-collapsed'} ${!narrow ? 'with-sources' : ''}`}>
+      {compact && sidebarOpen && <button className="history-scrim" aria-label={t('关闭会话栏')} tabIndex={-1} onClick={() => setSidebarOpen(false)} />}
+      <aside ref={historyRef} className="chat-history" role={compact && sidebarOpen ? 'dialog' : undefined} aria-modal={compact && sidebarOpen ? true : undefined} inert={!sidebarOpen || (!!sourceDrawer && narrow)} aria-label={t("对话记录")}>
+        <button className="history-close" onClick={() => setSidebarOpen(false)} aria-label={t('关闭会话栏')}><X size={16} />{t('关闭会话栏')}</button>
         <div className="history-head">
-          <div><span>{t("学习空间")}</span><strong>{t("对话记录")}</strong></div>
-          <button onClick={newChat} title={t("新对话")} aria-label={t("新对话")}><MessageSquarePlus size={19} /></button>
+          <div><strong>{t("对话历史")}</strong></div>
+          <button onClick={newChat} title={t("新对话")} aria-label={t("新对话")}><MessageSquarePlus size={16} /><span>{t('新建对话')}</span></button>
         </div>
-<div className="history-filters"><input aria-label={t("搜索会话")} placeholder={t("搜索会话")} value={historyQuery} onChange={e => setHistoryQuery(e.target.value)} /><input type="date" aria-label={t("按日期筛选会话")} value={historyDate} onChange={e => setHistoryDate(e.target.value)} /></div>
+<div className="history-filters"><label><Search size={16} /><input aria-label={t("搜索会话")} placeholder={t("搜索对话…")} value={historyQuery} onChange={e => setHistoryQuery(e.target.value)} /></label><div className="history-ranges">{[[0, '全部'], [7, '最近 7 天'], [30, '最近 30 天']].map(([days, label]) => <button key={days} aria-pressed={historyRange === days} onClick={() => { setHistoryRange(days); setHistoryDate('') }}>{t(label)}<small>{sessions.filter(item => !days || historyNow - new Date(item.updatedAt || item.createdAt).getTime() <= days * 86400000).length}</small></button>)}</div><details><summary>{t('按日期筛选会话')}</summary><input type="date" aria-label={t("按日期筛选会话")} value={historyDate} onChange={e => setHistoryDate(e.target.value)} /></details></div>
         <div className="history-list">
           {loading ? <LoadingState /> : filteredSessions.length ? filteredSessions.map((session) => (
             <div key={session.id} className={`history-item ${activeSession?.id === session.id ? 'active' : ''}`}>
@@ -264,21 +302,20 @@ export default function ChatPage() {
             </div>
           )) : <p className="history-empty">{t("还没有历史对话")}</p>}
         </div>
-        <div className="history-foot"><Sparkles size={16} /><span>{t("忆知会从对话中形成学习画像")}</span></div>
+        <div className="history-foot"><Sparkles size={16} /><span>{t("从对话中积累学习记忆")}</span></div>
       </aside>
 
-      <section className="chat-workspace" inert={!!sourceDrawer && narrow}>
+      <section className="chat-workspace" inert={(!!sourceDrawer && narrow) || (compact && sidebarOpen)}>
         <header className="chat-toolbar">
           <button className="collapse-history" onClick={() => setSidebarOpen((value) => !value)} title={t("切换会话栏")} aria-label={t("切换会话栏")} aria-expanded={sidebarOpen}>
             {sidebarOpen ? <PanelLeftClose size={19} /> : <PanelLeftOpen size={19} />}
           </button>
           <div className="chat-heading">
-            <span className="live-dot" />
-            <strong>{activeSession?.title || t("新的学习对话")}</strong>
+            <strong>{activeSession?.title || (workspace ? t('阅读工作台') : t("新的学习对话"))}</strong>
           </div>
           <div className="kb-selector">
-            <RetrievalFilters kbIds={selectedKbIds} value={retrievalFilters} onChange={setRetrievalFilters} />
-            <button aria-expanded={kbMenuOpen} onClick={() => setKbMenuOpen((value) => !value)}><BookOpen size={16} /><span>{selectedLabel}</span><ChevronDown size={15} /></button>
+            {renderTools && <div className="workspace-tool-menu"><button aria-expanded={toolsOpen} onClick={() => setToolsOpen(!toolsOpen)}><SlidersHorizontal size={16} />{t('工具')}</button>{toolsOpen && <div>{[['reader', '引用阅读'], ['debug', '检索调试'], ['branch', '分支对比']].map(([id, label]) => <button key={id} onClick={() => { setToolMode(id); setToolsOpen(false) }}>{t(label)}</button>)}</div>}</div>}
+            <button aria-label={selectedLabel} aria-expanded={kbMenuOpen} onClick={() => setKbMenuOpen((value) => !value)}><BookOpen size={16} /><span>{selectedLabel}</span><ChevronDown size={15} /></button>
             {kbMenuOpen && (
               <div className="kb-menu">
                 <div><strong>{t("检索范围")}</strong><button aria-label={t("关闭检索范围")} title={t("关闭检索范围")} onClick={() => setKbMenuOpen(false)}><X size={15} /></button></div>
@@ -307,10 +344,10 @@ export default function ChatPage() {
             </div>
           ) : messages.map((message) => (
             <article key={message.id} className={`message message-${message.role}`}>
-              <div className="message-label">{message.role === 'user' ? t("你") : t("忆知")}</div>
+              <div className="message-label">{message.role === 'user' ? <span className="message-avatar">{t('我')}</span> : <img src={logo} alt="Mneme" />}</div>
               <div className="message-body">
                 {message.role === 'assistant' ? (
-                  message.content ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown> : message.status === 'streaming' ? <div className="thinking" role="status" aria-label={t("正在生成回答")}><span /><span /><span /></div> : <p>{message.status === 'stopped' ? t("已停止生成") : t("未生成回答")}</p>
+                  message.content ? <><div className="assistant-name">Mneme</div><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown></> : message.status === 'streaming' ? <div className="thinking" role="status" aria-label={t("正在生成回答")}><span /><span /><span /></div> : <p>{message.status === 'stopped' ? t("已停止生成") : t("未生成回答")}</p>
                 ) : <p>{message.content}</p>}
                 {message.role === 'assistant' && <div className="message-actions">
                   {message.error && <p role="alert">{message.error}</p>}
@@ -333,23 +370,27 @@ export default function ChatPage() {
 
         {unseen && <button className="new-content" onClick={scrollToBottom}>{t("有新内容 · 返回底部")}</button>}
         <form className="composer" onSubmit={sendMessage} aria-busy={switching}>
+          <div className="composer-tools"><RetrievalFilters kbIds={selectedKbIds} value={retrievalFilters} onChange={setRetrievalFilters} /><button type="button" onClick={() => navigate('/knowledge')}><FileText size={14} />{t('导入资料')}</button><button type="button" onClick={() => setKbMenuOpen(!kbMenuOpen)}><Quote size={14} />{t('引用检索')}</button><button type="button" onClick={() => setSourceDrawer(displaySources)}><BookOpen size={14} />{t('引用与原文')}{displaySources.length ? ` · ${displaySources.length}` : ''}</button></div>
           <textarea aria-label={t("向忆知提问...")} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); sendMessage() } }} placeholder={t("向忆知提问...")} rows={1} />
           <span className="composer-context"><FileText size={14} />{selectedLabel}</span>
           {streaming ? <button type="button" className="stop-send" onClick={() => abortRef.current?.abort()} title={t("停止生成")} aria-label={t("停止生成")}><CircleStop size={19} /></button> : <button className="send-message" disabled={loading || switching || !input.trim()} title={t("发送")} aria-label={t("发送")}><ArrowUp size={20} /></button>}
         </form>
       </section>
 
-      {sourceDrawer && <aside ref={drawerRef} className="source-drawer" role={narrow ? "dialog" : "complementary"} aria-modal={narrow ? true : undefined} aria-labelledby="source-title">
-        <header><div><span>{t("引用依据")}</span><strong id="source-title">{t("资料依据")}</strong></div><button title={t("关闭资料依据")} aria-label={t("关闭资料依据")} onClick={() => setSourceDrawer(null)}><X size={18} /></button></header>
-        <div>{sourceDrawer.map((source, index) => <article key={`${source.document_id || source.document_name}-${index}`}>
+      {(!narrow || sourceDrawer) && <aside ref={drawerRef} className="source-drawer" role={narrow ? "dialog" : "complementary"} aria-modal={narrow ? true : undefined} aria-labelledby="source-title">
+        <header><div><strong id="source-title">{t("引用与原文")}</strong></div>{narrow ? <button title={t("关闭资料依据")} aria-label={t("关闭资料依据")} onClick={() => setSourceDrawer(null)}><X size={18} /></button> : <small>{t('{0} 条引用', [displaySources.length])}</small>}</header>
+        {!displaySources.length && <div className="source-empty"><Quote size={28} /><h3>{t('资料依据')}</h3><p>{t('选择资料库并提问后，回答引用的原文会显示在这里。')}</p></div>}
+        <div>{displaySources.map((source, index) => <article key={`${source.document_id || source.document_name}-${index}`}>
           <div><span>{index + 1}</span><strong>{source.document_name}</strong></div>
           <small>{source.page ? t("第 {0} 页", [source.page]) : t("全文")}{source.section ? ` · ${source.section}` : ''}</small>
+          <blockquote className="source-excerpt">{source.chunk_content}</blockquote><div className="action-row"><button className="source-open" onClick={() => openSource(source)} disabled={!source.document_id}>{t("打开原文定位")}</button><button onClick={async () => { try { await navigator.clipboard.writeText(`${source.document_name || source.document_id} · ${source.page || ''}\n${source.chunk_content || ''}`) } catch { setError(t('复制失败，请手动选择文本复制')) } }}>{t('复制引用')}</button></div><details><summary>{t('来源信息')}</summary>
           {!!Object.keys(source.retrieval_ranks || {}).length && <p className="source-signals">{t("召回路径：")}{Object.entries(source.retrieval_ranks).map(([channel, rank]) => `${channel.startsWith('dense:') ? t("向量") : t("词法")} #${rank}`).join(' · ')}{Number.isFinite(source.score) ? t(" · 排序信号 {0}（非可信概率）", [source.score.toFixed(3)]) : ''}</p>}
           {source.indexed_at && <small>{t("索引时间：")}{new Date(source.indexed_at).toLocaleString('zh-CN')}{t(" · 解析器 ")}{source.parser_version || t("未知")}</small>}
           {source.content_sha256 && <small title={source.content_sha256}>{t("文件版本 SHA-256：")}{source.content_sha256.slice(0, 16)}…</small>}
-          <p className="muted">{t("资料依据需结合原文核验；排序信号不代表事实正确。")}</p><p>{source.chunk_content}</p><button className="source-open" onClick={() => openSource(source)} disabled={!source.document_id}>{t("打开原文定位")}</button>
+          <p className="muted">{t("资料依据需结合原文核验；排序信号不代表事实正确。")}</p></details>
         </article>)}</div>
       </aside>}
+      {renderTools && <Modal open={!!toolMode} title={t('工作台工具')} onClose={() => setToolMode(null)}>{toolMode && renderTools(toolMode)}</Modal>}
       <Modal open={!!renaming} title={t("重命名会话")} onClose={() => setRenaming(null)} busy={renameBusy}>{renaming && <form className="form-stack" onSubmit={rename}><label>{t("会话标题")}<input required maxLength={120} value={renaming.title} onChange={e => setRenaming({ ...renaming, title: e.target.value })} /></label>{error && <p role="alert">{error}</p>}<button className="primary-button" disabled={renameBusy || !renaming.title.trim()}>{t("保存标题")}</button></form>}</Modal>
     </div>
   )

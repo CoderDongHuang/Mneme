@@ -6,6 +6,7 @@ import { api, endpoints, downloadWorkspaceArchive, downloadWorkspaceExport } fro
 import { DangerZone, PageHeader } from '../components/ui'
 import { useAuth } from '../state/AuthContext'
 import '../styles/centers.css'
+import '../styles/reference-pages.css'
 
 export default function PrivacyPage() {
   useI18n();
@@ -29,7 +30,7 @@ export default function PrivacyPage() {
     try { await action(); setNotice(t("{0}完成", [label])); setLogs(await endpoints.operations()) }
     catch (e) { setError(e.message) } finally { lock.current = false; setBusy('') }
   }
-  return <div className="center-page">
+  return <div className="center-page reference-page reference-privacy">
     <PageHeader title={t("数据与隐私")} description={t("了解数据去向，并管理导出、保留和删除。")}><Link to="/profile">{t("账号管理")}</Link></PageHeader>
     <section><h2>{t("数据如何流转")}</h2><ol className="data-flow"><li>{t("资料、会话、偏好保存在部署方数据库与文件存储中。")}</li><li>{t("检索会提取相关片段；启用外部模型时，将问题、必要上下文和选中的记忆发送给当前模型供应商。")}</li><li>{t("文档向量化、图片理解与后台任务使用部署方配置的服务，可能涉及外部供应商。个人模型配置用于当前用户的交互请求，不替代后台服务。")}</li><li>{t("个人密钥在服务端加密保存，页面不回传明文；备份密文需要相同的服务器加密密钥才能恢复。")}</li></ol><Link to="/settings">{t("检查模型服务")}</Link> · <Link to="/recovery">{t("恢复个人数据")}</Link></section>
     {error && <p role="alert" className="page-error">{error}</p>}

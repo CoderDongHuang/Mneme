@@ -154,7 +154,7 @@ public class KnowledgeService {
                 "user_id", userId.toString(),
                 "kb_id", kbId.toString(),
                 "file_path", location,
-                "document_id", "doc_" + document.getId()
+                "document_id", "doc_" + document.getId(), "source_name", document.getFileName()
             )));
             task.setAttemptCount(0);
             task.setMaxAttempts(3);
@@ -455,7 +455,8 @@ public class KnowledgeService {
             task.setStatus("pending");
             task.setPayload(objectMapper.writeValueAsString(Map.of(
                 "user_id", userId.toString(), "kb_id", document.getKbId().toString(),
-                "file_path", document.getFilePath(), "document_id", "doc_" + document.getId()
+                "file_path", document.getFilePath(), "document_id", "doc_" + document.getId(),
+                "source_name", document.getFileName()
             )));
             task.setAttemptCount(0); task.setMaxAttempts(3);
             task.setNextAttemptAt(java.time.LocalDateTime.now());
