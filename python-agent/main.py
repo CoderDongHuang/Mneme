@@ -15,6 +15,7 @@ from fastapi.responses import Response
 from app.api import agent, chat, chat_stream, health, knowledge, memory, models
 from app.core.user_model import UserModelMiddleware
 from app.core.config import settings
+from app.core.errors import MemoryIndexConflict
 from app.core.metrics import INPUT_REJECTIONS
 from app.core.logging import setup_logger, trace_id_var
 from app.memory.reflection_scheduler import reflection_scheduler
@@ -230,6 +231,11 @@ app.add_middleware(TraceAndLoggingMiddleware)
 @app.exception_handler(PermissionError)
 async def privacy_exception_handler(request: Request, exc: PermissionError):
     return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
+@app.exception_handler(MemoryIndexConflict)
+async def memory_index_conflict_handler(request: Request, exc: MemoryIndexConflict):
+    return JSONResponse(status_code=409, content={"code": "MEMORY_INDEX_MIGRATION_REQUIRED", "detail": str(exc)})
 
 
 @app.exception_handler(Exception)

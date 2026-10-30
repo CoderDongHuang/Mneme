@@ -9,6 +9,7 @@ class DocumentIngestRequest(BaseModel):
     file_path: str
     document_id: str | None = None
     task_id: str | None = Field(default=None, max_length=128)
+    source_name: str | None = Field(default=None, max_length=255)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

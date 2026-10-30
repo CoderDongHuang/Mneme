@@ -24,6 +24,8 @@ test.beforeEach(async ({ page }) => {
       '/api/v1/privacy': { providers: ['DeepSeek'], sending_scope: ['检索片段'], cloud_allowed: true, trace_days: 30, trace_max_days: 30 },
       '/api/v1/analytics': analytics,
       '/api/v1/settings/preferences': { language: 'zh-CN', timezone: 'Asia/Shanghai', theme: 'light', notifications: true },
+      '/api/v1/settings/models': { provider: 'deepseek', model: 'deepseek-chat', enabled: false, hasKey: false },
+      '/api/v1/health/config': { status: 'available', storage: { backend: 'local' } },
       '/api/v1/admin/recovery/site': { configured: false, archives: [], jobs: [] },
       '/api/v1/admin/recovery': { runs: [{ id: 1, run_number: 1, created_at: '2026-10-03', conclusion: 'success' }] },
       '/api/v1/admin/operations': {
@@ -36,6 +38,20 @@ test.beforeEach(async ({ page }) => {
     return route.fulfill(ok(fixtures[path] ?? []))
   })
 })
+
+for (const path of ['chat', 'knowledge', 'memory', 'review', 'quiz', 'workspace', 'settings']) {
+  test(`${path} 参考界面明暗主题 WCAG AA`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto(`/${path}`)
+    await expect(page.locator('#main-content h1')).toBeVisible()
+    await expect(page.locator('#main-content .loading-state')).toHaveCount(0)
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(value => document.documentElement.setAttribute('data-theme', value), theme)
+      const report = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+      expect(report.violations, `${path}/${theme}`).toEqual([])
+    }
+  })
+}
 
 for (const [path, title] of [['tasks', '任务中心'], ['recovery', '备份与恢复'], ['privacy', '数据与隐私'], ['operations', '管理员运维中心'], ['analytics', '学习分析']]) {
   test(`${title} WCAG AA、资源与响应式验收`, async ({ page }, testInfo) => {
@@ -50,7 +66,10 @@ for (const [path, title] of [['tasks', '任务中心'], ['recovery', '备份与�
       expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('test-admin-token')
     }
     if (path === 'privacy') await expect(page.getByRole('button', { name: '保存策略' })).toBeVisible()
-    if (path === 'analytics') await expect(page.getByRole('table', { name: '主题表现' })).toBeVisible()
+    if (path === 'analytics') {
+      await page.getByText('统计明细与计算口径', { exact: true }).click()
+      await expect(page.getByRole('table', { name: '主题表现' })).toBeVisible()
+    }
     if (path === 'analytics' && page.viewportSize().width < 760) {
       const tableRegion = page.getByRole('region', { name: '主题表现', exact: true })
       await tableRegion.focus()
@@ -62,7 +81,7 @@ for (const [path, title] of [['tasks', '任务中心'], ['recovery', '备份与�
     const report = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
     expect(report.violations).toEqual([])
     expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false)
-    const image = page.getByRole('img', { name: '忆知', exact: true, includeHidden: true })
+    const image = page.locator('.brand-glyph')
     expect(await image.evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`${path}.png`), fullPage: true, animations: 'disabled' })
   })
@@ -77,14 +96,14 @@ test('键盘跳转、导航焦点隔离与路由焦点', async ({ page }) => {
   if (page.viewportSize().width < 760) {
     const toggle = page.getByRole('button', { name: '打开导航', exact: true })
     await toggle.click()
-    await expect(page.getByRole('link', { name: '忆知首页' })).toBeFocused()
+    await expect(page.getByRole('link', { name: 'Mneme', exact: true })).toBeFocused()
     const navReport = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
     expect(navReport.violations).toEqual([])
     await expect(page.getByRole('main', { includeHidden: true })).toHaveAttribute('inert', '')
     await page.keyboard.press('Shift+Tab')
     await expect(page.getByRole('button', { name: '关闭导航', exact: true })).toBeFocused()
     await page.keyboard.press('Shift+Tab')
-    await expect(page.getByRole('button', { name: '退出登录' })).toBeFocused()
+    await expect(page.getByRole('link', { name: '设置', exact: true })).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(page.getByRole('button', { name: '关闭导航', exact: true })).toBeFocused()
     await page.keyboard.press('Escape')
@@ -124,11 +143,13 @@ test('聊天 IME 不误发送，引用抽屉可键盘关闭并恢复焦点', asy
   await page.getByRole('button', { name: '发送', exact: true }).click()
   const trigger = page.getByRole('button', { name: '查看 1 条资料依据' })
   await trigger.click()
-  await expect(page.getByRole(page.viewportSize().width < 1100 ? 'dialog' : 'complementary', { name: '资料依据' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '关闭资料依据' })).toBeFocused()
+  await expect(page.getByRole(page.viewportSize().width < 1100 ? 'dialog' : 'complementary', { name: '引用与原文', exact: true })).toBeVisible()
   if (page.viewportSize().width < 1100) {
+    await expect(page.getByRole('button', { name: '关闭资料依据' })).toBeFocused()
     await page.keyboard.press('Shift+Tab')
-    await expect(page.getByRole('button', { name: '打开原文定位' })).toBeFocused()
+    await expect(page.getByRole('button', { name: '复制引用' })).toBeFocused()
+  } else {
+    await page.getByRole('button', { name: '打开原文定位' }).focus()
   }
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -150,7 +171,11 @@ test('历史删除按钮可键盘操作且收起后不可聚焦', async ({ page 
   await remove.focus()
   await page.keyboard.press('Enter')
   await expect(remove).toHaveCount(0)
-  await toggle.click()
+  if (page.viewportSize().width <= 600) {
+    await page.getByRole('dialog', { name: '对话记录' }).getByRole('button', { name: '关闭会话栏', exact: true }).focus()
+    await page.keyboard.press('Escape')
+    await expect(toggle).toBeFocused()
+  } else await toggle.click()
   await expect(page.locator('.chat-history')).toHaveAttribute('inert', '')
 })
 

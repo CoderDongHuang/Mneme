@@ -3,6 +3,8 @@ package com.mneme.service;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpClientErrorException;
+import com.mneme.exception.RequestInProgressException;
 import com.mneme.dto.internal.MemoryContracts;
 
 import java.util.List;
@@ -47,7 +49,12 @@ public class MemoryService {
     }
 
     private <T> T post(String path, Object body, Class<T> responseType) {
-        T response = restTemplate.postForObject(pythonAgentUrl + path, body, responseType);
+        T response;
+        try {
+            response = restTemplate.postForObject(pythonAgentUrl + path, body, responseType);
+        } catch (HttpClientErrorException.Conflict exception) {
+            throw new RequestInProgressException("长期记忆索引需要迁移，请联系管理员重建索引；仍可查看、导出或删除记忆");
+        }
         if (response == null) {
             throw new IllegalStateException("Python Agent 返回空响应");
         }

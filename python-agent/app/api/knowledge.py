@@ -181,7 +181,7 @@ async def ingest(request: DocumentIngestRequest) -> IngestionTaskResponse:
         request.kb_id,
         str(path),
         task_id,
-        path.name,
+        request.source_name or path.name,
         request.document_id,
         False,
     )
@@ -198,7 +198,7 @@ async def ingest_durable(request: DocumentIngestRequest) -> IngestionResult:
     report: dict = {}
     def process():
         with ingestion_task(request.user_id, request.task_id):
-            return ingest_document(request.user_id, request.kb_id, str(path), path.name,
+            return ingest_document(request.user_id, request.kb_id, str(path), request.source_name or path.name,
                                    request.document_id, report=report)
     try:
         document_id = await asyncio.get_running_loop().run_in_executor(executor, process)

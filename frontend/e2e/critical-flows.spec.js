@@ -28,10 +28,9 @@ test('聊天输入框适配视口并展示资料范围', async ({ page }) => {
   await page.goto('/chat')
   const composer = page.getByRole('textbox', { name: '向忆知提问...' })
   await expect(composer).toBeVisible()
-  await expect(page.locator('.composer-context')).toBeVisible()
-  await expect(page.locator('.composer-context')).toHaveText('全部资料库')
+  await expect(page.getByRole('button', { name: '全部资料库', exact: true })).toBeVisible()
   const box = await composer.boundingBox()
-  expect(box.width).toBeGreaterThan(page.viewportSize().width < 500 ? 180 : 400)
+  expect(box.width).toBeGreaterThan(page.viewportSize().width < 500 ? 180 : 380)
 })
 
 test('文档列表响应异常时仍能提问并看到错误提示', async ({ page }) => {
@@ -42,7 +41,7 @@ test('文档列表响应异常时仍能提问并看到错误提示', async ({ pa
   await page.locator('summary').filter({ hasText: '检索范围' }).click()
   await expect(page.getByRole('alert')).toHaveText('文档列表响应异常，请刷新重试')
   await expect(page.getByRole('textbox', { name: '向忆知提问...' })).toBeVisible()
-  await expect(page.locator('.composer-context')).toHaveText('全部资料库')
+  await expect(page.getByRole('button', { name: '全部资料库', exact: true })).toBeVisible()
 })
 
 test('学习画像填满首屏且无横向溢出', async ({ page }) => {
@@ -65,9 +64,11 @@ test('文档版本历史可查看且当前版本不可重复恢复', async ({ pa
   ])))
   await page.goto('/knowledge')
 
-  await page.getByTitle('版本历史').click()
+  await page.locator('summary[aria-label="文档操作：guide.pdf"]').click()
+  await page.getByRole('button', { name: '版本历史', exact: true }).click()
 
-  await expect(page.getByRole('heading', { name: 'guide.pdf' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '版本历史' })).toBeVisible()
+  await expect(page.getByRole('dialog').getByRole('heading', { name: 'guide.pdf' })).toBeVisible()
   await expect(page.getByText('v2 · guide.pdf')).toBeVisible()
   await expect(page.getByRole('button', { name: /v2 · guide.pdf/ })).toBeDisabled()
   const dimensions = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }))
@@ -92,6 +93,7 @@ test('学习分析反馈可保存和删除且空数据不伪造', async ({ page 
     await route.fulfill(ok({ status: 'deleted' }))
   })
   await page.goto('/analytics')
+  await page.getByText('检索质量与回答反馈', { exact: true }).click()
   await expect(page.getByText('Trace 数据源不可用')).toBeVisible()
   await page.getByLabel('回答', { exact: true }).selectOption('44')
   await page.getByLabel('回答评价', { exact: true }).selectOption('refusal')

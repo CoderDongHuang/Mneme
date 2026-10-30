@@ -2,6 +2,7 @@ package com.mneme.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mneme.dto.internal.IngestionResult;
+import com.mneme.dto.internal.IngestionRequest;
 import com.mneme.entity.KnowledgeDocument;
 import com.mneme.entity.ProcessingTask;
 import com.mneme.mapper.KnowledgeBaseMapper;
@@ -31,7 +32,7 @@ class ProcessingTaskIngestionTest {
         ReflectionTestUtils.setField(service, "pythonAgentUrl", "http://agent");
         var task = new ProcessingTask();
         task.setAggregateId(7L);
-        task.setPayload("{\"file_path\":\"source\",\"user_id\":\"1\",\"kb_id\":\"2\",\"document_id\":\"7\"}");
+        task.setPayload("{\"file_path\":\"source\",\"user_id\":\"1\",\"kb_id\":\"2\",\"document_id\":\"7\",\"source_name\":\"学习资料.pdf\"}");
         when(storage.materialize("source")).thenReturn(Path.of("source.pdf"));
         var document = new KnowledgeDocument();
         when(documents.selectById(7L)).thenReturn(document);
@@ -39,6 +40,8 @@ class ProcessingTaskIngestionTest {
         when(http.postForObject(anyString(), any(), eq(IngestionResult.class)))
             .thenReturn(new IngestionResult("partial", "7", 3, report));
         ReflectionTestUtils.invokeMethod(service, "ingest", task);
+        verify(http).postForObject(anyString(), argThat((Object value) -> value instanceof IngestionRequest request
+            && "学习资料.pdf".equals(request.sourceName()) && "source.pdf".equals(request.filePath())), eq(IngestionResult.class));
         assertEquals("partial", document.getStatus());
         assertEquals(3, document.getChunkCount());
         assertTrue(document.getParseReport().contains("no_text"));

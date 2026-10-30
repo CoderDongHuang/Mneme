@@ -36,7 +36,7 @@ export default function SettingsPage() {
     try { await action() } catch (e) { setError(e.message) } finally { lock.current = false; setBusy('') }
   }
   function field(key, value) { setForm(current => ({ ...current, [key]: value })); setProbe(null) }
-  return <div className="standard-page">
+  return <div className="standard-page reference-page reference-settings">
     <PageHeader eyebrow={t("你的工作空间")} title={t("设置")} description={t("模型、外观和数据管理，各归其位。")} />
     <div className="settings-layout">
       <nav className="section-nav" aria-label={t("设置分组")}>{[['model', t("模型与服务")], ['appearance', t("外观")], ['data', t("数据与隐私")], ['backup', t("备份与恢复")], ['account', t("账户")]].map(([id, label]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined}>{t(label)}</button>)}</nav>
@@ -71,3 +71,4 @@ export default function SettingsPage() {
     </div>
   </div>
 }
+import '../styles/reference-pages.css'

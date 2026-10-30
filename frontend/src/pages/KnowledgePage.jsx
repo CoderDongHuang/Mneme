@@ -1,6 +1,5 @@
 import { t, useI18n } from '../i18n'
 import {
-  Archive,
   ArrowUpRight,
   BookCopy,
   File,
@@ -8,7 +7,6 @@ import {
   FileChartColumn,
   FileSpreadsheet,
   FileText,
-  FolderPlus,
   History,
   Plus,
   Search,
@@ -27,6 +25,7 @@ import StatusBadge from "../components/StatusBadge";
 import useUploadQueue from "../hooks/useUploadQueue";
 import { useAuth } from "../state/AuthContext";
 import "../styles/knowledge.css";
+import '../styles/reference-knowledge.css'
 
 function ParseReport({ value }) {
   useI18n();
@@ -264,242 +263,38 @@ export default function KnowledgePage() {
     0,
   );
 
+  const previewDocument = detail === false ? null : documents.find(item => item.id === detail?.id) || (window.innerWidth > 1100 ? visibleDocuments[0] : null);
   return (
-    <div className="knowledge-page">
-      <header className="knowledge-masthead">
-        <div>
-          <p className="eyebrow">{t("知识资料管理")}</p>
-          <h1>{t("资料库")}</h1>
-          <p>{t("把课件、笔记与复杂文档整理成可追溯的检索依据。")}</p>
-        </div>
-        <button onClick={() => setDialogOpen(true)}>
-          <FolderPlus size={18} />{t(" 新建资料库 ")}</button>
-      </header>
-
-      <div className="knowledge-layout">
-        <input
-          ref={replaceRef}
-          type="file"
-          hidden
-          accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.csv,.md,.markdown,.txt,.html,.htm"
-          onChange={(event) => replaceDocument(event.target.files?.[0])}
-        />
-        <aside className="kb-index">
-          <div className="kb-index-label">
-            <span>{t("资料库")}</span>
-            <strong>{knowledgeBases.length.toString().padStart(2, "0")}</strong>
+    <div className="knowledge-page reference-knowledge">
+      <header className="knowledge-masthead"><div><h1>{t('知识库')}</h1><p>{t('管理资料、查看解析质量、追踪索引状态')}</p></div></header>
+      <input ref={replaceRef} type="file" hidden accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.csv,.md,.markdown,.txt,.html,.htm" onChange={event => replaceDocument(event.target.files?.[0])} />
+      <input ref={fileRef} type="file" multiple hidden accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.csv,.md,.markdown,.txt,.html,.htm" onChange={event => upload(event.target.files)} />
+      <div className="reference-split knowledge-split">
+        <section className="knowledge-files" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (activeKbId) upload(event.dataTransfer.files) }}>
+          <div className="knowledge-controls">
+            <label className="search-field"><Search size={18} /><input aria-label={t('筛选文档')} value={query} onChange={e => setQuery(e.target.value)} placeholder={t('搜索文件名、关键词…')} /></label>
+            <select aria-label={t('文件类型')} value={fileType} onChange={e => setFileType(e.target.value)}><option value="all">{t('文件类型')}</option>{[...new Set(documents.map(item => item.fileName.split('.').at(-1).toLowerCase()))].map(type => <option key={type}>{type}</option>)}</select>
+            <select aria-label={t('处理状态')} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">{t('全部状态')}</option>{[...new Set(documents.map(item => item.status))].map(status => <option key={status}>{status}</option>)}</select>
+            <button className="primary-button" disabled={uploading || !activeKbId} onClick={() => fileRef.current?.click()}><UploadCloud size={17} />{uploading ? t('处理中') : t('导入资料')}</button>
           </div>
-          {loading ? (
-            <LoadingState />
-          ) : knowledgeBases.length ? (
-            knowledgeBases.map((kb, index) => (
-              <button
-                key={kb.id}
-                onClick={() => selectKb(kb.id)}
-                className={kb.id === activeKbId ? "active" : ""}
-              >
-                <span className="kb-number">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span>
-                  <strong>{kb.name}</strong>
-                  <small>{kb.description || t("未填写说明")}</small>
-                </span>
-                <ArrowUpRight size={17} />
-              </button>
-            ))
-          ) : (
-            <div className="kb-empty">
-              <Archive size={28} />
-              <p>{t("还没有资料库")}</p>
+          <div className="knowledge-library-bar"><select aria-label={t('资料库')} value={activeKbId || ''} onChange={e => selectKb(knowledgeBases.find(kb => String(kb.id) === e.target.value)?.id || null)}>{!knowledgeBases.length && <option value="">{t('还没有资料库')}</option>}{knowledgeBases.map(kb => <option value={kb.id} key={kb.id}>{kb.name}</option>)}</select><button onClick={() => setDialogOpen(true)}><Plus size={15} />{t('新建资料库')}</button>{activeKb && <button className="icon-button" aria-label={t('删除资料库')} disabled={baseBusy || uploading} onClick={deleteBase}><Trash2 size={15} /></button>}<span>{documents.length} {t('文档')} · {readyCount} {t('可检索')} · {chunkCount} {t('语义片段')}</span></div>
+          <FeedbackBlock error={error} message={notice} />
+          {loading ? <LoadingState /> : !activeKb ? <div className="documents-empty"><BookCopy size={32} /><h2>{t('建立第一个资料库')}</h2><p>{t('不同课程或主题建议分别管理。')}</p><button onClick={() => setDialogOpen(true)}>{t('新建资料库')}</button></div> : <>
+            <div className="document-table">
+              <div className="document-row document-header"><span>{t('文件信息')}</span><span>{t('语义片段')}</span><span>{t('最后更新')}</span><span>{t('索引状态')}</span><span /></div>
+              {visibleDocuments.map(document => { const Icon = fileIcon(document.fileName); return <div className={`document-row ${previewDocument?.id === document.id ? 'is-selected' : ''}`} key={document.id}>
+                <div className="document-name"><input type="checkbox" aria-label={t('选择 {0}', [document.fileName])} disabled={bulkBusy || ['deleting', 'parsing'].includes(document.status)} checked={selectedIds.includes(document.id)} onChange={e => setSelectedIds(ids => e.target.checked ? [...ids, document.id] : ids.filter(id => id !== document.id))} /><span className={`file-icon file-${document.fileName.split('.').at(-1).toLowerCase()}`}><Icon size={26} /><small>{document.fileName.split('.').at(-1).toUpperCase()}</small></span><div><button className="document-title" onClick={() => setDetail(document)}>{document.fileName}</button><small>{document.errorMessage || t('文档编号 {0}', [document.id])}</small></div></div>
+                <span>{document.chunkCount || 0}</span><time>{document.updatedAt ? new Date(document.updatedAt).toLocaleDateString(preferences.language, { month: 'short', day: 'numeric', timeZone: preferences.timezone }) : '—'}</time><StatusBadge status={document.status} />
+                <details className="row-actions"><summary aria-label={t('文档操作：{0}', [document.fileName])}>···</summary><div>{!['deleting', 'parsing'].includes(document.status) && <><button disabled={documentBusy[document.id]} onClick={() => showVersions(document)}><History size={15} />{t('版本历史')}</button><button disabled={documentBusy[document.id]} onClick={() => { setReplacingDocument(document); replaceRef.current?.click() }}><RefreshCw size={15} />{t('替换文件')}</button><button disabled={documentBusy[document.id]} onClick={() => reparseDocument(document)}><ArrowUpRight size={15} />{t('重新解析')}</button><button disabled={documentBusy[document.id]} onClick={() => deleteDocument(document)}><Trash2 size={15} />{t('删除文档')}</button></>}{document.parseReport && <details><summary>{t('解析报告')}</summary><ParseReport value={document.parseReport} /></details>}</div></details>
+              </div> })}
+              {!visibleDocuments.length && <div className="documents-empty"><BookCopy size={30} /><strong>{t('这里还没有资料')}</strong><span>{t('可将文件拖入列表，或点击导入资料。')}</span></div>}
             </div>
-          )}
-        </aside>
-
-        <main className="document-workbench">
-          {activeKb ? (
-            <>
-              <div className="workbench-head">
-                <div>
-                  <span>{t("当前资料库")}</span>
-                  <h2>{activeKb.name}</h2>
-                </div>
-                <button
-                  className="danger-icon"
-                  disabled={baseBusy || uploading}
-                  onClick={deleteBase}
-                  title={t("删除资料库")}
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
-              <div className="knowledge-metrics">
-                <div>
-                  <strong>{documents.length}</strong>
-                  <span>{t("文档")}</span>
-                </div>
-                <div>
-                  <strong>{readyCount}</strong>
-                  <span>{t("可检索")}</span>
-                </div>
-                <div>
-                  <strong>{chunkCount}</strong>
-                  <span>{t("语义片段")}</span>
-                </div>
-              </div>
-              <div
-                className={`drop-zone ${uploading ? "is-uploading" : ""}`}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  upload(event.dataTransfer.files);
-                }}
-              >
-                <input
-                  ref={fileRef}
-                  type="file"
-                  multiple
-                  hidden
-                  accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.csv,.md,.markdown,.txt,.html,.htm"
-                  onChange={(event) => upload(event.target.files)}
-                />
-                <UploadCloud size={28} />
-                <div>
-                  <strong>
-                    {uploading ? t("正在提交解析任务") : t("拖放文件到这里")}
-                  </strong>
-                  <span>{t("支持文档、演示文稿、表格、纯文本和网页文件")}</span>
-                </div>
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                >
-                  {uploading ? t("处理中") : t("选择文件")}
-                </button>
-              </div>
-              <div className="document-toolbar">
-                <div className="document-search">
-                  <Search size={17} />
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder={t("筛选文档")}
-                  />
-                </div>
-                <span>{visibleDocuments.length}{t(" 份文档")}</span>
-              </div>
-              <div className="page-toolbar"><label>{t("文件类型")}<select value={fileType} onChange={e => setFileType(e.target.value)}><option value="all">{t("全部类型")}</option>{[...new Set(documents.map(item => item.fileName.split('.').at(-1).toLowerCase()))].map(type => <option key={type}>{type}</option>)}</select></label><label>{t("处理状态")}<select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">{t("全部状态")}</option>{[...new Set(documents.map(item => item.status))].map(status => <option key={status}>{status}</option>)}</select></label><button disabled={bulkBusy} onClick={() => setSelectedIds(visibleDocuments.filter(item => !['deleting','parsing'].includes(item.status)).map(item => item.id))}>{t("选择筛选结果")}</button><button disabled={bulkBusy || !selectedIds.length} onClick={() => bulk('reparse')}>{t("重新解析所选 (")}{selectedIds.length})</button></div>
-              {selectedIds.length > 0 && <DangerZone title={t("批量删除所选文档")} description={t("删除 {0} 个所选文档及其索引。失败项保留以便重试。", [selectedIds.length])} action={t("删除所选")} confirmText="DELETE DOCUMENTS" busy={bulkBusy} onConfirm={() => bulk('delete')} />}
-              <FeedbackBlock message={notice} />
-              {uploadQueue.length > 0 && (
-                <div className="upload-queue" aria-live="polite">
-                  <p>{t("已提交 ")}{uploadQueue.filter(item => item.status === "submitted").length}{t(" · 失败 ")}{uploadQueue.filter(item => item.status === "failed").length}{t(" · 等待/上传中 ")}{uploadQueue.filter(item => ["pending", "uploading"].includes(item.status)).length}{t(" · 已取消 ")}{uploadQueue.filter(item => item.status === "cancelled").length}</p>
-                  {uploadQueue.map((item) => (
-                    <div className={`upload-queue-item ${item.status}`} key={item.id}>
-                      <strong>{item.name}</strong>
-                      <span>{item.message}</span>
-                      <small>{t("资料库 ")}{knowledgeBases.find(kb => kb.id === item.kbId)?.name || item.kbId}</small>
-                      {item.status === "failed" && <button disabled={uploading} onClick={() => retry(item)}>{t("重试此文件")}</button>}
-                      {item.status === "pending" && <button onClick={() => cancel(item)}>{t("取消上传")}</button>}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {preferences.notifications && notifications.length > 0 && (
-                <div className="task-notifications" aria-live="polite">
-                  <div><strong>{t("处理通知")}</strong><span>{t("服务端任务状态会在这里更新")}</span></div>
-                  {notifications.slice(0, 5).map((item) => (
-                    <div className={`task-notification ${item.status}`} key={item.task_id}>
-                      <strong>{item.task_type === "document_ingest" ? t("文档解析") : item.task_type === "document_delete" ? t("文档删除") : t("资料库任务")}</strong>
-                      <StatusBadge status={item.status} />
-                      <span>{item.error_message || (item.status === "completed" ? t("已完成") : item.status === "failed" ? t("处理失败，可在工作台重试") : t("处理中"))}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="document-table">
-                <div className="document-row document-header">
-                  <span>{t("文件")}</span>
-                  <span>{t("状态")}</span>
-                  <span>{t("片段")}</span>
-                  <span>{t("更新时间")}</span>
-                  <span />
-                </div>
-                {visibleDocuments.map((document) => {
-                  const Icon = fileIcon(document.fileName);
-                  return (
-                    <div className="document-row" key={document.id}>
-                      <div className="document-name"><input type="checkbox" aria-label={t("选择 {0}", [document.fileName])} disabled={bulkBusy || ['deleting', 'parsing'].includes(document.status)} checked={selectedIds.includes(document.id)} onChange={e => setSelectedIds(ids => e.target.checked ? [...ids, document.id] : ids.filter(id => id !== document.id))} />
-                        <span className="file-icon">
-                          <Icon size={19} />
-                        </span>
-                        <div>
-                          <button className="document-title" onClick={() => setDetail(document)}>{document.fileName}</button>
-                          <small>
-                            {document.errorMessage || t("文档编号 {0}", [document.id])}
-                          </small>
-                          {document.parseReport && <details>
-                            <summary>{t("解析报告")}</summary>
-                            <ParseReport value={document.parseReport} />
-                          </details>}
-                        </div>
-                      </div>
-                      <span>
-                        <StatusBadge status={document.status} />
-                      </span>
-                      <span>{document.chunkCount || 0}</span>
-                      <span>
-                        {document.updatedAt
-                          ? new Date(document.updatedAt).toLocaleString(
-                              "zh-CN",
-                              {
-                                month: "2-digit",
-                                day: "2-digit",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              },
-                            )
-                          : t("刚刚")}
-                      </span>
-                      <span>
-                        {!["deleting", "parsing"].includes(document.status) && <>
-                          <button disabled={documentBusy[document.id]} title={t("版本历史")} onClick={() => showVersions(document)}>
-                            <History size={16} />
-                          </button>
-                          <button disabled={documentBusy[document.id]} title={t("替换文件")} onClick={() => { setReplacingDocument(document); replaceRef.current?.click(); }}>
-                            <RefreshCw size={16} />
-                          </button>
-                          <button disabled={documentBusy[document.id]} title={t("重新解析")} onClick={() => reparseDocument(document)}>
-                            <ArrowUpRight size={16} />
-                          </button>
-                          <button disabled={documentBusy[document.id]} title={t("删除文档")} onClick={() => deleteDocument(document)}>
-                            <Trash2 size={16} />
-                          </button>
-                        </>}
-                      </span>
-                    </div>
-                  );
-                })}
-                {!visibleDocuments.length && (
-                  <div className="documents-empty">
-                    <BookCopy size={30} />
-                    <strong>{t("这里还没有资料")}</strong>
-                    <span>{t("上传后可以在对话中选择该资料库进行检索。")}</span>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="select-kb-empty">
-              <BookCopy size={42} />
-              <h2>{t("建立第一个资料库")}</h2>
-              <p>{t("不同课程或主题建议分别管理。")}</p>
-              <button onClick={() => setDialogOpen(true)}>
-                <Plus size={17} />{t(" 新建资料库 ")}</button>
-            </div>
-          )}
-          {error && <div role="alert" className="page-error">{error}</div>}
-        </main>
+            <details className="bulk-tools"><summary>{t('批量操作')} · {selectedIds.length} {t('已选择')}</summary><div className="action-row"><button disabled={bulkBusy} onClick={() => setSelectedIds(visibleDocuments.filter(item => !['deleting','parsing'].includes(item.status)).map(item => item.id))}>{t('选择筛选结果')}</button><button disabled={bulkBusy || !selectedIds.length} onClick={() => bulk('reparse')}>{t('重新解析所选 (')}{selectedIds.length})</button></div>{selectedIds.length > 0 && <DangerZone title={t('批量删除所选文档')} description={t('删除 {0} 个所选文档及其索引。失败项保留以便重试。', [selectedIds.length])} action={t('删除所选')} confirmText="DELETE DOCUMENTS" busy={bulkBusy} onConfirm={() => bulk('delete')} />}</details>
+          </>}
+          {uploadQueue.length > 0 && <div className="upload-queue" aria-live="polite">{uploadQueue.map(item => <div className={`upload-queue-item ${item.status}`} key={item.id}><strong>{item.name}</strong><span>{item.message}</span>{item.status === 'failed' && <button disabled={uploading} onClick={() => retry(item)}>{t('重试此文件')}</button>}{item.status === 'pending' && <button onClick={() => cancel(item)}>{t('取消上传')}</button>}</div>)}</div>}
+          <section className="recent-activity"><header><h3>{t('最近活动')}</h3><a href="/tasks">{t('查看全部 →')}</a></header>{preferences.notifications && notifications.length ? notifications.slice(0, 5).map(item => <div key={item.task_id}><StatusBadge status={item.status} /><span>{item.file_name || (item.task_type === 'document_ingest' ? t('文档解析') : t('资料库任务'))}</span><small>{item.error_message || (item.status === 'completed' ? t('已完成') : t('处理中'))}</small></div>) : <p className="muted">{t('暂无处理活动')}</p>}</section>
+        </section>
+        <DocumentDetail document={previewDocument} onClose={() => setDetail(false)} />
       </div>
 
       <Modal open={dialogOpen} title={t("新建资料库")} busy={baseBusy} onClose={() => setDialogOpen(false)}>
@@ -548,7 +343,6 @@ export default function KnowledgePage() {
             </button>
           </form>
       </Modal>
-      <DocumentDetail document={detail} onClose={() => setDetail(null)} />
       {versionDialog && (
         <Modal title={t("版本历史")} onClose={() => { versionRequest.current++; setVersionDialog(null); }}>
           <section className="version-dialog">
