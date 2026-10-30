@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 
 test('头像进入用户中心并显示资料表单', async ({ page }) => {
   await page.goto('/profile')
-  await expect(page.getByRole('heading', { name: '管理你的学习身份' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '个人资料', exact: true })).toBeVisible()
   await expect(page.getByRole('textbox', { name: '昵称' })).toHaveValue('测试用户')
   await expect(page.getByRole('textbox', { name: '绑定邮箱' })).toHaveValue('test@example.com')
 })

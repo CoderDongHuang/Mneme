@@ -1,4 +1,4 @@
-@layer legacy {
+@layer base {
 .workspace-page { min-height: 100vh; padding: 14px; color: #22231f; }
 .workspace-head { min-height: 190px; padding: 36px clamp(24px,5vw,64px); display: flex; align-items: flex-end; justify-content: space-between; background: rgb(250 250 247 / 72%); border-radius: 7px; box-shadow: 0 24px 70px rgb(31 32 28 / 10%); backdrop-filter: blur(24px); }
 .workspace-head h1 { margin: 8px 0; font-family: Georgia,"Microsoft YaHei",serif; font-size: clamp(42px,6vw,72px); font-weight: 400; }

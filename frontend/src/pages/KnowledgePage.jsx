@@ -263,7 +263,7 @@ export default function KnowledgePage() {
     0,
   );
 
-  const previewDocument = detail === false ? null : documents.find(item => item.id === detail?.id) || (window.innerWidth > 1100 ? visibleDocuments[0] : null);
+  const previewDocument = detail === false ? null : documents.find(item => item.id === detail?.id) || (window.innerWidth >= 1280 ? visibleDocuments[0] : null);
   return (
     <div className="knowledge-page reference-knowledge">
       <header className="knowledge-masthead"><div><h1>{t('知识库')}</h1><p>{t('管理资料、查看解析质量、追踪索引状态')}</p></div></header>

@@ -1,4 +1,4 @@
-@layer reference {
+@layer pages {
  .reference-analytics .center-head { margin:0 0 15px; padding:0; border:0; justify-content:space-between; }
  .reference-analytics .center-head h1 { font-size:26px; }
  .reference-analytics .center-toolbar { justify-content:flex-end; margin-top:-53px; margin-bottom:26px; padding-right:48px; font-size:12px; }

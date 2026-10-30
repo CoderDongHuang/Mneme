@@ -1,6 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="忆知标志">
-  <rect width="64" height="64" rx="12" fill="#242520"/>
-  <path d="M13 18c7-2 14 0 19 5v26c-5-5-12-7-19-5V18Zm38 0c-7-2-14 0-19 5v26c5-5 12-7 19-5V18Z" fill="#f4f1e8"/>
-  <path d="M18 25c5 0 9 1 14 5m14-5c-5 0-9 1-14 5M20 33c4 0 8 1 12 4m12-4c-4 0-8 1-12 4" fill="none" stroke="#73756d" stroke-width="2.4" stroke-linecap="round"/>
-  <circle cx="32" cy="17" r="4" fill="#d8d4c7"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none"><path d="M24 42V19" stroke="#367f78" stroke-width="2.2" stroke-linecap="round"/><path d="M22 39C8 39 4 33 5 23c9-1 17 3 17 16Z" fill="#6faaa0"/><path d="M26 38c13-1 18-7 17-17-10 0-17 5-17 17Z" fill="#3e8a80"/><path d="M21 27C9 24 9 15 10 7c9 3 13 9 11 20Z" fill="#80b4a9"/><path d="M26 27C24 13 32 6 42 3c1 12-4 21-16 24Z" fill="#23766e"/><path d="m26 27 8-14M21 27l-7-11M22 39 11 29m15 9 10-9" stroke="#faf9f5" stroke-width="1.1" stroke-linecap="round"/></svg>

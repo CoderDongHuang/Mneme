@@ -1,9 +1,11 @@
 import { t, useI18n } from '../i18n'
-import { Activity, ArchiveRestore, BrainCircuit, CalendarDays, ClipboardCheck, Library, ListTodo, LogOut, Menu, MessageSquareText, Moon, PanelsTopLeft, Settings, ShieldCheck, Sun, X } from 'lucide-react'
+import { Activity, ArchiveRestore, BrainCircuit, CalendarDays, ClipboardCheck, Library, ListTodo, LogOut, Menu, MessageSquareText, Moon, PanelsTopLeft, Settings, ShieldCheck, Sun, X, UserRound, FileText } from 'lucide-react'
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { endpoints } from '../api/client'
-import logo from '../assets/mneme-leaf.svg'
+import logo from '../assets/mneme-logo.svg'
+import BrandLockup from './BrandLockup'
+import '../styles/app-shell.css'
 import { useAuth } from '../state/AuthContext'
 import { usePreferences } from '../state/PreferencesContext'
 
@@ -16,6 +18,8 @@ const navItems = [
   { to: '/workspace', label: '阅读工作台', icon: PanelsTopLeft },
   { to: '/analytics', label: '学习分析', icon: Activity },
   { to: '/tasks', label: '任务中心', icon: ListTodo },
+  { to: '/profile', label: '个人资料', icon: UserRound },
+  { to: '/legal/terms', label: '法律与协议', icon: FileText },
   { to: '/recovery', label: '备份恢复', icon: ArchiveRestore },
   { to: '/privacy', label: '数据与隐私', icon: ShieldCheck },
   { to: '/operations', label: '管理员运维', icon: Activity, admin: true },
@@ -46,7 +50,7 @@ export default function AppShell() {
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const controls = () => [toggleRef.current, ...navRef.current.querySelectorAll('a,button:not(:disabled)')]
-    controls()[1]?.focus()
+    const focusFrame = requestAnimationFrame(() => controls()[1]?.focus())
     function keydown(event) {
       if (event.key === 'Escape') { setOpen(false); toggleRef.current?.focus(); event.preventDefault() }
       if (event.key !== 'Tab') return
@@ -58,7 +62,7 @@ export default function AppShell() {
       }
     }
     document.addEventListener('keydown', keydown)
-    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', keydown) }
+    return () => { cancelAnimationFrame(focusFrame); document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', keydown) }
   }, [open, mobile])
 
   function closeNav() { setOpen(false); toggleRef.current?.focus() }
@@ -70,10 +74,7 @@ export default function AppShell() {
         {open ? <X size={20} /> : <Menu size={20} />}
       </button>
       <aside ref={navRef} id="global-navigation" className={`global-nav ${open ? 'is-open' : ''}`} inert={mobile && !open}>
-        <NavLink to="/chat" className="brand-mark" onClick={() => setOpen(false)} aria-label="Mneme">
-          <img className="brand-glyph" src={logo} alt="" />
-          <span><span className="brand-name">Mneme</span><small>{t('让知识成为你的长期记忆')}</small></span>
-        </NavLink>
+        <BrandLockup className="brand-mark" onClick={() => setOpen(false)} />
         <nav aria-label={t("主要导航")}>
           {navItems.filter(item => !item.admin || isAdmin).map(({ to, label, icon: Icon }, index) => (
             <div key={to} className={index > 0 && to === '/tasks' ? 'nav-section-divider' : ''}><NavLink to={to} onClick={() => setOpen(false)} className={({ isActive }) => isActive ? 'active' : ''}>
@@ -84,7 +85,7 @@ export default function AppShell() {
         </nav>
         <div className="nav-note"><img src={logo} alt="" /><p>{t('知识是时间的礼物，')}<br />{t('而记忆是你的翅膀。')}</p><small>— Mneme</small></div>
       </aside>
-      {['/knowledge','/memory','/review','/quiz','/tasks','/settings','/privacy','/analytics'].includes(pathname) && <div className="reference-topbar"><span>{t('学习空间')}</span><span>/</span><strong>{t(navItems.find(item=>item.to===pathname)?.label || 'Mneme')}</strong></div>}
+      {!['/chat','/workspace'].includes(pathname) && <div className="reference-topbar"><span>{t('学习空间')}</span><span>/</span><strong>{t(navItems.find(item=>item.to===pathname || (item.to === '/legal/terms' && pathname.startsWith('/legal/')))?.label || 'Mneme')}</strong></div>}
       <div className="shell-account">
           <button className="icon-button" aria-label={t('切换主题')} onClick={async () => { try { await save({ ...preferences, theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' }); setThemeError('') } catch (e) { setThemeError(e.message) } }}>{preferences.theme === 'dark' ? <Moon size={19} /> : <Sun size={19} />}</button>
         <div className="nav-profile">

@@ -305,6 +305,7 @@ export async function downloadWorkspaceArchive() {
   anchor.download = 'mneme-workspace.zip'
   anchor.click()
   URL.revokeObjectURL(url)
+  return { bytes: blob.size }
 }
 
 export function documentFileUrl(id, page, sha256) {
