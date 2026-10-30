@@ -10,7 +10,7 @@
 - `/memory`：学习记忆列表、筛选、详情、编辑、确认、归档和删除。
 - `/review`：到期日历、计划、翻面卡片、SM-2 评分与进度。
 - `/quiz`：生成测验、草稿、问题反馈、提交解释与历史记录。
-- `/workspace`：原文阅读、检索调试和会话分支。
+- `/workspace`：与对话页一致的历史、聊天、引用布局；通过“工具”菜单打开原文阅读、检索调试和会话分支。
 - `/tasks`、`/recovery`：任务状态与恢复操作。
 - `/privacy`、`/operations`、`/analytics`：隐私、运维与学习分析。
 - `/profile`、`/settings`：个人资料、密码/会话、中英文、时区、通知、主题与每用户加密模型配置。
@@ -18,7 +18,7 @@
 
 所有工作区页面共用低饱和主题变量、侧栏与移动导航；外观设置支持明暗模式。页面可用性以实际浏览器验收为准。
 
-统一组件位于 `components/ui.jsx`，包括 PageHeader、StatusPill、SideDrawer、FeedbackBlock、DangerZone 和 Modal。`layers.css` 固定 legacy/design 层级；旧页面布局逐步复用，新主题与公共组件位于 design 层，避免以 `!important` 互相覆盖。主题令牌在 `theme.css`，翻译在 `i18n/`，持久偏好由 PreferencesContext 管理。15 个页面模块均延迟加载。
+统一组件位于 `components/ui.jsx`，包括 PageHeader、StatusPill、SideDrawer、FeedbackBlock、DangerZone 和 Modal。`ReferenceUI.jsx` 提供桌面并排详情、窄屏抽屉、摘要卡和时区日历；`LearningCharts.jsx` 使用真实学习事件绘图并提供可访问的数据表。`layers.css` 固定 legacy/design/reference 层级，参考图布局位于 `reference*.css`，避免以 `!important` 互相覆盖。主题令牌在 `theme.css`，翻译在 `i18n/`，持久偏好由 PreferencesContext 管理。15 个页面模块均延迟加载；原工作台工具单独延迟加载。
 
 ## 数据原则
 
@@ -32,4 +32,6 @@
 
 ## 响应式
 
-全局导航在 760px 以下变为抽屉。聊天会话栏、资料库索引和画像网格分别采用适合本页面的移动布局。
+全局导航和右侧详情在 1100px 及以下变为抽屉；聊天历史在 600px 及以下收起。宽屏对话以 240px 主导航、258px 历史、380px 引用面板为基准，正文占用剩余空间。知识库采用文件表格与并排原文预览，其余参考页面使用摘要、主内容及详情列。窄屏通过按钮打开面板，保留焦点管理和背景隔离。
+
+本轮图片对应、保留功能和验收范围见 [参考图还原记录](FRONTEND_REFERENCE_20261030.md)。认证、个人资料、恢复、管理员和法律页面的专属布局等待独立视觉参考，本轮仅沿用共享外壳。
