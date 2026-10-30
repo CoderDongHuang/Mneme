@@ -2,7 +2,7 @@
 
 > 一个支持结构化 RAG、三级记忆与可追溯引用的开源个人学习助手。
 
-![Mneme logo](frontend/src/assets/mneme-leaf.svg)
+![Mneme logo](frontend/src/assets/mneme-logo.svg)
 
 [![CI](https://github.com/CoderDongHuang/Mneme/actions/workflows/ci.yml/badge.svg)](https://github.com/CoderDongHuang/Mneme/actions/workflows/ci.yml)
 ![Java](https://img.shields.io/badge/Java-17-ED8B00)
@@ -50,7 +50,7 @@ python scripts/demo.py clean --confirm-delete-demo-data
 ![资料与引用](docs/images/mneme-rag-chat.png)
 ![知识库与原文预览](docs/images/mneme-knowledge.png)
 
-工作区截图来自真实本地服务与合成验收资料；2026-10-30 的布局对应和测试范围见 [参考图还原记录](docs/FRONTEND_REFERENCE_20261030.md)。离线演示的实际截图由 `Offline demo clean install` CI 产物保存。
+截图来自真实本地服务与合成验收资料。登录、个人资料、备份恢复、管理员运维及法律页已统一为暖白与青绿主题；页面对应、实际数据边界与本轮测试见 [统一界面验收记录](docs/UNIFIED_UI_ACCEPTANCE_20261030.md)，此前核心页面的实现记录见 [参考图还原记录](docs/FRONTEND_REFERENCE_20261030.md)。离线演示截图由 `Offline demo clean install` CI 产物保存。
 
 ## 功能概览
 
