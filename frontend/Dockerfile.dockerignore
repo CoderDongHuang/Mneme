@@ -1,0 +1,11 @@
+# Build from the repository root, including the canonical license only.
+**
+!LICENSE
+!frontend/
+!frontend/**
+frontend/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+frontend/*.log
+frontend/.env*

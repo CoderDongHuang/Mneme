@@ -81,7 +81,8 @@ services:
       python-agent: {condition: service_healthy}
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
       args: {VITE_DEMO_MODE: "true"}
     environment: {PUBLIC_DOMAIN: ":80"}
     ports: ["127.0.0.1:${DEMO_PORT:-3000}:80"]
