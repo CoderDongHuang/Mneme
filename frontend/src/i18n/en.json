@@ -1159,5 +1159,16 @@
   "验证邮箱": "Verify email",
   "验证邮件已提交至邮件服务器，请检查收件箱。验证码 15 分钟内有效。": "The verification email was accepted by the mail server. Check your inbox; the code expires in 15 minutes.",
   "邮箱验证成功，现在可以用于找回密码。": "Email verified. You can now use it for password recovery.",
-  "仅核验在线数据的逻辑删除；备份与磁盘物理擦除适用独立策略。": "Verifies logical deletion of live data only. Backups and physical erasure follow separate policies."
+  "仅核验在线数据的逻辑删除；备份与磁盘物理擦除适用独立策略。": "Verifies logical deletion of live data only. Backups and physical erasure follow separate policies.",
+  "任务列表加载失败。已有记录可能不是最新状态，请重试。": "Could not load tasks. Existing records may be out of date; please retry.",
+  "阶段记录加载失败。任务状态仍以列表为准，请重试。": "Could not load stage history. See the task list for status; please retry.",
+  "任务状态暂不可刷新": "Task status could not be refreshed",
+  "{0} 个任务 · 最近最多 100 条": "{0} tasks · Latest 100 at most",
+  "阶段记录暂不可用": "Stage history is temporarily unavailable",
+  "关联资料库": "Related library",
+  "本次执行未成功，后台将按计划重试。": "This attempt failed. A background retry is scheduled.",
+  "取消请求已接受，正在等待后台清理；尚未完成。": "Cancellation accepted. Background cleanup is pending; the task has not finished.",
+  "任务已取消。": "The task was cancelled.",
+  "本次执行未成功。请检查文件和服务状态，修复原因后重试；联系管理员时提供执行编号。": "This attempt failed. Check the file and service status before retrying. Share the execution ID when contacting your administrator.",
+  "诊断副本仅包含执行编号、类型、状态、次数、时间与阶段，不包含文件名、原始错误或内部路径。": "Diagnostics include only execution IDs, types, statuses, counts, timestamps and stages. Filenames, raw errors and internal paths are excluded."
 }

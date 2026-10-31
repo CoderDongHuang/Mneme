@@ -1,11 +1,104 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import TasksPage from './TasksPage'
 import { endpoints } from '../api/client'
+import { taskDiagnostics } from '../features/tasks/presentation'
 vi.mock('../api/client', () => ({ endpoints: { tasks: vi.fn(), operations: vi.fn(), cancelTask: vi.fn(), retryTask: vi.fn() }, openNotificationStream: () => ({ close() {} }) }))
 beforeEach(() => {
+  vi.clearAllMocks()
   endpoints.tasks.mockResolvedValue([{ task_id: 't1', task_type: 'document_ingest', file_name: 'test.pdf', status: 'pending', attempt_count: 0, max_attempts: 3 }, { task_id: 't2', task_type: 'document_delete', status: 'pending' }])
   endpoints.operations.mockResolvedValue([])
+})
+
+test('latest stage and activity follow descending server order even when timestamps tie', async () => {
+  const newest = { operation_id: 't1', step: 'complete', status: 'completed', created_at: '2026-11-01T00:00:00Z' }
+  endpoints.operations.mockResolvedValue([newest, ...Array.from({ length: 9 }, (_, i) => ({ ...newest, step: `older_${i}` }))])
+  render(<TasksPage />)
+  const row = (await screen.findByRole('button', { name: /test.pdf/ })).closest('tr')
+  expect(within(row).getByText('complete')).toBeInTheDocument()
+  const activity = screen.getByRole('heading', { name: '最近活动' }).closest('section')
+  const entries = within(activity).getAllByRole('listitem')
+  expect(entries).toHaveLength(8)
+  expect(entries[0]).toHaveTextContent('complete')
+  expect(entries[7]).toHaveTextContent('older_6')
+  expect(activity).not.toHaveTextContent('older_8')
+  fireEvent.click(within(row).getByRole('button'))
+  const detail = screen.getByRole('complementary', { name: '任务详情' })
+  expect(detail).toHaveTextContent('阶段：complete')
+  const history = within(detail).getAllByRole('listitem')
+  expect(history[0]).toHaveTextContent('older_8')
+  expect(history.at(-1)).toHaveTextContent('complete')
+})
+
+test('task and activity failures stay distinct from empty states and recover without hiding accepted work', async () => {
+  endpoints.operations.mockRejectedValue(new Error('http://private-service:8001/secret'))
+  render(<TasksPage />)
+  await screen.findByText('test.pdf')
+  expect(screen.getByRole('alert')).toHaveTextContent('阶段记录加载失败')
+  expect(screen.queryByText('暂无记录')).not.toBeInTheDocument()
+  expect(screen.queryByText('暂无符合条件的任务')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /test.pdf/ }))
+  expect(screen.getByRole('button', { name: '复制诊断信息' })).toBeDisabled()
+  endpoints.operations.mockResolvedValue([])
+  fireEvent.click(screen.getByRole('button', { name: '刷新任务' }))
+  await waitFor(() => expect(screen.queryAllByRole('alert')).toHaveLength(0))
+  endpoints.tasks.mockRejectedValue(new Error('offline'))
+  fireEvent.click(screen.getByRole('button', { name: '刷新任务' }))
+  await waitFor(() => expect(screen.getAllByRole('alert')[0]).toHaveTextContent('已有记录可能不是最新状态'))
+  expect(screen.getByRole('button', { name: /test.pdf/ })).toBeInTheDocument()
+})
+
+test('initial failures never claim no data or show zero metrics', async () => {
+  endpoints.tasks.mockRejectedValue(new Error('offline'))
+  endpoints.operations.mockRejectedValue(new Error('offline'))
+  render(<TasksPage />)
+  await screen.findByRole('alert')
+  expect(screen.queryByText('暂无符合条件的任务')).not.toBeInTheDocument()
+  expect(screen.queryByText('暂无记录')).not.toBeInTheDocument()
+  expect(screen.getAllByText('—')).toHaveLength(4)
+  endpoints.tasks.mockResolvedValue([])
+  endpoints.operations.mockResolvedValue([])
+  fireEvent.click(screen.getByRole('button', { name: '刷新任务' }))
+  await screen.findByText('暂无符合条件的任务')
+  expect(screen.getByText('暂无记录')).toBeInTheDocument()
+})
+
+test('retry stays pending until server completion; related document and safe diagnostics use canonical fields', async () => {
+  const secret = 'http://internal:8001/api?key=secret /srv/files/private.txt'
+  const task = { task_id: 't1', task_type: 'document_ingest', aggregate_id: 42, file_name: 'test.pdf', status: 'failed', error_message: secret, payload: secret, attempt_count: 3, max_attempts: 3 }
+  endpoints.tasks.mockResolvedValue([task])
+  endpoints.operations.mockResolvedValue([{ operation_id: 't1', step: 'retry_or_fail', status: 'failed', error_message: secret, payload_json: secret }])
+  endpoints.retryTask.mockResolvedValue({ status: 'retry' })
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+  render(<TasksPage />)
+  fireEvent.click(await screen.findByRole('button', { name: /test.pdf/ }))
+  const detail = screen.getByRole('complementary', { name: '任务详情' })
+  expect(within(detail).getByText('42')).toBeInTheDocument()
+  expect(document.body).not.toHaveTextContent(secret)
+  fireEvent.click(screen.getByRole('button', { name: '复制诊断信息' }))
+  await waitFor(() => expect(writeText).toHaveBeenCalledOnce())
+  const diagnostic = JSON.parse(writeText.mock.calls[0][0])
+  expect(diagnostic.task.aggregate_id).toBe(42)
+  expect(diagnostic.stages[0].step).toBe('retry_or_fail')
+  expect(writeText.mock.calls[0][0]).not.toMatch(/secret|test.pdf|error_message|payload/)
+  endpoints.tasks.mockResolvedValue([{ ...task, status: 'retry' }])
+  fireEvent.click(screen.getByRole('button', { name: '重试任务' }))
+  await waitFor(() => expect(endpoints.retryTask).toHaveBeenCalledWith('t1'))
+  await waitFor(() => expect(detail).toHaveTextContent('等待重试'))
+  expect(detail).toHaveTextContent('后台将按计划重试')
+  expect(detail).not.toHaveTextContent('已完成')
+})
+
+test('diagnostic allowlist rejects invalid identifiers and future fields', () => {
+  const report = taskDiagnostics({ task_id: 'secret\npath', aggregate_id: '/private/path', status: 'failed', attempt_count: -1, max_attempts: '3', future_secret: 'sensitive' }, [{ step: 'secret/path', status: 'failed', attempts: 2, error_message: 'sensitive', created_at: 'invalid' }])
+  expect(report.task.task_id).toBeNull()
+  expect(report.task.aggregate_id).toBeNull()
+  expect(report.task.attempt_count).toBeNull()
+  expect(report.task.max_attempts).toBeNull()
+  expect(report.stages[0].step).toBeNull()
+  expect(report.stages[0].created_at).toBeNull()
+  expect(JSON.stringify(report)).not.toContain('sensitive')
 })
 test('only pending ingestion can be cancelled and server errors remain visible', async () => {
   endpoints.cancelTask.mockRejectedValue(new Error('任务已领取'))
