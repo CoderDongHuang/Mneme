@@ -68,15 +68,12 @@ public class KnowledgeService {
         this.storage = storage;
     }
 
+    @Transactional
     public KnowledgeBase createKb(Long userId, String name, String description) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("知识库名称不能为空");
         }
-        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_base WHERE user_id=?",
-            (rs, rowNum) -> rs.getLong(1), userId);
-        if (count != null && count >= tenantKnowledgeBaseQuota) {
-            throw new IllegalArgumentException("知识库数量已达到租户配额");
-        }
+        requireKnowledgeBaseCapacity(userId, 1);
         KnowledgeBase kb = new KnowledgeBase();
         kb.setUserId(userId);
         kb.setName(name.trim());
@@ -86,6 +83,19 @@ public class KnowledgeService {
         kb.setChromaCollectionId("user_" + userId + "_kb_" + kb.getId());
         kbMapper.updateById(kb);
         return kb;
+    }
+
+    @Transactional
+    public void requireKnowledgeBaseCapacity(Long userId, int incoming) {
+        if (incoming < 0) throw new IllegalArgumentException("新增知识库数量不合法");
+        lockQuotaOwner(userId);
+        // Use a current read even if the outer import transaction already has
+        // an older REPEATABLE READ snapshot. The user lock lasts until commit.
+        int count = jdbc.queryForList("SELECT id FROM knowledge_base WHERE user_id=? FOR UPDATE",
+            Long.class, userId).size();
+        if ((long) count + incoming > tenantKnowledgeBaseQuota) {
+            throw new IllegalArgumentException("知识库数量已达到租户配额");
+        }
     }
 
     public List<KnowledgeBase> listKb(Long userId) {
@@ -105,6 +115,7 @@ public class KnowledgeService {
 
     @Transactional
     public KnowledgeDocument uploadDocument(Long userId, Long kbId, MultipartFile file) {
+        lockQuotaOwner(userId);
         lockOwnedActiveKb(userId, kbId);
         if (file.isEmpty()) {
             throw new IllegalArgumentException("上传文件为空");
@@ -257,6 +268,7 @@ public class KnowledgeService {
 
     @Transactional
     public KnowledgeDocument replaceDocument(Long userId, Long documentId, MultipartFile file) {
+        lockQuotaOwner(userId);
         KnowledgeDocument document = ownedDocument(userId, documentId);
         requireIdleDocument(document);
         String originalName = file.getOriginalFilename() == null ? "document" : file.getOriginalFilename();
@@ -301,16 +313,27 @@ public class KnowledgeService {
             """, documentId, documentId);
     }
 
+    private void lockQuotaOwner(Long userId) {
+        List<String> states = jdbc.queryForList("SELECT status FROM user WHERE id=? FOR UPDATE", String.class, userId);
+        if (states.isEmpty() || !"active".equals(states.get(0))) {
+            throw new IllegalArgumentException("用户不存在或正在删除");
+        }
+    }
+
     private void requireStorageQuota(Long userId, long incomingBytes) {
-        Long used = jdbc.queryForObject("""
-            SELECT COALESCE(SUM(v.size_bytes),0)
+        // Count every retained version, including inactive versions and pending
+        // deletion. FOR UPDATE bypasses any earlier consistent-read snapshot.
+        List<Long> sizes = jdbc.queryForList("""
+            SELECT v.size_bytes
             FROM knowledge_document_version v
             JOIN knowledge_document d ON d.id=v.document_id
             JOIN knowledge_base k ON k.id=d.kb_id
-            WHERE k.user_id=?
-            """, (rs, rowNum) -> rs.getLong(1), userId);
+            WHERE k.user_id=? FOR UPDATE
+            """, Long.class, userId);
         long limit = Math.max(1, tenantStorageQuotaMb) * 1024L * 1024L;
-        if ((used == null ? 0 : used) + incomingBytes > limit) {
+        long remaining = limit;
+        for (long size : sizes) remaining -= Math.min(remaining, Math.max(0, size));
+        if (incomingBytes < 0 || incomingBytes > remaining) {
             throw new IllegalArgumentException("文档存储量已达到租户配额");
         }
     }
@@ -336,6 +359,7 @@ public class KnowledgeService {
         return document;
     }
 
+    @Transactional
     public KnowledgeDocument importArchivedDocument(Long userId, Long kbId, String fileName, byte[] content) {
         return uploadDocument(userId, kbId, new ArchivedMultipartFile(fileName, content));
     }

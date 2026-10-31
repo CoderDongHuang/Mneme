@@ -151,6 +151,21 @@ class WorkspaceArchiveSecurityTest {
             (Map<String, Integer>) result.get("documents");
         assertThat(documents).containsEntry("restored", 1).containsEntry("skipped", 0);
         verify(knowledge).importArchivedDocument(7L, 31L, "notes.txt", content);
+        verify(knowledge).requireKnowledgeBaseCapacity(7L, 1);
+    }
+
+    @Test
+    void rejectsAnOverQuotaImportBeforeInsertingAnyKnowledgeBase() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        WorkspaceService service = service(jdbc, tempDir);
+        KnowledgeService knowledge = mock(KnowledgeService.class);
+        ReflectionTestUtils.setField(service, "knowledgeService", knowledge);
+        doThrow(new IllegalArgumentException("知识库数量已达到租户配额"))
+            .when(knowledge).requireKnowledgeBaseCapacity(7L, 2);
+        assertThatThrownBy(() -> service.importData(7L, Map.of("knowledge_bases", List.of(
+            Map.of("id", 1, "name", "A"), Map.of("id", 2, "name", "B")))))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("配额");
+        org.mockito.Mockito.verifyNoInteractions(jdbc);
     }
 
     @Test
@@ -256,6 +271,7 @@ class WorkspaceArchiveSecurityTest {
         Field field = WorkspaceService.class.getDeclaredField("fileStoragePath");
         field.setAccessible(true);
         field.set(service, storage.toString());
+        ReflectionTestUtils.setField(service, "knowledgeService", mock(KnowledgeService.class));
         return service;
     }
 

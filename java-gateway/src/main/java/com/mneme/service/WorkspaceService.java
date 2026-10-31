@@ -1076,6 +1076,10 @@ public class WorkspaceService {
 
     private Map<Long, Long> importKnowledgeBases(Long userId, List<Map<String, Object>> source, Map<String, Integer> counts) {
         Map<Long, Long> ids = new HashMap<>();
+        if (!source.isEmpty()) {
+            if (knowledgeService == null) throw new IllegalStateException("知识库配额服务不可用");
+            knowledgeService.requireKnowledgeBaseCapacity(userId, source.size());
+        }
         for (Map<String, Object> item : source) {
             jdbc.update("INSERT INTO knowledge_base(user_id,name,description,status) VALUES(?,?,?,?)", userId,
                 limited(item, "name", "导入资料库", 100), limited(item, "description", "", 10_000), safeStatus(item, "status", "active"));

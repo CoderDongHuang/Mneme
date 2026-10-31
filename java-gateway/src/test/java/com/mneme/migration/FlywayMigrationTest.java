@@ -199,6 +199,10 @@ class FlywayMigrationTest {
 
         var mapper = new ObjectMapper().findAndRegisterModules();
         var service = new WorkspaceService(jdbc, mapper, new RestTemplate());
+        // Exercise the real database quota guard inside the import transaction.
+        var quota = new com.mneme.service.KnowledgeService(null, null, null, mapper, jdbc, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(quota, "tenantKnowledgeBaseQuota", 100);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "knowledgeService", quota);
         var exported = service.exportData(sourceUser);
         @SuppressWarnings("unchecked") var importPayload = mapper.readValue(mapper.writeValueAsBytes(exported), java.util.Map.class);
         var transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));

@@ -46,6 +46,8 @@ INTERNAL_SERVICE_TOKEN_PREVIOUS=
 
 默认使用本地文件存储。接入 S3/MinIO 时配置 `STORAGE_BACKEND=s3`、`OBJECT_STORAGE_ENDPOINT`、`OBJECT_STORAGE_ACCESS_KEY`、`OBJECT_STORAGE_SECRET_KEY` 和 `OBJECT_STORAGE_BUCKET`。用户对象按租户前缀隔离，`TENANT_STORAGE_QUOTA_MB` 与 `TENANT_KNOWLEDGE_BASE_QUOTA` 控制配额。
 
+配额按用户统一结算：跨知识库的上传、替换和归档导入共用数据库用户行锁，在同一事务中读取最新用量并写入。存储用量包含所有保留的文档历史版本及待删除版本；恢复现有版本不重复计费，删除完成后释放容量。知识库数量包含待删除知识库，批量导入也受数量限制。当前不自动淘汰历史版本，历史留存维护按独立策略处理，不能仅靠切换当前版本释放存储。
+
 多实例部署可设置 `NOTIFICATION_REDIS_ENABLED=true`，任务通知会通过 Redis Pub/Sub 低延迟广播，同时保留数据库事件轮询作为断线补偿。单机源码开发默认关闭该开关，避免 Redis 未启动时产生无意义连接。
 
 生产环境建议启用 ClamAV 内容扫描：
