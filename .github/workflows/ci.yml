@@ -268,6 +268,8 @@ jobs:
           echo "MNEME_CI_GID=$(id -g)" >> "$GITHUB_ENV"
       - name: Check vector network isolation
         run: python scripts/check_vector_isolation.py
+      - name: Verify immutable production code and build context
+        run: python scripts/verify_immutable_images.py
       - name: Start full stack
         run: |
           $COMPOSE config --quiet

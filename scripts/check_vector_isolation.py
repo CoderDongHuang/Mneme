@@ -15,7 +15,10 @@ def check(filenames: tuple[str, ...], qdrant_names: tuple[str, ...], agent_names
         check=True,
         # Static rendering only; these values are never used to start services.
         env={**os.environ, "REDIS_PASSWORD": "isolated-compose-validation-not-a-deployment-key",
-             "MODEL_CONFIG_ENCRYPTION_KEY": "isolated-model-config-validation-at-least-32-chars"},
+             "MODEL_CONFIG_ENCRYPTION_KEY": "isolated-model-config-validation-at-least-32-chars",
+             "MNEME_PYTHON_IMAGE": "mneme-python-agent:compose-check",
+             "MNEME_JAVA_IMAGE": "mneme-java-gateway:compose-check",
+             "MNEME_FRONTEND_IMAGE": "mneme-frontend:compose-check"},
     )
     config = json.loads(result.stdout)
     services = config["services"]
