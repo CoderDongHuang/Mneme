@@ -8,7 +8,7 @@ import { Buffer } from 'node:buffer'
 test.skip(process.env.MNEME_REAL_E2E !== 'true' || process.env.MNEME_INDEX_QA_FAULTS !== 'true', '需要真实服务和隔离账号故障注入授权')
 test('词法索引故障可见、持久任务重试且无原文件也能修复', async ({ page }, testInfo) => {
   test.setTimeout(180000)
-  const containers = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=python-agent', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/)
+  const containers = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=python-agent', '--filter', 'publish=8001', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/)
   expect(containers).toHaveLength(1)
   const agent = containers[0]
   function python(code, ...args) {
@@ -35,6 +35,62 @@ test('词法索引故障可见、持久任务重试且无原文件也能修复',
   const trigger = `qa_index_${user}`
   const evidence = { base_url: process.env.MNEME_E2E_BASE_URL, viewport: testInfo.project.use.viewport }
   let sourcePath
+  let sourceHeld = false
+  function holdSource(location, restore = false) {
+    // CI uses S3 whereas local installations can use files. Hide both the
+    // original object and its shared cache; otherwise this would not prove
+    // repair works without reading the source. Credentials stay on stdin.
+    const gateways = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=java-gateway', '--filter', 'publish=8080', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/)
+    expect(gateways).toHaveLength(1)
+    const environment = JSON.parse(execFileSync('docker', ['inspect', gateways[0]], { encoding: 'utf8' }))[0].Config.Env
+    const config = Object.fromEntries(environment.filter(value => value.startsWith('OBJECT_STORAGE_')).map(value => {
+      const split = value.indexOf('='); return [value.slice(0, split), value.slice(split + 1)]
+    }))
+    python(`import json,sys,hashlib,hmac,datetime,urllib.request,urllib.parse
+from pathlib import Path
+config=json.loads(${JSON.stringify(JSON.stringify(config))})
+location,user,restore=sys.argv[1],sys.argv[2],sys.argv[3]=='true'
+root=Path('/data/files')
+def request(method,key,body=b''):
+ endpoint=config['OBJECT_STORAGE_ENDPOINT'].rstrip('/')
+ url=endpoint+'/'+urllib.parse.quote(key,safe='/')
+ parsed=urllib.parse.urlsplit(url)
+ now=datetime.datetime.now(datetime.timezone.utc)
+ stamp=now.strftime('%Y%m%dT%H%M%SZ'); day=stamp[:8]
+ digest=hashlib.sha256(body).hexdigest()
+ headers={'host':parsed.netloc,'x-amz-content-sha256':digest,'x-amz-date':stamp}
+ names=';'.join(sorted(headers))
+ canonical='\\n'.join([method,parsed.path,'',''.join(k+':'+headers[k]+'\\n' for k in sorted(headers)),names,digest])
+ scope=day+'/us-east-1/s3/aws4_request'
+ message='AWS4-HMAC-SHA256\\n'+stamp+'\\n'+scope+'\\n'+hashlib.sha256(canonical.encode()).hexdigest()
+ signing=('AWS4'+config['OBJECT_STORAGE_SECRET_KEY']).encode()
+ for part in [day,'us-east-1','s3','aws4_request']: signing=hmac.new(signing,part.encode(),hashlib.sha256).digest()
+ signature=hmac.new(signing,message.encode(),hashlib.sha256).hexdigest()
+ headers['Authorization']='AWS4-HMAC-SHA256 Credential='+config['OBJECT_STORAGE_ACCESS_KEY']+'/'+scope+', SignedHeaders='+names+', Signature='+signature
+ with urllib.request.urlopen(urllib.request.Request(url,data=body if method=='PUT' else None,headers=headers,method=method),timeout=15) as response: return response.read()
+if location.startswith('s3://'):
+ uri=urllib.parse.urlsplit(location)
+ assert uri.netloc==config.get('OBJECT_STORAGE_BUCKET','mneme')
+ assert uri.path.startswith('/users/'+user+'/knowledge/') and '..' not in uri.path
+ key=uri.netloc+uri.path
+ p=root/'.object-cache'/(hashlib.sha256(location.encode()).hexdigest()[:24]+'-'+Path(uri.path).name)
+ backup=root/('.index-qa-'+user+'.object-hold')
+ if restore:
+  if backup.exists():
+   request('PUT',key,backup.read_bytes()); backup.unlink()
+ else:
+  assert not backup.exists()
+  backup.write_bytes(request('GET',key)); request('DELETE',key)
+else:
+ p=Path(location).resolve()
+ assert p.is_relative_to(root/user) and (restore or p.is_file())
+hold=Path(str(p)+'.index-qa-hold')
+if restore:
+ if hold.exists(): hold.rename(p)
+elif p.exists(): p.rename(hold)
+if not restore: assert not p.exists()
+`, location, user, restore)
+  }
   function removeFault() {
     python(`import sqlite3,sys\nfrom app.core.config import settings\nwith sqlite3.connect(settings.lexical_index_path) as c: c.execute('DROP TRIGGER IF EXISTS '+sys.argv[1])`, trigger)
   }
@@ -75,7 +131,8 @@ test('词法索引故障可见、持久任务重试且无原文件也能修复',
     removeFault()
     // Move only this QA document, restore it in finally before account cleanup.
     sourcePath = before.filePath
-    python(`from pathlib import Path\nimport sys\np=Path(sys.argv[1]).resolve()\nassert p.is_file() and p.is_relative_to(Path('/data/files'))\np.rename(str(p)+'.index-qa-hold')`, sourcePath)
+    sourceHeld = true
+    holdSource(sourcePath)
     await page.goto('/tasks')
     await page.getByRole('row').filter({ hasText: '词法索引修复' }).getByRole('button', { name: /index-repair\.txt/ }).click()
     await page.getByRole('button', { name: '重试任务', exact: true }).click()
@@ -92,7 +149,8 @@ test('词法索引故障可见、持久任务重试且无原文件也能修复',
     expect(lexical.version).toBe(report.vector_index_version)
     expect(lexical.matches).toBeGreaterThan(0)
     // Repair is complete while the source is absent. Restore it before preview QA.
-    python(`from pathlib import Path\nimport sys\np=Path(sys.argv[1]).resolve()\nassert p.is_relative_to(Path('/data/files')) and not p.exists()\nPath(str(p)+'.index-qa-hold').rename(p)`, sourcePath)
+    holdSource(sourcePath, true)
+    sourceHeld = false
     await page.goto('/knowledge')
     await page.getByRole('button', { name: 'index-repair.txt', exact: true }).click()
     await expect(health).toContainText('向量与词法索引版本一致')
@@ -106,7 +164,7 @@ test('词法索引故障可见、持久任务重试且无原文件也能修复',
     await testInfo.attach('index-reconciliation.json', { body: JSON.stringify(evidence, null, 2), contentType: 'application/json' })
   } finally {
     removeFault()
-    if (sourcePath) python(`from pathlib import Path\nimport sys\np=Path(sys.argv[1]).resolve()\nassert p.is_relative_to(Path('/data/files'))\nh=Path(str(p)+'.index-qa-hold')\nif h.exists(): h.rename(p)`, sourcePath)
+    if (sourceHeld) holdSource(sourcePath, true)
     await api('delete', '/profile/account')
     await expect.poll(() => python(`import sys,sqlite3\nfrom app.core.config import settings\nfrom app.knowledge.vector_store import vector_store\nwith sqlite3.connect(settings.lexical_index_path) as c: n=c.execute('SELECT COUNT(*) FROM lexical_chunks WHERE user_id=?',(sys.argv[1],)).fetchone()[0]\nprint(str(n)+':'+str(len(vector_store.list_user_collections(sys.argv[1]))))`, user).split('\n').at(-1),
       { timeout: 60000, intervals: [1000, 2000] }).toBe('0:0')
