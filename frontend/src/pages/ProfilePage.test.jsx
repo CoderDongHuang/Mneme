@@ -64,3 +64,33 @@ test('delivery failure stays unverified, pending operations cannot double submit
   expect(await screen.findByText('当前邮箱已验证，可用于找回密码。')).toBeVisible()
   expect(screen.queryByLabelText('邮箱验证码')).not.toBeInTheDocument()
 })
+
+test('initial profile failure has its own retry and does not load or invent an empty session list', async () => {
+  endpoints.profile.mockRejectedValueOnce(new Error('无法连接服务'))
+  const view = mount()
+  expect(screen.getByRole('status')).toHaveTextContent('正在读取用户资料')
+  expect(await screen.findByRole('alert')).toHaveTextContent('无法连接服务')
+  expect(screen.queryByText('暂无活动会话。')).not.toBeInTheDocument()
+  expect(endpoints.authSessions).not.toHaveBeenCalled()
+  let resolve
+  endpoints.profile.mockReturnValueOnce(new Promise(done => { resolve = done }))
+  fireEvent.click(screen.getByRole('button', { name: '重试 / Retry' }))
+  expect(screen.getByRole('status')).toHaveTextContent('正在读取用户资料')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  await act(async () => resolve({ ...profile }))
+  expect(await screen.findByLabelText('昵称')).toHaveValue('QA')
+  expect(endpoints.profile).toHaveBeenCalledTimes(2)
+  view.unmount()
+})
+
+test('session outage stays within security and does not discard a profile draft or claim no sessions', async () => {
+  endpoints.authSessions.mockRejectedValueOnce(new Error('会话服务不可用'))
+  mount()
+  fireEvent.change(await screen.findByLabelText('昵称'), { target: { value: '未保存的昵称' } })
+  fireEvent.click(screen.getByRole('button', { name: '账户安全', exact: true }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('登录会话加载失败：会话服务不可用')
+  expect(screen.queryByText('暂无活动会话。')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '基本资料', exact: true }))
+  expect(screen.getByLabelText('昵称')).toHaveValue('未保存的昵称')
+  expect(endpoints.profile).toHaveBeenCalledTimes(1)
+})
