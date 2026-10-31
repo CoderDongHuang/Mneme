@@ -15,6 +15,9 @@ def check(filenames: tuple[str, ...], qdrant_names: tuple[str, ...], agent_names
         check=True,
         # Static rendering only; these values are never used to start services.
         env={**os.environ, "REDIS_PASSWORD": "isolated-compose-validation-not-a-deployment-key",
+             "MYSQL_GATEWAY_PASSWORD": "isolated-gateway-compose-check",
+             "MYSQL_AGENT_PASSWORD": "isolated-agent-compose-check",
+             "MYSQL_MIGRATION_PASSWORD": "isolated-migrator-compose-check",
              "MODEL_CONFIG_ENCRYPTION_KEY": "isolated-model-config-validation-at-least-32-chars",
              "MNEME_PYTHON_IMAGE": "mneme-python-agent:compose-check",
              "MNEME_JAVA_IMAGE": "mneme-java-gateway:compose-check",
