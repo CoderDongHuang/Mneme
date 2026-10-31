@@ -3,6 +3,8 @@ package com.mneme.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import java.time.LocalDateTime;
 
 @TableName("chat_message")
@@ -12,10 +14,16 @@ public class ChatMessage {
     private Long sessionId;
     private String requestId;
     private String role;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String content;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String status;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String errorCode;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String sourcesJson;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private Long answerGeneration = 0L;
     private LocalDateTime createdAt;
 
     public Long getId() { return id; }
@@ -34,6 +42,8 @@ public class ChatMessage {
     public String getSourcesJson() { return sourcesJson; }
     public void setSourcesJson(String sourcesJson) { this.sourcesJson = sourcesJson; }
     public void setErrorCode(String errorCode) { this.errorCode = errorCode; }
+    public Long getAnswerGeneration() { return answerGeneration; }
+    public void setAnswerGeneration(Long answerGeneration) { this.answerGeneration = answerGeneration; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

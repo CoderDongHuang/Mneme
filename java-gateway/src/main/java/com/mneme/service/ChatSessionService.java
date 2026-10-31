@@ -110,11 +110,16 @@ public class ChatSessionService {
             if ("processing".equals(assistant.getStatus())) {
                 throw new RequestInProgressException("相同请求正在处理中");
             }
+            long generation = assistant.getAnswerGeneration() + 1;
+            if (jdbc.update("UPDATE chat_message SET content='',sources_json='[]',status='processing',"
+                + "error_code=NULL,answer_generation=? WHERE id=? AND answer_generation=? AND status IN ('failed','stopped')",
+                generation, assistant.getId(), assistant.getAnswerGeneration()) != 1)
+                throw new RequestInProgressException("请求状态已变化，请刷新后重试");
+            assistant.setAnswerGeneration(generation);
             assistant.setContent("");
             assistant.setSourcesJson("[]");
             assistant.setStatus("processing");
             assistant.setErrorCode(null);
-            messageMapper.updateById(assistant);
             return new Exchange(userMessage, assistant, false);
         }
 
@@ -148,6 +153,7 @@ public class ChatSessionService {
         message.setRole(role);
         message.setContent(content);
         message.setStatus(status);
+        if ("assistant".equals(role)) message.setAnswerGeneration(1L);
         return message;
     }
 
@@ -163,29 +169,21 @@ public class ChatSessionService {
         return session;
     }
 
-    public void saveSources(Long messageId, String sourcesJson) {
-        ChatMessage message = messageMapper.selectById(messageId);
-        if (message == null) return;
-        message.setSourcesJson(sourcesJson);
-        messageMapper.updateById(message);
+    /** Commit verified text, evidence and terminal state before exposing done. */
+    @Transactional
+    public void finishAnswer(Long messageId, long generation, String content, String sourcesJson) {
+        if (content == null || content.isBlank()) throw new IllegalArgumentException("回答内容为空");
+        if (jdbc.update("UPDATE chat_message SET content=?,sources_json=?,status='completed',error_code=NULL"
+            + " WHERE id=? AND role='assistant' AND status='processing' AND answer_generation=?",
+            content, sourcesJson, messageId, generation) != 1)
+            throw new IllegalStateException("回答执行权已失效，拒绝发布完成状态");
     }
 
-    public void finishMessage(Long messageId, String content) {
-        ChatMessage message = messageMapper.selectById(messageId);
-        if (message == null) return;
-        message.setContent(content);
-        message.setStatus("completed");
-        message.setErrorCode(null);
-        messageMapper.updateById(message);
-    }
-
-    public void failMessage(Long messageId, String content, String errorCode) {
-        ChatMessage message = messageMapper.selectById(messageId);
-        if (message == null) return;
-        message.setContent(content == null ? "" : content);
-        message.setStatus("failed");
-        message.setErrorCode(errorCode);
-        messageMapper.updateById(message);
+    public void failMessage(Long messageId, long generation, String content, String errorCode) {
+        // Late failures, old retries and client disconnect after done cannot undo success.
+        jdbc.update("UPDATE chat_message SET content=?,status='failed',error_code=?"
+            + " WHERE id=? AND role='assistant' AND status='processing' AND answer_generation=?",
+            content == null ? "" : content, errorCode, messageId, generation);
     }
 
     @Transactional

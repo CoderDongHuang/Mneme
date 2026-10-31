@@ -47,6 +47,8 @@ class ChatSessionServiceTest {
         Fixture fixture = fixture();
         ChatMessage assistant = message(2L, "assistant", "partial", "failed");
         assistant.setErrorCode("TIMEOUT");
+        assistant.setAnswerGeneration(4L);
+        when(fixture.jdbc.update(contains("answer_generation=? WHERE"), eq(5L), eq(2L), eq(4L))).thenReturn(1);
         when(fixture.messages.selectOne(any())).thenReturn(
             message(1L, "user", "question", "completed"), assistant);
 
@@ -56,7 +58,8 @@ class ChatSessionServiceTest {
         assertThat(assistant.getStatus()).isEqualTo("processing");
         assertThat(assistant.getContent()).isEmpty();
         assertThat(assistant.getErrorCode()).isNull();
-        verify(fixture.messages).updateById(assistant);
+        assertThat(assistant.getAnswerGeneration()).isEqualTo(5L);
+        verify(fixture.messages, never()).updateById(any(ChatMessage.class));
     }
 
     @Test
@@ -92,7 +95,7 @@ class ChatSessionServiceTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(contains("FOR UPDATE"), eq(Long.class), eq(9L), eq(7L)))
             .thenReturn(List.of(9L));
-        return new Fixture(new ChatSessionService(sessions, messages, jdbc), sessions, messages);
+        return new Fixture(new ChatSessionService(sessions, messages, jdbc), sessions, messages, jdbc);
     }
 
     private ChatMessage message(Long id, String role, String content, String status) {
@@ -109,6 +112,7 @@ class ChatSessionServiceTest {
     private record Fixture(
         ChatSessionService service,
         ChatSessionMapper sessions,
-        ChatMessageMapper messages
+        ChatMessageMapper messages,
+        JdbcTemplate jdbc
     ) { }
 }

@@ -74,11 +74,10 @@ public class ChatService {
                 pythonAgentUrl + "/api/v1/chat", request, ChatResponse.class
             );
             if (response == null) throw new IllegalStateException("Python Agent 返回空响应");
-            sessionService.finishMessage(assistant.getId(), response.getAnswer());
-            sessionService.saveSources(assistant.getId(), serializeSources(response.getSources()));
             pendingMemoryService.store(userId, sessionId, assistant.getId(), response.getPendingMemories());
+            sessionService.finishAnswer(assistant.getId(), assistant.getAnswerGeneration(), response.getAnswer(), serializeSources(response.getSources()));
         } catch (Exception error) {
-            sessionService.failMessage(assistant.getId(), "", error.getClass().getSimpleName());
+            sessionService.failMessage(assistant.getId(), assistant.getAnswerGeneration(), "", error.getClass().getSimpleName());
             throw error;
         }
         try {
@@ -101,7 +100,7 @@ public class ChatService {
         if (exchange.completed()) {
             return output -> replayStream(assistant, output);
         }
-        return output -> proxyStream(userId, sessionId, assistant.getId(), request, output);
+        return output -> proxyStream(userId, sessionId, assistant.getId(), assistant.getAnswerGeneration(), request, output);
     }
 
     private java.util.List<ChatResponse.Source> readSources(String value) {
@@ -125,7 +124,7 @@ public class ChatService {
         output.flush();
     }
 
-    private void proxyStream(Long userId, Long sessionId, Long assistantMessageId, ChatRequest request, OutputStream output) {
+    private void proxyStream(Long userId, Long sessionId, Long assistantMessageId, long generation, ChatRequest request, OutputStream output) {
         HttpURLConnection connection = null;
         StringBuilder answer = new StringBuilder();
         boolean completed = false;
@@ -151,46 +150,41 @@ public class ChatService {
                 throw new IllegalStateException("Python Agent 返回 " + connection.getResponseCode());
             }
 
-            String eventType = "message";
+            String sourcesJson = "[]";
             try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8)
             )) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    output.write((line + "\n").getBytes(StandardCharsets.UTF_8));
-                    output.flush();
-                    if (line.startsWith("event: ")) {
-                        eventType = line.substring(7).trim();
-                    } else if (line.startsWith("data: ") && "token".equals(eventType)) {
-                        JsonNode payload = objectMapper.readTree(line.substring(6));
-                        answer.append(payload.path("content").asText(""));
-                    } else if (line.startsWith("data: ") && "done".equals(eventType)) {
-                        completed = true;
-                    } else if (line.startsWith("data: ") && "error".equals(eventType)) {
-                        failed = true;
-                    } else if (line.startsWith("data: ") && "meta".equals(eventType)) {
-                        JsonNode payload = objectMapper.readTree(line.substring(6));
-                        sessionService.saveSources(assistantMessageId, payload.path("sources").isArray() ? payload.path("sources").toString() : "[]");
-                    } else if (line.startsWith("data: ") && "memory".equals(eventType)) {
-                        JsonNode payload = objectMapper.readTree(line.substring(6));
-                        java.util.List<ChatResponse.PendingMemory> pending = objectMapper.convertValue(
-                            payload.path("pending"),
-                            objectMapper.getTypeFactory().constructCollectionType(
-                                java.util.List.class, ChatResponse.PendingMemory.class
-                            )
-                        );
-                        pendingMemoryService.store(userId, sessionId, assistantMessageId, pending);
+                SseEvent event;
+                while ((event = readEvent(reader)) != null) {
+                    JsonNode payload = objectMapper.readTree(event.data());
+                    switch (event.type()) {
+                        case "token" -> answer.append(payload.path("content").asText(""));
+                        case "meta" -> sourcesJson = payload.path("sources").isArray() ? payload.path("sources").toString() : "[]";
+                        case "memory" -> pendingMemoryService.store(userId, sessionId, assistantMessageId,
+                            objectMapper.convertValue(payload.path("pending"), objectMapper.getTypeFactory()
+                                .constructCollectionType(java.util.List.class, ChatResponse.PendingMemory.class)));
+                        case "done" -> {
+                            sessionService.finishAnswer(assistantMessageId, generation, answer.toString(), sourcesJson);
+                            completed = true;
+                        }
+                        case "error" -> {
+                            sessionService.failMessage(assistantMessageId, generation, answer.toString(), "AGENT_ERROR");
+                            failed = true;
+                        }
+                        default -> { }
                     }
+                    output.write(("event: " + event.type() + "\ndata: " + objectMapper.writeValueAsString(payload) + "\n\n").getBytes(StandardCharsets.UTF_8));
+                    output.flush();
+                    // Browser stops reading on done. Never wait for provider EOF to persist.
+                    if (completed || failed) break;
                 }
             }
-            if (completed && !failed && !answer.isEmpty()) {
-                sessionService.finishMessage(assistantMessageId, answer.toString());
-            } else {
-                sessionService.failMessage(assistantMessageId, answer.toString(), failed ? "AGENT_ERROR" : "INCOMPLETE_RESPONSE");
-            }
+            if (!completed && !failed) throw new IllegalStateException("INCOMPLETE_RESPONSE");
         } catch (Exception error) {
-            sessionService.failMessage(assistantMessageId, answer.toString(), error.getClass().getSimpleName());
-            log.error("SSE 转发失败: userId={}, sessionId={}", userId, sessionId, error);
+            if (completed) return; // Delivery failure cannot roll back a committed answer.
+            try { sessionService.failMessage(assistantMessageId, generation, answer.toString(), error.getClass().getSimpleName()); }
+            catch (Exception persistenceError) { log.error("SSE 失败状态保存异常: messageId={}", assistantMessageId, persistenceError); }
+            log.error("SSE 转发失败: userId={}, sessionId={}, errorType={}", userId, sessionId, error.getClass().getSimpleName());
             try {
                 String payload = objectMapper.writeValueAsString(
                     java.util.Map.of("message", "Agent 服务暂时不可用")
@@ -205,6 +199,26 @@ public class ChatService {
                 connection.disconnect();
             }
         }
+    }
+
+    private record SseEvent(String type, String data) { }
+
+    private SseEvent readEvent(BufferedReader reader) throws java.io.IOException {
+        String type = "message";
+        StringBuilder data = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            if (line.isEmpty()) {
+                if (!data.isEmpty()) return new SseEvent(type, data.substring(0, data.length() - 1));
+                type = "message";
+            } else if (line.startsWith("event:")) type = line.substring(6).trim();
+            else if (line.startsWith("data:")) {
+                String value = line.substring(5);
+                data.append(value.startsWith(" ") ? value.substring(1) : value).append('\n');
+                if (data.length() > 2_000_000) throw new java.io.IOException("SSE event too large");
+            }
+        }
+        return null; // An incomplete frame must not publish a terminal event.
     }
 
     private Long parseSessionId(String value) {
