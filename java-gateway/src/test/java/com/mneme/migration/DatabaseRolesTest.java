@@ -55,7 +55,11 @@ class DatabaseRolesTest {
                 assertThat(context).hasNotFailed();
                 var business = new JdbcTemplate(context.getBean(DataSource.class));
                 assertThat(business.queryForObject("SELECT CURRENT_USER()", String.class)).startsWith("mneme_gateway@");
-                assertThat(business.queryForObject("SELECT MAX(CAST(version AS UNSIGNED)) FROM flyway_schema_history WHERE success=1", Integer.class)).isEqualTo(27);
+                var migrations = context.getBean(org.flywaydb.core.Flyway.class).info();
+                assertThat(migrations.pending()).isEmpty();
+                assertThat(business.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1 AND version IS NOT NULL", Integer.class))
+                    .isEqualTo(migrations.applied().length);
+                assertThat(business.queryForObject("SELECT MAX(CAST(version AS UNSIGNED)) FROM flyway_schema_history WHERE success=1", Integer.class)).isGreaterThanOrEqualTo(28);
             });
     }
 

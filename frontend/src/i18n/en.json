@@ -1136,5 +1136,18 @@
   "修复词法索引": "Repair lexical index",
   "词法索引待修复": "Lexical index needs repair",
   "词法索引修复中": "Repairing lexical index",
-  "词法索引修复": "Lexical index repair"
+  "词法索引修复": "Lexical index repair",
+  "向量片段": "Vector chunks",
+  "向量集合": "Vector collections",
+  "词法索引行": "Lexical index rows",
+  "文件与缓存": "Files and caches",
+  "对象存储前缀": "Object storage prefix",
+  "数据库记录": "Database records",
+  "尚未核验": "Not yet verified",
+  "核验清单不可用": "Verification checklist unavailable",
+  "清理已核验": "Cleanup verified",
+  "清理待核验": "Cleanup verification pending",
+  "未知（读取失败）": "Unknown (read failed)",
+  "清理核验": "Cleanup verification",
+  "仅核验在线数据的逻辑删除；备份与磁盘物理擦除适用独立策略。": "Verifies logical deletion of live data only. Backups and physical erasure follow separate policies."
 }

@@ -183,7 +183,7 @@ public class WorkspaceService {
     public List<Map<String, Object>> tasks(Long userId) {
         return rows("""
             SELECT t.id,t.task_id,t.task_type,t.aggregate_id,t.status,t.attempt_count,t.max_attempts,
-                   t.error_code,t.error_message,t.created_at,t.updated_at,t.next_attempt_at,d.file_name
+                   t.error_code,t.error_message,t.created_at,t.updated_at,t.next_attempt_at,t.cleanup_report,d.file_name
             FROM processing_task t LEFT JOIN knowledge_document d ON d.id=t.aggregate_id
               AND t.task_type IN ('document_ingest','document_delete','document_index_repair')
             WHERE t.user_id=? ORDER BY t.created_at DESC LIMIT 100

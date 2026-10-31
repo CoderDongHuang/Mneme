@@ -5,6 +5,7 @@ import { Activity, HardDrive, RefreshCw, Server, Timer } from 'lucide-react'
 import { api } from '../api/client'
 import { useSerialPoll } from '../hooks/useSerialPoll'
 import AdminAccess from '../components/AdminAccess'
+import CleanupChecklist from '../components/CleanupChecklist'
 import { FeedbackBlock, PageHeader, StatusPill } from '../components/ui'
 import '../styles/centers.css'
 
@@ -14,7 +15,7 @@ function Table({ rows = [], columns }) {
   const lastPage = Math.max(0, Math.ceil(rows.length / 10) - 1)
   const currentPage = Math.min(page, lastPage)
   return rows.length ? <>
-    <div className="reference-table-wrap"><table className="reference-table"><thead><tr>{columns.map(([key, label]) => <th scope="col" key={key}>{t(label)}</th>)}</tr></thead><tbody>{rows.slice(currentPage * 10, (currentPage + 1) * 10).map((row, index) => <tr key={row.id || index}>{columns.map(([key]) => <td key={key}>{['createdAt', 'next_attempt_at', 'completed_at'].includes(key) ? dates.dateTime(row[key]) : String(row[key] ?? '—')}</td>)}</tr>)}</tbody></table></div>
+    <div className="reference-table-wrap"><table className="reference-table"><thead><tr>{columns.map(([key, label]) => <th scope="col" key={key}>{t(label)}</th>)}</tr></thead><tbody>{rows.slice(currentPage * 10, (currentPage + 1) * 10).map((row, index) => <tr key={row.id || index}>{columns.map(([key]) => <td key={key}>{key === 'cleanup_report' ? <CleanupChecklist report={row[key]} /> : ['createdAt', 'next_attempt_at', 'completed_at'].includes(key) ? dates.dateTime(row[key]) : String(row[key] ?? '—')}</td>)}</tr>)}</tbody></table></div>
     {lastPage > 0 && <div className="operations-pagination"><button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t('上一页')}</button><span aria-live="polite">{t('第 {0} 页', [currentPage + 1])} / {lastPage + 1}</span><button disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>{t('下一页')}</button></div>}
   </> : <p className="account-empty">{t('暂无记录')}</p>
 }
@@ -65,7 +66,7 @@ export default function OperationsPage() {
         <section className="account-card"><h2>{t('任务队列')}</h2><p>{status(data.task_data_status)}</p><Table rows={data.queue} columns={[[ 'task_type', '类型'], ['status', '状态'], ['total', '数量']]} /></section>
       </div>
       <section className="account-card"><h2>{t('告警')}</h2><Table rows={(monitoring.alerts || []).map(a => ({ name: a.labels?.alertname, severity: a.labels?.severity, state: a.state, summary: a.annotations?.summary }))} columns={[[ 'name', '名称'], ['severity', '等级'], ['state', '状态'], ['summary', '摘要']]} /><Table rows={data.task_alerts} columns={[[ 'task_id', '任务'], ['task_type', '类型'], ['status', '状态'], ['error_code', '错误代码'], ['attempt_count', '重试次数']]} /></section>
-      <section className="account-card"><details><summary>{t('账号删除 Saga')}</summary><Table rows={data.sagas} columns={[[ 'operation_id', '操作'], ['user_id', '用户'], ['status', '状态'], ['current_step', '当前步骤'], ['attempt_count', '次数'], ['next_attempt_at', '下次执行'], ['completed_at', '完成时间']]} /></details><details><summary>{t('文档与知识库删除')}</summary><Table rows={data.deletion_tasks} columns={[[ 'task_id', '任务'], ['task_type', '类型'], ['status', '状态'], ['error_code', '错误代码'], ['attempt_count', '次数'], ['next_attempt_at', '下次执行']]} /></details></section>
+      <section className="account-card"><details><summary>{t('账号删除 Saga')}</summary><Table rows={data.sagas} columns={[[ 'operation_id', '操作'], ['user_id', '用户'], ['status', '状态'], ['current_step', '当前步骤'], ['attempt_count', '次数'], ['next_attempt_at', '下次执行'], ['completed_at', '完成时间']]} /></details><details><summary>{t('文档与知识库删除')}</summary><Table rows={data.deletion_tasks} columns={[[ 'task_id', '任务'], ['task_type', '类型'], ['status', '状态'], ['error_code', '错误代码'], ['attempt_count', '次数'], ['next_attempt_at', '下次执行'], ['cleanup_report', '清理核验']]} /></details></section>
     </>}
   </div>
 }

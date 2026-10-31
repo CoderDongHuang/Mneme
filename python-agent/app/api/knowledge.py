@@ -291,6 +291,13 @@ async def delete_collection(kb_id: str, user_id: str) -> dict:
     return {"deleted": deleted, "kb_id": kb_id}
 
 
+@router.get("/admin/deletion-report")
+async def deletion_report(user_id: str, kb_id: str | None = None, document_id: str | None = None) -> dict:
+    if document_id is not None and kb_id is None:
+        raise HTTPException(status_code=400, detail="document_id requires kb_id")
+    return vector_store.deletion_report(user_id, kb_id, document_id)
+
+
 @router.delete("/admin/documents/{document_id}")
 async def delete_document(document_id: str, user_id: str, kb_id: str) -> dict:
     deleted = vector_store.delete_document(user_id, kb_id, document_id)

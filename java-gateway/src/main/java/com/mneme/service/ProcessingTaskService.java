@@ -233,44 +233,112 @@ public class ProcessingTaskService {
         String userId = payload.path("user_id").asText();
         String kbId = payload.path("kb_id").asText();
         String documentId = payload.path("document_id").asText();
-        restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId
-            + "?user_id=" + userId + "&kb_id=" + kbId);
         List<Map<String, Object>> versions = jdbc.queryForList(
             "SELECT file_path FROM knowledge_document_version WHERE document_id=?", task.getAggregateId());
-        if (versions.isEmpty()) versions = List.of(Map.of("file_path", payload.path("file_path").asText()));
-        for (Map<String, Object> version : versions) {
-            lease.renew();
-            storage.delete(String.valueOf(version.get("file_path")));
-        }
+        var locations = new java.util.LinkedHashSet<String>();
+        versions.forEach(version -> locations.add(String.valueOf(version.get("file_path"))));
+        locations.add(payload.path("file_path").asText());
+        Exception failure = null;
+        try {
+            restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + documentId
+                + "?user_id=" + userId + "&kb_id=" + kbId);
+            for (String location : locations) {
+                lease.renew();
+                storage.delete(location);
+            }
+        } catch (TaskLeaseService.LostLease lost) { throw lost; }
+        catch (Exception error) { failure = error; }
+        var report = new CleanupReport();
+        report.agent(restTemplate, pythonAgentUrl + "/api/v1/knowledge/admin/deletion-report?user_id=" + userId
+            + "&kb_id=" + kbId + "&document_id=" + documentId, List.of("qdrant_chunks", "fts_rows"));
+        report.read("files", () -> {
+            long count = 0;
+            for (String location : locations) count += storage.countLocation(location);
+            return count;
+        });
+        report.read("mysql_rows", () -> documentRowCount(task.getAggregateId()));
+        saveCleanupReport(task, lease, report);
+        if (failure != null) throw failure;
+        report.requireZeroExcept("mysql_rows");
         lease.write(row -> {
             documentMapper.deleteById(task.getAggregateId());
+            report.read("mysql_rows", () -> documentRowCount(task.getAggregateId()));
+            report.requireZeroExcept("");
+            saveCleanupReportLocked(task, lease, report);
             completeLocked(task, lease);
             return null;
         });
+    }
+
+    private long documentRowCount(Long documentId) {
+        return jdbc.queryForObject("""
+            SELECT (SELECT COUNT(*) FROM knowledge_document WHERE id=?)
+                +(SELECT COUNT(*) FROM knowledge_document_version WHERE document_id=?)
+                +(SELECT COUNT(*) FROM knowledge_document_tag WHERE document_id=?)
+            """, Long.class, documentId, documentId, documentId);
+    }
+
+    private long knowledgeBaseRowCount(Long kbId, List<Long> documentIds) {
+        long count = jdbc.queryForObject("""
+            SELECT (SELECT COUNT(*) FROM knowledge_base WHERE id=?)
+                +(SELECT COUNT(*) FROM knowledge_document WHERE kb_id=?)
+            """, Long.class, kbId, kbId);
+        for (Long documentId : documentIds) count += documentRowCount(documentId);
+        return count;
+    }
+
+    private void saveCleanupReport(ProcessingTask task, TaskLeaseService.Lease lease, CleanupReport report) {
+        lease.write(row -> { saveCleanupReportLocked(task, lease, report); return null; });
+    }
+
+    private void saveCleanupReportLocked(ProcessingTask task, TaskLeaseService.Lease lease, CleanupReport report) {
+        jdbc.update("UPDATE processing_task SET cleanup_report=? WHERE id=? AND owner_token=? AND lease_fence=?",
+            report.json(objectMapper), task.getId(), lease.owner(), lease.fence());
     }
 
     private void deleteKnowledgeBase(ProcessingTask task, TaskLeaseService.Lease lease) throws Exception {
         JsonNode payload = objectMapper.readTree(task.getPayload());
         String userId = payload.path("user_id").asText();
         String knowledgeBaseId = payload.path("kb_id").asText();
-        restTemplate.delete(
-            pythonAgentUrl + "/api/v1/knowledge/admin/collections/" + knowledgeBaseId + "?user_id=" + userId
-        );
-        lease.renew();
-        storage.deleteKnowledgeBasePrefix(Long.valueOf(userId), Long.valueOf(knowledgeBaseId));
+        List<Long> documentIds = jdbc.queryForList("SELECT id FROM knowledge_document WHERE kb_id=?", Long.class, knowledgeBaseId);
+        // Keep every version until all external stores pass readback. This is also
+        // the deletion manifest for caches whose S3 object was already removed.
+        List<String> locations = jdbc.queryForList("""
+            SELECT file_path FROM knowledge_document WHERE kb_id=?
+            UNION SELECT v.file_path FROM knowledge_document_version v
+                JOIN knowledge_document d ON d.id=v.document_id WHERE d.kb_id=?
+            """, String.class, knowledgeBaseId, knowledgeBaseId);
         Path root = Path.of(fileStoragePath).toAbsolutePath().normalize();
-        Path directory = root.resolve(userId).resolve(knowledgeBaseId).normalize();
-        if (directory.startsWith(root) && Files.exists(directory)) {
-            Path checkedDirectory = checkedStoragePath(directory.toString(), false);
-            try (var paths = Files.walk(checkedDirectory)) {
-                paths.sorted(Comparator.reverseOrder()).forEach(path -> {
-                    try { lease.renew(); Files.deleteIfExists(path); }
-                    catch (Exception error) { throw new IllegalStateException(error); }
-                });
+        Path directory = checkedStoragePath(root.resolve(userId).resolve(knowledgeBaseId).toString(), false);
+        Exception failure = null;
+        try {
+            restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/collections/" + knowledgeBaseId + "?user_id=" + userId);
+            lease.renew();
+            for (String location : locations) { lease.renew(); storage.delete(location); }
+            storage.deleteKnowledgeBasePrefix(Long.valueOf(userId), Long.valueOf(knowledgeBaseId));
+            if (ObjectStorageService.countPath(directory) > 0) try (var paths = Files.walk(directory)) {
+                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) { lease.renew(); Files.deleteIfExists(path); }
             }
-        }
+        } catch (TaskLeaseService.LostLease lost) { throw lost; }
+        catch (Exception error) { failure = error; }
+        var report = new CleanupReport();
+        report.agent(restTemplate, pythonAgentUrl + "/api/v1/knowledge/admin/deletion-report?user_id=" + userId
+            + "&kb_id=" + knowledgeBaseId, List.of("qdrant_chunks", "fts_rows", "qdrant_collections"));
+        report.read("files", () -> {
+            long count = ObjectStorageService.countPath(directory);
+            for (String location : locations) count += storage.countLocation(location);
+            return count;
+        });
+        report.read("object_prefix", () -> storage.countKnowledgeBasePrefix(Long.valueOf(userId), Long.valueOf(knowledgeBaseId)));
+        report.read("mysql_rows", () -> knowledgeBaseRowCount(task.getAggregateId(), documentIds));
+        saveCleanupReport(task, lease, report);
+        if (failure != null) throw failure;
+        report.requireZeroExcept("mysql_rows");
         lease.write(row -> {
             knowledgeBaseMapper.deleteById(task.getAggregateId());
+            report.read("mysql_rows", () -> knowledgeBaseRowCount(task.getAggregateId(), documentIds));
+            report.requireZeroExcept("");
+            saveCleanupReportLocked(task, lease, report);
             completeLocked(task, lease);
             return null;
         });
