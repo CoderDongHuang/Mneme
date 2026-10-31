@@ -60,7 +60,7 @@ test('个人配置隔离、双语持久化与真实个人归档恢复向导', as
   const archive = await page.request.get('/api/v1/workspace/export/archive')
   expect(archive.ok()).toBeTruthy()
   await page.goto('/recovery')
-  await page.getByLabel('个人归档 ZIP（最多 50 MB）').setInputFiles({ name: 'workspace.zip', mimeType: 'application/zip', buffer: await archive.body() })
+  await page.getByLabel('个人归档 ZIP（最多 50 MiB）').setInputFiles({ name: 'workspace.zip', mimeType: 'application/zip', buffer: await archive.body() })
   await page.getByRole('button', { name: '验证清单与文件完整性' }).click()
   await expect(page.getByRole('heading', { name: '恢复预览' })).toBeVisible()
   await expect(page.getByText('同名资料库：')).toContainText('归档恢复验收')

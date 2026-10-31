@@ -1,4 +1,5 @@
 import { useDateFormatter } from '../hooks/useDateFormatter'
+import { useFormatters } from '../hooks/useFormatters'
 import { t, useI18n } from '../i18n'
 import {
   ArrowUpRight,
@@ -54,6 +55,7 @@ function fileIcon(name = "") {
 }
 
 export default function KnowledgePage() {
+  const fmt = useFormatters()
   const dates = useDateFormatter()
   useI18n();
   const [knowledgeBases, setKnowledgeBases] = useState([]);
@@ -265,7 +267,7 @@ export default function KnowledgePage() {
         } catch (e) { failures.push(`${document.fileName}: ${e.message}`); }
         finally { documentLocks.current.delete(document.id); }
       }
-      setNotice(t("已提交 {0} 项，失败 {1} 项。失败项保留选中，可重试。", [accepted, failures.length]));
+      setNotice(t("已提交 {0} 项，失败 {1} 项。失败项保留选中，可重试。", [fmt.integer(accepted), fmt.integer(failures.length)]));
       if (failures.length) setError(failures.join(' · '));
     } finally { bulkLock.current = false; setBulkBusy(false); }
   }
@@ -289,7 +291,7 @@ export default function KnowledgePage() {
             <select aria-label={t('处理状态')} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">{t('全部状态')}</option>{[...new Set(documents.map(item => item.status))].map(status => <option key={status}>{status}</option>)}</select>
             <button className="primary-button" disabled={uploading || !activeKbId} onClick={() => fileRef.current?.click()}><UploadCloud size={17} />{uploading ? t('处理中') : t('导入资料')}</button>
           </div>
-          <div className="knowledge-library-bar"><select aria-label={t('资料库')} value={activeKbId || ''} onChange={e => selectKb(knowledgeBases.find(kb => String(kb.id) === e.target.value)?.id || null)}>{!knowledgeBases.length && <option value="">{t('还没有资料库')}</option>}{knowledgeBases.map(kb => <option value={kb.id} key={kb.id}>{kb.name}</option>)}</select><button onClick={() => setDialogOpen(true)}><Plus size={15} />{t('新建资料库')}</button>{activeKb && <button className="icon-button" aria-label={t('删除资料库')} disabled={baseBusy || uploading} onClick={deleteBase}><Trash2 size={15} /></button>}<span>{documents.length} {t('文档')} · {readyCount} {t('可检索')} · {chunkCount} {t('语义片段')}</span></div>
+          <div className="knowledge-library-bar"><select aria-label={t('资料库')} value={activeKbId || ''} onChange={e => selectKb(knowledgeBases.find(kb => String(kb.id) === e.target.value)?.id || null)}>{!knowledgeBases.length && <option value="">{t('还没有资料库')}</option>}{knowledgeBases.map(kb => <option value={kb.id} key={kb.id}>{kb.name}</option>)}</select><button onClick={() => setDialogOpen(true)}><Plus size={15} />{t('新建资料库')}</button>{activeKb && <button className="icon-button" aria-label={t('删除资料库')} disabled={baseBusy || uploading} onClick={deleteBase}><Trash2 size={15} /></button>}<span>{fmt.integer(documents.length)} {t('文档')} · {fmt.integer(readyCount)} {t('可检索')} · {fmt.integer(chunkCount)} {t('语义片段')}</span></div>
           <FeedbackBlock error={error} message={notice} />
           {loading ? <LoadingState /> : !activeKb ? <div className="documents-empty"><BookCopy size={32} /><h2>{t('建立第一个资料库')}</h2><p>{t('不同课程或主题建议分别管理。')}</p><button onClick={() => setDialogOpen(true)}>{t('新建资料库')}</button></div> : <>
             <div className="document-table">
@@ -301,7 +303,7 @@ export default function KnowledgePage() {
               </div> })}
               {!visibleDocuments.length && <div className="documents-empty"><BookCopy size={30} /><strong>{t('这里还没有资料')}</strong><span>{t('可将文件拖入列表，或点击导入资料。')}</span></div>}
             </div>
-            <details className="bulk-tools"><summary>{t('批量操作')} · {selectedIds.length} {t('已选择')}</summary><div className="action-row"><button disabled={bulkBusy} onClick={() => setSelectedIds(visibleDocuments.filter(item => !['deleting','parsing','index_repairing'].includes(item.status)).map(item => item.id))}>{t('选择筛选结果')}</button><button disabled={bulkBusy || !selectedIds.length} onClick={() => bulk('reparse')}>{t('重新解析所选 (')}{selectedIds.length})</button></div>{selectedIds.length > 0 && <DangerZone title={t('批量删除所选文档')} description={t('删除 {0} 个所选文档及其索引。失败项保留以便重试。', [selectedIds.length])} action={t('删除所选')} confirmText="DELETE DOCUMENTS" busy={bulkBusy} onConfirm={() => bulk('delete')} />}</details>
+            <details className="bulk-tools"><summary>{t('批量操作')} · {fmt.integer(selectedIds.length)} {t('已选择')}</summary><div className="action-row"><button disabled={bulkBusy} onClick={() => setSelectedIds(visibleDocuments.filter(item => !['deleting','parsing','index_repairing'].includes(item.status)).map(item => item.id))}>{t('选择筛选结果')}</button><button disabled={bulkBusy || !selectedIds.length} onClick={() => bulk('reparse')}>{t('重新解析所选 (')}{fmt.integer(selectedIds.length)})</button></div>{selectedIds.length > 0 && <DangerZone title={t('批量删除所选文档')} description={t('删除 {0} 个所选文档及其索引。失败项保留以便重试。', [fmt.integer(selectedIds.length)])} action={t('删除所选')} confirmText="DELETE DOCUMENTS" busy={bulkBusy} onConfirm={() => bulk('delete')} />}</details>
           </>}
           {uploadQueue.length > 0 && <div className="upload-queue" aria-live="polite">{uploadQueue.map(item => <div className={`upload-queue-item ${item.status}`} key={item.id}><strong>{item.name}</strong><span>{t(item.message)}</span>{item.status === 'failed' && <button disabled={uploading} onClick={() => retry(item)}>{t('重试此文件')}</button>}{['pending', 'uploading', 'uncertain'].includes(item.status) && <button onClick={() => cancel(item)}>{t(item.status === 'uncertain' ? '核实上传状态' : '取消上传')}</button>}{item.status === 'submitted' && <a href="/tasks">{t('任务中心')}</a>}</div>)}</div>}
           <section className="recent-activity"><header><h3>{t('最近活动')}</h3><a href="/tasks">{t('查看全部 →')}</a></header>{preferences.notifications && notifications.length ? notifications.slice(0, 5).map(item => <div key={item.task_id}><StatusBadge status={item.status} /><span>{item.file_name || (item.task_type === 'document_ingest' ? t('文档解析') : t('资料库任务'))}</span><small>{item.error_message || (item.status === 'completed' ? t('已完成') : t('处理中'))}</small></div>) : <p className="muted">{t('暂无处理活动')}</p>}</section>

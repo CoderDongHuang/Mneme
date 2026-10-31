@@ -1,3 +1,4 @@
+import { useFormatters } from '../hooks/useFormatters'
 import { t, useI18n } from '../i18n'
 import { BookMarked, GitBranch, RefreshCw, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -15,6 +16,7 @@ const roleLabels = { user: "我", assistant: "忆知", system: "系统" };
 
 
 export default function WorkspaceTools({ initialMode }) {
+  const fmt = useFormatters()
   useI18n();
   const location = useLocation();
   const [mode, setMode] = useState(initialMode || "reader");
@@ -241,7 +243,7 @@ export default function WorkspaceTools({ initialMode }) {
                     <div>
                       <header>
                         <strong>{chunk.metadata?.source || t("未知来源")}</strong>
-                        <small>{t(" 排序信号 ")}{Number(chunk.score || 0).toFixed(4)}{t(" · 第")}{" "}
+                        <small>{t(" 排序信号 ")}{fmt.decimal(chunk.score, 4)}{t(" · 第")}{" "}
                           {chunk.metadata?.page || "-"}{t(" 页 ")}</small>
                       </header>
                       <p>{chunk.content}</p>
