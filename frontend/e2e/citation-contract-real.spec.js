@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { Buffer } from 'node:buffer'
 import fs from 'node:fs'
 import process from 'node:process'
 
@@ -21,7 +23,7 @@ test('真实 PDF 同步、SSE、持久引用与重放采用同一数字坐标契
     expect(sources.length).toBeGreaterThan(0)
     for (const source of sources) {
       expect(Object.keys(source).sort()).toEqual(Object.keys(schema.properties).sort())
-      expect(source.document_id).toBe(String(documentId))
+      expect(source.document_id).toBe(`doc_${documentId}`)
       expect(source.document_name).toBe('citation-evidence.pdf')
       expect(source.chunk_content).toContain('QZ-7294')
       expect(source.visual_region).toHaveLength(4)
@@ -61,7 +63,7 @@ test('真实 PDF 同步、SSE、持久引用与重放采用同一数字坐标契
     expect(sync.answer).toContain('QZ-7294')
     verifySources(sync.sources, document.id)
     await page.goto('/chat')
-    const streamed = await page.evaluate(async request => {
+    const stream = request => page.evaluate(async request => {
       const response = await fetch('/api/v1/chat/stream', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const reader = response.body.getReader()
@@ -85,7 +87,8 @@ test('真实 PDF 同步、SSE、持久引用与重放采用同一数字坐标契
           }
         }
       } finally { await reader.cancel(); reader.releaseLock() }
-    }, { ...message, request_id: randomUUID() })
+    }, request)
+    const streamed = await stream({ ...message, request_id: randomUUID() })
     expect(streamed.answer).toContain('QZ-7294')
     expect(streamed.replayed).toBe(false)
     verifySources(streamed.sources, document.id)
@@ -96,6 +99,20 @@ test('真实 PDF 同步、SSE、持久引用与重放采用同一数字坐标契
     expect(JSON.parse(assistant[1].sourcesJson)).toEqual(streamed.sources)
     // Idempotent JSON replay uses the same stored citation representation.
     expect((await api('post', '/chat', message)).sources).toEqual(sync.sources)
+    // Reproduce the previous stream representation in this isolated QA row.
+    // Both public replay paths must normalize it without dropping any metadata.
+    for (const value of [assistant[0].id, session.id, account.userId]) expect(String(value)).toMatch(/^\d+$/)
+    const containers = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=mysql', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/)
+    expect(containers).toHaveLength(1)
+    const legacy = sync.sources.map(source => ({ ...source, visual_region: source.visual_region.join(',') }))
+    const sql = `UPDATE chat_message m JOIN chat_session s ON s.id=m.session_id SET m.sources_json=CONVERT(0x${Buffer.from(JSON.stringify(legacy)).toString('hex')} USING utf8mb4) WHERE m.id=${assistant[0].id} AND s.id=${session.id} AND s.user_id=${account.userId}; SELECT ROW_COUNT();`
+    const changed = execFileSync('docker', ['exec', '-i', containers[0], 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot mneme -N'], { input: sql, encoding: 'utf8', timeout: 15_000 }).trim()
+    expect(changed).toBe('1')
+    expect((await api('post', '/chat', message)).sources).toEqual(sync.sources)
+    const replay = await stream(message)
+    expect(replay.replayed).toBe(true)
+    expect(replay.sources).toEqual(sync.sources)
+    expect(replay.answer).toBe(sync.answer)
     await page.reload()
     const historyToggle = page.getByRole('button', { name: '切换会话栏' })
     if (await historyToggle.getAttribute('aria-expanded') === 'false') await historyToggle.click()
@@ -105,7 +122,7 @@ test('真实 PDF 同步、SSE、持久引用与重放采用同一数字坐标契
     await expect(page.locator('.source-drawer')).toContainText('citation-evidence.pdf')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('citation-contract.png'), fullPage: true, animations: 'disabled' })
-    await testInfo.attach('citation-contract.json', { body: JSON.stringify({ numeric_rectangles: true, sync_and_sse: true, persisted_and_replayed: true, fields: Object.keys(schema.properties) }), contentType: 'application/json' })
+    await testInfo.attach('citation-contract.json', { body: JSON.stringify({ numeric_rectangles: true, sync_and_sse: true, persisted_and_replayed: true, legacy_csv_replayed: true, fields: Object.keys(schema.properties) }), contentType: 'application/json' })
   } finally {
     if (account) await api('delete', '/profile/account')
   }
