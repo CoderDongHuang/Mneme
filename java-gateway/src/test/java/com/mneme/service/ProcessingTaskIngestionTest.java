@@ -28,7 +28,7 @@ class ProcessingTaskIngestionTest {
         var storage = mock(ObjectStorageService.class);
         var service = new ProcessingTaskService(mock(ProcessingTaskMapper.class), documents,
             mock(KnowledgeBaseMapper.class), new ObjectMapper(), http, new SimpleMeterRegistry(),
-            mock(NotificationService.class), mock(JdbcTemplate.class), storage);
+            mock(NotificationService.class), mock(JdbcTemplate.class), storage, mock(TaskLeaseService.class));
         ReflectionTestUtils.setField(service, "pythonAgentUrl", "http://agent");
         var task = new ProcessingTask();
         task.setAggregateId(7L);
@@ -39,7 +39,12 @@ class ProcessingTaskIngestionTest {
         var report = Map.<String,Object>of("warnings", List.of(Map.of("page", 2, "code", "no_text")));
         when(http.postForObject(anyString(), any(), eq(IngestionResult.class)))
             .thenReturn(new IngestionResult("partial", "7", 3, report));
-        ReflectionTestUtils.invokeMethod(service, "ingest", task);
+        var lease = mock(TaskLeaseService.Lease.class);
+        when(lease.write(any())).thenAnswer(invocation -> {
+            java.util.function.Function<Map<String, Object>, Object> change = invocation.getArgument(0);
+            return change.apply(Map.of("status", "processing"));
+        });
+        ReflectionTestUtils.invokeMethod(service, "ingest", task, lease);
         verify(http).postForObject(anyString(), argThat((Object value) -> value instanceof IngestionRequest request
             && "学习资料.pdf".equals(request.sourceName()) && "source.pdf".equals(request.filePath())), eq(IngestionResult.class));
         assertEquals("partial", document.getStatus());

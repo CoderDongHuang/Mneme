@@ -10,6 +10,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -75,11 +77,19 @@ public class NotificationService {
     public void publish(ProcessingTask task) {
         Map<String, Object> event = payload(task);
         long eventId = persist(task.getUserId(), "task", String.valueOf(task.getAggregateId()), severity(task), event);
-        event = withEventFields(event, eventId, "task", severity(task));
-        for (Subscriber subscriber : subscribers.getOrDefault(task.getUserId(), new CopyOnWriteArrayList<>())) {
-            send(task.getUserId(), subscriber, event);
-        }
-        publishToRedis(task.getUserId(), event);
+        Map<String, Object> committedEvent = withEventFields(event, eventId, "task", severity(task));
+        Long userId = task.getUserId();
+        Runnable deliver = () -> {
+            for (Subscriber subscriber : subscribers.getOrDefault(userId, new CopyOnWriteArrayList<>())) {
+                if (eventId > subscriber.lastSeen.get()) send(userId, subscriber, committedEvent);
+            }
+            publishToRedis(userId, committedEvent);
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { deliver.run(); }
+            });
+        } else deliver.run();
     }
 
     private void publishToRedis(Long userId, Map<String, Object> event) {

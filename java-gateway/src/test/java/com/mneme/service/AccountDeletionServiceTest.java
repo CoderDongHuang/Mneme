@@ -30,7 +30,7 @@ class AccountDeletionServiceTest {
         ObjectStorageService storage = new ObjectStorageService(
             "local", root.toString(), "", "", "", "mneme");
         AccountDeletionService service = new AccountDeletionService(
-            users, jdbc, mock(RestTemplate.class), operations, "http://agent", root.toString(), 8, storage);
+            users, jdbc, mock(RestTemplate.class), operations, "http://agent", root.toString(), 8, storage, mock(TaskLeaseService.class));
 
         assertEquals("op-7", service.enqueue(7L));
         assertEquals("deleting", user.getStatus());
@@ -51,7 +51,7 @@ class AccountDeletionServiceTest {
         ObjectStorageService storage = new ObjectStorageService(
             "local", root.toString(), "", "", "", "mneme");
         AccountDeletionService service = new AccountDeletionService(
-            users, jdbc, mock(RestTemplate.class), operations, "http://agent", root.toString(), 8, storage);
+            users, jdbc, mock(RestTemplate.class), operations, "http://agent", root.toString(), 8, storage, mock(TaskLeaseService.class));
 
         assertEquals("existing-op", service.enqueue(7L));
 
