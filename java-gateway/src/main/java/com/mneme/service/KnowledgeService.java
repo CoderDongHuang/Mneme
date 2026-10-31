@@ -169,7 +169,7 @@ public class KnowledgeService {
             )));
             task.setAttemptCount(0);
             task.setMaxAttempts(3);
-            task.setNextAttemptAt(java.time.LocalDateTime.now());
+            task.setNextAttemptAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
             taskMapper.insert(task);
             document.setParseTaskId(taskId);
             docMapper.updateById(document);
@@ -483,7 +483,7 @@ public class KnowledgeService {
                 "source_name", document.getFileName()
             )));
             task.setAttemptCount(0); task.setMaxAttempts(3);
-            task.setNextAttemptAt(java.time.LocalDateTime.now());
+            task.setNextAttemptAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
             taskMapper.insert(task);
             document.setParseTaskId(taskId);
             docMapper.updateById(document);
@@ -516,7 +516,7 @@ public class KnowledgeService {
             task.setPayload(objectMapper.writeValueAsString(Map.of("user_id", userId.toString(), "kb_id", kbId.toString())));
             task.setAttemptCount(0);
             task.setMaxAttempts(5);
-            task.setNextAttemptAt(java.time.LocalDateTime.now());
+            task.setNextAttemptAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
             taskMapper.insert(task);
         } catch (Exception error) {
             throw new IllegalStateException("删除任务创建失败", error);

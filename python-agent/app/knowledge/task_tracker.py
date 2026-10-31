@@ -8,9 +8,9 @@
 
 import uuid
 import threading
-from datetime import datetime
 from typing import Dict, Optional
 
+from app.core.time import utc_now, parse_utc
 from app.core.logging import setup_logger
 
 logger = setup_logger("task_tracker")
@@ -31,7 +31,7 @@ def create_task() -> str:
             "status": "processing",
             "chunks": 0,
             "error": None,
-            "created_at": datetime.now().isoformat(),
+            "created_at": utc_now().isoformat(),
         }
     return task_id
 
@@ -59,10 +59,10 @@ def get_task(task_id: str) -> Optional[dict]:
     """查询任务状态"""
     with _lock:
         # 清理过期任务
-        now = datetime.now()
+        now = utc_now()
         expired = []
         for tid, info in _task_store.items():
-            created = datetime.fromisoformat(info["created_at"])
+            created = parse_utc(info["created_at"])
             if (now - created).total_seconds() > TASK_TTL_SECONDS:
                 expired.append(tid)
         for tid in expired:

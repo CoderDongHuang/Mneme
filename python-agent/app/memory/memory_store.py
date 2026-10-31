@@ -10,9 +10,9 @@
 
 import uuid
 import json
-from datetime import datetime
 from typing import List, Optional, Dict
 
+from app.core.time import utc_now
 from app.knowledge.qdrant_store import VectorClient, InvalidCollectionException
 
 from app.core.config import settings
@@ -89,7 +89,7 @@ class MemoryVectorStore:
             raise ValueError(f"非法记忆类别: {category}，合法值: {VALID_CATEGORIES}")
 
         mem_id = f"mem_{user_id}_{uuid.uuid4().hex[:8]}"
-        now = datetime.now().isoformat()
+        now = utc_now().isoformat()
 
         self._collection.add(
             documents=[content],
@@ -119,7 +119,7 @@ class MemoryVectorStore:
         memory_version_store.snapshot(self._memory_from_result(mem_id, current), "importance")
         metadata = dict((current.get("metadatas") or [{}])[0] or {})
         metadata["importance"] = max(0.0, min(float(new_importance), 1.0))
-        metadata["updated_at"] = datetime.now().isoformat()
+        metadata["updated_at"] = utc_now().isoformat()
         self._collection.update(ids=[mem_id], metadatas=[metadata])
 
     def update_memory_topic(self, mem_id: str, new_topic: str):
@@ -130,7 +130,7 @@ class MemoryVectorStore:
         memory_version_store.snapshot(self._memory_from_result(mem_id, current), "topic")
         metadata = dict((current.get("metadatas") or [{}])[0] or {})
         metadata["topic"] = new_topic
-        metadata["updated_at"] = datetime.now().isoformat()
+        metadata["updated_at"] = utc_now().isoformat()
         self._collection.update(ids=[mem_id], metadatas=[metadata])
 
     def update_memory(
@@ -146,7 +146,7 @@ class MemoryVectorStore:
         metadata = dict((current.get("metadatas") or [{}])[0] or {})
         if topic is not None:
             metadata["topic"] = topic
-        metadata["updated_at"] = datetime.now().isoformat()
+        metadata["updated_at"] = utc_now().isoformat()
         document = (
             content if content is not None else (current.get("documents") or [""])[0]
         )
@@ -165,7 +165,7 @@ class MemoryVectorStore:
         )
         metadata = dict((current.get("metadatas") or [{}])[0] or {})
         metadata["frozen"] = bool(frozen)
-        metadata["updated_at"] = datetime.now().isoformat()
+        metadata["updated_at"] = utc_now().isoformat()
         self._collection.update(ids=[mem_id], metadatas=[metadata])
         return True
 
@@ -179,7 +179,7 @@ class MemoryVectorStore:
         memory_version_store.snapshot(self._memory_from_result(mem_id, current), "metadata")
         metadata = dict((current.get("metadatas") or [{}])[0] or {})
         metadata.update(changes)
-        metadata["updated_at"] = datetime.now().isoformat()
+        metadata["updated_at"] = utc_now().isoformat()
         self._collection.update(ids=[mem_id], metadatas=[metadata])
         return True
 
@@ -187,7 +187,7 @@ class MemoryVectorStore:
         self._require_embedding_profile()
         require_cloud_processing(str(metadata.get("user_id", "")))
         metadata = dict(metadata)
-        metadata["updated_at"] = datetime.now().isoformat()
+        metadata["updated_at"] = utc_now().isoformat()
         self._collection.upsert(
             ids=[memory_id],
             documents=[content],

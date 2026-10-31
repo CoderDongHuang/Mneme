@@ -63,7 +63,7 @@ public class PendingMemoryService {
             )
         );
         memory.setStatus("confirm".equals(action) ? "confirmed" : "dismissed");
-        memory.setResolvedAt(LocalDateTime.now());
+        memory.setResolvedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         mapper.updateById(memory);
         return result;
     }

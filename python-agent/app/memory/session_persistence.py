@@ -10,9 +10,10 @@
 import json
 import redis
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List, Optional
 
+from app.core.time import utc_now
 from app.models.chat import Message
 from app.core.config import settings
 from app.core.logging import setup_logger
@@ -99,7 +100,7 @@ class SessionPersistence:
                 Message(
                     role=m["role"],
                     content=m["content"],
-                    timestamp=m.get("timestamp", datetime.now().isoformat()),
+                    timestamp=m.get("timestamp", utc_now().isoformat()),
                     token_count=m.get("token_count", len(m["content"]) // 4),
                 )
                 for m in raw_list

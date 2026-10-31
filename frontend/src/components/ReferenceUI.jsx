@@ -1,3 +1,4 @@
+import { dateKey, formatDate, parseInstant } from '../utils/dates'
 import { useEffect, useState } from 'react'
 import { X, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { t, useI18n } from '../i18n'
@@ -27,12 +28,11 @@ export function StudyCalendar({ cards = [] }) {
   useI18n()
   const { preferences } = usePreferences()
   const [week, setWeek] = useState(0)
-  const formatter = new Intl.DateTimeFormat('sv-SE', { timeZone: preferences.timezone })
-  const today = formatter.format(new Date())
+  const today = dateKey(new Date(), preferences.timezone)
   // Calendar arithmetic is performed on the user's local calendar date.
   const anchor = new Date(`${today}T12:00:00Z`)
   const offset = (anchor.getUTCDay() + 6) % 7
   const dates = Array.from({ length: 7 }, (_, i) => { const d = new Date(anchor); d.setUTCDate(d.getUTCDate() - offset + i + week * 7); return d })
-  const scheduled = cards.filter(card => card.due_at && Number.isFinite(new Date(card.due_at).getTime()))
-  return <section className="reference-calendar"><header><h3><CalendarDays size={18} />{t('复习日历')}</h3><div><button aria-label={t('上一周')} onClick={() => setWeek(v => v - 1)}><ChevronLeft size={16} /></button><button onClick={() => setWeek(0)}>{t('本周')}</button><button aria-label={t('下一周')} onClick={() => setWeek(v => v + 1)}><ChevronRight size={16} /></button></div></header><div className="calendar-days">{dates.map(date => { const key = date.toISOString().slice(0, 10); const count = scheduled.filter(card => formatter.format(new Date(card.due_at)) === key).length; return <div key={key} className={key === today ? 'today' : ''}><small>{date.toLocaleDateString(preferences.language, { weekday: 'short', timeZone: 'UTC' })}</small><strong>{date.getUTCDate()}</strong><span title={t('{0} 张', [count])}>{count ? '●' : '·'}</span></div> })}</div><p className="muted">{preferences.timezone}</p></section>
+  const scheduled = cards.filter(card => parseInstant(card.due_at))
+  return <section className="reference-calendar"><header><h3><CalendarDays size={18} />{t('复习日历')}</h3><div><button aria-label={t('上一周')} onClick={() => setWeek(v => v - 1)}><ChevronLeft size={16} /></button><button onClick={() => setWeek(0)}>{t('本周')}</button><button aria-label={t('下一周')} onClick={() => setWeek(v => v + 1)}><ChevronRight size={16} /></button></div></header><div className="calendar-days">{dates.map(date => { const key = date.toISOString().slice(0, 10); const count = scheduled.filter(card => dateKey(card.due_at, preferences.timezone) === key).length; return <div key={key} className={key === today ? 'today' : ''}><small>{formatDate(date, preferences.language, 'UTC', { weekday: 'short', year: undefined, month: undefined, day: undefined })}</small><strong>{date.getUTCDate()}</strong><span title={t('{0} 张', [count])}>{count ? '●' : '·'}</span></div> })}</div><p className="muted">{preferences.timezone}</p></section>
 }

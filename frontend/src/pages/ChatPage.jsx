@@ -1,3 +1,5 @@
+import { parseInstant } from '../utils/dates'
+import { useDateFormatter } from '../hooks/useDateFormatter'
 import { t, useI18n } from '../i18n'
 import {
   ArrowUp, BookOpen, Check, ChevronDown, CircleStop, FileText, MessageSquarePlus,
@@ -16,13 +18,10 @@ import logo from '../assets/mneme-logo.svg'
 import '../styles/chat.css'
 import '../styles/reference-chat.css'
 
-function formatTime(value) {
-  if (!value) return ''
-  return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(value))
-}
 
 export default function ChatPage({ renderTools, workspace = false }) {
   useI18n();
+  const dates = useDateFormatter()
   const navigate = useNavigate()
   const location = useLocation()
   const [historyQuery, setHistoryQuery] = useState('')
@@ -263,7 +262,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
     }
   }
 
-  const filteredSessions = sessions.filter(item => (item.title || '').toLowerCase().includes(historyQuery.toLowerCase()) && (!historyDate || String(item.updatedAt || item.createdAt).startsWith(historyDate)) && (!historyRange || historyNow - new Date(item.updatedAt || item.createdAt).getTime() <= historyRange * 86400000))
+  const filteredSessions = sessions.filter(item => (item.title || '').toLowerCase().includes(historyQuery.toLowerCase()) && (!historyDate || dates.dateKey(item.updatedAt || item.createdAt) === historyDate) && (!historyRange || historyNow - (parseInstant(item.updatedAt || item.createdAt)?.getTime() ?? NaN) <= historyRange * 86400000))
   const displaySources = sourceDrawer || messages.findLast(message => message.sources?.length)?.sources || []
   async function rename(event) {
     event.preventDefault()
@@ -292,11 +291,11 @@ export default function ChatPage({ renderTools, workspace = false }) {
           <div><strong>{t("对话历史")}</strong></div>
           <button onClick={newChat} title={t("新对话")} aria-label={t("新对话")}><MessageSquarePlus size={16} /><span>{t('新建对话')}</span></button>
         </div>
-<div className="history-filters"><label><Search size={16} /><input aria-label={t("搜索会话")} placeholder={t("搜索对话…")} value={historyQuery} onChange={e => setHistoryQuery(e.target.value)} /></label><div className="history-ranges">{[[0, '全部'], [7, '最近 7 天'], [30, '最近 30 天']].map(([days, label]) => <button key={days} aria-pressed={historyRange === days} onClick={() => { setHistoryRange(days); setHistoryDate('') }}>{t(label)}<small>{sessions.filter(item => !days || historyNow - new Date(item.updatedAt || item.createdAt).getTime() <= days * 86400000).length}</small></button>)}</div><details><summary>{t('按日期筛选会话')}</summary><input type="date" aria-label={t("按日期筛选会话")} value={historyDate} onChange={e => setHistoryDate(e.target.value)} /></details></div>
+<div className="history-filters"><label><Search size={16} /><input aria-label={t("搜索会话")} placeholder={t("搜索对话…")} value={historyQuery} onChange={e => setHistoryQuery(e.target.value)} /></label><div className="history-ranges">{[[0, '全部'], [7, '最近 7 天'], [30, '最近 30 天']].map(([days, label]) => <button key={days} aria-pressed={historyRange === days} onClick={() => { setHistoryRange(days); setHistoryDate('') }}>{t(label)}<small>{sessions.filter(item => !days || historyNow - (parseInstant(item.updatedAt || item.createdAt)?.getTime() ?? NaN) <= days * 86400000).length}</small></button>)}</div><details><summary>{t('按日期筛选会话')}</summary><input type="date" aria-label={t("按日期筛选会话")} value={historyDate} onChange={e => setHistoryDate(e.target.value)} /></details></div>
         <div className="history-list">
           {loading ? <LoadingState /> : filteredSessions.length ? filteredSessions.map((session) => (
             <div key={session.id} className={`history-item ${activeSession?.id === session.id ? 'active' : ''}`}>
-              <button className="session-open" aria-label={t("打开对话：{0}", [session.title || '新对话'])} onClick={() => chooseSession(session)}><strong>{session.title || t("新对话")}</strong><small>{formatTime(session.updatedAt || session.createdAt)}</small></button>
+              <button className="session-open" aria-label={t("打开对话：{0}", [session.title || '新对话'])} onClick={() => chooseSession(session)}><strong>{session.title || t("新对话")}</strong><small>{dates.date(session.updatedAt || session.createdAt)}</small></button>
               <button className="rename-session" disabled={streaming || switching} title={t("重命名会话")} aria-label={t("重命名会话：{0}", [session.title])} onClick={() => setRenaming({ id: session.id, title: session.title || t("新对话") })}>✎</button>
               <button className="delete-session" title={t("删除对话：{0}", [session.title || '新对话'])} aria-label={t("删除对话：{0}", [session.title || '新对话'])} onClick={(event) => removeSession(event, session)}><Trash2 size={15} /></button>
             </div>
@@ -385,7 +384,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
           <small>{source.page ? t("第 {0} 页", [source.page]) : t("全文")}{source.section ? ` · ${source.section}` : ''}</small>
           <blockquote className="source-excerpt">{source.chunk_content}</blockquote><div className="action-row"><button className="source-open" onClick={() => openSource(source)} disabled={!source.document_id}>{t("打开原文定位")}</button><button onClick={async () => { try { await navigator.clipboard.writeText(`${source.document_name || source.document_id} · ${source.page || ''}\n${source.chunk_content || ''}`) } catch { setError(t('复制失败，请手动选择文本复制')) } }}>{t('复制引用')}</button></div><details><summary>{t('来源信息')}</summary>
           {!!Object.keys(source.retrieval_ranks || {}).length && <p className="source-signals">{t("召回路径：")}{Object.entries(source.retrieval_ranks).map(([channel, rank]) => `${channel.startsWith('dense:') ? t("向量") : t("词法")} #${rank}`).join(' · ')}{Number.isFinite(source.score) ? t(" · 排序信号 {0}（非可信概率）", [source.score.toFixed(3)]) : ''}</p>}
-          {source.indexed_at && <small>{t("索引时间：")}{new Date(source.indexed_at).toLocaleString('zh-CN')}{t(" · 解析器 ")}{source.parser_version || t("未知")}</small>}
+          {source.indexed_at && <small>{t("索引时间：")}{dates.dateTime(source.indexed_at)}{t(" · 解析器 ")}{source.parser_version || t("未知")}</small>}
           {source.content_sha256 && <small title={source.content_sha256}>{t("文件版本 SHA-256：")}{source.content_sha256.slice(0, 16)}…</small>}
           <p className="muted">{t("资料依据需结合原文核验；排序信号不代表事实正确。")}</p></details>
         </article>)}</div>

@@ -24,12 +24,12 @@ class AuthServiceSecurityTest {
         ArgumentCaptor<PasswordResetToken> saved = ArgumentCaptor.forClass(PasswordResetToken.class);
         verify(tokens).insert(saved.capture());
         assertThat(raw).hasSize(64); assertThat(saved.getValue().getTokenHash()).hasSize(64).isNotEqualTo(raw);
-        assertThat(saved.getValue().getExpiresAt()).isAfter(LocalDateTime.now().plusMinutes(14));
+        assertThat(saved.getValue().getExpiresAt()).isAfter(LocalDateTime.now(java.time.ZoneOffset.UTC).plusMinutes(14));
     }
 
     @Test void expiredResetTokenCannotChangePassword() {
         UserMapper users = mock(UserMapper.class); PasswordResetTokenMapper tokens = mock(PasswordResetTokenMapper.class);
-        PasswordResetToken expired = new PasswordResetToken(); expired.setExpiresAt(LocalDateTime.now().minusSeconds(1));
+        PasswordResetToken expired = new PasswordResetToken(); expired.setExpiresAt(LocalDateTime.now(java.time.ZoneOffset.UTC).minusSeconds(1));
         when(tokens.selectOne(any())).thenReturn(expired);
         AuthService service = new AuthService(users, tokens, mock(AuthSessionService.class));
         assertThatThrownBy(() -> service.confirmPasswordReset("expired", "new-password"))
@@ -131,7 +131,7 @@ class AuthServiceSecurityTest {
         PasswordResetToken token = new PasswordResetToken();
         token.setId(3L);
         token.setUserId(7L);
-        token.setExpiresAt(LocalDateTime.now().plusMinutes(10));
+        token.setExpiresAt(LocalDateTime.now(java.time.ZoneOffset.UTC).plusMinutes(10));
         return token;
     }
 }

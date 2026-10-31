@@ -36,6 +36,7 @@ def test_connection_retries_transient_startup_failure(monkeypatch):
     attempts = []
 
     def connect(**_kwargs):
+        assert _kwargs['time_zone'] == '+00:00'
         attempts.append(1)
         if len(attempts) < 3:
             raise ConnectorError(2003)

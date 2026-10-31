@@ -8,12 +8,13 @@
 import os
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import jwt
 from fastapi import APIRouter
 from pydantic import BaseModel
+from app.core.time import utc_now
 from app.core.config import settings
 from app.core.logging import setup_logger
 
@@ -57,7 +58,7 @@ def _make_token(username: str) -> str:
     payload = {
         "sub": username,
         "user_id": username,
-        "exp": datetime.utcnow() + timedelta(milliseconds=JWT_EXPIRATION),
+        "exp": utc_now() + timedelta(milliseconds=JWT_EXPIRATION),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
@@ -76,7 +77,7 @@ async def register(req: AuthRequest):
 
     users[req.username] = {
         "password_hash": _hash_password(req.password),
-        "created_at": datetime.now().isoformat(),
+        "created_at": utc_now().isoformat(),
     }
     _save_users(users)
     logger.info(f"用户注册: {req.username}")

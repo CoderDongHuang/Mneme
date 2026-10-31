@@ -32,6 +32,7 @@ def _connect(connector):
                 user=settings.mysql_user,
                 password=settings.mysql_password,
                 autocommit=False,
+                time_zone="+00:00",
             )
         except connector.Error as error:
             if getattr(error, "errno", None) not in _TRANSIENT_CONNECTION_ERRNOS or attempt == _CONNECT_ATTEMPTS - 1:

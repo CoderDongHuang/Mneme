@@ -1,3 +1,4 @@
+import { formatDateTime } from '../utils/dates'
 import { t, useI18n } from '../i18n'
 import { Camera, KeyRound, Mail, Save, UserRound, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -81,14 +82,14 @@ export default function ProfilePage() {
         <label><span>{t("确认新密码")}</span><input type="password" minLength="8" value={passwords.confirm} onChange={(e)=>setPasswords({...passwords,confirm:e.target.value})} required /></label>
         <button disabled={busy}><KeyRound size={17}/>{t("确认修改")}</button>
       </form>
-      <section className="profile-form"><h2>{t("登录会话")}</h2><p className="muted">{t("撤销会话后，对应设备的登录凭证立即失效；撤销当前会话需要重新登录。")}</p><ul className="plain-list">{sessions.map(item => <li key={item.session_id}><strong>{item.remembered ? t("长期登录") : t("普通登录")}</strong><small>{t("最近活动：")}{new Date(item.last_seen_at).toLocaleString(localeForm.language, { timeZone: localeForm.timezone })}</small><button disabled={busy} onClick={() => run(async () => { await endpoints.revokeAuthSession(item.session_id); setSessions(await endpoints.authSessions()) }, t("会话已撤销"))}>{t("撤销会话")}</button></li>)}</ul>{!sessions.length && <p>{t("暂无活动会话。")}</p>}</section>
+      <section className="profile-form"><h2>{t("登录会话")}</h2><p className="muted">{t("撤销会话后，对应设备的登录凭证立即失效；撤销当前会话需要重新登录。")}</p><ul className="plain-list">{sessions.map(item => <li key={item.session_id}><strong>{item.remembered ? t("长期登录") : t("普通登录")}</strong><small>{t("最近活动：")}{formatDateTime(item.last_seen_at, localeForm.language, localeForm.timezone)}</small><button disabled={busy} onClick={() => run(async () => { await endpoints.revokeAuthSession(item.session_id); setSessions(await endpoints.authSessions()) }, t("会话已撤销"))}>{t("撤销会话")}</button></li>)}</ul>{!sessions.length && <p>{t("暂无活动会话。")}</p>}</section>
         </div>
       </div>
       <aside className="account-aside">
       <form className="profile-form" onSubmit={event => { event.preventDefault(); run(async () => { await savePreferences(localeForm) }, t("偏好已保存")) }}>
         <h2>{t("语言与偏好")}</h2><FeedbackBlock error={preferenceError} />
         <label>{t("界面语言")}<select aria-label={t("界面语言")} value={localeForm.language} onChange={e => setLocaleForm({ ...localeForm, language: e.target.value })}><option value="zh-CN">{t("简体中文")}</option><option value="en">English</option></select></label>
-        <label>{t("时区")}<select aria-label={t("时区")} value={localeForm.timezone} onChange={e => setLocaleForm({ ...localeForm, timezone: e.target.value })}>{[...new Set([localeForm.timezone, 'Asia/Shanghai', 'Asia/Tokyo', 'Europe/London', 'Europe/Paris', 'America/New_York', 'America/Los_Angeles', 'UTC'])].map(zone => <option key={zone} value={zone}>{zone}</option>)}</select></label>
+        <label>{t("时区")}<select aria-label={t("时区")} value={localeForm.timezone} onChange={e => setLocaleForm({ ...localeForm, timezone: e.target.value })}>{[...new Set([localeForm.timezone, 'Asia/Shanghai', 'Asia/Tokyo', 'Europe/London', 'Europe/Amsterdam', 'Europe/Paris', 'America/New_York', 'America/Los_Angeles', 'UTC'])].map(zone => <option key={zone} value={zone}>{zone}</option>)}</select></label>
         <label>{t("主题")}<select value={localeForm.theme} onChange={e => setLocaleForm({ ...localeForm, theme: e.target.value })}><option value="system">{t("跟随系统")}</option><option value="light">{t("浅色")}</option><option value="dark">{t("深色")}</option></select></label>
         <label className="check-row"><input type="checkbox" checked={!!localeForm.notifications} onChange={e => setLocaleForm({ ...localeForm, notifications: e.target.checked })} />{t("启用应用通知")}</label>
         <button disabled={busy}><Save size={17} />{t("保存偏好")}</button>
