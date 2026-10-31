@@ -29,14 +29,17 @@ class ObjectStorageReadbackTest {
         .withExposedPorts(9000)
         .waitingFor(Wait.forHttp("/health").forPort(9000));
     @BeforeAll static void waitForStorageQuorum() throws Exception {
-        // The HTTP health endpoint can return 200 before the S3 storage quorum.
+        // HTTP health can precede both IAM initialization and the S3 quorum.
         var client = MinioClient.builder().endpoint("http://" + S3.getHost() + ":" + S3.getMappedPort(9000))
             .credentials(ACCESS, SECRET).build();
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(60);
         while (true) {
             try { client.bucketExists(BucketExistsArgs.builder().bucket("mneme-readiness-probe").build()); return; }
             catch (io.minio.errors.InvalidResponseException starting) {
-                if (!starting.getMessage().contains("storage_quorum") || System.nanoTime() >= deadline) throw starting;
+                String message = starting.getMessage();
+                boolean initializing = message.contains("Response code: 503")
+                    && (message.contains("storage_quorum") || message.contains("Service not ready: waiting for iam"));
+                if (!initializing || System.nanoTime() >= deadline) throw starting;
                 Thread.sleep(200);
             }
         }

@@ -11,7 +11,11 @@ test('真实主动停止和无 Token 停止关闭上游，浏览器断流保持�
   test.setTimeout(300_000)
   const agent = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=python-agent', '--filter', 'publish=8001', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim()
   expect(agent).toMatch(/^[a-f0-9]+$/)
-  const python = (code, ...args) => execFileSync('docker', ['exec', '-i', agent, 'python', '-', ...args.map(String)], { input: code, encoding: 'utf8', timeout: 30_000 }).trim().split('\n').at(-1)
+  const runtimeOwner = JSON.parse(execFileSync('docker', ['exec', agent, 'python', '-c', 'import os,json; print(json.dumps([os.getuid(),os.getgid()]))'], { encoding: 'utf8' }))
+  // CI runs the service as non-root with immutable, root-owned application files.
+  // Only the test harness installs/restores the fault hook as root; the service
+  // keeps its original identity and receives ownership of its temporary markers.
+  const python = (code, ...args) => execFileSync('docker', ['exec', '--user', '0', '-i', agent, 'python', '-', ...args.map(String)], { input: code, encoding: 'utf8', timeout: 30_000 }).trim().split('\n').at(-1)
   async function api(method, path, body) {
     const response = await page.request[method]('/api/v1' + path, body === undefined ? {} : { data: body })
     expect(response.ok(), `${method} ${path}: ${response.status()}`).toBe(true)
@@ -45,8 +49,9 @@ test('真实主动停止和无 Token 停止关闭上游，浏览器断流保持�
     for (const mode of ['partial', 'silent', 'partial']) sessions.push({ ...(await api('post', '/sessions', { title: `Stream ${mode} QA` })), mode })
     const scope = { user: String(account.userId), sessions: Object.fromEntries(sessions.map(s => [String(s.id), s.mode])) }
     const fixture = fs.readFileSync('../test-fixtures/chat-stream-probe.py', 'utf8')
-    folder = python(`import json,sys,tempfile\nfrom pathlib import Path\nroot=Path(tempfile.mkdtemp(prefix='mneme-stream-qa-'))\nmodule=Path('/app/app/api/chat_stream.py')\n(root/'original').write_bytes(module.read_bytes())\n(root/'scope.json').write_text(sys.argv[1])\n(root/'probe.py').write_text(sys.argv[2])\nsuffix=('\\nfrom pathlib import Path as _QaPath\\n_qa_root = _QaPath('+repr(str(root))+')\\nexec(compile((_qa_root / "probe.py").read_text(), str(_qa_root / "probe.py"), "exec"), globals())\\n').encode()\n(root/'suffix').write_bytes(suffix)\nmodule.write_bytes((root/'original').read_bytes()+suffix)\nprint(str(root))`, JSON.stringify(scope), fixture)
+    folder = python(`import tempfile\nprint(tempfile.mkdtemp(prefix='mneme-stream-qa-'))`)
     expect(folder).toMatch(/^\/tmp\/mneme-stream-qa-/)
+    python(`import os,json,sys\nfrom pathlib import Path\nroot=Path(sys.argv[1]); assert str(root).startswith('/tmp/mneme-stream-qa-')\nmodule=Path('/app/app/api/chat_stream.py')\n(root/'original').write_bytes(module.read_bytes())\n(root/'scope.json').write_text(sys.argv[2])\n(root/'probe.py').write_text(sys.argv[3])\nsuffix=('\\nfrom pathlib import Path as _QaPath\\n_qa_root = _QaPath('+repr(str(root))+')\\nexec(compile((_qa_root / "probe.py").read_text(), str(_qa_root / "probe.py"), "exec"), globals())\\n').encode()\n(root/'suffix').write_bytes(suffix)\nos.chown(root,*json.loads(sys.argv[4]))\nmodule.write_bytes((root/'original').read_bytes()+suffix)\nprint('installed')`, folder, JSON.stringify(scope), fixture, JSON.stringify(runtimeOwner))
     await restart()
     const marker = session => JSON.parse(python(`import json,sys\nfrom pathlib import Path\np=Path(sys.argv[1])/(sys.argv[2]+'.json')\nprint(p.read_text() if p.exists() else '{}')`, folder, session.id))
     const history = session => api('get', `/sessions/${session.id}/messages`)
@@ -101,7 +106,7 @@ test('真实主动停止和无 Token 停止关闭上游，浏览器断流保持�
   } finally {
     // Restore before deleting the test user. No fault hook survives the test.
     if (folder) {
-      python(`import sys,shutil\nfrom pathlib import Path\nroot=Path(sys.argv[1]); assert str(root).startswith('/tmp/mneme-stream-qa-')\nmodule=Path('/app/app/api/chat_stream.py')\noriginal=(root/'original').read_bytes()\nassert module.read_bytes()==original+(root/'suffix').read_bytes()\nmodule.write_bytes(original)\nassert module.read_bytes()==original\nshutil.rmtree(root)\nprint('restored')`, folder)
+      python(`import sys,shutil\nfrom pathlib import Path\nroot=Path(sys.argv[1]); assert str(root).startswith('/tmp/mneme-stream-qa-')\nmodule=Path('/app/app/api/chat_stream.py')\nif (root/'original').exists():\n original=(root/'original').read_bytes()\n current=module.read_bytes()\n assert current==original or ((root/'suffix').exists() and current==original+(root/'suffix').read_bytes())\n module.write_bytes(original)\n assert module.read_bytes()==original\nshutil.rmtree(root)\nprint('restored')`, folder)
       await restart()
     }
     if (account) await api('delete', '/profile/account')
