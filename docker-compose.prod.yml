@@ -18,6 +18,8 @@ services:
     restart: unless-stopped
   redis:
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Production requires a non-empty REDIS_PASSWORD}
   qdrant:
     restart: unless-stopped
   python-agent:

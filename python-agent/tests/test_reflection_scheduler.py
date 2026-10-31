@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+import pytest
+import redis
 
 import app.memory.reflection_scheduler as module
 
@@ -14,6 +16,9 @@ class FakeRedis:
     def incr(self, key):
         self.values[key] = int(self.values.get(key, 0)) + 1
         return self.values[key]
+
+    def ping(self):
+        return True
 
     def expire(self, key, seconds):
         return True
@@ -173,3 +178,41 @@ def test_expired_shared_lease_is_counted_as_takeover(monkeypatch):
 
     second = module.ReflectionScheduler(redis_client=fake, executor=QueueExecutor())
     assert second.check_and_trigger("u") is True
+
+
+def test_unavailable_redis_never_acknowledges_in_memory_task(monkeypatch):
+    fake = FakeRedis()
+    scheduler = module.ReflectionScheduler(redis_client=fake)
+
+    def unavailable(*_args, **_kwargs):
+        raise redis.ConnectionError("offline")
+
+    monkeypatch.setattr(fake, "incr", unavailable)
+    monkeypatch.setattr(fake, "get", unavailable)
+    monkeypatch.setattr(fake, "ping", unavailable)
+    with pytest.raises(redis.ConnectionError):
+        scheduler.record_session("u")
+    with pytest.raises(redis.ConnectionError):
+        scheduler.check_and_trigger("u")
+    assert not scheduler.queue_available()
+    assert fake.stream == []
+    assert not hasattr(scheduler, "_session_counts")
+    monkeypatch.setattr(fake, "ping", lambda: True)
+    assert scheduler.queue_available()
+
+
+def test_failed_enqueue_releases_lease_without_reporting_success(monkeypatch):
+    fake = FakeRedis()
+    monkeypatch.setattr(module, "settings", SimpleNamespace(
+        memory_reflection_every_sessions=1, memory_reflection_lease_seconds=60))
+    scheduler = module.ReflectionScheduler(redis_client=fake)
+    scheduler.record_session("u")
+
+    def unavailable(*_args, **_kwargs):
+        raise redis.ConnectionError("offline")
+
+    monkeypatch.setattr(fake, "xadd", unavailable)
+    with pytest.raises(redis.ConnectionError):
+        scheduler.check_and_trigger("u")
+    assert fake.leases == {}
+    assert fake.values[scheduler._counter_key("u")] == 1

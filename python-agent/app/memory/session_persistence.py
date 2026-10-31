@@ -84,6 +84,7 @@ class SessionPersistence:
                 data,
             )
         except Exception as e:
+            self._available = False
             logger.warning(f"Redis 会话保存失败: {e}")
 
     def load_messages(self, session_id: str) -> Optional[List[Message]]:
@@ -104,6 +105,7 @@ class SessionPersistence:
                 for m in raw_list
             ]
         except Exception as e:
+            self._available = False
             logger.warning(f"Redis 会话恢复失败: {e}")
             return None
 

@@ -289,6 +289,8 @@ jobs:
         run: npx playwright test e2e/real-stack.spec.js --project=桌面端 --reporter=html
       - name: Verify Redis lease renewal and crash recovery
         run: $COMPOSE exec -T python-agent python scripts/check_ingestion_lease.py
+      - name: Verify Redis authentication and AOF pending-task recovery
+        run: python scripts/verify_redis_durability.py
       - name: Regress parsing, cancellation, filters and provider UI
         working-directory: frontend
         env:
