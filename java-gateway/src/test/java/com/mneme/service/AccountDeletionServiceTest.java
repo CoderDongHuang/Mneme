@@ -33,8 +33,8 @@ class AccountDeletionServiceTest {
             users, jdbc, mock(RestTemplate.class), operations, "http://agent", root.toString(), 8, storage, mock(TaskLeaseService.class));
 
         assertEquals("op-7", service.enqueue(7L));
-        assertEquals("deleting", user.getStatus());
-        verify(users).updateById(user);
+        verify(jdbc).update("UPDATE user SET status='deleting' WHERE id=?", 7L);
+        verify(users, never()).updateById(any(User.class));
         verify(jdbc).update(contains("INSERT INTO account_deletion_task"), eq("op-7"), eq(7L));
     }
 
