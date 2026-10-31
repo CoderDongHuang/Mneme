@@ -32,7 +32,7 @@ export default function RetrievalFilters({ kbIds, value, onChange }) {
       {error && <p role="alert">{error}</p>}
       <label>{t("指定文档（可多选）")}<select multiple value={value.selected_document_ids}
         onChange={event => update({ selected_document_ids: [...event.target.selectedOptions].map(option => option.value) })}>
-        {documents.filter(doc => ['ready', 'partial'].includes(doc.status)).map(doc => <option key={doc.id} value={String(doc.id)}>{doc.fileName || doc.file_name}</option>)}
+        {documents.filter(doc => ['ready', 'partial', 'index_pending', 'index_repairing'].includes(doc.status)).map(doc => <option key={doc.id} value={String(doc.id)}>{doc.fileName || doc.file_name}</option>)}
       </select></label>
       <label>{t("标签（逗号分隔，同时满足）")}<input value={tagText} placeholder={t("例如：课程,重点")}
         onChange={event => { setTagText(event.target.value); update({ tags: event.target.value.split(/[,，]/).filter(tag => tag.trim()).map(tag => tag.trim()) }) }} /></label>

@@ -100,6 +100,36 @@ class KnowledgeServiceSecurityTest {
         return new Fixture(service, documents, tasks, jdbc);
     }
 
+    @Test void indexRepairIsOwnedAndDurableWithoutSourceFile() {
+        Fixture f = fixture();
+        KnowledgeDocument document = new KnowledgeDocument();
+        document.setId(42L); document.setKbId(3L); document.setStatus("index_pending");
+        document.setFilePath("missing-source.txt"); document.setFileName("notes.txt");
+        document.setParseReport("{\"vector_index_version\":\"" + "a".repeat(64) + "\"}");
+        when(f.documents.selectById(42L)).thenReturn(document);
+        assertThrows(IllegalArgumentException.class, () -> f.service.repairDocumentIndex(8L, 42L));
+        f.service.repairDocumentIndex(7L, 42L);
+        verify(f.tasks).insert(argThat((ProcessingTask task) -> "document_index_repair".equals(task.getTaskType())
+            && task.getPayload().contains("expected_version") && task.getUserId().equals(7L)));
+        assertEquals("index_repairing", document.getStatus());
+        assertNotNull(document.getParseTaskId());
+        when(f.jdbc.queryForList(contains("task_type IN"), eq(42L))).thenReturn(java.util.List.of(java.util.Map.of("task_id", document.getParseTaskId())));
+        assertThrows(IllegalArgumentException.class, () -> f.service.deleteDocument(7L, 42L));
+    }
+
+    @Test void indexRepairRejectsMissingOrInvalidReportBeforeCreatingTask() {
+        Fixture f = fixture();
+        KnowledgeDocument document = new KnowledgeDocument();
+        document.setId(42L); document.setKbId(3L); document.setStatus("index_pending");
+        when(f.documents.selectById(42L)).thenReturn(document);
+        for (String report : java.util.Arrays.asList(null, "", "null", "{}", "{broken")) {
+            document.setParseReport(report);
+            assertThrows(IllegalArgumentException.class, () -> f.service.repairDocumentIndex(7L, 42L));
+        }
+        verifyNoInteractions(f.tasks);
+        assertEquals("index_pending", document.getStatus());
+    }
+
     private record Fixture(
         KnowledgeService service,
         KnowledgeDocumentMapper documents,

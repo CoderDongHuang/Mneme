@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import sqlite3
 import zipfile
 from collections import Counter
 from html.parser import HTMLParser
@@ -14,6 +15,8 @@ from app.core.logging import setup_logger
 from app.knowledge.chunking import chunk_documents
 from app.knowledge.cancellation import check_cancelled, IngestionCancelled
 from app.knowledge.lexical_index import lexical_index
+from app.knowledge.index_version import index_version
+from app.knowledge.index_reconciliation import synchronize_lexical
 from app.knowledge.vector_store import vector_store
 from app.utils.embedding import embeddings
 
@@ -566,6 +569,11 @@ def ingest_document(
         metadatas.append(metadata)
     check_cancelled()
     documents = [chunk.page_content for chunk in valid_chunks]
+    indexed_chunks = [{"id": chunk_id, "content": content, "metadata": metadata}
+                      for chunk_id, content, metadata in zip(ids, documents, metadatas)]
+    version = index_version(indexed_chunks)
+    for metadata in metadatas:
+        metadata["index_version"] = version
     vectors = embeddings(documents)
     # Provider calls can outlast a lease. Confirm ownership after embedding and
     # before each persistent mutation, rather than inside Qdrant's callback.
@@ -583,15 +591,19 @@ def ingest_document(
     if stale_ids:
         collection.delete(ids=stale_ids)
     check_cancelled()
-    lexical_index.replace_document(
-        user_id,
-        kb_id,
-        document_id,
-        [
-            {"id": chunk_id, "content": chunk.page_content, "metadata": metadata}
-            for chunk_id, metadata, chunk in zip(ids, metadatas, valid_chunks)
-        ],
-    )
+    if report is not None:
+        report.update({"vector_index_version": version, "lexical_index_version": None, "index_status": "pending"})
+    try:
+        index_report = synchronize_lexical(user_id, kb_id, document_id, indexed_chunks, index=lexical_index)
+        if report is not None:
+            report.update(index_report)
+    except sqlite3.Error:
+        # Only the durable/report-aware boundary may return a recoverable partial result.
+        # Direct callers without a report must continue to observe the storage failure.
+        if report is None:
+            raise
+        report.update({"status": "partial", "index_error": "lexical_index_pending"})
+        logger.warning("document_index_pending operation=lexical_write")
     check_cancelled()
     logger.info(
         "文档入库完成: user=%s kb=%s document=%s source=%s chunks=%s",

@@ -6,8 +6,9 @@ import { documentFileUrl, endpoints } from '../api/client'
 import { FeedbackBlock } from './ui'
 import { DetailPane } from './ReferenceUI'
 import ParsePreview from './ParsePreview'
+import DocumentIndexHealth from './DocumentIndexHealth'
 
-export default function DocumentDetail({ document, onClose }) {
+export default function DocumentDetail({ document, onClose, onRepairIndex, indexBusy }) {
   useI18n()
   const [preview, setPreview] = useState(null)
   const [tab, setTab] = useState('original')
@@ -31,6 +32,7 @@ export default function DocumentDetail({ document, onClose }) {
   const hash = preview?.document?.sha256 || preview?.parse_report?.content_sha256
   const pageUrl = number => `/api/v1/workspace/documents/${id}/pages/${number}${hash ? `?sha256=${encodeURIComponent(hash)}` : ''}`
   return <DetailPane open={!!document} title={document?.fileName || t('文档预览')} onClose={onClose} empty={<><FileText size={32} /><p>{t('选择文件，查看原文与解析结果')}</p></>}>
+    <DocumentIndexHealth document={document} busy={indexBusy} onRepair={onRepairIndex} />
     <FeedbackBlock error={error} onRetry={error ? () => setRetry(v => v + 1) : undefined} />
     {!preview && !error && document && <p role="status">{t('正在读取文件详情…')}</p>}
     {preview && <>

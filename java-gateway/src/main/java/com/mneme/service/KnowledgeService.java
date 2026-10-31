@@ -440,7 +440,7 @@ public class KnowledgeService {
 
     private void requireIdleDocument(KnowledgeDocument document) {
         List<Map<String, Object>> tasks = jdbc.queryForList("""
-            SELECT task_id FROM processing_task WHERE aggregate_id=? AND task_type='document_ingest'
+            SELECT task_id FROM processing_task WHERE aggregate_id=? AND task_type IN ('document_ingest','document_index_repair')
             AND status IN ('pending','retry','processing','cancelling') LIMIT 1
             """, document.getId());
         if (!tasks.isEmpty() || "parsing".equals(document.getStatus())) {
@@ -449,6 +449,22 @@ public class KnowledgeService {
         if (List.of("deleting", "delete_failed").contains(document.getStatus())) {
             throw new IllegalArgumentException("文档正在删除，请在任务页重试删除");
         }
+    }
+
+    @Transactional
+    public void repairDocumentIndex(Long userId, Long documentId) {
+        KnowledgeDocument document = ownedDocument(userId, documentId);
+        requireIdleDocument(document);
+        try {
+            var report = objectMapper.readTree(document.getParseReport());
+            String version = report == null ? "" : report.path("vector_index_version").asText();
+            if (!version.matches("[a-f0-9]{64}")) throw new IllegalArgumentException("文档缺少向量索引版本，请重新解析");
+        } catch (java.io.IOException | IllegalArgumentException error) {
+            throw new IllegalArgumentException("文档缺少有效向量索引版本，请重新解析", error);
+        }
+        document.setStatus("index_repairing");
+        document.setErrorMessage("向量索引可用，正在修复词法索引");
+        createDocumentTask(userId, document, "document_index_repair");
     }
 
     private KnowledgeDocument ownedDocument(Long userId, Long documentId) {
@@ -480,11 +496,15 @@ public class KnowledgeService {
             task.setAggregateId(document.getId());
             task.setIdempotencyKey(type + ":" + document.getId() + ":" + UUID.randomUUID());
             task.setStatus("pending");
-            task.setPayload(objectMapper.writeValueAsString(Map.of(
+            Map<String, String> payload = new java.util.HashMap<>(Map.of(
                 "user_id", userId.toString(), "kb_id", document.getKbId().toString(),
                 "file_path", document.getFilePath(), "document_id", "doc_" + document.getId(),
                 "source_name", document.getFileName()
-            )));
+            ));
+            if ("document_index_repair".equals(type)) {
+                payload.put("expected_version", objectMapper.readTree(document.getParseReport()).path("vector_index_version").asText());
+            }
+            task.setPayload(objectMapper.writeValueAsString(payload));
             task.setAttemptCount(0); task.setMaxAttempts(3);
             task.setNextAttemptAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
             taskMapper.insert(task);
@@ -502,7 +522,7 @@ public class KnowledgeService {
         if ("deleting".equals(kb.getStatus())) return;
         List<Map<String, Object>> active = jdbc.queryForList("""
             SELECT t.task_id FROM processing_task t JOIN knowledge_document d ON d.id=t.aggregate_id
-            WHERE d.kb_id=? AND t.task_type='document_ingest'
+            WHERE d.kb_id=? AND t.task_type IN ('document_ingest','document_index_repair')
             AND t.status IN ('pending','retry','processing','cancelling') LIMIT 1
             """, kbId);
         if (!active.isEmpty()) throw new IllegalArgumentException("知识库内仍有解析任务，请先取消并等待结束后删除");

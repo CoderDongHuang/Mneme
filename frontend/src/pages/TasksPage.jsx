@@ -10,7 +10,7 @@ import '../styles/centers.css'
 import { DetailPane, MetricCards } from '../components/ReferenceUI'
 
 const statuses = { pending: '等待领取', processing: '执行中', retry: '等待重试', cancelling: '已请求取消', failed: '失败', completed: '完成', cancelled: '取消已完成' }
-const types = { document_ingest: '文档解析', document_delete: '文档删除', knowledge_base_delete: '资料库删除' }
+const types = { document_ingest: '文档解析', document_index_repair: '词法索引修复', document_delete: '文档删除', knowledge_base_delete: '资料库删除' }
 const terminal = ['failed', 'completed', 'cancelled']
 export default function TasksPage() {
   const dates = useDateFormatter()

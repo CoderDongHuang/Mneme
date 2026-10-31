@@ -170,6 +170,7 @@ export const endpoints = {
   documentStatus: (id) => api(`/knowledge/document/${id}/status`),
   deleteDocument: (id) => api(`/knowledge/document/${id}`, { method: 'DELETE' }),
   reparseDocument: (id) => api(`/knowledge/document/${id}/reparse`, { method: 'POST' }),
+  repairDocumentIndex: (id) => api(`/knowledge/document/${id}/repair-index`, { method: 'POST' }),
   documentVersions: (id) => api(`/knowledge/document/${id}/versions`),
   restoreDocumentVersion: (id, version) => api(`/knowledge/document/${id}/versions/${version}/restore`, { method: 'POST' }),
   replaceDocument: (id, file) => {

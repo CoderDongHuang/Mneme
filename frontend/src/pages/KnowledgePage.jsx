@@ -204,6 +204,15 @@ export default function KnowledgePage() {
     });
   }
 
+  async function repairIndex(document) {
+    await withDocument(document, async () => {
+      setError('');
+      await endpoints.repairDocumentIndex(document.id);
+      setDocuments(current => current.map(item => item.id === document.id ? { ...item, status: 'index_repairing' } : item));
+      setNotice(t('修复任务已提交，查看任务中心'));
+    });
+  }
+
   async function replaceDocument(file) {
     if (!file || !replacingDocument) return;
     await withDocument(replacingDocument, async () => {
@@ -242,7 +251,7 @@ export default function KnowledgePage() {
   async function bulk(action) {
     if (bulkLock.current) return;
     bulkLock.current = true; setBulkBusy(true); setError('');
-    const selected = documents.filter(item => selectedIds.includes(item.id) && !['deleting', 'parsing'].includes(item.status));
+    const selected = documents.filter(item => selectedIds.includes(item.id) && !['deleting', 'parsing', 'index_repairing'].includes(item.status));
     const failures = []; let accepted = 0;
     try {
       for (const document of selected) {
@@ -260,7 +269,7 @@ export default function KnowledgePage() {
       if (failures.length) setError(failures.join(' · '));
     } finally { bulkLock.current = false; setBulkBusy(false); }
   }
-  const readyCount = documents.filter((item) => item.status === "ready").length;
+  const readyCount = documents.filter((item) => ['ready', 'partial', 'index_pending', 'index_repairing'].includes(item.status)).length;
   const chunkCount = documents.reduce(
     (sum, item) => sum + (item.chunkCount || 0),
     0,
@@ -286,18 +295,18 @@ export default function KnowledgePage() {
             <div className="document-table">
               <div className="document-row document-header"><span>{t('文件信息')}</span><span>{t('语义片段')}</span><span>{t('最后更新')}</span><span>{t('索引状态')}</span><span /></div>
               {visibleDocuments.map(document => { const Icon = fileIcon(document.fileName); return <div className={`document-row ${previewDocument?.id === document.id ? 'is-selected' : ''}`} key={document.id}>
-                <div className="document-name"><input type="checkbox" aria-label={t('选择 {0}', [document.fileName])} disabled={bulkBusy || ['deleting', 'parsing'].includes(document.status)} checked={selectedIds.includes(document.id)} onChange={e => setSelectedIds(ids => e.target.checked ? [...ids, document.id] : ids.filter(id => id !== document.id))} /><span className={`file-icon file-${document.fileName.split('.').at(-1).toLowerCase()}`}><Icon size={26} /><small>{document.fileName.split('.').at(-1).toUpperCase()}</small></span><div><button className="document-title" onClick={() => setDetail(document)}>{document.fileName}</button><small>{document.errorMessage || t('文档编号 {0}', [document.id])}</small></div></div>
+                <div className="document-name"><input type="checkbox" aria-label={t('选择 {0}', [document.fileName])} disabled={bulkBusy || ['deleting', 'parsing', 'index_repairing'].includes(document.status)} checked={selectedIds.includes(document.id)} onChange={e => setSelectedIds(ids => e.target.checked ? [...ids, document.id] : ids.filter(id => id !== document.id))} /><span className={`file-icon file-${document.fileName.split('.').at(-1).toLowerCase()}`}><Icon size={26} /><small>{document.fileName.split('.').at(-1).toUpperCase()}</small></span><div><button className="document-title" onClick={() => setDetail(document)}>{document.fileName}</button><small>{document.errorMessage || t('文档编号 {0}', [document.id])}</small></div></div>
                 <span>{document.chunkCount || 0}</span><time>{document.updatedAt ? dates.date(document.updatedAt) : '—'}</time><StatusBadge status={document.status} />
-                <details className="row-actions"><summary aria-label={t('文档操作：{0}', [document.fileName])}>···</summary><div>{!['deleting', 'parsing'].includes(document.status) && <><button disabled={documentBusy[document.id]} onClick={() => showVersions(document)}><History size={15} />{t('版本历史')}</button><button disabled={documentBusy[document.id]} onClick={() => { setReplacingDocument(document); replaceRef.current?.click() }}><RefreshCw size={15} />{t('替换文件')}</button><button disabled={documentBusy[document.id]} onClick={() => reparseDocument(document)}><ArrowUpRight size={15} />{t('重新解析')}</button><button disabled={documentBusy[document.id]} onClick={() => deleteDocument(document)}><Trash2 size={15} />{t('删除文档')}</button></>}{document.parseReport && <details><summary>{t('解析报告')}</summary><ParseReport value={document.parseReport} /></details>}</div></details>
+                <details className="row-actions"><summary aria-label={t('文档操作：{0}', [document.fileName])}>···</summary><div>{!['deleting', 'parsing', 'index_repairing'].includes(document.status) && <><button disabled={documentBusy[document.id]} onClick={() => showVersions(document)}><History size={15} />{t('版本历史')}</button><button disabled={documentBusy[document.id]} onClick={() => { setReplacingDocument(document); replaceRef.current?.click() }}><RefreshCw size={15} />{t('替换文件')}</button><button disabled={documentBusy[document.id]} onClick={() => reparseDocument(document)}><ArrowUpRight size={15} />{t('重新解析')}</button><button disabled={documentBusy[document.id]} onClick={() => deleteDocument(document)}><Trash2 size={15} />{t('删除文档')}</button></>}{document.parseReport && <details><summary>{t('解析报告')}</summary><ParseReport value={document.parseReport} /></details>}</div></details>
               </div> })}
               {!visibleDocuments.length && <div className="documents-empty"><BookCopy size={30} /><strong>{t('这里还没有资料')}</strong><span>{t('可将文件拖入列表，或点击导入资料。')}</span></div>}
             </div>
-            <details className="bulk-tools"><summary>{t('批量操作')} · {selectedIds.length} {t('已选择')}</summary><div className="action-row"><button disabled={bulkBusy} onClick={() => setSelectedIds(visibleDocuments.filter(item => !['deleting','parsing'].includes(item.status)).map(item => item.id))}>{t('选择筛选结果')}</button><button disabled={bulkBusy || !selectedIds.length} onClick={() => bulk('reparse')}>{t('重新解析所选 (')}{selectedIds.length})</button></div>{selectedIds.length > 0 && <DangerZone title={t('批量删除所选文档')} description={t('删除 {0} 个所选文档及其索引。失败项保留以便重试。', [selectedIds.length])} action={t('删除所选')} confirmText="DELETE DOCUMENTS" busy={bulkBusy} onConfirm={() => bulk('delete')} />}</details>
+            <details className="bulk-tools"><summary>{t('批量操作')} · {selectedIds.length} {t('已选择')}</summary><div className="action-row"><button disabled={bulkBusy} onClick={() => setSelectedIds(visibleDocuments.filter(item => !['deleting','parsing','index_repairing'].includes(item.status)).map(item => item.id))}>{t('选择筛选结果')}</button><button disabled={bulkBusy || !selectedIds.length} onClick={() => bulk('reparse')}>{t('重新解析所选 (')}{selectedIds.length})</button></div>{selectedIds.length > 0 && <DangerZone title={t('批量删除所选文档')} description={t('删除 {0} 个所选文档及其索引。失败项保留以便重试。', [selectedIds.length])} action={t('删除所选')} confirmText="DELETE DOCUMENTS" busy={bulkBusy} onConfirm={() => bulk('delete')} />}</details>
           </>}
           {uploadQueue.length > 0 && <div className="upload-queue" aria-live="polite">{uploadQueue.map(item => <div className={`upload-queue-item ${item.status}`} key={item.id}><strong>{item.name}</strong><span>{t(item.message)}</span>{item.status === 'failed' && <button disabled={uploading} onClick={() => retry(item)}>{t('重试此文件')}</button>}{['pending', 'uploading', 'uncertain'].includes(item.status) && <button onClick={() => cancel(item)}>{t(item.status === 'uncertain' ? '核实上传状态' : '取消上传')}</button>}{item.status === 'submitted' && <a href="/tasks">{t('任务中心')}</a>}</div>)}</div>}
           <section className="recent-activity"><header><h3>{t('最近活动')}</h3><a href="/tasks">{t('查看全部 →')}</a></header>{preferences.notifications && notifications.length ? notifications.slice(0, 5).map(item => <div key={item.task_id}><StatusBadge status={item.status} /><span>{item.file_name || (item.task_type === 'document_ingest' ? t('文档解析') : t('资料库任务'))}</span><small>{item.error_message || (item.status === 'completed' ? t('已完成') : t('处理中'))}</small></div>) : <p className="muted">{t('暂无处理活动')}</p>}</section>
         </section>
-        <DocumentDetail document={previewDocument} onClose={() => setDetail(false)} />
+        <DocumentDetail document={previewDocument} onClose={() => setDetail(false)} onRepairIndex={repairIndex} indexBusy={documentBusy[previewDocument?.id]} />
       </div>
 
       <Modal open={dialogOpen} title={t("新建资料库")} busy={baseBusy} onClose={() => setDialogOpen(false)}>

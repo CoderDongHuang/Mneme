@@ -313,6 +313,13 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/upload-cancellation-real.spec.js --workers=1 --retries=0
+      - name: Verify durable lexical reconciliation without reparsing or embedding
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_INDEX_QA_FAULTS: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/index-reconciliation-real.spec.js --workers=1 --retries=0
       - name: Verify report UI, personal settings and archive restoration
         working-directory: frontend
         env:

@@ -22,6 +22,7 @@ from app.knowledge.cancellation import ingestion_task, IngestionCancelled
 from app.knowledge.retriever import retrieve
 from app.knowledge.task_tracker import create_task, get_task, update_task
 from app.knowledge.vector_store import vector_store
+from app.knowledge.index_reconciliation import reconcile_document
 from app.utils.llm import llm
 from app.models.knowledge import (
     DocumentIngestRequest,
@@ -217,6 +218,23 @@ async def task_status(task_id: str) -> dict:
     if task is None:
         raise HTTPException(status_code=404, detail="任务不存在或已过期")
     return task
+
+
+class IndexReconciliationRequest(BaseModel):
+    user_id: str = Field(min_length=1, max_length=128)
+    kb_id: str = Field(min_length=1, max_length=128)
+    document_id: str = Field(min_length=1, max_length=128)
+    task_id: str = Field(min_length=1, max_length=128)
+    expected_version: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+@router.post("/internal/reconcile-index", response_model=IngestionResult)
+async def reconcile_index(request: IndexReconciliationRequest) -> IngestionResult:
+    def process():
+        with ingestion_task(request.user_id, request.task_id):
+            return reconcile_document(request.user_id, request.kb_id, request.document_id, request.expected_version)
+    report = await asyncio.get_running_loop().run_in_executor(executor, process)
+    return IngestionResult(status="done", document_id=request.document_id, chunks=report["chunk_count"], report=report)
 
 
 @router.get("/search", response_model=RetrieverResult)
