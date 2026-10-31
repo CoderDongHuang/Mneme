@@ -2,7 +2,7 @@ import asyncio
 import json
 import anyio
 from contextlib import aclosing
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
@@ -101,12 +101,13 @@ def _retrieval_fallback(state: dict) -> str:
 
 
 @router.post("/chat/stream")
-async def chat_stream(request: ChatRequest) -> StreamingResponse:
+async def chat_stream(request: ChatRequest, http_request: Request = None) -> StreamingResponse:
     state = prepare_conversation(request)
     prompt = build_llm_prompt(state)
 
     async def generate():
         answer = ""
+        phase = "model_error"
         yield _event(
             "meta",
             {
@@ -130,6 +131,8 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                                 answer += event
                                 yield _event("token", {"content": event})
             except asyncio.TimeoutError:
+                if http_request is not None:
+                    http_request.scope["mneme.stream.reason"] = "model_timeout"
                 logger.warning("流式模型调用超时，使用资料原文降级")
                 if evidence_mode or not answer:
                     answer = _retrieval_fallback(state)
@@ -141,15 +144,19 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                     yield _event("token", {"content": suffix})
 
             if evidence_mode:
+                phase = "grounding_failed"
                 answer = await verify_evidence_answer(state, answer)
                 yield _event("token", {"content": answer})
 
+            phase = "memory_failed"
             memory_result = complete_conversation(request, state, answer)
             if memory_result.get("pending_memories"):
                 yield _event("memory", {"pending": memory_result["pending_memories"]})
             yield _event("done", {"answer_length": len(answer)})
         except Exception as error:
-            logger.exception("流式回答失败: %s", error)
+            if http_request is not None:
+                http_request.scope["mneme.stream.reason"] = phase
+            logger.error("流式回答失败: %s", type(error).__name__)
             yield _event("error", {"message": "模型服务暂时不可用，请稍后重试或检查服务配置。"})
 
     async def model_events():

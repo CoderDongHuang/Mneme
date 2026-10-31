@@ -1,5 +1,4 @@
 import time
-import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 
@@ -9,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from fastapi.responses import Response
 
 from app.api import agent, chat, chat_stream, health, knowledge, memory, models
@@ -17,7 +16,8 @@ from app.core.user_model import UserModelMiddleware
 from app.core.config import settings
 from app.core.errors import MemoryIndexConflict
 from app.core.metrics import INPUT_REJECTIONS
-from app.core.logging import setup_logger, trace_id_var
+from app.core.logging import setup_logger
+from app.core.http_metrics import TraceAndLoggingMiddleware, metric_path  # noqa: F401 - compatibility for callers
 from app.memory.reflection_scheduler import reflection_scheduler
 from app.core.internal_tokens import internal_tokens
 from app.core.telemetry import configure_telemetry
@@ -27,24 +27,7 @@ logger = setup_logger("main")
 
 
 PUBLIC_PATHS = {"/health", "/health/ready", "/metrics", "/docs", "/openapi.json"}
-REQUEST_COUNT = Counter(
-    "mneme_python_http_requests_total", "HTTP requests", ["method", "path", "status"]
-)
-REQUEST_DURATION = Histogram(
-    "mneme_python_http_request_duration_seconds",
-    "HTTP request latency",
-    ["method", "path"],
-)
 CHAT_REQUEST_MAX_BYTES = 64 * 1024
-
-
-def metric_path(request: Request) -> str:
-    """Use the Starlette route template so IDs never become metric labels."""
-    route = request.scope.get("route")
-    template = getattr(route, "path", None)
-    if template:
-        return template
-    return "unmatched"
 
 
 @asynccontextmanager
@@ -75,26 +58,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-class TraceAndLoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        trace_id = request.headers.get("X-Trace-Id") or uuid.uuid4().hex
-        token = trace_id_var.set(trace_id)
-        started = time.perf_counter()
-        try:
-            response = await call_next(request)
-        finally:
-            duration_ms = (time.perf_counter() - started) * 1000
-            logger.info("%s %s (%.0fms)", request.method, request.url.path, duration_ms)
-            trace_id_var.reset(token)
-        path = metric_path(request)
-        REQUEST_COUNT.labels(request.method, path, response.status_code).inc()
-        REQUEST_DURATION.labels(request.method, path).observe(
-            duration_ms / 1000
-        )
-        response.headers["X-Trace-Id"] = trace_id
-        return response
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
