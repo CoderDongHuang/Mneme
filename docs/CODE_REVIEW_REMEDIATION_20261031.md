@@ -124,6 +124,16 @@
 
 边界：本项不自动重建正在运行的用户栈；现有部署须备份并按升级流程重新创建应用容器才生效。镜像标签不可覆盖需由仓库策略保证，生产优先使用 digest。真实镜像行为验证采用独立临时资源，不冒险覆盖当前用户数据。
 
+## MN-012 / P2-04：MySQL 最小权限与独立迁移连接
+
+对照要求：回查 P2-04、MN-012 及生产部署硬化要求。Gateway 和 Python 使用两个 DML 专用账号；Flyway 使用独立的 schema 迁移账号。一次性管理 job 同时兼容空卷和既有卷，重置专用账号旧授权。基础、自托管、生产、隔离演示、双实例 Compose 同步；生产缺少三个角色密码立即拒绝。Python 辅助表统一由既有 V13 Flyway 维护，启动只 SELECT 等待缺表，其他错误立即暴露；保留 SQLite 模式。提供账号轮换、停写升级、备份恢复和回滚说明。
+
+验证：Python 3.11 Lint 与全套 731 项通过；Java 全套 125 项通过，零失败、零跳过。新增真实 MySQL 测试覆盖 Spring Boot 实际 DML/Flyway 连接分离、全部 V1–V27 迁移、CRUD 成功、运行账号拒绝 CREATE TABLE/DROP DATABASE/CREATE USER/GRANT/其他 schema；重复管理 job 收回历史全局授权且保留业务数据。特殊密码含引号、反斜杠、换行和中文；修复客户端字符集后通过。五种 Compose 渲染与生产缺密钥拒绝验证通过。
+
+真实 http://localhost:3000 在备份数据库并保留停止的旧容器后更新：Gateway 当前 mneme_gateway、Flyway mneme_migrator、Python MySQL 连接 mneme_agent；已取消 /app 源码挂载。隔离账号注册、两份资料上传并解析 ready、文档/知识库/账号删除全部完成，任务租约正确释放；QA 账号已删除。当前站点保留原 SQLite 辅助存储，另在实际 Python 容器用其 MySQL DML 凭据验证四张辅助表和一次 Trace CRUD 并清理探针，未改变用户存储模式。证据 artifacts/review-mn012-live.json、mn012-java-full.log、mn012-python-full.log。桌面/移动标签延迟及上传取消真实回归另四项通过。
+
+边界：两个运行账号在业务 schema 内具有 DML 权限，未宣称逐表隔离；迁移账号具备本 schema DDL，需要独立保管。真实站点未执行破坏性越权 SQL，拒绝验证在隔离 Testcontainers 数据库完成。旧版 Python 需要 DDL 时不得以恢复 root 权限绕过回滚兼容性检查。
+
 ## 真实回归补充：解析预览标签加载竞态
 
 MN-014 的整栈 CI 暴露标签筛选偶发空结果。Trace 证实初始 GET 标签晚到，覆盖用户已编辑内容并保存空数组；与时区修改无关。预览按文档 ID 隔离状态，并在用户首次编辑后拒绝用初始响应覆盖；旧文档请求卸载后忽略。没有修改检索断言或用重试掩盖问题。

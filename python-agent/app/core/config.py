@@ -82,7 +82,7 @@ class Settings:
     mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
     mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))
     mysql_database: str = os.getenv("MYSQL_DATABASE", "mneme")
-    mysql_user: str = os.getenv("MYSQL_USER", "root")
+    mysql_user: str = os.getenv("MYSQL_USER", "mneme_agent")
     mysql_password: str = os.getenv("MYSQL_PASSWORD", os.getenv("SPRING_DATASOURCE_PASSWORD", ""))
 
     working_memory_window_size: int = int(os.getenv("WORKING_MEMORY_WINDOW_SIZE", "12"))

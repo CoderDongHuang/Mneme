@@ -10,6 +10,21 @@ services:
       timeout: 3s
       retries: 40
 
+  mysql-users:
+    image: mysql:8.0
+    restart: "no"
+    entrypoint: ["sh", "/bootstrap/provision-users.sh"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_ROOT_PASSWORD: ci-database-password
+      MYSQL_GATEWAY_PASSWORD: ci-gateway-password
+      MYSQL_AGENT_PASSWORD: ci-agent-password
+      MYSQL_MIGRATION_PASSWORD: ci-migration-password
+    volumes:
+      - ./docker/mysql/provision-users.sh:/bootstrap/provision-users.sh:ro
+    depends_on:
+      mysql: {condition: service_healthy}
+
   redis:
     image: redis:7-alpine
 
@@ -71,8 +86,8 @@ services:
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
       MYSQL_DATABASE: mneme
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ci-database-password
+      MYSQL_USER: mneme_agent
+      MYSQL_PASSWORD: ci-agent-password
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       OTEL_TRACES_SAMPLER_ARG: "1.0"
       OTEL_SERVICE_NAME: mneme-python-agent-1
@@ -83,6 +98,8 @@ services:
       - scale-agent-1:/app/data
       - scale-files:/data/files
     depends_on:
+      mysql-users:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       qdrant-1:
@@ -112,6 +129,8 @@ services:
       - scale-agent-2:/app/data
       - scale-files:/data/files
     depends_on:
+      mysql-users:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       qdrant-1:
@@ -133,8 +152,10 @@ services:
       - "127.0.0.1:8080:8080"
     environment: &gateway-environment
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/mneme
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: ci-database-password
+      SPRING_DATASOURCE_USERNAME: mneme_gateway
+      SPRING_DATASOURCE_PASSWORD: ci-gateway-password
+      SPRING_FLYWAY_USER: mneme_migrator
+      SPRING_FLYWAY_PASSWORD: ci-migration-password
       REDIS_HOST: redis
       NOTIFICATION_REDIS_ENABLED: "true"
       PYTHON_AGENT_URL: http://python-agent-1:8001
@@ -149,12 +170,14 @@ services:
     volumes:
       - scale-files:/data/files
     depends_on:
+      mysql-users:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       redis:
         condition: service_started
       python-agent-1:
-        condition: service_healthy
+        condition: service_started
 
   java-gateway-2:
     build: *gateway-build
@@ -168,12 +191,14 @@ services:
     volumes:
       - scale-files:/data/files
     depends_on:
+      mysql-users:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       redis:
         condition: service_started
       python-agent-2:
-        condition: service_healthy
+        condition: service_started
 
 volumes:
   scale-chroma-1:

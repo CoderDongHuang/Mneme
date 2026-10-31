@@ -293,12 +293,20 @@ jobs:
         run: $COMPOSE exec -T python-agent python scripts/check_ingestion_lease.py
       - name: Verify Redis authentication and AOF pending-task recovery
         run: python scripts/verify_redis_durability.py
+      - name: Verify least privilege deployment roles and startup order
+        run: python scripts/verify_database_roles.py
       - name: Regress parsing, cancellation, filters and provider UI
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/roadmap-stack.spec.js --project=桌面端 --grep '真实解析异常|真实界面交互' --retries=0
+      - name: Verify delayed tag loading preserves edits on desktop and mobile
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/tags-loading-real.spec.js --workers=1 --retries=0
       - name: Verify real upload abort and committed-response reconciliation
         working-directory: frontend
         env:

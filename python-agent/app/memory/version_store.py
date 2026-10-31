@@ -5,6 +5,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.storage.mysql import connection as mysql_connection
+from app.storage.mysql import require_tables
 
 
 class MemoryVersionStore:
@@ -24,19 +25,7 @@ class MemoryVersionStore:
 
     def _init_db(self) -> None:
         if self.shared:
-            with mysql_connection() as connection:
-                cursor = connection.cursor()
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS memory_version (
-                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                        memory_id VARCHAR(128) NOT NULL, user_id VARCHAR(128) NOT NULL,
-                        version INT NOT NULL, action VARCHAR(64) NOT NULL, content LONGTEXT NOT NULL,
-                        metadata_json JSON NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE KEY uk_memory_version (memory_id, version),
-                        INDEX idx_memory_version_owner (user_id, memory_id, version)
-                    )
-                """)
-                cursor.close()
+            require_tables("memory_version")
             self.prune(settings.memory_version_retention_days)
             return
         with self._connect() as connection:

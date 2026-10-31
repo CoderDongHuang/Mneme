@@ -11,6 +11,21 @@ services:
       interval: 5s
       timeout: 3s
       retries: 40
+  mysql-users:
+    image: mysql:8.0
+    restart: "no"
+    entrypoint: ["sh", "/bootstrap/provision-users.sh"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_ROOT_PASSWORD: ${DEMO_DB_PASSWORD:?Missing demo configuration}
+      # Isolated disposable demo only; production requires distinct secrets.
+      MYSQL_GATEWAY_PASSWORD: ${DEMO_DB_PASSWORD:?Missing demo configuration}
+      MYSQL_AGENT_PASSWORD: ${DEMO_DB_PASSWORD:?Missing demo configuration}
+      MYSQL_MIGRATION_PASSWORD: ${DEMO_DB_PASSWORD:?Missing demo configuration}
+    volumes:
+      - ./docker/mysql/provision-users.sh:/bootstrap/provision-users.sh:ro
+    depends_on:
+      mysql: {condition: service_healthy}
   redis:
     image: redis:7-alpine
     # Isolated offline demo intentionally uses no password.
@@ -68,8 +83,10 @@ services:
     build: ./java-gateway
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/mneme
-      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_USERNAME: mneme_gateway
       SPRING_DATASOURCE_PASSWORD: ${DEMO_DB_PASSWORD:?Missing demo configuration}
+      SPRING_FLYWAY_USER: mneme_migrator
+      SPRING_FLYWAY_PASSWORD: ${DEMO_DB_PASSWORD:?Missing demo configuration}
       REDIS_HOST: redis
       PYTHON_AGENT_URL: http://python-agent:8001
       JWT_SECRET: ${DEMO_JWT_SECRET:?Missing demo configuration}
@@ -85,6 +102,7 @@ services:
     volumes: [demo-files:/uploads]
     depends_on:
       mysql: {condition: service_healthy}
+      mysql-users: {condition: service_completed_successfully}
       python-agent: {condition: service_healthy}
   frontend:
     build:

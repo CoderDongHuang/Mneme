@@ -4,3 +4,4 @@
 *.png binary
 *.pptx binary
 *.xlsx binary
+*.sh text eol=lf

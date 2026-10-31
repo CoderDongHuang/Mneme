@@ -18,6 +18,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 
 `python scripts/verify_immutable_images.py` 在独立临时镜像/容器中用实际 Python Dockerfile 验证宿主源码变更不影响已构建代码，并验证密钥文件和本地数据未进入镜像；不访问当前项目数据库，也不重建运行服务。
 
+## 数据库权限
+
+生产必须设置 `MYSQL_GATEWAY_PASSWORD`、`MYSQL_AGENT_PASSWORD`、`MYSQL_MIGRATION_PASSWORD`，使用独立随机值。`MYSQL_ROOT_PASSWORD` 仅供一次性账号配置、数据库管理和备份恢复；应用连接固定使用 DML 账号，Flyway 单独使用迁移账号。Python 仅等待已有表，不在启动时建表。首次安装、已有卷升级、轮换与恢复步骤见 [数据库角色与升级](DATABASE_ROLES.md)。
+
 ## 数据与扩展
 
 - MySQL、Redis 和 Qdrant 应使用独立托管实例或持久化卷，定期做快照。

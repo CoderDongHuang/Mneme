@@ -71,6 +71,70 @@ def test_connection_does_not_retry_non_transient_error(monkeypatch):
     assert len(attempts) == 1
 
 
+@pytest.mark.parametrize("failures,errno,expected_attempts", [(2, 1146, 3), (90, 1146, 90), (1, 1142, 1)])
+def test_schema_wait_uses_select_and_closes_failed_connections(monkeypatch, failures, errno, expected_attempts):
+    statements, opened, sleeps = [], [], []
+
+    class Cursor:
+        closed = False
+
+        def execute(self, sql):
+            statements.append(sql)
+            assert sql == "SELECT 1 FROM `agent_trace` LIMIT 0"
+            if len(opened) <= failures:
+                raise ConnectorError(errno)
+
+        def fetchall(self):
+            return []
+
+        def close(self):
+            self.closed = True
+
+    class SchemaConnection(Connection):
+        rolled_back = False
+
+        def __init__(self):
+            super().__init__()
+            self.schema_cursor = Cursor()
+
+        def cursor(self):
+            return self.schema_cursor
+
+        def rollback(self):
+            self.rolled_back = True
+
+    def connect(**_kwargs):
+        conn = SchemaConnection()
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(mysql, "_connector", lambda: SimpleNamespace(Error=ConnectorError, connect=connect))
+    monkeypatch.setattr(mysql.time, "sleep", sleeps.append)
+    if errno != 1146:
+        with pytest.raises(ConnectorError):
+            mysql.require_tables("agent_trace")
+    elif failures == 90:
+        with pytest.raises(RuntimeError, match="run Gateway Flyway"):
+            mysql.require_tables("agent_trace")
+    else:
+        mysql.require_tables("agent_trace")
+        assert opened[-1].committed
+    assert len(opened) == expected_attempts
+    assert len(sleeps) == (expected_attempts - 1)
+    assert all(conn.closed and conn.schema_cursor.closed for conn in opened)
+    assert all(conn.rolled_back for conn in opened[:min(failures, expected_attempts)])
+
+
+@pytest.mark.parametrize("tables", [(), ("user",), ("agent_trace; DROP DATABASE mneme",)])
+def test_schema_wait_rejects_unexpected_identifiers_before_connecting(monkeypatch, tables):
+    def unexpected():
+        raise AssertionError("must validate before connecting")
+
+    monkeypatch.setattr(mysql, "_connector", unexpected)
+    with pytest.raises(ValueError):
+        mysql.require_tables(*tables)
+
+
 class StrictCursor:
     def __init__(self):
         self.pending_result = None
@@ -117,6 +181,7 @@ def test_named_lock_results_are_consumed_before_cursor_close(monkeypatch):
     monkeypatch.setattr(registry_module, "mysql_connection", strict_connection)
     monkeypatch.setattr(version_store_module, "mysql_connection", strict_connection)
     monkeypatch.setattr(registry_module, "settings", shared_settings)
+    monkeypatch.setattr(registry_module, "require_tables", lambda *tables: None)
     monkeypatch.setattr(version_store_module, "settings", shared_settings)
 
     ToolRegistry()._consume_quota("knowledge.retrieve", "u1", 1)

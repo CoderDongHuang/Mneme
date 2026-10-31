@@ -56,3 +56,28 @@ def connection() -> Iterator[object]:
 
 def placeholders(count: int) -> str:
     return ",".join(["%s"] * count)
+
+
+def require_tables(*tables: str) -> None:
+    """Wait for Gateway Flyway, without granting DDL to the Python runtime."""
+    allowed = {"agent_trace", "memory_version", "agent_tool_usage", "agent_tool_approval"}
+    if not tables or not set(tables) <= allowed:
+        raise ValueError("Unsupported auxiliary schema check")
+    connector = _connector()
+    for attempt in range(90):
+        try:
+            with connection() as conn:
+                cursor = conn.cursor()
+                try:
+                    for table in tables:
+                        cursor.execute(f"SELECT 1 FROM `{table}` LIMIT 0")
+                        cursor.fetchall()
+                finally:
+                    cursor.close()
+            return
+        except connector.Error as error:
+            if getattr(error, "errno", None) != 1146:
+                raise
+            if attempt == 89:
+                raise RuntimeError("Auxiliary MySQL schema is missing; run Gateway Flyway migrations before starting Python") from None
+            time.sleep(1)

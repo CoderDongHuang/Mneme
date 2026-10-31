@@ -10,6 +10,7 @@ from typing import Any, Iterator
 from app.core.config import settings
 from app.core.privacy import privacy_store
 from app.storage.mysql import connection as mysql_connection
+from app.storage.mysql import require_tables
 
 
 class AgentTraceStore:
@@ -29,19 +30,7 @@ class AgentTraceStore:
 
     def _init_db(self) -> None:
         if self.shared:
-            with mysql_connection() as connection:
-                cursor = connection.cursor()
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS agent_trace (
-                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                        user_id VARCHAR(128) NOT NULL, session_id VARCHAR(128) NOT NULL,
-                        node VARCHAR(255) NOT NULL, status VARCHAR(32) NOT NULL,
-                        duration_ms DOUBLE NOT NULL DEFAULT 0, payload_json JSON NOT NULL,
-                        error VARCHAR(1000) NOT NULL DEFAULT '', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        INDEX idx_agent_trace_session (user_id, session_id, id)
-                    )
-                """)
-                cursor.close()
+            require_tables("agent_trace")
             self.prune(settings.agent_trace_retention_days)
             return
         with self._connect() as connection:
