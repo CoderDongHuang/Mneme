@@ -1,3 +1,4 @@
+import { useFormatters } from '../hooks/useFormatters'
 import { t, useI18n } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
 import { endpoints } from '../api/client'
@@ -8,6 +9,7 @@ export default function ParsePreview({ preview, initialPage }) {
 }
 
 function DocumentPreview({ preview, initialPage }) {
+  const fmt = useFormatters()
   useI18n();
   const report = preview.parse_report || {}
   const pages = report.pages || []
@@ -46,8 +48,8 @@ function DocumentPreview({ preview, initialPage }) {
         <div className="ocr-page"><img src={imageUrl} alt={t("第 {0} 页 OCR 区域预览", [pageNumber])} />
           {overlay && page.ocr_regions.map((region, index) => {
             const [left, top, right, bottom] = region.region.split(',').map(Number)
-            return <span key={index} title={`${region.text} · ${(region.confidence * 100).toFixed(1)}%`}
-              className={region.confidence < .7 ? 'ocr-low' : 'ocr-normal'} tabIndex={0} aria-label={`${region.text} · ${(region.confidence * 100).toFixed(1)}%`}
+            return <span key={index} title={`${region.text} · ${fmt.percent(region.confidence)}`}
+              className={region.confidence < .7 ? 'ocr-low' : 'ocr-normal'} tabIndex={0} aria-label={`${region.text} · ${fmt.percent(region.confidence)}`}
               style={{ left: `${left * 100}%`, top: `${top * 100}%`, width: `${(right - left) * 100}%`, height: `${(bottom - top) * 100}%` }} />
           })}
         </div>

@@ -1,3 +1,4 @@
+import { useFormatters } from '../hooks/useFormatters'
 import { dateKey, formatDate, parseInstant } from '../utils/dates'
 import { useEffect, useState } from 'react'
 import { X, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -21,7 +22,8 @@ export function DetailPane({ open, title, onClose, busy, children, empty }) {
 }
 
 export function MetricCards({ items }) {
-  return <div className="reference-metrics">{items.map(({ label, value, icon: Icon, note }) => <div key={label}>{Icon && <span className="metric-icon"><Icon size={22} strokeWidth={1.6} /></span>}<div><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</div></div>)}</div>
+  const fmt = useFormatters()
+  return <div className="reference-metrics">{items.map(({ label, value, icon: Icon, note }) => <div key={label}>{Icon && <span className="metric-icon"><Icon size={22} strokeWidth={1.6} /></span>}<div><span>{label}</span><strong>{typeof value === 'number' ? fmt.number(value) : value}</strong>{note && <small>{note}</small>}</div></div>)}</div>
 }
 
 export function StudyCalendar({ cards = [] }) {

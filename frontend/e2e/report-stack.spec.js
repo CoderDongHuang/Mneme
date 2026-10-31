@@ -15,9 +15,20 @@ async function data(response) {
 }
 async function register(page) {
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`
-  const auth = await data(await page.request.post('/api/v1/auth/register', { data: { username: `review_${suffix}`, password: `Mneme_${suffix}!` } }))
+  const auth = await registerAccount(page.request, { username: `review_${suffix}`, password: `Mneme_${suffix}!` })
   await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), auth)
   return auth
+}
+async function registerAccount(request, account) {
+  // CI shares one real IP across suites. Only retry explicit rejection before
+  // account creation; preserve production limits and fail other errors at once.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await request.post('/api/v1/auth/register', { data: account })
+    if (response.status() !== 429 || attempt === 2) return data(response)
+    const seconds = Number(response.headers()['retry-after'])
+    expect(Number.isFinite(seconds) && seconds > 0 && seconds <= 60, 'bounded Retry-After').toBe(true)
+    await new Promise(resolve => setTimeout(resolve, seconds * 1000 + 250))
+  }
 }
 
 test('个人配置隔离、双语持久化与真实个人归档恢复向导', async ({ page, playwright }) => {
@@ -41,7 +52,7 @@ test('个人配置隔离、双语持久化与真实个人归档恢复向导', as
   await page.getByRole('button', { name: '备份与恢复', exact: true }).click()
   await expect(page.getByRole('link', { name: '备份与恢复向导 →', exact: true })).toHaveAttribute('href', '/recovery')
   const other = await playwright.request.newContext({ baseURL: process.env.MNEME_E2E_BASE_URL })
-  await data(await other.post('/api/v1/auth/register', { data: { username: `isolated_${Date.now()}`, password: 'Mneme_123456!' } }))
+  await registerAccount(other, { username: `isolated_${Date.now()}`, password: 'Mneme_123456!' })
   expect((await data(await other.get('/api/v1/settings/models'))).hasKey).toBe(false)
   expect((await other.get('/api/v1/admin/recovery/site')).status()).toBe(403)
   await other.dispose()
@@ -60,7 +71,7 @@ test('个人配置隔离、双语持久化与真实个人归档恢复向导', as
   const archive = await page.request.get('/api/v1/workspace/export/archive')
   expect(archive.ok()).toBeTruthy()
   await page.goto('/recovery')
-  await page.getByLabel('个人归档 ZIP（最多 50 MB）').setInputFiles({ name: 'workspace.zip', mimeType: 'application/zip', buffer: await archive.body() })
+  await page.getByLabel('个人归档 ZIP（最多 50 MiB）').setInputFiles({ name: 'workspace.zip', mimeType: 'application/zip', buffer: await archive.body() })
   await page.getByRole('button', { name: '验证清单与文件完整性' }).click()
   await expect(page.getByRole('heading', { name: '恢复预览' })).toBeVisible()
   await expect(page.getByText('同名资料库：')).toContainText('归档恢复验收')
