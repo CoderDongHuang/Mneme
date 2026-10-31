@@ -133,3 +133,9 @@
 真实 http://localhost:3000 在备份数据库并保留停止的旧容器后更新：Gateway 当前 mneme_gateway、Flyway mneme_migrator、Python MySQL 连接 mneme_agent；已取消 /app 源码挂载。隔离账号注册、两份资料上传并解析 ready、文档/知识库/账号删除全部完成，任务租约正确释放；QA 账号已删除。当前站点保留原 SQLite 辅助存储，另在实际 Python 容器用其 MySQL DML 凭据验证四张辅助表和一次 Trace CRUD 并清理探针，未改变用户存储模式。证据 artifacts/review-mn012-live.json、mn012-java-full.log、mn012-python-full.log。桌面/移动标签延迟及上传取消真实回归另四项通过。
 
 边界：两个运行账号在业务 schema 内具有 DML 权限，未宣称逐表隔离；迁移账号具备本 schema DDL，需要独立保管。真实站点未执行破坏性越权 SQL，拒绝验证在隔离 Testcontainers 数据库完成。旧版 Python 需要 DDL 时不得以恢复 root 权限绕过回滚兼容性检查。
+
+## 真实回归补充：解析预览标签加载竞态
+
+MN-014 的整栈 CI 暴露标签筛选偶发空结果。Trace 证实初始 GET 标签晚到，覆盖用户已编辑内容并保存空数组；与时区修改无关。预览按文档 ID 隔离状态，并在用户首次编辑后拒绝用初始响应覆盖；旧文档请求卸载后忽略。没有修改检索断言或用重试掩盖问题。
+
+验证：前端全套 67 项、Lint、生产构建和包大小门禁通过。新增两项单元回归覆盖延迟加载、真实保存参数、切换文档清空草稿和旧响应隔离。真实 http://localhost:3000 在桌面及移动端故意延迟真实 GET 响应，输入后释放响应，确认输入不变、PUT 保存后 GET 仍为课程/重点；两项均通过。合并运行的上传取消回归另两项通过，证据 artifacts/mn012-real-browser.log。
