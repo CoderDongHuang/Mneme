@@ -62,7 +62,7 @@ class KnowledgeServiceSecurityTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         KnowledgeBase base = new KnowledgeBase(); base.setId(3L); base.setUserId(7L); base.setStatus("active");
         when(bases.selectById(3L)).thenReturn(base);
-        when(jdbc.queryForObject(contains("SUM(v.size_bytes)"), any(org.springframework.jdbc.core.RowMapper.class), eq(7L))).thenReturn(0L);
+        when(jdbc.queryForList("SELECT status FROM user WHERE id=? FOR UPDATE", String.class, 7L)).thenReturn(java.util.List.of("active"));
         ObjectStorageService storage = new ObjectStorageService(
             "local", root.toString(), "", "", "", "mneme");
         KnowledgeService service = new KnowledgeService(
