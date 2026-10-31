@@ -10,6 +10,7 @@ import hmac
 import io
 import json
 import os
+import re
 import shutil
 import shlex
 import stat
@@ -248,6 +249,16 @@ def capture_snapshot(compose_files: list[str], staging: Path, archive: Path) -> 
         raise BackupError("database migration history is empty; refusing an unverifiable backup")
     metadata = {"application_schema_max": max(item["version"] for item in migrations),
                 "flyway_schema_history": migrations, "schema_history_format": 1}
+    if metadata["application_schema_max"] >= 25:
+        versions = run_compose(
+            compose_files, "exec", "-T", "mysql", "sh", "-c",
+            'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --batch --skip-column-names "$MYSQL_DATABASE" -e "SELECT DISTINCT key_version FROM user_model_config ORDER BY key_version"',
+            capture=True,
+        )
+        required = versions.stdout.decode("utf-8").splitlines()
+    else:
+        required = ["legacy-v1"]
+    metadata["model_config_keys"] = {"required_versions": required}
     validate_restore_schema({"metadata": metadata})
     for archive_path, source in DATA_SOURCES.items():
         copy_tree(source, staging / archive_path)
@@ -260,6 +271,50 @@ def capture_snapshot(compose_files: list[str], staging: Path, archive: Path) -> 
 def supported_schema_version() -> int:
     migrations = PROJECT_ROOT / "java-gateway/src/main/resources/db/migration"
     return max(int(path.name.split("__", 1)[0][1:]) for path in migrations.glob("V*__*.sql"))
+
+
+def validate_restore_model_keys(manifest: dict, compose_files: list[str]) -> None:
+    """Check deployed key versions before stopping services. Never print secrets."""
+    metadata = manifest.get("metadata", {})
+    spec = metadata.get("model_config_keys")
+    if spec is None:
+        # Archives predating version metadata need the original unversioned key.
+        if metadata.get("application_schema_max", 0) < 21:
+            return
+        required = ["legacy-v1"]
+    else:
+        required = spec.get("required_versions") if isinstance(spec, dict) else None
+    if (not isinstance(required, list) or any(
+        not isinstance(version, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,48}", version) is None
+        for version in required
+    )):
+        raise BackupError("backup model configuration key versions are invalid")
+    if not required:
+        return
+    try:
+        config = run_compose(compose_files, "config", "--format", "json", capture=True)
+        env = json.loads(config.stdout)["services"]["java-gateway"]["environment"]
+        production = str(env.get("MNEME_PRODUCTION", "false")).lower() in {"true", "1", "yes", "on"}
+        current = env.get("MODEL_CONFIG_KEY_VERSION", "v2")
+        secret = env.get("MODEL_CONFIG_ENCRYPTION_KEY") or ""
+        jwt = env.get("JWT_SECRET") or ""
+        previous = json.loads(env.get("MODEL_CONFIG_PREVIOUS_KEYS") or "{}")
+        if (not isinstance(previous, dict) or current == "legacy-v1" or current in previous
+                or not isinstance(current, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,48}", current) is None
+                or (production and (not secret or secret == jwt))):
+            raise ValueError()
+        if not secret:
+            secret = jwt
+        if not production:
+            previous.setdefault("legacy-v1", secret)
+        previous[current] = secret
+        if any(not isinstance(key, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,48}", key) is None
+               or not isinstance(value, str) or len(value) < 32 for key, value in previous.items()):
+            raise ValueError()
+    except (ValueError, KeyError, TypeError, subprocess.CalledProcessError):
+        raise BackupError("deployment model configuration keyring is invalid; no data changed") from None
+    if set(required) - previous.keys():
+        raise BackupError("backup requires unavailable model key versions; restore the original keys before retrying; no data changed")
 
 
 def validate_restore_schema(manifest: dict) -> None:
@@ -605,6 +660,7 @@ def _restore(args: argparse.Namespace) -> int:
     archive = Path(args.archive).resolve()
     manifest = verify_archive(archive)
     validate_restore_schema(manifest)
+    validate_restore_model_keys(manifest, args.compose_file)
     try:
         created = datetime.fromisoformat(manifest["created_at"].replace("Z", "+00:00"))
         if created.tzinfo is None:

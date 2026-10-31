@@ -67,7 +67,10 @@ management:
 mneme:
   recovery-worker-url: ${RECOVERY_WORKER_URL:}
   recovery-worker-token: ${RECOVERY_WORKER_TOKEN:}
-  model-config-encryption-key: ${MODEL_CONFIG_ENCRYPTION_KEY:${JWT_SECRET}}
+  production: ${MNEME_PRODUCTION:false}
+  model-config-encryption-key: ${MODEL_CONFIG_ENCRYPTION_KEY:}
+  model-config-key-version: ${MODEL_CONFIG_KEY_VERSION:v2}
+  model-config-previous-keys: '${MODEL_CONFIG_PREVIOUS_KEYS:{}}'
   recovery-github-repository: ${RECOVERY_GITHUB_REPOSITORY:}
   recovery-github-token: ${RECOVERY_GITHUB_TOKEN:}
   prometheus-url: ${PROMETHEUS_URL:}

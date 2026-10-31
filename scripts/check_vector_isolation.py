@@ -13,9 +13,9 @@ def check(filenames: tuple[str, ...], qdrant_names: tuple[str, ...], agent_names
         capture_output=True,
         text=True,
         check=True,
-        # Static rendering only: satisfy production's required secret without
-        # weakening the deployment check or launching a service with this value.
-        env={**os.environ, "REDIS_PASSWORD": "isolated-compose-validation-not-a-deployment-key"},
+        # Static rendering only; these values are never used to start services.
+        env={**os.environ, "REDIS_PASSWORD": "isolated-compose-validation-not-a-deployment-key",
+             "MODEL_CONFIG_ENCRYPTION_KEY": "isolated-model-config-validation-at-least-32-chars"},
     )
     config = json.loads(result.stdout)
     services = config["services"]

@@ -44,6 +44,62 @@ def test_archive_round_trip_verification(tmp_path):
     }
 
 
+@pytest.mark.parametrize("production", [False, True])
+def test_model_key_restore_preflight_requires_original_versions(monkeypatch, production):
+    from scripts import backup_restore as module
+
+    env = {"MODEL_CONFIG_ENCRYPTION_KEY": "new-independent-model-secret-12345678",
+           "JWT_SECRET": "jwt-secret-completely-different-12345678",
+           "MODEL_CONFIG_KEY_VERSION": "v3", "MNEME_PRODUCTION": str(production).lower(),
+           "MODEL_CONFIG_PREVIOUS_KEYS": json.dumps({"v2": "original-model-secret-at-least-32-chars"})}
+    calls = []
+
+    def compose(files, *args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess([], 0, json.dumps({"services": {"java-gateway": {"environment": env}}}).encode())
+
+    monkeypatch.setattr(module, "run_compose", compose)
+    manifest = {"metadata": {"model_config_keys": {"required_versions": ["v2", "v3"]}}}
+    module.validate_restore_model_keys(manifest, [])
+    env["MODEL_CONFIG_PREVIOUS_KEYS"] = "{}"
+    with pytest.raises(BackupError, match="unavailable model key versions") as error:
+        module.validate_restore_model_keys(manifest, [])
+    assert env["MODEL_CONFIG_ENCRYPTION_KEY"] not in str(error.value)
+    assert all(call == ("config", "--format", "json") for call in calls)
+
+
+@pytest.mark.parametrize("spec", [None, {}, {"required_versions": "v2"}, {"required_versions": ["bad.version"]}, {"required_versions": [1]}])
+def test_restore_rejects_invalid_model_key_metadata(monkeypatch, spec):
+    from scripts import backup_restore as module
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid metadata must not access deployment or stop services")
+
+    monkeypatch.setattr(module, "run_compose", forbidden)
+    # Explicit null is treated as legacy metadata, so use schema <21 only there.
+    if spec is None:
+        module.validate_restore_model_keys({"metadata": {"application_schema_max": 20}}, [])
+    else:
+        with pytest.raises(BackupError, match="versions are invalid"):
+            module.validate_restore_model_keys({"metadata": {"model_config_keys": spec}}, [])
+
+
+def test_restore_missing_key_fails_before_any_service_is_stopped(tmp_path, monkeypatch):
+    import argparse
+    from scripts import backup_restore as module
+
+    manifest = {"metadata": {"model_config_keys": {"required_versions": ["legacy-v1"]}}}
+    monkeypatch.setattr(module, "verify_archive", lambda archive: manifest)
+    monkeypatch.setattr(module, "validate_restore_schema", lambda value: None)
+    env = {"MODEL_CONFIG_ENCRYPTION_KEY": "production-new-independent-secret-12345",
+           "MODEL_CONFIG_PREVIOUS_KEYS": "{}", "MNEME_PRODUCTION": "true"}
+    monkeypatch.setattr(module, "run_compose", lambda files, *args, **kwargs:
+                        subprocess.CompletedProcess([], 0, json.dumps({"services": {"java-gateway": {"environment": env}}}).encode())
+                        if args == ("config", "--format", "json") else pytest.fail("must not stop services"))
+    with pytest.raises(BackupError, match="unavailable model key versions"):
+        module._restore(argparse.Namespace(yes=True, archive=str(tmp_path / "archive"), compose_file=[]))
+
+
 def test_backup_archive_preserves_redis_stream_snapshot(tmp_path):
     staging = tmp_path / "staging"
     (staging / "payload/data/redis").mkdir(parents=True)

@@ -17,20 +17,20 @@ class UserSettingsServiceTest {
         var rows = new HashMap<Long,String>();
         when(jdbc.queryForList(anyString(), anyLong())).thenAnswer(call -> {
             String value = rows.get(call.getArgument(1, Long.class));
-            return value == null ? List.of() : List.of(Map.of("config_encrypted", value));
+            return value == null ? List.of() : List.of(Map.of("config_encrypted", value, "key_version", "v2"));
         });
-        when(jdbc.update(anyString(), anyLong(), anyString())).thenAnswer(call -> {
+        when(jdbc.update(anyString(), anyLong(), anyString(), anyString())).thenAnswer(call -> {
             rows.put(call.getArgument(1), call.getArgument(2)); return 1;
         });
-        var service = new UserSettingsService(jdbc, new ObjectMapper(), "", "persistent-test-key-at-least-32-characters");
+        var service = service(jdbc, "persistent-test-key-at-least-32-characters", "original-jwt");
         var body = Map.<String,Object>of("provider", "openai", "model", "gpt-4.1-mini", "apiKey", "private-user-a", "enabled", true);
         var publicConfig = service.saveModels(1L, body);
         assertThat(publicConfig).doesNotContainKey("apiKey").containsEntry("hasKey", true);
         assertThat(rows.get(1L)).doesNotContain("private-user-a").doesNotContain("openai");
         assertThat(service.decrypted(1L)).containsEntry("apiKey", "private-user-a");
-        assertThat(new UserSettingsService(jdbc, new ObjectMapper(), "persistent-test-key-at-least-32-characters", "unused")
+        assertThat(service(jdbc, "persistent-test-key-at-least-32-characters", "rotated-jwt")
             .decrypted(1L)).containsEntry("apiKey", "private-user-a");
-        assertThatThrownBy(() -> new UserSettingsService(jdbc, new ObjectMapper(), "short-key", "long-jwt-key-at-least-32-characters"))
+        assertThatThrownBy(() -> service(jdbc, "short-key", "long-jwt-key-at-least-32-characters"))
             .isInstanceOf(IllegalArgumentException.class);
         assertThat(service.models(2L)).containsEntry("hasKey", false);
         assertThat(service.validated(1L, Map.of("provider", "openai", "model", "gpt-4.1-mini", "apiKey", "", "enabled", true)))
@@ -47,10 +47,15 @@ class UserSettingsServiceTest {
     @Test
     void rejectsInvalidPreferencesBeforeWriting() {
         var jdbc = mock(JdbcTemplate.class);
-        var service = new UserSettingsService(jdbc, new ObjectMapper(), "test-key-at-least-32-characters-long", "unused");
+        var service = service(jdbc, "test-key-at-least-32-characters-long", "unused");
         assertThatThrownBy(() -> service.savePreferences(1L, Map.of("language", "xx"))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service.savePreferences(1L, Map.of("timezone", "invented/timezone"))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service.savePreferences(1L, Map.of("notifications", "true"))).isInstanceOf(IllegalArgumentException.class);
         verifyNoInteractions(jdbc);
+    }
+
+    private UserSettingsService service(JdbcTemplate jdbc, String key, String jwt) {
+        var mapper = new ObjectMapper();
+        return new UserSettingsService(jdbc, mapper, new ModelConfigKeys(mapper, key, jwt, "v2", "{}", false));
     }
 }
