@@ -19,10 +19,13 @@ import static org.assertj.core.api.Assertions.*;
 class ObjectStorageReadbackTest {
     static final String ACCESS = "mneme-readback";
     static final String SECRET = "mneme-readback-test-secret";
-    @Container static final GenericContainer<?> S3 = new GenericContainer<>("minio/minio:RELEASE.2025-04-22T22-12-26Z")
-        .withEnv("MINIO_ROOT_USER", ACCESS).withEnv("MINIO_ROOT_PASSWORD", SECRET)
-        .withCommand("server", "/data").withExposedPorts(9000)
-        .waitingFor(Wait.forHttp("/minio/health/ready").forPort(9000));
+    // Match the maintained S3 service used by full-stack CI; MinIO's old Hub image is unavailable.
+    @Container static final GenericContainer<?> S3 = new GenericContainer<>("ghcr.io/rustfs/rustfs:1.0.0")
+        .withEnv("RUSTFS_ACCESS_KEY", ACCESS).withEnv("RUSTFS_SECRET_KEY", SECRET)
+        .withEnv("RUSTFS_VOLUMES", "/data").withEnv("RUSTFS_ADDRESS", "0.0.0.0:9000")
+        .withEnv("RUSTFS_UNSAFE_BYPASS_DISK_CHECK", "true")
+        .withExposedPorts(9000)
+        .waitingFor(Wait.forHttp("/health").forPort(9000));
     @TempDir Path root;
     String endpoint() { return "http://" + S3.getHost() + ":" + S3.getMappedPort(9000); }
     ObjectStorageService storage() { return new ObjectStorageService("s3", root.toString(), endpoint(), ACCESS, SECRET, "mneme"); }
