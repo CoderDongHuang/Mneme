@@ -13,6 +13,18 @@ describe('api client', () => {
   it('creates valid W3C trace context for gateway propagation', () => {
     expect(createTraceparent()).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/)
   })
+  it('passes an independent abort signal and receipt id with multipart uploads', async () => {
+    const controller = new AbortController()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ code: 200, data: { id: 7 } }) }))
+    const file = new File(['sample'], 'sample.txt')
+    await endpoints.uploadDocument(3, file, { signal: controller.signal, requestId: 'test-request' })
+    const [url, options] = fetch.mock.calls[0]
+    expect(url).toBe('/api/v1/knowledge/document/upload')
+    expect(options.signal).toBe(controller.signal)
+    expect(options.body.get('requestId')).toBe('test-request')
+    expect(options.body.get('file').name).toBe('sample.txt')
+    expect(options.headers['Content-Type']).toBeUndefined()
+  })
   it('unwraps the gateway result envelope', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,

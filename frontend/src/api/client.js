@@ -177,12 +177,14 @@ export const endpoints = {
     form.append('file', file)
     return api(`/knowledge/document/${id}/replace`, { method: 'POST', body: form })
   },
-  uploadDocument: (kbId, file) => {
+  uploadDocument: (kbId, file, { signal, requestId } = {}) => {
     const form = new FormData()
     form.append('kbId', kbId)
     form.append('file', file)
-    return api('/knowledge/document/upload', { method: 'POST', body: form })
+    if (requestId) form.append('requestId', requestId)
+    return api('/knowledge/document/upload', { method: 'POST', body: form, signal })
   },
+  cancelUpload: (kbId, requestId) => api(`/knowledge/document/uploads/${encodeURIComponent(requestId)}/cancel?kbId=${encodeURIComponent(kbId)}`, { method: 'POST' }),
   memory: () => api('/memory'),
   pendingMemories: () => api('/memory/pending'),
   writeMemory: (body) => api('/memory/write', { method: 'POST', body: JSON.stringify(body) }),

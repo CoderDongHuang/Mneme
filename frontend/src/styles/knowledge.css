@@ -43,7 +43,14 @@
 
 .upload-queue-item span { color: var(--muted, #687386); }
 .upload-queue-item.failed { border-color: #e8a4a4; color: #a12d2d; }
-.upload-queue-item.success { border-color: #9ac7aa; }
+.upload-queue-item.submitted { border-color: #9ac7aa; }
+.upload-queue-item.uncertain { border-color: #b9ab8c; }
+.upload-queue-item strong { min-width: 0; overflow-wrap: anywhere; }
+.upload-queue-item button, .upload-queue-item a { flex-shrink: 0; }
+@media (max-width: 600px) {
+  .upload-queue-item { flex-wrap: wrap; gap: 8px; }
+  .upload-queue-item strong, .upload-queue-item span { flex-basis: 100%; }
+}
 .task-notifications { display: grid; gap: 8px; margin: 14px 0; }
 .task-notifications > div:first-child { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .task-notifications > div:first-child span { color: var(--muted, #687386); font-size: .8rem; }

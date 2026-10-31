@@ -11,6 +11,8 @@ import com.mneme.mapper.ProcessingTaskMapper;
 import com.mneme.service.KnowledgeService;
 import com.mneme.service.ObjectStorageService;
 import com.mneme.service.WorkspaceService;
+import com.mneme.service.UploadSubmissionService;
+import com.mneme.exception.RequestInProgressException;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -135,6 +137,102 @@ class KnowledgeQuotaConcurrencyTest {
         var proxy = new ProxyFactory(target);
         proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source), new AnnotationTransactionAttributeSource()));
         return (WorkspaceService) proxy.getProxy();
+    }
+
+    @Test void cancelledReceiptRejectsLateMultipartWithoutCreatingFilesOrTasks() throws Exception {
+        long user = user();
+        var knowledge = service(null, 10);
+        long kb = knowledge.createKb(user, "Cancellation", "").getId();
+        String request = UUID.randomUUID().toString();
+        var first = uploads(knowledge);
+        var second = uploads(service(null, 10));
+        assertThat(first.cancel(user, kb, request)).containsEntry("status", "cancelled");
+        assertThatThrownBy(() -> second.upload(user, kb, request, file(1024)))
+            .isInstanceOf(RequestInProgressException.class);
+        assertThat(second.cancel(user, kb, request)).containsEntry("status", "cancelled");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM processing_task WHERE user_id=?", Long.class, user)).isZero();
+        assertThat(Files.exists(root.resolve(Long.toString(user)))).isFalse();
+    }
+
+    @Test void cancelAfterCommitPreservesDocumentAndTaskAndReplayDoesNotDuplicate() throws Exception {
+        long user = user();
+        var knowledge = service(null, 10);
+        long kb = knowledge.createKb(user, "Committed", "").getId();
+        String request = UUID.randomUUID().toString();
+        var first = uploads(knowledge);
+        var second = uploads(service(null, 10));
+        var document = first.upload(user, kb, request, file(1024));
+        assertThat(second.cancel(user, kb, request)).containsEntry("status", "submitted")
+            .containsEntry("document_id", document.getId()).containsEntry("task_id", document.getParseTaskId());
+        assertThat(second.upload(user, kb, request, file(2048)).getId()).isEqualTo(document.getId());
+        assertThat(used(user)).isEqualTo(1024);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM processing_task WHERE user_id=?", Long.class, user)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT status FROM processing_task WHERE task_id=?", String.class, document.getParseTaskId())).isEqualTo("pending");
+    }
+
+    @Test void simultaneousUploadReplayAcrossInstancesCreatesOnlyOneDocument() throws Exception {
+        long user = user();
+        var knowledge = service(null, 10);
+        long kb = knowledge.createKb(user, "Concurrent", "").getId();
+        String request = UUID.randomUUID().toString();
+        var first = uploads(knowledge);
+        var second = uploads(service(null, 10));
+        concurrentlyWithExistingSnapshots(() -> first.upload(user, kb, request, file(1024)),
+            () -> second.upload(user, kb, request, file(1024)));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_document WHERE kb_id=?", Long.class, kb)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM upload_submission WHERE user_id=?", Long.class, user)).isEqualTo(1);
+    }
+
+    @Test void cancellationIsVisibleEvenWithAnOlderOuterTransactionSnapshot() throws Exception {
+        long user = user();
+        var knowledge = service(null, 10);
+        long kb = knowledge.createKb(user, "Snapshot", "").getId();
+        String request = UUID.randomUUID().toString();
+        var first = uploads(knowledge);
+        var second = uploads(service(null, 10));
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            assertThatThrownBy(() -> new TransactionTemplate(new DataSourceTransactionManager(source)).executeWithoutResult(status -> {
+                jdbc.queryForObject("SELECT COUNT(*) FROM upload_submission", Long.class);
+                try { executor.submit(() -> first.cancel(user, kb, request)).get(10, TimeUnit.SECONDS); }
+                catch (Exception error) { throw new IllegalStateException(error); }
+                second.upload(user, kb, request, file(1024));
+            })).isInstanceOf(RequestInProgressException.class);
+        } finally { executor.shutdownNow(); }
+    }
+
+    @Test void receiptRequiresCorrectUserLibraryAndCanonicalRequestId() throws Exception {
+        long user = user(); long other = user();
+        var knowledge = service(null, 10);
+        long kb = knowledge.createKb(user, "Owner", "").getId();
+        long anotherKb = knowledge.createKb(user, "Other library", "").getId();
+        var uploads = uploads(knowledge);
+        String request = UUID.randomUUID().toString();
+        assertThatThrownBy(() -> uploads.cancel(other, kb, request)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> uploads.cancel(user, kb, "not-a-uuid")).isInstanceOf(IllegalArgumentException.class);
+        uploads.cancel(user, kb, request);
+        assertThatThrownBy(() -> uploads.cancel(user, anotherKb, request)).isInstanceOf(IllegalArgumentException.class);
+        jdbc.update("DELETE FROM user WHERE id=?", user);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM upload_submission WHERE user_id=?", Long.class, user)).isZero();
+    }
+
+    @Test void failedSubmissionRollsBackReceiptAndCanBeConfirmedCancelled() throws Exception {
+        long user = user();
+        var tasks = mock(ProcessingTaskMapper.class);
+        doThrow(new IllegalStateException("injected task failure")).when(tasks).insert(any(ProcessingTask.class));
+        var failing = service(tasks, 10);
+        long kb = failing.createKb(user, "Failure", "").getId();
+        String request = UUID.randomUUID().toString();
+        assertThatThrownBy(() -> uploads(failing).upload(user, kb, request, file(1024))).isInstanceOf(IllegalStateException.class);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM upload_submission WHERE user_id=?", Long.class, user)).isZero();
+        assertThat(uploads(service(null, 10)).cancel(user, kb, request)).containsEntry("status", "cancelled");
+        assertThat(used(user)).isZero();
+    }
+
+    private UploadSubmissionService uploads(KnowledgeService knowledge) {
+        var proxy = new ProxyFactory(new UploadSubmissionService(jdbc, knowledge));
+        proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source), new AnnotationTransactionAttributeSource()));
+        return (UploadSubmissionService) proxy.getProxy();
     }
 
     private void importKnowledgeBases(WorkspaceService workspace, long user, int count) {
