@@ -129,7 +129,8 @@ services:
       - OTEL_TRACES_SAMPLER_ARG=${OTEL_TRACES_SAMPLER_ARG:-0.1}
     volumes:
       - ./data:/data
-      - ./python-agent:/app
+      # Persist existing local state without replacing the code baked into the image.
+      - ./python-agent/data:/app/data
     depends_on:
       mysql:
         condition: service_healthy
