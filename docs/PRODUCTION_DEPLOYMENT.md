@@ -1,6 +1,22 @@
 # 生产部署基线
 
-生产环境使用 `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`。上线前必须配置公网域名、HTTPS、SMTP、管理员令牌、模型额度以及独立随机密钥。
+生产环境使用 `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build`。上线前必须配置公网域名、HTTPS、SMTP、管理员令牌、模型额度以及独立随机密钥。
+
+## 固定发布镜像
+
+基础配置与自托管发行版均从镜像加载代码，只挂载数据；Python 的 `python-agent/data:/app/data` 保留原有 SQLite、会话与上传目录，备份路径不变。生产必须设置 `MNEME_PYTHON_IMAGE`、`MNEME_JAVA_IMAGE`、`MNEME_FRONTEND_IMAGE`，使用每次发布唯一的版本标签，优先选择 `registry/repository@sha256:<64位摘要>`，禁止空值、无标签或 latest。标签应在镜像仓库设为不可覆盖。首次切换前先按下文创建并验证备份。
+
+在受信任的发布环境从已测试提交分别构建并发布三个镜像；前端使用仓库根目录作为 context，Dockerfile 为 `frontend/Dockerfile`。将三个实际镜像引用写入部署环境后执行：
+
+```bash
+python scripts/verify_immutable_images.py --production
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+```
+
+宿主源码变更不会进入运行容器。升级需先完成测试、构建、发布，再更新镜像引用并重新创建服务；只执行 restart 不会升级镜像。回滚需保留旧镜像引用，并评估数据库迁移是否允许旧程序读取，必要时恢复匹配备份。不要将 `docker-compose.dev.yml` 加入生产命令；它仅用于本地挂载源码和自动 reload。
+
+`python scripts/verify_immutable_images.py` 在独立临时镜像/容器中用实际 Python Dockerfile 验证宿主源码变更不影响已构建代码，并验证密钥文件和本地数据未进入镜像；不访问当前项目数据库，也不重建运行服务。
 
 ## 数据与扩展
 
