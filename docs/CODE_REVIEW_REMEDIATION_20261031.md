@@ -210,3 +210,11 @@ P3-02 最终结果：PR #63 全部 9 项 CI（含完整整栈）通过，已于 
 边界：不是跨 Qdrant/FTS/MySQL ACID。写后提交前崩溃可能留下不可见 staged chunk，后续解析清理；FTS 沿用可见待修复与持久 reconciliation。单用户写锁、SQLite 全库写锁和随文档数线性增长的过滤条件有容量边界。默认备份包含 manifest，自定义目录必须额外纳入匹配快照；旧新写入者不能混跑，升级回滚须整套匹配数据与镜像。细节见 docs/INDEX_GENERATIONS.md；账号其他存储的最终核验仍待 MN-006b，不提前标记完成。
 
 CI 补充：774 项 Python 测试通过后，RAG 评测发现其初始化会先删除随机新建的知识库 ID 再入库，与永久 tombstone 语义冲突。移除对新范围的预删除，仅结束时清理；不放松生产删除保护。新增真实 Qdrant/FTS/manifest 的评测回归，验证入库召回成功、结束后 tombstone 与检索为空。修复后 Ruff 与完整 775 项通过，四套离线 RAG 数据集全部按原门槛通过。隔离运行初次缺少仓库级脚本、随后评测读到开发机旧 Chroma 路径，均修正测试挂载和临时目录后重跑，未更改业务数据或绕过迁移保护。证据 artifacts/p210-ci-evaluation-local.log、p210-ci-rag-local.log。
+
+## 2026-11-01：MN-007 / P1-06a 回答原子保存与执行代次隔离
+
+对照要求：回查原审查 P1-06 的“模型生成 → 证据核验 → 保存答案与引用 → done”。Gateway 将正文、引用 JSON、completed 和错误清空原子提交后才输出 done，不再等待上游 EOF。失败、截断、空答案、删除或执行权失效不能发布完成。V31 的 answer_generation 隔离旧重试与迟到失败；通用实体更新禁止改写受保护字段。成功提交后浏览器断开不回滚答案。完整 SSE 帧解析兼容多行 data 并规范化转发。
+
+验证：完整 Java package 170 项通过，零失败、零错误、零跳过；其中真实 MySQL 迁移/事务/并发及真实 HTTP 流定向 16 项通过。前端 lint、CI YAML 解析和 diff 检查通过。停写并保存数据库及镜像标识后，真实站点 http://127.0.0.1:3000 部署 V31；桌面与移动浏览器两项通过。测试收到 done 后立即取消连接并立即读取历史，不加等待或轮询掩盖落库延迟；验证正文引用一致、completed/error 清空、同步及流式重放不重复、刷新可读与无横向溢出。两张截图已目视检查，QA 账号通过既有删除流程清理。证据 artifacts/p106-terminal-java-full.log、p106-terminal-targeted.log、p106-terminal-real.log、p106-terminal-browser。
+
+边界：只完成回答保存子项。Python complete_conversation 和候选记忆处理仍在回答链路，持久可重试记忆任务、主动停止与断开/超时分类仍需后续独立实现；不能据此关闭整个 P1-06。升级不混跑旧新 Gateway，回滚须停写恢复匹配数据库快照和应用镜像，详见 docs/CHAT_ANSWER_TERMINALS.md。
