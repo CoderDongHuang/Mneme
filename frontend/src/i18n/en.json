@@ -1124,5 +1124,17 @@
   "已取消等待上传": "Waiting upload cancelled",
   "正在确认服务端上传状态": "Checking upload status with the server",
   "文件已不在内存中，请重新选择文件": "File is no longer in memory. Select it again.",
-  "核实上传状态": "Check upload status"
+  "核实上传状态": "Check upload status",
+  "索引一致性": "Index consistency",
+  "向量索引可用，词法索引待修复": "Vector index available; lexical index needs repair",
+  "向量与词法索引版本一致": "Vector and lexical index versions match",
+  "向量版本：": "Vector version: ",
+  "词法版本：": "Lexical version: ",
+  "尚未完成": "Not completed",
+  "仅重建词法索引，不重新解析文件或调用 Embedding。": "Rebuild only the lexical index, without parsing files or calling Embedding.",
+  "修复任务已提交，查看任务中心": "Repair submitted; view task center",
+  "修复词法索引": "Repair lexical index",
+  "词法索引待修复": "Lexical index needs repair",
+  "词法索引修复中": "Repairing lexical index",
+  "词法索引修复": "Lexical index repair"
 }

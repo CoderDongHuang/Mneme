@@ -185,7 +185,7 @@ public class WorkspaceService {
             SELECT t.id,t.task_id,t.task_type,t.aggregate_id,t.status,t.attempt_count,t.max_attempts,
                    t.error_code,t.error_message,t.created_at,t.updated_at,t.next_attempt_at,d.file_name
             FROM processing_task t LEFT JOIN knowledge_document d ON d.id=t.aggregate_id
-              AND t.task_type IN ('document_ingest','document_delete')
+              AND t.task_type IN ('document_ingest','document_delete','document_index_repair')
             WHERE t.user_id=? ORDER BY t.created_at DESC LIMIT 100
             """, userId);
     }
@@ -199,7 +199,7 @@ public class WorkspaceService {
         if (cancellationRedis != null && Boolean.TRUE.equals(cancellationRedis.hasKey("mneme:ingestion:active:" + userId + ":" + taskId))) {
             throw new IllegalArgumentException("上一次解析尚未退出，请稍后重试");
         }
-        if ("document_ingest".equals(owned.get(0).get("task_type"))) {
+        if (List.of("document_ingest", "document_index_repair").contains(String.valueOf(owned.get(0).get("task_type")))) {
             List<Map<String, Object>> parents = rows("SELECT k.id,k.status FROM knowledge_base k JOIN knowledge_document d ON d.kb_id=k.id WHERE d.id=? AND k.user_id=? FOR UPDATE", owned.get(0).get("aggregate_id"), userId);
             if (parents.isEmpty() || !"active".equals(parents.get(0).get("status"))) throw new IllegalArgumentException("知识库正在删除或不可用");
             List<Map<String, Object>> documents = rows("SELECT parse_task_id,status FROM knowledge_document WHERE id=? FOR UPDATE", owned.get(0).get("aggregate_id"));
@@ -229,7 +229,8 @@ public class WorkspaceService {
         if (updated == 0) throw new IllegalArgumentException("任务不存在或当前状态不可重试");
         jdbc.update("""
             UPDATE knowledge_document d JOIN processing_task t ON t.aggregate_id=d.id
-            SET d.status=CASE WHEN t.task_type='document_delete' THEN 'deleting' ELSE 'parsing' END,
+            SET d.status=CASE WHEN t.task_type='document_delete' THEN 'deleting'
+                WHEN t.task_type='document_index_repair' THEN 'index_repairing' ELSE 'parsing' END,
                 d.error_message=NULL WHERE t.user_id=? AND t.task_id=?
             """, userId, taskId);
         return Map.of("task_id", taskId, "status", "retry");

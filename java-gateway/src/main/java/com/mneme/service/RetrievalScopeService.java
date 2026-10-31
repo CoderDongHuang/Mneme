@@ -26,7 +26,7 @@ public class RetrievalScopeService {
         if (tags != null && tags.size() > 20) throw new IllegalArgumentException("最多筛选 20 个标签");
         List<Object> args = new ArrayList<>();
         args.add(userId);
-        StringBuilder sql = new StringBuilder("SELECT d.id FROM knowledge_document d JOIN knowledge_base k ON k.id=d.kb_id WHERE k.user_id=? AND d.status IN ('ready','partial') AND k.status='active'");
+        StringBuilder sql = new StringBuilder("SELECT d.id FROM knowledge_document d JOIN knowledge_base k ON k.id=d.kb_id WHERE k.user_id=? AND d.status IN ('ready','partial','index_pending','index_repairing') AND k.status='active'");
         appendIn(sql, args, "d.kb_id", kbIds);
         if (documentIds != null && !documentIds.isEmpty()) appendIn(sql, args, "d.id", documentIds);
         if (tags != null) for (String tag : tags) {

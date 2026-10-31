@@ -9,7 +9,7 @@
 5. 切片器保持结构化元素完整，对正文执行带重叠的语义段落切分。
 6. Qdrant 按用户和知识库隔离存储；SQLite FTS5 同步维护持久化词法索引。
 7. 检索使用 Dense、FTS5 词法召回和 RRF；可通过配置懒加载 Cross Encoder。
-8. 前端轮询 Java 文档状态，读取 `ready / partial / failed`、chunk 数量与 `parseReport`。部分成功保留逐页警告，不冒充完整解析。
+8. 前端轮询 Java 文档状态，读取 `ready / partial / index_pending / index_repairing / failed`、chunk 数量与 `parseReport`。部分成功保留逐页警告，不冒充完整解析。
 
 ## 支持格式
 
@@ -78,7 +78,15 @@ python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 
 ## 联合范围、历史版本与解析预览
 
-聊天与检索调试都先由网关按用户、活动知识库、ready/partial 文档解析允许列表，再进入向量和词法检索。指定文档、标签 AND、导入日期共同生效；词法 SQL 在 LIMIT 前应用文档筛选，并按当前向量原文重读候选。空允许列表严格不检索，不回退全库。日期针对数据库导入时间，不解释正文中的业务日期。
+聊天与检索调试都先由网关按用户、活动知识库、ready/partial/index_pending/index_repairing 文档解析允许列表，再进入向量和词法检索。待修复期间保留向量检索；不能据此宣称混合检索完整。指定文档、标签 AND、导入日期共同生效；词法 SQL 在 LIMIT 前应用文档筛选，并按当前向量原文重读候选。空允许列表严格不检索，不回退全库。日期针对数据库导入时间，不解释正文中的业务日期。
+
+### 索引版本与词法修复
+
+新入库文档在 parseReport 中保存 `vector_index_version`、`lexical_index_version` 和 `index_status`。版本对 chunk ID、正文及 FTS 实际持久化的元数据规范化后计算 SHA-256；词法版本从 SQLite 实际行读回，版本一致且状态 ready 才发布索引就绪。FTS 写入失败保留已有向量，显示“向量索引可用，词法索引待修复”。
+
+文档详情的“修复词法索引”创建持久化 `document_index_repair` 任务，自动尝试三次，失败后可从任务中心重试。它从当前租户 Qdrant 读取既有片段，只重建并读回 FTS，不读取原文件、不解析、不调用 Embedding。任务绑定预期向量版本，拒绝过时结果；原逐页预览、hash 和 OCR 警告保留，存在解析警告的文档仍为 partial。旧文档没有版本字段时需要重新解析一次以建立基线。
+
+该校验不提供跨 Qdrant/SQLite 的 ACID 事务，修复前后版本检查也不等同 generation fencing；暂停 worker 的写入隔离由独立 P2-10 实现处理。
 
 来源携带 SHA-256，打开原文时按 hash 选择对应文件、报告和页图；旧版本报告缺失会说明，未知 hash 拒绝。parser v3 提供有界逐页文字/文字层、OCR 区域置信度、正文/表格块和 chunk 摘要；达到预算标记截断。重复内容仅在原生文字页顶部/底部区域推断页眉页脚，不删除扫描页重复正文。
 

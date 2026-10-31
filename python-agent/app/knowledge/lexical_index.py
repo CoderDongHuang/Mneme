@@ -7,6 +7,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.logging import setup_logger
+from app.knowledge.index_version import index_version
 
 
 logger = setup_logger("lexical_index")
@@ -117,6 +118,22 @@ class LexicalIndex:
         except sqlite3.Error:
             logger.warning("lexical_mutation_failed operation=delete_document")
             raise
+
+    def document_version(self, user_id: str, kb_id: str, document_id: str) -> str | None:
+        """Read actual persisted rows, not a version marker that could hide missing chunks."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT chunk_id,content,page,chunk_type,parser,source,section FROM lexical_chunks "
+                "WHERE user_id=? AND kb_id=? AND document_id=?",
+                (str(user_id), str(kb_id), str(document_id)),
+            ).fetchall()
+        if not rows:
+            return None
+        return index_version([
+            {"id": row["chunk_id"], "content": row["content"],
+             "metadata": {key: row[key] for key in ("page", "chunk_type", "parser", "source", "section")}}
+            for row in rows
+        ])
 
     def delete_collection(self, user_id: str, kb_id: str) -> int:
         try:

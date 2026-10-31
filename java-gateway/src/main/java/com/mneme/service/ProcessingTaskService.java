@@ -93,7 +93,7 @@ public class ProcessingTaskService {
     }
 
     private void run(ProcessingTask task, boolean cleanup) {
-        if ("document_ingest".equals(task.getTaskType()) && ingestionActive(task)) return;
+        if (List.of("document_ingest", "document_index_repair").contains(task.getTaskType()) && ingestionActive(task)) return;
         var lease = leases.claim(TaskLeaseService.Queue.PROCESSING, task.getId(), cleanup);
         if (lease == null) return;
         try (lease) {
@@ -120,6 +120,8 @@ public class ProcessingTaskService {
             lease.renew();
             if ("document_ingest".equals(task.getTaskType())) {
                 ingest(task, lease);
+            } else if ("document_index_repair".equals(task.getTaskType())) {
+                repairIndex(task, lease);
             } else if ("document_delete".equals(task.getTaskType())) {
                 deleteDocument(task, lease);
             } else if ("knowledge_base_delete".equals(task.getTaskType())) {
@@ -176,10 +178,14 @@ public class ProcessingTaskService {
             if (document.getParseTaskId() != null && !document.getParseTaskId().equals(task.getTaskId())) {
                 throw new IllegalStateException("文档已转入其他解析任务，拒绝覆盖结果");
             }
+            Map<String, Object> report = result.report() == null ? Map.of() : result.report();
+            boolean indexPending = report.containsKey("vector_index_version") &&
+                (!java.util.Objects.equals(report.get("vector_index_version"), report.get("lexical_index_version"))
+                || !"ready".equals(report.get("index_status")));
             boolean partial = "partial".equals(result.status());
-            document.setStatus(partial ? "partial" : "ready");
+            document.setStatus(indexPending ? "index_pending" : partial ? "partial" : "ready");
             document.setChunkCount(result.chunks());
-            document.setErrorMessage(partial ? "部分页面或解析步骤未完成，请查看解析报告后重试" : null);
+            document.setErrorMessage(indexPending ? "向量索引可用，词法索引待修复" : partial ? "部分页面或解析步骤未完成，请查看解析报告后重试" : null);
             document.setParseReport(objectMapper.writeValueAsString(result.report() == null ? Map.of() : result.report()));
             documentMapper.updateById(document);
             Object hash = result.report() == null ? null : result.report().get("content_sha256");
@@ -188,6 +194,38 @@ public class ProcessingTaskService {
         }
         // Publish document readiness and task completion under the same cancellation lock.
         completeLocked(task, lease);
+    }
+
+    private void repairIndex(ProcessingTask task, TaskLeaseService.Lease lease) throws Exception {
+        JsonNode payload = objectMapper.readTree(task.getPayload());
+        String expected = payload.path("expected_version").asText();
+        IngestionResult result = restTemplate.postForObject(pythonAgentUrl + "/api/v1/knowledge/internal/reconcile-index",
+            Map.of("user_id", payload.path("user_id").asText(), "kb_id", payload.path("kb_id").asText(),
+                "document_id", payload.path("document_id").asText(), "task_id", task.getTaskId(), "expected_version", expected),
+            IngestionResult.class);
+        if (result == null || !"done".equals(result.status()) || result.report() == null
+            || !expected.equals(result.report().get("vector_index_version"))
+            || !expected.equals(result.report().get("lexical_index_version"))
+            || !"ready".equals(result.report().get("index_status"))) {
+            throw new IllegalStateException("词法索引修复未通过版本核验");
+        }
+        lease.write(row -> {
+            if (!"processing".equals(row.get("status"))) throw new TaskLeaseService.LostLease();
+            KnowledgeDocument document = documentMapper.selectById(task.getAggregateId());
+            if (document == null || !task.getTaskId().equals(document.getParseTaskId()))
+                throw new IllegalStateException("文档已变更，拒绝覆盖索引状态");
+            try {
+                var report = objectMapper.readValue(document.getParseReport(), new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+                if (!expected.equals(report.get("vector_index_version"))) throw new IllegalStateException("文档索引版本已变化");
+                report.putAll(result.report());
+                report.remove("index_error");
+                boolean partial = report.get("warnings") instanceof List<?> warnings && !warnings.isEmpty();
+                report.put("status", partial ? "partial" : "done");
+                persistIngestion(task, new IngestionResult(partial ? "partial" : "done", result.documentId(), result.chunks(), report), lease);
+            } catch (TaskLeaseService.LostLease lost) { throw lost; }
+            catch (Exception error) { throw new IllegalStateException(error); }
+            return null;
+        });
     }
 
     private void deleteDocument(ProcessingTask task, TaskLeaseService.Lease lease) throws Exception {
@@ -309,6 +347,14 @@ public class ProcessingTaskService {
             if (document != null) {
                 document.setStatus("delete_failed");
                 document.setErrorMessage(error.getMessage());
+                documentMapper.updateById(document);
+            }
+        }
+        if ("document_index_repair".equals(task.getTaskType())) {
+            KnowledgeDocument document = documentMapper.selectById(task.getAggregateId());
+            if (document != null && task.getTaskId().equals(document.getParseTaskId())) {
+                document.setStatus("index_pending");
+                document.setErrorMessage("向量索引可用，词法索引待修复；请在任务中心重试");
                 documentMapper.updateById(document);
             }
         }

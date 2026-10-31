@@ -4,6 +4,8 @@ const labels = {
   processing: '解析中',
   ready: '可检索',
   partial: '部分可检索',
+  index_pending: '词法索引待修复',
+  index_repairing: '词法索引修复中',
   deleting: '删除中',
   delete_failed: '删除待重试',
   cancelled: '已取消',

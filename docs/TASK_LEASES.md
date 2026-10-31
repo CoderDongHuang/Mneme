@@ -1,7 +1,11 @@
 # Durable task ownership
 
 Account deletion, document ingestion/deletion, knowledge-base deletion and ingestion
-cancellation cleanup use the same MySQL owner lease protocol (Flyway V27).
+cancellation cleanup and lexical index repair use the same MySQL owner lease
+protocol (Flyway V27). Index repair is a durable `document_index_repair` task;
+it retries three times automatically and remains manually retryable on failure.
+The expected dense index version and current document task ID are checked before
+publishing the repaired report. Original parsing warnings and previews survive.
 
 Each claim has an independent UUID, monotonically increasing `lease_fence`, and
 database-clock `lease_until`. Claiming is a conditional UPDATE, not SELECT followed

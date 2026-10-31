@@ -100,6 +100,12 @@ public class KnowledgeController {
         @RequestParam("file") MultipartFile file
     ) { return Result.success(knowledgeService.replaceDocument(userId, documentId, file)); }
 
+    @PostMapping("/document/{documentId}/repair-index")
+    public Result<Map<String, Boolean>> repairDocumentIndex(@RequestAttribute("userId") Long userId, @PathVariable Long documentId) {
+        knowledgeService.repairDocumentIndex(userId, documentId);
+        return Result.success(Map.of("accepted", true));
+    }
+
     @GetMapping("/document/{documentId}/versions")
     public Result<List<Map<String, Object>>> documentVersions(
         @RequestAttribute("userId") Long userId, @PathVariable Long documentId
