@@ -3,6 +3,8 @@ package com.mneme.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import java.time.LocalDateTime;
 
 @TableName("user")
@@ -11,7 +13,11 @@ public class User {
     private Long id;
     private String username;
     private String nickname;
+    // EmailVerificationService owns these fields under a user-row lock.
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String email;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private LocalDateTime emailVerifiedAt;
     private String avatarPath;
     private String role;
     private String status;
@@ -28,6 +34,8 @@ public class User {
     public void setNickname(String nickname) { this.nickname = nickname; }
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
+    public LocalDateTime getEmailVerifiedAt() { return emailVerifiedAt; }
+    public void setEmailVerifiedAt(LocalDateTime emailVerifiedAt) { this.emailVerifiedAt = emailVerifiedAt; }
     public String getAvatarPath() { return avatarPath; }
     public void setAvatarPath(String avatarPath) { this.avatarPath = avatarPath; }
     public String getRole() { return role == null ? "user" : role; }

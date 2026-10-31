@@ -63,6 +63,12 @@ class PasswordResetDeliveryTest {
         } finally { logger.detachAppender(logs); logs.stop(); }
     }
     @Test void realSmtpTransportReceivesResetMessage() throws Exception {
+        realSmtpTransportReceivesMessage(false);
+    }
+    @Test void realSmtpTransportReceivesVerificationMessage() throws Exception {
+        realSmtpTransportReceivesMessage(true);
+    }
+    private void realSmtpTransportReceivesMessage(boolean verification) throws Exception {
         try (var server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             server.setSoTimeout(5000);
             var received = CompletableFuture.supplyAsync(() -> {
@@ -87,8 +93,14 @@ class PasswordResetDeliveryTest {
             sender.setHost("localhost"); sender.setPort(server.getLocalPort());
             sender.getJavaMailProperties().put("mail.smtp.timeout", "5000");
             var delivery = service(sender);
-            delivery.send("qa@example.test", "qa-reset-code");
-            assertThat(received.get(10, TimeUnit.SECONDS)).contains("To: qa@example.test", "Subject:");
+            if (verification) delivery.sendVerification("qa@example.test", "qa-verification-code");
+            else delivery.send("qa@example.test", "qa-reset-code");
+            String raw = received.get(10, TimeUnit.SECONDS);
+            assertThat(raw).contains("To: qa@example.test", "Subject:");
+            var decoded = new jakarta.mail.internet.MimeMessage(jakarta.mail.Session.getInstance(new java.util.Properties()),
+                new ByteArrayInputStream(raw.getBytes(StandardCharsets.UTF_8)));
+            assertThat(decoded.getSubject()).isEqualTo(verification ? "Mneme 邮箱验证" : "Mneme 密码重置");
+            assertThat(decoded.getContent().toString()).contains(verification ? "qa-verification-code" : "qa-reset-code", "15 分钟");
             assertThat(((Map<?, ?>) delivery.status().get("last_delivery")).get("status")).isEqualTo("smtp_accepted");
         }
     }
