@@ -342,6 +342,12 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/email-verification-real.spec.js --workers=1 --retries=0
+      - name: Verify profile persistence and password session revocation on desktop and mobile
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/profile-mutation-real.spec.js --workers=1 --retries=0
       - name: Verify shared display formats on desktop and mobile
         working-directory: frontend
         env:

@@ -71,8 +71,7 @@ public class AccountDeletionService {
         if (!existing.isEmpty()) return String.valueOf(existing.get(0).get("operation_id"));
 
         String operationId = operations.newOperationId();
-        user.setStatus("deleting");
-        users.updateById(user);
+        jdbc.update("UPDATE user SET status='deleting' WHERE id=?", userId);
         jdbc.update("""
             INSERT INTO account_deletion_task(
                 operation_id,user_id,status,current_step,attempt_count,next_attempt_at
@@ -142,11 +141,8 @@ public class AccountDeletionService {
                 lease.write(row -> {
                     jdbc.update("UPDATE account_deletion_task SET attempt_count=?,next_attempt_at=TIMESTAMPADD(SECOND,?,UTC_TIMESTAMP(6))"
                         + " WHERE id=? AND owner_token=? AND lease_fence=?", nextAttempt, delay, taskId, lease.owner(), lease.fence());
-                    User user = users.selectById(userId);
-                    if (user != null) {
-                        user.setStatus(exhausted ? "deletion_failed" : "deleting");
-                        users.updateById(user);
-                    }
+                    jdbc.update("UPDATE user SET status=? WHERE id=? AND status IN ('deleting','deletion_failed')",
+                        exhausted ? "deletion_failed" : "deleting", userId);
                     operations.record(operationId, userId, "account_delete", userId.toString(),
                         String.valueOf(row.get("current_step")), exhausted ? "failed" : "retry", Map.of("attempts", nextAttempt), error);
                     lease.finish(exhausted ? "failed" : "retry", safeError(error));
