@@ -71,8 +71,6 @@ class LexicalIndex:
         document_id: str,
         chunks: list[dict[str, Any]],
     ) -> None:
-        if not self._available:
-            return
         try:
             with self._connect() as connection:
                 connection.execute(
@@ -103,12 +101,12 @@ class LexicalIndex:
                         for chunk in chunks
                     ],
                 )
-        except sqlite3.Error as error:
-            logger.warning("写入 SQLite 词法索引失败，继续使用 Qdrant: %s", error)
+            self._available = True
+        except sqlite3.Error:
+            logger.warning("lexical_mutation_failed operation=replace_document")
+            raise
 
     def delete_document(self, user_id: str, kb_id: str, document_id: str) -> int:
-        if not self._available:
-            return 0
         try:
             with self._connect() as connection:
                 cursor = connection.execute(
@@ -116,13 +114,11 @@ class LexicalIndex:
                     (str(user_id), str(kb_id), str(document_id)),
                 )
                 return max(0, cursor.rowcount)
-        except sqlite3.Error as error:
-            logger.warning("删除 SQLite 词法索引失败: %s", error)
-            return 0
+        except sqlite3.Error:
+            logger.warning("lexical_mutation_failed operation=delete_document")
+            raise
 
     def delete_collection(self, user_id: str, kb_id: str) -> int:
-        if not self._available:
-            return 0
         try:
             with self._connect() as connection:
                 cursor = connection.execute(
@@ -130,22 +126,20 @@ class LexicalIndex:
                     (str(user_id), str(kb_id)),
                 )
                 return max(0, cursor.rowcount)
-        except sqlite3.Error as error:
-            logger.warning("删除 SQLite 词法索引集合失败: %s", error)
-            return 0
+        except sqlite3.Error:
+            logger.warning("lexical_mutation_failed operation=delete_collection")
+            raise
 
     def delete_user(self, user_id: str) -> int:
-        if not self._available:
-            return 0
         try:
             with self._connect() as connection:
                 cursor = connection.execute(
                     "DELETE FROM lexical_chunks WHERE user_id=?", (str(user_id),)
                 )
                 return max(0, cursor.rowcount)
-        except sqlite3.Error as error:
-            logger.warning("删除 SQLite 用户词法索引失败: %s", error)
-            return 0
+        except sqlite3.Error:
+            logger.warning("lexical_mutation_failed operation=delete_user")
+            raise
 
     def search(
         self, user_id: str, kb_id: str, query: str, limit: int, document_ids: list[str] | None = None

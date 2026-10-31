@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 from app.knowledge.qdrant_store import InvalidCollectionException
+import sqlite3
 from langchain_core.documents import Document
 
 from app.knowledge import vector_store as module
@@ -27,6 +28,71 @@ def test_delete_retry_cleans_lexical_index_when_vectors_already_gone(monkeypatch
     monkeypatch.setattr(module.lexical_index, "delete_collection", cleanup)
     assert store.delete_collection("alice", "kb")
     cleanup.assert_called_once_with("alice", "kb")
+
+
+@pytest.mark.parametrize("operation", ["delete_document", "delete_collection", "delete_user_collections"])
+def test_vector_cleanup_does_not_hide_lexical_failure(monkeypatch, operation):
+    client = Mock(get_collection=Mock(side_effect=InvalidCollectionException("missing")), list_collections=Mock(return_value=[]))
+    store = store_with(client)
+    lexical_method = {"delete_document": "delete_document", "delete_collection": "delete_collection",
+                      "delete_user_collections": "delete_user"}[operation]
+    cleanup = Mock(side_effect=sqlite3.OperationalError("readonly database"))
+    monkeypatch.setattr(module.lexical_index, lexical_method, cleanup)
+    args = ("alice", "kb", "doc") if operation == "delete_document" else ("alice", "kb") if operation == "delete_collection" else ("alice",)
+    with pytest.raises(sqlite3.OperationalError):
+        getattr(store, operation)(*args)
+    cleanup.side_effect = None
+    cleanup.return_value = 0
+    getattr(store, operation)(*args)
+
+
+def test_ingestion_does_not_report_success_after_lexical_write_failure(tmp_path, monkeypatch):
+    path = tmp_path / "document.txt"
+    path.write_text("new evidence", encoding="utf-8")
+    collection = Mock(get=Mock(return_value={"ids": []}))
+    monkeypatch.setattr(ingestion, "require_cloud_processing", lambda _: None)
+    monkeypatch.setattr(ingestion, "vector_store", SimpleNamespace(get_or_create_collection=lambda *_: collection))
+    monkeypatch.setattr(ingestion, "parse_document", lambda *_: [Document(page_content="new evidence")])
+    monkeypatch.setattr(ingestion.lexical_index, "replace_document", Mock(side_effect=sqlite3.OperationalError("readonly database")))
+    with pytest.raises(sqlite3.OperationalError):
+        ingestion.ingest_document("alice", "kb", str(path), document_id="doc")
+
+
+@pytest.mark.parametrize("scope", ["documents/doc", "collections/kb", "user/alice"])
+def test_http_cleanup_failure_and_retry_with_real_stores(tmp_path, monkeypatch, scope):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api import knowledge
+    from app.knowledge.lexical_index import LexicalIndex
+    from app.knowledge.qdrant_store import VectorClient
+
+    client = VectorClient(path=str(tmp_path / "vectors"), dimension=2)
+    store = store_with(client)
+    lexical = LexicalIndex(str(tmp_path / "lexical.sqlite3"))
+    monkeypatch.setattr(module, "lexical_index", lexical)
+    monkeypatch.setattr(knowledge, "vector_store", store)
+    for user in ["alice", "bob"]:
+        collection = store.get_or_create_collection(user, "kb")
+        collection.add(ids=["chunk"], documents=["private evidence"],
+                       embeddings=[[1., 0.]], metadatas=[{"document_id": "doc"}])
+        lexical.replace_document(user, "kb", "doc", [{"id": "chunk", "content": "private evidence"}])
+    app = FastAPI()
+    app.include_router(knowledge.router)
+    http = TestClient(app, raise_server_exceptions=False)
+    connect = lexical._connect
+    monkeypatch.setattr(lexical, "_connect", lambda: sqlite3.connect(lexical.path.as_uri() + "?mode=ro", uri=True))
+    url = f"/api/v1/knowledge/admin/{scope}?user_id=alice&kb_id=kb"
+    assert http.delete(url).status_code == 500
+    # Dense data is already gone; an idempotent retry must still remove FTS data.
+    with connect() as connection:
+        assert connection.execute("SELECT count(*) FROM lexical_chunks WHERE user_id='alice'").fetchone()[0] == 1
+    monkeypatch.setattr(lexical, "_connect", connect)
+    assert http.delete(url).status_code == 200
+    assert lexical.search("alice", "kb", "private evidence", 5) == []
+    with connect() as connection:
+        assert connection.execute("SELECT count(*) FROM lexical_chunks WHERE user_id='alice'").fetchone()[0] == 0
+    assert store.get_collection("bob", "kb").count() == 1
+    assert lexical.search("bob", "kb", "private evidence", 5)
 
 
 def test_colliding_identifiers_do_not_share_collection():
