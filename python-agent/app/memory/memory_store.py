@@ -19,7 +19,7 @@ from app.core.config import settings
 from app.core.errors import MemoryIndexConflict
 from app.core.privacy import require_cloud_processing
 from app.utils.embedding import embeddings
-from app.core.logging import setup_logger
+from app.core.logging import setup_logger, memory_log_fields
 from app.memory.version_store import memory_version_store
 
 logger = setup_logger("memory_store")
@@ -107,7 +107,8 @@ class MemoryVectorStore:
             ],
             ids=[mem_id],
         )
-        logger.debug("记忆已写入: id=%s, category=%s", mem_id, category)
+        logger.debug(memory_log_fields("write", "stored", user_id=user_id, memory_id=mem_id,
+                     category=category, content=content, source_session_id=source_session_id))
         return mem_id
 
     def update_importance(self, mem_id: str, new_importance: float):
@@ -229,14 +230,14 @@ class MemoryVectorStore:
         """删除单条记忆"""
         memory_version_store.snapshot(self.get_memory(mem_id), "delete")
         self._collection.delete(ids=[mem_id])
-        logger.debug(f"记忆已删除: {mem_id}")
+        logger.debug(memory_log_fields("delete", "deleted", memory_id=mem_id))
 
     def delete_user_memories(self, user_id: str):
         """删除某用户所有长期记忆"""
         for memory in self.list_all(user_id):
             memory_version_store.snapshot(memory, "delete_user")
         self._collection.delete(where={"user_id": user_id})
-        logger.info(f"用户 {user_id} 所有记忆已删除")
+        logger.info(memory_log_fields("delete_user", "deleted", user_id=user_id))
 
     def _memory_from_result(self, mem_id: str, result: dict):
         metadata = dict((result.get("metadatas") or [{}])[0] or {})
@@ -276,7 +277,7 @@ class MemoryVectorStore:
                 query_texts=[query or " "], n_results=top_k, where=where_filter
             )
         except Exception:
-            logger.error("记忆检索失败: user_id=%s", user_id)
+            logger.error(memory_log_fields("search", "failed", user_id=user_id, category=category))
             raise
 
         entries = []
@@ -318,10 +319,8 @@ class MemoryVectorStore:
             )
         except Exception as error:
             logger.error(
-                "记忆分类读取失败: user_id=%s category=%s error=%s",
-                user_id,
-                category,
-                error,
+                "error_type=%s %s", type(error).__name__,
+                memory_log_fields("read_category", "failed", user_id=user_id, category=category),
             )
             return []
         entries = []

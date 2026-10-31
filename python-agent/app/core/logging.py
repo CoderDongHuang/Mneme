@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import sys
+import hashlib
 from contextvars import ContextVar
 from typing import TextIO
 
@@ -9,6 +10,30 @@ from app.core.config import settings
 
 
 trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
+
+
+def log_identifier(value: str) -> str:
+    """Stable correlation without exposing externally supplied identifiers."""
+    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:24] if value else ""
+
+
+def memory_log_fields(
+    operation: str, result: str, *, user_id: str = "", memory_id: str = "",
+    category: str = "", content: str = "", source_session_id: str = "",
+) -> str:
+    """Allowlist metadata; content is used only to compute its length.
+
+    Legacy memory IDs may embed a user ID, so hash them too. Operators can hash
+    the ID from an authorized detail view to correlate a diagnostic record.
+    """
+    return json.dumps({
+        "operation": operation, "result": result,
+        "user_id_hash": log_identifier(user_id),
+        "memory_id_hash": log_identifier(memory_id),
+        "category": category if category in {"preference", "weak_point", "progress"} else "unknown",
+        "content_length": len(content),
+        "source_session_id_hash": log_identifier(source_session_id),
+    }, ensure_ascii=False)
 
 
 def redact_log(value: str) -> str:

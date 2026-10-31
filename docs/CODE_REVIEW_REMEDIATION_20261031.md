@@ -21,3 +21,13 @@
 验证：正式 Python 3.11 镜像 Lint 与全套 660 项通过；Spring 真实 Redis Testcontainers 两种密码连接/AOF 配置 2 项通过。`scripts/verify_redis_durability.py` 从实际 Compose 渲染配置验证三方密码/健康依赖；独立 Redis 的空密码和认证模式均通过 Python 实际客户端连接、Stream 写入/消费进入 pending、等待 AOF fsync、SIGKILL、重启、XAUTOCLAIM、执行并 ACK/扣减计数。测试仅使用临时独立容器/网络/卷并清理。故障注入测试确认 Redis 不可用不接受内存任务，排队失败保留计数并释放租约，就绪状态明确降级。
 
 边界：everysec 不是零数据丢失；普通会话缓存与可靠任务的可用性保证不同。生成后的记忆处理解耦按 MN-007 单独修复。
+
+## MN-004 / P1-04：记忆隐私日志
+
+对照要求：记忆写入、去重、确认/拒绝日志只记录元数据，保留错误定位能力，正文不得进入普通日志及 Trace。
+
+实现：移除偏好、去重命中、淘汰、薄弱点强化/衰减、学习进度和拒绝记忆中的原文；补查并移除蒸馏 JSON 解析失败时的模型响应片段。统一记录 operation/result/category/content_length、用户/会话/记忆 ID 的 SHA-256 截断摘要，JSON 日志保留 trace_id。历史记忆 ID 可能包含 user_id，因此也摘要化；授权详情页中的 ID 可用相同算法关联。存储分类读取和反思错误只保留异常类型，不记录可能回显正文的异常消息。Trace 的记忆字段脱敏不能被配置关闭，异常正文仅留摘要和长度。
+
+验证：Python 3.11 Lint、全套 663 项通过；其中 42 项定向覆盖记忆行为与隐私，唯一敏感标记测试遍历写入/去重/淘汰/强化/衰减/进度/确认/拒绝/蒸馏解析错误/存储错误/Trace，输出中无正文、原始用户和会话标识，仍可关联 memory_id_hash 与 trace_id。Java 记忆代理服务和 Controller 无请求正文日志。真实 `http://localhost:3000` 完成注册、三类记忆写入与读回、重复写入，并扫描 Java/Python 容器日志无随机敏感标记，随后删除 QA 账号。本地证据 `artifacts/review-mn004-live.json`；测试不打印随机标记，避免其进入 CI 输出与 artifact。
+
+边界：业务数据、授权用户可见的记忆详情与版本历史仍保存正文；这些不属于普通诊断日志。旧日志和既存 Trace 不会被本次代码自动追溯擦除，应按现有日志/Trace 留存策略清理。

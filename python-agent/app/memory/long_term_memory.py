@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from app.memory.memory_store import memory_store
-from app.core.logging import setup_logger
+from app.core.logging import setup_logger, memory_log_fields
 from app.memory.cache_revision import memory_cache_revision
 
 logger = setup_logger("long_term_memory")
@@ -83,9 +83,8 @@ class LongTermMemoryManager:
             user_id, category, content, threshold=DEDUP_THRESHOLD
         )
         if duplicates:
-            logger.info(
-                f"语义去重命中: [{category}] '{content[:40]}...' 与已有记忆 '{duplicates[0]['content'][:40]}...' 重复 (dist={duplicates[0]['score']:.3f})"
-            )
+            logger.info(memory_log_fields("deduplicate", "matched", user_id=user_id,
+                        category=category, memory_id=duplicates[0].get("id", ""), content=content))
             return True
         return False
 
@@ -108,16 +107,16 @@ class LongTermMemoryManager:
             # 淘汰 importance 最低的旧记忆
             oldest = min(existing, key=lambda e: e.get("importance", 0.5))
             self._store.delete_memory(oldest["id"])
-            logger.info(
-                f"偏好数量达上限({MAX_PREFERENCES})，淘汰最旧记忆: {oldest['content'][:40]}"
-            )
+            logger.info(memory_log_fields("evict", "deleted", user_id=user_id,
+                        category="preference", memory_id=oldest["id"]))
 
         mem_id = self._store.add_memory(
             user_id, "preference", content,
             source_session_id=source_session_id, evidence_hashes=evidence_hashes,
         )
         self._invalidate_cache(user_id, "preferences")
-        logger.info(f"用户 {user_id} 新增偏好: {content}")
+        logger.info(memory_log_fields("write", "stored", user_id=user_id, memory_id=mem_id,
+                    category="preference", content=content, source_session_id=source_session_id))
         return mem_id
 
     def get_preferences(self, user_id: str) -> List[dict]:
@@ -151,9 +150,9 @@ class LongTermMemoryManager:
             if entry.get("topic") == topic:
                 new_importance = min(1.0, entry.get("importance", 0.5) + 0.1)
                 self._store.update_importance(entry["id"], new_importance)
-                logger.info(
-                    f"薄弱点 '{topic}' 计数增加 (importance={new_importance:.1f})"
-                )
+                logger.info(memory_log_fields("reinforce", "updated", user_id=user_id,
+                            category="weak_point", memory_id=entry["id"], content=content,
+                            source_session_id=source_session_id))
                 self._invalidate_cache(user_id, "weak_points")
                 return entry["id"]
 
@@ -165,14 +164,16 @@ class LongTermMemoryManager:
         if len(existing) >= MAX_WEAK_POINTS:
             oldest = min(existing, key=lambda e: e.get("importance", 0.5))
             self._store.delete_memory(oldest["id"])
-            logger.info(f"薄弱点数量达上限({MAX_WEAK_POINTS})，淘汰最旧记忆")
+            logger.info(memory_log_fields("evict", "deleted", user_id=user_id,
+                        category="weak_point", memory_id=oldest["id"]))
 
         mem_id = self._store.add_memory(
             user_id, "weak_point", content, topic=topic, importance=0.5,
             source_session_id=source_session_id, evidence_hashes=evidence_hashes,
         )
         self._invalidate_cache(user_id, "weak_points")
-        logger.info(f"用户 {user_id} 新增薄弱点: {topic}")
+        logger.info(memory_log_fields("write", "stored", user_id=user_id, memory_id=mem_id,
+                    category="weak_point", content=content, source_session_id=source_session_id))
         return mem_id
 
     def get_weak_points(self, user_id: str) -> List[dict]:
@@ -203,7 +204,8 @@ class LongTermMemoryManager:
                     new_importance = max(0.0, wp.get("importance", 0.5) - 0.2)
                     if new_importance <= 0.0:
                         self._store.delete_memory(wp["id"])
-                        logger.info(f"薄弱点已过期删除: {wp.get('topic', '')}")
+                        logger.info(memory_log_fields("decay", "deleted", user_id=user_id,
+                                    category="weak_point", memory_id=wp["id"]))
                     else:
                         self._store.update_importance(wp["id"], new_importance)
             except (ValueError, TypeError):
@@ -223,12 +225,13 @@ class LongTermMemoryManager:
             self._store.delete_memory(entry["id"])
 
         content = f"学习进度: {chapter}/{section}"
-        self._store.add_memory(
+        mem_id = self._store.add_memory(
             user_id, "progress", content, topic=f"{chapter}/{section}",
             source_session_id=source_session_id, evidence_hashes=evidence_hashes,
         )
         self._invalidate_cache(user_id, "progress")
-        logger.info(f"用户 {user_id} 学习进度更新: {chapter}/{section}")
+        logger.info(memory_log_fields("write", "stored", user_id=user_id, memory_id=mem_id,
+                    category="progress", content=content, source_session_id=source_session_id))
 
     def get_progress(self, user_id: str) -> Optional[dict]:
         """获取用户最新学习进度"""

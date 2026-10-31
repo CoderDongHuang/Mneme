@@ -9,7 +9,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.memory.reflection import run_reflection
 from app.memory.long_term_memory import long_term_memory
 from app.memory.memory_store import memory_store
-from app.core.logging import setup_logger
+from app.core.logging import setup_logger, memory_log_fields
 from app.core.config import settings
 from app.core.metrics import (
     REFLECTION_LEASE_ACQUISITIONS,
@@ -152,7 +152,7 @@ class ReflectionScheduler:
             self._redis_available = False
             logger.warning("reflection_queue_unavailable operation=check_and_trigger")
             raise
-        logger.info("触发用户 %s 的记忆反思（可靠队列）", user_id)
+        logger.info(memory_log_fields("enqueue_reflection", "queued", user_id=user_id))
         try:
             self._enqueue_reflection(user_id, count)
         except redis.RedisError:
@@ -188,7 +188,7 @@ class ReflectionScheduler:
         if not lease_token:
             lease_token = uuid.uuid4().hex
             if not self._acquire_shared_lease(user_id, lease_token):
-                logger.info("用户 %s 反思任务等待租约，保留 pending", user_id)
+                logger.info(memory_log_fields("reflection_lease", "pending", user_id=user_id))
                 return
         if self._run_reflection_safe(user_id, claimed_count, lease_token):
             self._redis.xack(_QUEUE_KEY, _QUEUE_GROUP, message_id)
@@ -212,13 +212,14 @@ class ReflectionScheduler:
         try:
             run_reflection(user_id)
             self._complete_shared(user_id, claimed_count, lease_token)
-            logger.info("用户 %s 反思完成", user_id)
+            logger.info(memory_log_fields("reflect", "completed", user_id=user_id))
             return True
         except Exception as e:
             # A queued task keeps its lease until expiry. This prevents a new
             # trigger from creating a duplicate while the pending entry waits
             # for XAUTOCLAIM to retry it.
-            logger.error("用户 %s 反思失败: %s", user_id, e, exc_info=True)
+            logger.error("error_type=%s %s", type(e).__name__,
+                         memory_log_fields("reflect", "failed", user_id=user_id))
             return False
 
     def _complete_shared(self, user_id: str, claimed_count: int, lease_token: str) -> None:
@@ -249,7 +250,7 @@ class ReflectionScheduler:
                 lease_token,
             )
         except redis.RedisError:
-            logger.warning("释放用户 %s 的反思租约失败", user_id, exc_info=True)
+            logger.warning(memory_log_fields("reflection_lease_release", "failed", user_id=user_id))
 
     def run_memory_maintenance(self):
         """定期记忆维护：衰减过时薄弱点、清理过期记忆"""
@@ -268,9 +269,11 @@ class ReflectionScheduler:
                 removed = before_count - after_count
                 if removed > 0:
                     decayed_total += removed
-                    logger.info(f"用户 {user_id}: 衰减删除 {removed} 条过时薄弱点")
+                    logger.info("removed_count=%d %s", removed,
+                                memory_log_fields("maintenance", "completed", user_id=user_id))
             except Exception as e:
-                logger.error(f"用户 {user_id} 记忆维护失败: {e}")
+                logger.error("error_type=%s %s", type(e).__name__,
+                             memory_log_fields("maintenance", "failed", user_id=user_id))
 
         logger.info(
             f"记忆维护完成: 处理 {len(user_ids)} 个用户, 删除 {decayed_total} 条过时记忆"
