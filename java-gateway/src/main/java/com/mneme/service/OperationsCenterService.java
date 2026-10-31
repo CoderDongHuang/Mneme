@@ -65,7 +65,7 @@ public class OperationsCenterService {
                 FROM account_deletion_task ORDER BY updated_at DESC LIMIT 100
                 """));
             result.put("deletion_tasks", jdbc.queryForList("""
-                SELECT task_id,task_type,user_id,status,attempt_count,max_attempts,error_code,next_attempt_at,updated_at
+                SELECT task_id,task_type,user_id,status,attempt_count,max_attempts,error_code,next_attempt_at,updated_at,cleanup_report
                 FROM processing_task WHERE task_type IN ('document_delete','knowledge_base_delete')
                 ORDER BY updated_at DESC LIMIT 100
                 """));

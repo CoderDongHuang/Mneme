@@ -120,31 +120,71 @@ class VectorStore:
         return collection
 
     def delete_collection(self, user_id: str, kb_id: str) -> bool:
-        name = _get_collection_name(user_id, kb_id)
-        # Deletion must remain possible after a provider change, but must verify ownership.
-        try:
-            collection = self._client_for(user_id, kb_id).get_collection(name=name)
-            metadata = collection.metadata or {}
-            if str(metadata.get("user_id", "")) != str(user_id) or str(metadata.get("kb_id", "")) != str(kb_id):
-                raise PermissionError("向量集合归属不匹配，操作已拒绝")
-            self._client_for(user_id, kb_id).delete_collection(name=name)
-            logger.info("知识库向量集合已删除: %s", name)
-        except InvalidCollectionException:
-            pass  # Idempotent retry still cleans the derived lexical index.
+        for client, collection in self._deletion_collections(user_id, kb_id):
+            client.delete_collection(name=collection.name)
         lexical_index.delete_collection(user_id, kb_id)
+        self.require_deleted(user_id, kb_id)
         return True
 
     def delete_document(self, user_id: str, kb_id: str, document_id: str) -> int:
-        collection = self.get_collection(user_id, kb_id, validate_profile=False)
-        if collection is None:
-            lexical_index.delete_document(user_id, kb_id, document_id)
-            return 0
-        result = collection.get(where={"document_id": document_id})
-        ids = result.get("ids", [])
-        if ids:
-            collection.delete(ids=ids)
+        deleted = 0
+        for _, collection in self._deletion_collections(user_id, kb_id):
+            ids = collection.get(where={"document_id": document_id}).get("ids", [])
+            if ids:
+                collection.delete(ids=ids)
+            deleted += len(ids)
         lexical_index.delete_document(user_id, kb_id, document_id)
-        return len(ids)
+        self.require_deleted(user_id, kb_id, document_id)
+        return deleted
+
+    def _deletion_collections(self, user_id: str, kb_id: str) -> list[tuple[Any, Any]]:
+        """Inspect all configured shards, including collections from an old resolver.
+
+        The current name still undergoes the strict ownership check. Other
+        names are included only when both tenant and KB metadata match.
+        Embedding profile changes must not prevent erasure.
+        """
+        current = self.get_collection(user_id, kb_id, validate_profile=False)
+        found = [] if current is None else [(self._client_for(user_id, kb_id), current)]
+        seen = {(id(client), collection.name) for client, collection in found}
+        for client in self.clients:
+            for collection in self._collections_for_client(client):
+                metadata = collection.metadata or {}
+                identity = (id(client), collection.name)
+                if identity not in seen and str(metadata.get("user_id", "")) == str(user_id) and str(metadata.get("kb_id", "")) == str(kb_id):
+                    found.append((client, collection))
+                    seen.add(identity)
+        return found
+
+    def deletion_report(self, user_id: str, kb_id: str | None = None, document_id: str | None = None) -> dict[str, int]:
+        """Counts are independently read; -1 means unverified, never zero."""
+        if document_id is not None and kb_id is None:
+            raise ValueError("document_id requires kb_id")
+        report = {"qdrant_chunks": -1, "fts_rows": -1}
+        if document_id is None:
+            report["qdrant_collections"] = -1
+        try:
+            collections = self.list_user_collections(user_id) if kb_id is None else [
+                collection for _, collection in self._deletion_collections(user_id, kb_id)
+            ]
+            report["qdrant_chunks"] = sum(
+                len(collection.get(where={"document_id": document_id})["ids"])
+                if document_id is not None else collection.count() for collection in collections
+            )
+            if document_id is None:
+                report["qdrant_collections"] = len(collections)
+        except Exception as error:
+            logger.warning("deletion_readback_failed store=qdrant error_type=%s", type(error).__name__)
+        try:
+            report["fts_rows"] = lexical_index.count_scope(user_id, kb_id, document_id)
+        except Exception as error:
+            logger.warning("deletion_readback_failed store=fts error_type=%s", type(error).__name__)
+        return report
+
+    def require_deleted(self, user_id: str, kb_id: str | None = None, document_id: str | None = None) -> None:
+        report = self.deletion_report(user_id, kb_id, document_id)
+        if any(count != 0 for count in report.values()):
+            raise RuntimeError("deletion verification failed: " + str(report))
 
     def get_document_chunks(
         self, user_id: str, kb_id: str, document_id: str
@@ -225,6 +265,7 @@ class VectorStore:
                     deleted += collection.count()
                     client.delete_collection(collection.name)
         lexical_index.delete_user(user_id)
+        self.require_deleted(user_id)
         return deleted
 
     def cleanup_orphan_collections(

@@ -11,6 +11,8 @@ from app.knowledge import ingestion
 
 
 def store_with(client):
+    if isinstance(client, Mock) and not isinstance(client.list_collections.return_value, list):
+        client.list_collections.return_value = []
     store = object.__new__(module.VectorStore)
     store.clients = [client]
     return store
@@ -26,6 +28,7 @@ def test_delete_retry_cleans_lexical_index_when_vectors_already_gone(monkeypatch
     store = store_with(Mock(get_collection=Mock(side_effect=InvalidCollectionException("missing"))))
     cleanup = Mock()
     monkeypatch.setattr(module.lexical_index, "delete_collection", cleanup)
+    monkeypatch.setattr(module.lexical_index, "count_scope", lambda *_: 0)
     assert store.delete_collection("alice", "kb")
     cleanup.assert_called_once_with("alice", "kb")
 
@@ -38,6 +41,7 @@ def test_vector_cleanup_does_not_hide_lexical_failure(monkeypatch, operation):
                       "delete_user_collections": "delete_user"}[operation]
     cleanup = Mock(side_effect=sqlite3.OperationalError("readonly database"))
     monkeypatch.setattr(module.lexical_index, lexical_method, cleanup)
+    monkeypatch.setattr(module.lexical_index, "count_scope", lambda *_: 0)
     args = ("alice", "kb", "doc") if operation == "delete_document" else ("alice", "kb") if operation == "delete_collection" else ("alice",)
     with pytest.raises(sqlite3.OperationalError):
         getattr(store, operation)(*args)
@@ -131,9 +135,10 @@ def test_failed_replacement_preserves_previous_chunks(tmp_path, monkeypatch):
 
 def test_document_deletion_remains_possible_after_provider_change(monkeypatch):
     collection = Mock(metadata={"user_id": "alice", "kb_id": "kb", "embedding_profile": "old"})
-    collection.get.return_value = {"ids": ["doc_0"]}
+    collection.get.side_effect = [{"ids": ["doc_0"]}, {"ids": []}]
     store = store_with(Mock(get_collection=Mock(return_value=collection)))
     monkeypatch.setattr(module.lexical_index, "delete_document", Mock())
+    monkeypatch.setattr(module.lexical_index, "count_scope", lambda *_: 0)
     assert store.delete_document("alice", "kb", "doc") == 1
     collection.delete.assert_called_once_with(ids=["doc_0"])
     with pytest.raises(PermissionError):

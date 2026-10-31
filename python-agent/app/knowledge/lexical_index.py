@@ -119,6 +119,22 @@ class LexicalIndex:
             logger.warning("lexical_mutation_failed operation=delete_document")
             raise
 
+    def count_scope(self, user_id: str, kb_id: str | None = None, document_id: str | None = None) -> int:
+        """Strict readback for deletion: an unavailable index is never an empty index."""
+        clauses, args = ["user_id=?"], [str(user_id)]
+        if kb_id is not None:
+            clauses.append("kb_id=?")
+            args.append(str(kb_id))
+        if document_id is not None:
+            if kb_id is None:
+                raise ValueError("document_id requires kb_id")
+            clauses.append("document_id=?")
+            args.append(str(document_id))
+        with self._connect() as connection:
+            return int(connection.execute(
+                "SELECT count(*) FROM lexical_chunks WHERE " + " AND ".join(clauses), args
+            ).fetchone()[0])
+
     def document_version(self, user_id: str, kb_id: str, document_id: str) -> str | None:
         """Read actual persisted rows, not a version marker that could hide missing chunks."""
         with self._connect() as connection:

@@ -7,6 +7,8 @@ import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.StatObjectArgs;
+import io.minio.errors.ErrorResponseException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +17,8 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 
@@ -112,6 +116,42 @@ public class ObjectStorageService {
 
     public String backend() { return backend; }
 
+    public long countLocation(String location) throws Exception {
+        if (!location.startsWith("s3://")) return countPath(checkedLocal(location, false));
+        long remote = 1;
+        try { minio.statObject(StatObjectArgs.builder().bucket(bucket).object(objectKey(location)).build()); }
+        catch (ErrorResponseException error) {
+            if (!"NoSuchKey".equals(error.errorResponse().code())) throw error;
+            remote = 0;
+        }
+        return remote + countPath(cachedPath(location));
+    }
+
+    public long countKnowledgeBasePrefix(Long userId, Long kbId) throws Exception {
+        return countPrefix("users/" + userId + "/knowledge/" + kbId + "/");
+    }
+
+    public long countUserPrefix(Long userId) throws Exception {
+        return countPrefix("users/" + userId + "/");
+    }
+
+    private long countPrefix(String prefix) throws Exception {
+        if (minio == null) return 0;
+        long count = 0;
+        for (var result : minio.listObjects(ListObjectsArgs.builder().bucket(bucket).prefix(prefix).recursive(true).build())) {
+            result.get(); // Includes network/list errors; an unavailable listing is never empty.
+            count++;
+        }
+        return count;
+    }
+
+    static long countPath(Path path) throws Exception {
+        try { Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS); }
+        catch (NoSuchFileException missing) { return 0; }
+        // Count the directory itself as a resource too; do not follow symlinks.
+        try (var paths = Files.walk(path)) { return paths.count(); }
+    }
+
     private void deletePrefix(String prefix) {
         try {
             var results = minio.listObjects(ListObjectsArgs.builder().bucket(bucket).prefix(prefix).recursive(true).build());
@@ -149,6 +189,12 @@ public class ObjectStorageService {
         if (!path.startsWith(root) || (requireFile && !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))) {
             throw new IllegalArgumentException("文件路径无效");
         }
+        Path current = root;
+        if (Files.isSymbolicLink(current)) throw new IllegalArgumentException("文件路径无效");
+        for (Path part : root.relativize(path)) {
+            current = current.resolve(part);
+            if (Files.isSymbolicLink(current)) throw new IllegalArgumentException("文件路径无效");
+        }
         return path;
     }
 
@@ -156,7 +202,7 @@ public class ObjectStorageService {
         String suffix = Path.of(objectKey(location)).getFileName().toString();
         Path target = cacheRoot.resolve(hash(location) + "-" + suffix).normalize();
         if (!target.startsWith(cacheRoot)) throw new IllegalArgumentException("对象缓存路径无效");
-        return target;
+        return checkedLocal(target.toString(), false);
     }
 
     private String hash(String value) throws Exception {
