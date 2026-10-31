@@ -348,6 +348,12 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/formatters-real.spec.js --workers=1 --retries=0
+      - name: Verify real task stages and safe diagnostics on desktop and mobile
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/tasks-feedback-real.spec.js --workers=1 --retries=0
       - name: Verify report UI, personal settings and archive restoration
         working-directory: frontend
         env:
