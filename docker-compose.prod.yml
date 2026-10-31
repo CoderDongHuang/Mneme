@@ -34,5 +34,7 @@ services:
   java-gateway:
     restart: unless-stopped
     environment:
+      MNEME_PRODUCTION: "true"
+      MODEL_CONFIG_ENCRYPTION_KEY: ${MODEL_CONFIG_ENCRYPTION_KEY:?Production requires an independent model configuration encryption key}
       SECURE_COOKIES: "true"
       CORS_ORIGINS: ${PUBLIC_ORIGIN}

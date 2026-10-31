@@ -2,9 +2,9 @@
 
 本文面向从 GitHub 克隆 Mneme 后，在个人电脑运行完整系统的用户。无需购买服务器、域名、HTTPS 证书或 SMTP 服务。
 
-仅想试用且没有模型账号时，先按 [隔离离线演示](DEMO.md) 启动；正式功能仍需供应商配置。设置页可独立测试和保存每位用户的对话模型与密钥；Embedding、OCR 和后台任务使用部署方配置。已有资料切换 Embedding 前必须阅读 [索引迁移](EMBEDDING_MIGRATION.md)。当前最高 Flyway 为 V24：V21 用户偏好和加密模型、V22 测验草稿与反馈、V23 会话引用、V24 测验提交幂等。升级和回滚见 [发布说明](RELEASE_NOTES_2026-10-29.md)。
+仅想试用且没有模型账号时，先按 [隔离离线演示](DEMO.md) 启动；正式功能仍需供应商配置。设置页可独立测试和保存每位用户的对话模型与密钥；Embedding、OCR 和后台任务使用部署方配置。已有资料切换 Embedding 前必须阅读 [索引迁移](EMBEDDING_MIGRATION.md)。当前最高 Flyway 为 V25：V21 用户偏好和加密模型、V22 测验草稿与反馈、V23 会话引用、V24 测验提交幂等、V25 模型配置密钥版本。升级和回滚见 [发布说明](RELEASE_NOTES_2026-10-29.md)。
 
-请为 `MODEL_CONFIG_ENCRYPTION_KEY` 设置独立、稳定、至少 32 字符的随机密钥，并与备份一同安全保管。留空时回退到 JWT 密钥；使用回退模式时更换 JWT 密钥会使已存模型配置无法解密。整站网页恢复需要另行启用 [宿主机执行器](HOST_RECOVERY.md)，个人 ZIP 恢复不需要执行器。
+请为 `MODEL_CONFIG_ENCRYPTION_KEY` 设置独立、稳定、至少 32 字符的随机密钥，通过密钥管理器单独保管，不放入备份包。生产模式缺失或复用 JWT 密钥时拒绝启动；仅非生产保留 JWT 回退。已有部署升级前必须将原模型加密密钥（曾回退时为原 JWT_SECRET）加入 `MODEL_CONFIG_PREVIOUS_KEYS` 的 `legacy-v1` 项，按 [模型密钥轮换](MODEL_KEY_ROTATION.md) 验证迁移，不能直接丢弃旧密钥。整站网页恢复需要另行启用 [宿主机执行器](HOST_RECOVERY.md)，个人 ZIP 恢复不需要执行器。
 
 ## 1. 运行组件
 

@@ -1,4 +1,13 @@
 {
+  "模型配置密钥": "Model configuration keys",
+  "当前版本：": "Active version: ",
+  "全部配置已使用当前密钥": "All configurations use the active key",
+  "历史配置需要轮换": "Historical configurations need rotation",
+  "缺少历史密钥，无法轮换": "Historical keys are missing; rotation is unavailable",
+  "密钥状态不可用": "Key status is unavailable",
+  "开发模式正在使用 JWT 密钥回退": "Development mode is using the JWT key fallback",
+  "密钥版本": "Key version",
+  "配置数量": "Configurations",
   "有帮助": "Helpful",
   "答案错误": "Incorrect answer",
   "答案不确定": "Uncertain answer",

@@ -5,7 +5,7 @@ import OperationsPage from './OperationsPage'
 import { api } from '../api/client'
 vi.mock('../api/client', () => ({ api: vi.fn() }))
 test('requires transient credential and lock removes operational data', async () => {
-  api.mockResolvedValue({ checked_at: 'now', health: { mysql: 'up', redis: 'up', agent: { status: 'ready' } }, storage: {}, capacity: { status: 'unavailable' }, monitoring: { status: 'not_configured' }, rate_limits: { limits: { chat: 60 } }, task_data_status: 'available' })
+  api.mockResolvedValue({ checked_at: 'now', health: { mysql: 'up', redis: 'up', agent: { status: 'ready' } }, model_keys: { active_version: 'v3', rotation_status: 'required', stored_versions: [{ key_version: 'legacy-v1', total: 2 }] }, storage: {}, capacity: { status: 'unavailable' }, monitoring: { status: 'not_configured' }, rate_limits: { limits: { chat: 60 } }, task_data_status: 'available' })
   render(<OperationsPage />)
   expect(api).not.toHaveBeenCalled()
   const user = userEvent.setup()
@@ -13,6 +13,8 @@ test('requires transient credential and lock removes operational data', async ()
   await user.click(screen.getByRole('button', { name: '验证权限' }))
   expect(await screen.findByText(/未配置监控数据源/)).toBeVisible()
   expect(screen.getByText('邮件服务未配置')).toBeVisible()
+  expect(screen.getByText('历史配置需要轮换')).toBeVisible()
+  expect(screen.getByText('legacy-v1')).toBeVisible()
   await waitFor(() => expect(api).toHaveBeenCalledWith('/admin/operations', expect.objectContaining({ headers: { 'X-Admin-Token': 'a'.repeat(32) } })))
   await user.click(screen.getByRole('button', { name: '锁定' }))
   expect(screen.queryByText('依赖健康')).not.toBeInTheDocument()
