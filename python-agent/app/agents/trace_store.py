@@ -80,12 +80,16 @@ class AgentTraceStore:
     ) -> None:
         self.prune_user(user_id, privacy_store.get(user_id)["trace_days"])
         safe_payload = self._redact(payload or {})
+        # Exception text from models/stores may echo prompts or memory bodies.
+        # Preserve correlation, never a recoverable copy of the message.
+        safe_error = json.dumps({"redacted": True, "sha256": hashlib.sha256(error.encode()).hexdigest()[:24],
+                                 "length": len(error)}) if error else ""
         if self.shared:
             with mysql_connection() as connection:
                 cursor = connection.cursor()
                 cursor.execute(
                     "INSERT INTO agent_trace(user_id,session_id,node,status,duration_ms,payload_json,error) VALUES(%s,%s,%s,%s,%s,%s,%s)",
-                    (user_id, session_id, node, status, round(float(duration_ms), 3), json.dumps(safe_payload, ensure_ascii=False, sort_keys=True), error[:1000]),
+                    (user_id, session_id, node, status, round(float(duration_ms), 3), json.dumps(safe_payload, ensure_ascii=False, sort_keys=True), safe_error),
                 )
                 cursor.close()
             return
@@ -102,7 +106,7 @@ class AgentTraceStore:
                     status,
                     round(float(duration_ms), 3),
                     json.dumps(safe_payload, ensure_ascii=False, sort_keys=True),
-                    error[:1000],
+                    safe_error,
                 ),
             )
 
@@ -112,6 +116,8 @@ class AgentTraceStore:
             for item in settings.agent_trace_redact_fields.split(",")
             if item.strip()
         }
+        # Configuration may add redactions, but cannot disable memory privacy.
+        sensitive |= {"content", "topic", "chapter", "section", "preference", "weak_point"}
         normalized = field.lower()
         if normalized and any(token in normalized for token in sensitive):
             raw = str(value).encode("utf-8", errors="replace")

@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.utils.llm import llm
 from app.core.privacy import require_cloud_processing
 from app.memory.long_term_memory import long_term_memory
-from app.core.logging import setup_logger
+from app.core.logging import setup_logger, memory_log_fields
 
 logger = setup_logger("distillation")
 
@@ -95,9 +95,8 @@ def distill_conversation(user_id: str, session_id: str, conversation: list) -> l
     try:
         entries = json.loads(response.content)
     except json.JSONDecodeError:
-        logger.warning(
-            f"蒸馏输出 JSON 解析失败，原始响应前200字符: {str(response.content)[:200]}"
-        )
+        logger.warning(memory_log_fields("distill", "invalid_json", user_id=user_id,
+                       source_session_id=session_id, content=str(response.content)))
         return []
 
     # 过滤：只保留置信度 >= 0.6 且 LLM 认为不重复的
@@ -113,11 +112,9 @@ def distill_conversation(user_id: str, session_id: str, conversation: list) -> l
     for entry in filtered:
         entry["source_session_id"] = session_id
         entry["evidence_hashes"] = evidence_hashes
-    logger.info(
-        f"蒸馏完成: 原始提取 {len(entries)} 条, "
-        f"过滤后 {len(filtered)} 条 "
-        f"(阈值={0.6}, session={session_id})"
-    )
+    logger.info("distill_count=%d accepted_count=%d %s", len(entries), len(filtered),
+                memory_log_fields("distill", "completed", user_id=user_id,
+                                  source_session_id=session_id))
     return filtered
 
 

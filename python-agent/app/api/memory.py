@@ -11,7 +11,7 @@ from app.models.chat import MemoryConfirmRequest
 from app.memory.long_term_memory import long_term_memory
 from app.memory.memory_store import memory_store
 from app.memory.version_store import memory_version_store
-from app.core.logging import setup_logger
+from app.core.logging import setup_logger, memory_log_fields
 
 router = APIRouter(prefix="/api/v1/memory", tags=["memory"])
 logger = setup_logger("memory_api")
@@ -167,10 +167,9 @@ async def confirm_memory(request: MemoryConfirmRequest):
     - confirm: 写入长期记忆
     - dismiss: 丢弃该记忆
     """
-    logger.info(
-        f"记忆确认: user={request.user_id}, "
-        f"action={request.action}, temp_id={request.temp_id[:20]}"
-    )
+    logger.info(memory_log_fields("confirm", "received", user_id=request.user_id,
+                memory_id=request.temp_id, category=request.category, content=request.content,
+                source_session_id=request.source_session_id))
 
     if request.action == "confirm":
         # A deterministic vector ID makes a gateway retry safe even if SQL commit failed
@@ -194,10 +193,15 @@ async def confirm_memory(request: MemoryConfirmRequest):
                 "evidence_hashes": "[]",
             })
         long_term_memory._invalidate_cache(request.user_id)
+        logger.info(memory_log_fields("confirm", "stored", user_id=request.user_id,
+                    memory_id=memory_id, category=request.category, content=request.content,
+                    source_session_id=request.source_session_id))
         return {"status": "confirmed", "action": "written"}
 
     elif request.action == "dismiss":
-        logger.info(f"用户丢弃记忆: {request.content[:50]}")
+        logger.info(memory_log_fields("dismiss", "discarded", user_id=request.user_id,
+                    memory_id=request.temp_id, category=request.category, content=request.content,
+                    source_session_id=request.source_session_id))
         return {"status": "dismissed", "action": "discarded"}
 
     else:

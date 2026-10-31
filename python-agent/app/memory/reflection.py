@@ -3,7 +3,7 @@ from app.core.privacy import require_cloud_processing
 from app.utils.llm import llm
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.memory.long_term_memory import long_term_memory
-from app.core.logging import setup_logger
+from app.core.logging import setup_logger, memory_log_fields
 
 logger = setup_logger("reflection")
 
@@ -34,7 +34,7 @@ def run_reflection(user_id: str) -> dict:
     progress = long_term_memory.get_progress(user_id)
 
     if not prefs and not weak_points:
-        logger.info(f"用户 {user_id} 记忆数据不足，跳过反思")
+        logger.info(memory_log_fields("reflect", "insufficient_data", user_id=user_id))
         return {}
 
     prompt = REFLECTION_PROMPT.format(
@@ -57,7 +57,7 @@ def run_reflection(user_id: str) -> dict:
 
     try:
         result = json.loads(response.content)
-        logger.info(f"用户 {user_id} 反思完成")
+        logger.info(memory_log_fields("reflect", "completed", user_id=user_id))
         return result
     except json.JSONDecodeError:
         logger.warning("反思结果解析失败")
