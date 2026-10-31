@@ -55,6 +55,7 @@ public class AuthController {
 
     @PostMapping("/password-reset/request")
     public Result<java.util.Map<String, Object>> requestReset(@Valid @RequestBody PasswordResetStartRequest request) {
+        resetDelivery.requireConfigured();
         try {
             String token = authService.issuePasswordResetToken(request.username(), request.email());
             resetDelivery.send(request.email(), token);

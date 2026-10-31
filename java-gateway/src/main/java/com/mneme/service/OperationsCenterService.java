@@ -25,14 +25,16 @@ public class OperationsCenterService {
     private final String agentUrl;
     private final String prometheusUrl;
     private final Path fileRoot;
+    private final PasswordResetDelivery mail;
     public OperationsCenterService(JdbcTemplate jdbc, StringRedisTemplate redis, @Qualifier("healthHttp") RestTemplate internal,
         @Qualifier("monitoringHttp") RestTemplate metrics, StorageDiagnosticsService storage,
         @Value("${mneme.python-agent-url}") String agentUrl,
         @Value("${mneme.prometheus-url:}") String prometheusUrl,
-        @Value("${mneme.file-storage-path:../data/files}") String fileRoot) {
+        @Value("${mneme.file-storage-path:../data/files}") String fileRoot, PasswordResetDelivery mail) {
         this.jdbc = jdbc; this.redis = redis; this.internal = internal; this.metrics = metrics;
         this.storage = storage; this.agentUrl = agentUrl; this.prometheusUrl = prometheusUrl;
         this.fileRoot = Path.of(fileRoot).toAbsolutePath().normalize();
+        this.mail = mail;
     }
     public Map<String, Object> snapshot() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -47,6 +49,7 @@ public class OperationsCenterService {
             catch (Exception ignored) { health.put("agent", Map.of("status", "down")); }
         } catch (Exception ignored) { health.put("agent", Map.of("status", "down")); }
         result.put("health", health);
+        result.put("mail", mail.status());
         result.put("storage", storage.status());
         result.put("capacity", capacity());
         result.put("rate_limits", Map.of("window_seconds", 60, "scope", "trusted-proxy validated client IP", "limits", RateLimitInterceptor.LIMITS));

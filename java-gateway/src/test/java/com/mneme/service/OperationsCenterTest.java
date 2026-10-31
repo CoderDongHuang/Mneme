@@ -13,7 +13,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class OperationsCenterTest {
     private OperationsCenterService service(RestTemplate metrics, String url) {
         return new OperationsCenterService(mock(JdbcTemplate.class), mock(StringRedisTemplate.class),
-            mock(RestTemplate.class), metrics, mock(StorageDiagnosticsService.class), "http://agent", url, ".");
+            mock(RestTemplate.class), metrics, mock(StorageDiagnosticsService.class), "http://agent", url, ".", mock(PasswordResetDelivery.class));
     }
     @Test void unavailableMetricsAreNotFabricated() {
         assertEquals("not_configured", service(new RestTemplate(), "").monitoring().get("status"));

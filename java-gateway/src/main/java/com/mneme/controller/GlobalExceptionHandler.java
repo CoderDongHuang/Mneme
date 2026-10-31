@@ -16,6 +16,12 @@ import com.mneme.exception.AdminAccessDeniedException;
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(com.mneme.exception.MailDeliveryException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public Result<Void> mailUnavailable(com.mneme.exception.MailDeliveryException exception) {
+        return Result.error(503, exception.getMessage());
+    }
+
     @ExceptionHandler(AdminAccessDeniedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public Result<Void> forbidden(AdminAccessDeniedException exception) {

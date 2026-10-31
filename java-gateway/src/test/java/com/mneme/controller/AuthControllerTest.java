@@ -9,11 +9,27 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
+import com.mneme.exception.MailDeliveryException;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class AuthControllerTest {
+    @Test void unconfiguredMailReturns503BeforeCreatingResetToken() throws Exception {
+        var auth = mock(AuthService.class);
+        var mail = mock(PasswordResetDelivery.class);
+        doThrow(new MailDeliveryException("邮件服务未配置")).when(mail).requireConfigured();
+        var mvc = MockMvcBuilders.standaloneSetup(new AuthController(auth, mock(ProfileService.class), mail))
+            .setControllerAdvice(new GlobalExceptionHandler()).build();
+        mvc.perform(post("/api/v1/auth/password-reset/request").contentType("application/json")
+            .content("{\"username\":\"alice\",\"email\":\"alice@example.test\"}"))
+            .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value(503))
+            .andExpect(jsonPath("$.message").value("邮件服务未配置"));
+        verifyNoInteractions(auth);
+    }
     @Test
     void rememberCookieUsesTokenLifetime() {
         AuthService auth = mock(AuthService.class);
