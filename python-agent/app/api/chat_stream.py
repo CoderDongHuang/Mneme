@@ -1,5 +1,7 @@
 import asyncio
 import json
+import anyio
+from contextlib import aclosing
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
@@ -12,11 +14,40 @@ from app.knowledge.citations import select_citations, NO_EVIDENCE_ANSWER
 from app.knowledge.grounding import verify_evidence_answer
 from app.models.chat import ChatRequest
 from app.utils.llm import llm
+from app.utils.async_stream import closing_async_iterator
 from app.core.telemetry import tracer
 
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = setup_logger("chat_stream_api")
+
+
+class ClosingStreamingResponse(StreamingResponse):
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await super().__call__(scope, receive, send)
+        # ASGI 2.4's default response detects disconnects only on send(). A slow
+        # provider may not yield another token, so monitor receive concurrently.
+        async with anyio.create_task_group() as group:
+            async def consume():
+                try:
+                    await self.stream_response(send)
+                except OSError:
+                    pass  # The client socket is already closed.
+                finally:
+                    group.cancel_scope.cancel()
+
+            group.start_soon(consume)
+            await self.listen_for_disconnect(receive)
+            group.cancel_scope.cancel()
+        if self.background is not None:
+            await self.background()
+
+    async def stream_response(self, send):
+        # A disconnect may cancel send() while the generator is paused at yield.
+        # Close in the consumer task so nested tracer/context scopes exit there.
+        async with closing_async_iterator(self.body_iterator):
+            await super().stream_response(send)
 
 
 def _event(event: str, payload: dict) -> str:
@@ -91,12 +122,13 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 if evidence_mode and not state.get("retrieved_chunks"):
                     answer = NO_EVIDENCE_ANSWER
                 else:
-                    async for event in model_events():
-                        if evidence_mode:
-                            answer += event
-                        else:
-                            answer += event
-                            yield _event("token", {"content": event})
+                    async with aclosing(model_events()) as events:
+                        async for event in events:
+                            if evidence_mode:
+                                answer += event
+                            else:
+                                answer += event
+                                yield _event("token", {"content": event})
             except asyncio.TimeoutError:
                 logger.warning("流式模型调用超时，使用资料原文降级")
                 if evidence_mode or not answer:
@@ -123,19 +155,19 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     async def model_events():
         with tracer.start_as_current_span("mneme.llm.stream") as span:
             span.set_attribute("mneme.llm.streaming", True)
-            stream = llm.astream([HumanMessage(content=prompt)]).__aiter__()
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(
-                        stream.__anext__(), timeout=settings.stream_timeout_seconds
-                    )
-                except StopAsyncIteration:
-                    break
-                content = str(chunk.content or "")
-                if content:
-                    yield content
+            async with closing_async_iterator(llm.astream([HumanMessage(content=prompt)])) as stream:
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(
+                            stream.__anext__(), timeout=settings.stream_timeout_seconds
+                        )
+                    except StopAsyncIteration:
+                        break
+                    content = str(chunk.content or "")
+                    if content:
+                        yield content
 
-    return StreamingResponse(
+    return ClosingStreamingResponse(
         generate(),
         media_type="text/event-stream",
         headers={
