@@ -1,9 +1,13 @@
 import { t, useI18n } from '../i18n'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { endpoints } from '../api/client'
 import '../styles/parse-preview.css'
 
 export default function ParsePreview({ preview, initialPage }) {
+  return <DocumentPreview key={preview.document.id} preview={preview} initialPage={initialPage} />
+}
+
+function DocumentPreview({ preview, initialPage }) {
   useI18n();
   const report = preview.parse_report || {}
   const pages = report.pages || []
@@ -12,10 +16,11 @@ export default function ParsePreview({ preview, initialPage }) {
   const [notice, setNotice] = useState('')
   const [overlay, setOverlay] = useState(true)
   const [saving, setSaving] = useState(false)
+  const tagsEdited = useRef(false)
   const id = preview.document.id
   useEffect(() => {
     let active = true
-    endpoints.documentTags(id).then(tags => { if (active) setTagText(tags.join(', ')) }).catch(error => { if (active) setNotice(error.message) })
+    endpoints.documentTags(id).then(tags => { if (active && !tagsEdited.current) setTagText(tags.join(', ')) }).catch(error => { if (active && !tagsEdited.current) setNotice(error.message) })
     return () => { active = false }
   }, [id])
   const page = pages.find(page => Number(page.page) === pageNumber) || pages[0]
@@ -29,7 +34,7 @@ export default function ParsePreview({ preview, initialPage }) {
       try { await endpoints.setDocumentTags(id, tagText.split(/[,，]/).map(tag => tag.trim()).filter(Boolean)); setNotice(t("标签已保存")) }
       catch (error) { setNotice(error.message) }
       finally { setSaving(false) }
-    }}><label>{t("资料标签")}<input aria-label={t("资料标签")} value={tagText} onChange={event => setTagText(event.target.value)} placeholder={t("逗号分隔")} /></label><button disabled={saving}>{t("保存标签")}</button></form>
+    }}><label>{t("资料标签")}<input aria-label={t("资料标签")} value={tagText} onChange={event => { tagsEdited.current = true; setTagText(event.target.value) }} placeholder={t("逗号分隔")} /></label><button disabled={saving}>{t("保存标签")}</button></form>
     {notice && <p role="status">{notice}</p>}
     <details open={preview.extension !== 'pdf'}><summary>{t("解析内容 · ")}{report.page_count || pages.length}{t(" 页/段 · ")}{report.chunk_count ?? preview.document.chunk_count}{t(" 个片段")}{preview.document.version_number ? t(" · 版本 {0}", [preview.document.version_number]) : ''}</summary>
       {report.preview_truncated && <p>{t("预览达到体积上限，请下载原文件核对完整内容。")}</p>}
