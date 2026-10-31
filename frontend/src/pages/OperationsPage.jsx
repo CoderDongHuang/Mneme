@@ -56,6 +56,7 @@ export default function OperationsPage() {
       </div>
       <section className="account-card"><h2>{t('操作审计')}</h2><p className="muted">{t('最近 200 条操作记录；仅展示追踪与状态信息。')}</p><FeedbackBlock error={auditError} onRetry={auditError ? refresh : undefined} /><Table rows={audit} columns={[[ 'createdAt', '时间'], ['userId', '用户'], ['action', '操作'], ['resource', '资源'], ['statusCode', '状态码'], ['traceId', '追踪编号']]} /></section>
       <div className="operations-grid">
+        <section className="account-card"><h2>{t('邮件服务')}</h2><p role="status">{t(data.mail?.status === 'configured' ? '邮件服务已配置' : '邮件服务未配置')}</p><p>{t('最近投递：')}{t(({ not_attempted: '尚未尝试', smtp_accepted: 'SMTP 已接收', failed: '投递失败' })[data.mail?.last_delivery?.status] || '未知')}</p><p className="muted">{t('配置状态与最近投递仅代表当前网关实例；SMTP 接收不保证邮件已到达收件箱。')}</p></section>
         <section className="account-card"><h2>{t('容量与限流')}</h2><p>{t('网关本地磁盘：')}{capacity.status === 'available' ? t('{0} GiB 可用 / {1} GiB 总量', [(capacity.disk_usable_bytes / 2 ** 30).toFixed(2), (capacity.disk_total_bytes / 2 ** 30).toFixed(2)]) : t('不可用')}</p><p>{t('对象存储就绪：')}{data.storage?.object_storage_ready ? t('是') : t('否')}</p><Table rows={Object.entries(data.rate_limits?.limits || {}).map(([bucket, limit]) => ({ bucket, limit }))} columns={[[ 'bucket', '请求类型'], ['limit', '每 IP / 分钟限制']]} /></section>
         <section className="account-card"><h2>{t('任务队列')}</h2><p>{status(data.task_data_status)}</p><Table rows={data.queue} columns={[[ 'task_type', '类型'], ['status', '状态'], ['total', '数量']]} /></section>
       </div>

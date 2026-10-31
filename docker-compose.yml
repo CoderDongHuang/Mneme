@@ -21,14 +21,6 @@ services:
     volumes:
       - ./data/redis:/data
 
-  mailpit:
-    image: axllent/mailpit:v1.21
-    ports:
-      - "127.0.0.1:8025:8025"
-    environment:
-      MP_SMTP_AUTH_ACCEPT_ANY: "1"
-      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
-
   clamav:
     image: clamav/clamav:1.4
     profiles: ["security"]
@@ -171,15 +163,18 @@ services:
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
       - INTERNAL_SERVICE_TOKEN_PREVIOUS=${INTERNAL_SERVICE_TOKEN_PREVIOUS:-}
       - TRUSTED_PROXIES=${TRUSTED_PROXIES:-172.16.0.0/12}
-      - PASSWORD_RESET_FROM=${PASSWORD_RESET_FROM:-mneme@local.test}
+      - PASSWORD_RESET_FROM=${PASSWORD_RESET_FROM:-}
       - MALWARE_SCAN_ENABLED=${MALWARE_SCAN_ENABLED:-false}
       - MALWARE_SCAN_FAIL_CLOSED=${MALWARE_SCAN_FAIL_CLOSED:-true}
       - CLAMAV_HOST=${CLAMAV_HOST:-clamav}
       - CLAMAV_PORT=${CLAMAV_PORT:-3310}
-      - SPRING_MAIL_HOST=mailpit
-      - SPRING_MAIL_PORT=1025
-      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=false
-      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=false
+      - SPRING_MAIL_HOST=${SPRING_MAIL_HOST:-}
+      - SPRING_MAIL_PORT=${SPRING_MAIL_PORT:-587}
+      - SPRING_MAIL_USERNAME=${SPRING_MAIL_USERNAME:-}
+      - SPRING_MAIL_PASSWORD=${SPRING_MAIL_PASSWORD:-}
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:-true}
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:-true}
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED=${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:-true}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_JAVA_EXPORTER_ENDPOINT:-http://localhost:4318/v1/traces}
       - OTEL_SERVICE_NAME=${OTEL_JAVA_SERVICE_NAME:-mneme-java-gateway}
       - OTEL_TRACES_SAMPLER_ARG=${OTEL_TRACES_SAMPLER_ARG:-0.1}
@@ -189,8 +184,6 @@ services:
       mysql:
         condition: service_healthy
       redis:
-        condition: service_started
-      mailpit:
         condition: service_started
       python-agent:
         condition: service_healthy

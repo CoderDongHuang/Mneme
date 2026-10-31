@@ -17,6 +17,14 @@
 - `ADMIN_API_TOKEN` 至少 32 字节，仅通过密钥管理服务注入。
 - 建议在 Caddy 前增加云防火墙和上传文件恶意软件扫描服务。当前内置校验负责大小、扩展名、文件头和可执行文件拦截。
 
+### 密码重置邮件
+
+生产基础配置不启动 Mailpit。设置 `SPRING_MAIL_HOST`、`SPRING_MAIL_PORT`（默认 587）、`SPRING_MAIL_USERNAME`、`SPRING_MAIL_PASSWORD`、`PASSWORD_RESET_FROM`，并保留 `SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true` 和 `SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true`。启用 STARTTLS 时同时要求协商成功，避免静默降级；使用供应商允许的发件人。连接、读取和写入超时各为 5 秒。不要启用 JavaMail debug 或记录邮件正文。
+
+本地使用 `docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d`，该覆盖文件显式选择 Mailpit、1025 端口和本地发件人。收件箱地址为 `http://localhost:8025`。Mailpit 不会向公网邮箱转发邮件。
+
+上线验收：注册专用测试账号，在个人资料中配置测试邮箱，触发忘记密码，在运营方真实邮箱中检查收信并完成重置；验证原密码失效、验证码只能用一次。运维页区分“邮件服务未配置”、配置完成、最近投递失败和“SMTP 已接收”；最后一项仅证明当前网关的 SMTP 服务器接收，不保证终端邮箱收信。未配置或投递异常返回 503，不返回发送成功；响应和应用日志不附带底层邮件异常、完整收件地址或验证码。最近投递状态只属于当前网关进程，重启后恢复为尚未尝试，多实例应分别检查。
+
 ## 备份恢复
 
 统一工具会先停止写入服务和 Redis，再创建 MySQL、Redis 持久化目录（含待处理反思 Stream）、原文件、头像、Qdrant、内置 MinIO 和 Python SQLite/会话状态的一致快照。归档内的版本化 `manifest.json` 记录每个文件的大小和 SHA-256；恢复前会拒绝校验失败、缺项、未知文件、链接和路径穿越。

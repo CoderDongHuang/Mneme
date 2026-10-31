@@ -1094,5 +1094,13 @@
   "检索片段": "Retrieval chunks",
   "默认 Docker 自托管使用本地 Mailpit 收取重置邮件；如果已配置外部 SMTP，请查看绑定邮箱。": "The default Docker setup delivers reset emails to local Mailpit. If external SMTP is configured, check your linked mailbox.",
   "打开本地邮件收件箱": "Open local mailbox",
-  "请检查输入信息或服务连接后重试，表单内容已保留。": "Check your input or service connection and try again. Your input has been kept."
+  "请检查输入信息或服务连接后重试，表单内容已保留。": "Check your input or service connection and try again. Your input has been kept.",
+  "邮件服务": "Email service",
+  "邮件服务已配置": "Email service configured",
+  "邮件服务未配置": "Email service not configured",
+  "最近投递：": "Latest delivery: ",
+  "尚未尝试": "Not attempted",
+  "SMTP 已接收": "Accepted by SMTP",
+  "投递失败": "Delivery failed",
+  "配置状态与最近投递仅代表当前网关实例；SMTP 接收不保证邮件已到达收件箱。": "Configuration and latest delivery apply to this gateway instance. SMTP acceptance does not guarantee inbox delivery."
 }
