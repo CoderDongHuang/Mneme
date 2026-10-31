@@ -19,6 +19,7 @@ from app.core.metrics import INPUT_REJECTIONS
 from app.core.logging import setup_logger
 from app.knowledge.ingestion import SUPPORTED_EXTENSIONS, ingest_document
 from app.knowledge.cancellation import ingestion_task, IngestionCancelled
+from app.knowledge.generations import StaleGeneration
 from app.knowledge.retriever import retrieve
 from app.knowledge.task_tracker import create_task, get_task, update_task
 from app.knowledge.vector_store import vector_store
@@ -105,16 +106,17 @@ def _run_ingestion(
     source_name: str,
     document_id: str | None = None,
     remove_after: bool = True,
+    index_generation: int | None = None,
 ) -> None:
     try:
         resolved_document_id = ingest_document(
-            user_id, kb_id, file_path, source_name=source_name, document_id=document_id
+            user_id, kb_id, file_path, source_name=source_name, document_id=document_id,
+            index_generation=index_generation,
         )
         collection = vector_store.get_collection(user_id, kb_id)
         chunk_count = 0
         if collection is not None:
-            result = collection.get(where={"document_id": resolved_document_id})
-            chunk_count = len(result.get("ids", []))
+            chunk_count = len(vector_store.get_document_chunks(user_id, kb_id, resolved_document_id))
         update_task(
             task_id, "done", chunks=chunk_count, document_id=resolved_document_id
         )
@@ -185,6 +187,7 @@ async def ingest(request: DocumentIngestRequest) -> IngestionTaskResponse:
         request.source_name or path.name,
         request.document_id,
         False,
+        request.index_generation,
     )
     return IngestionTaskResponse(
         status="processing", task_id=task_id, message="文档正在解析"
@@ -193,6 +196,8 @@ async def ingest(request: DocumentIngestRequest) -> IngestionTaskResponse:
 
 @router.post("/internal/ingest", response_model=IngestionResult)
 async def ingest_durable(request: DocumentIngestRequest) -> IngestionResult:
+    if request.task_id and (not request.document_id or request.index_generation is None):
+        raise HTTPException(status_code=422, detail="持久解析任务必须携带文档 ID 和解析代；请先升级 Gateway")
     path = Path(request.file_path).resolve()
     if not path.is_file():
         raise HTTPException(status_code=404, detail="待解析文件不存在")
@@ -200,15 +205,17 @@ async def ingest_durable(request: DocumentIngestRequest) -> IngestionResult:
     def process():
         with ingestion_task(request.user_id, request.task_id):
             return ingest_document(request.user_id, request.kb_id, str(path), request.source_name or path.name,
-                                   request.document_id, report=report)
+                                   request.document_id, report=report, index_generation=request.index_generation)
     try:
         document_id = await asyncio.get_running_loop().run_in_executor(executor, process)
     except IngestionCancelled:
         return IngestionResult(status="cancelled", document_id=request.document_id or "", chunks=0, report=report)
+    except StaleGeneration as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     collection = vector_store.get_collection(request.user_id, request.kb_id)
     chunks = 0
     if collection is not None:
-        chunks = len(collection.get(where={"document_id": document_id}).get("ids", []))
+        chunks = report.get("chunk_count", 0)
     return IngestionResult(status=report.get("status", "done"), document_id=document_id, chunks=chunks, report=report)
 
 
@@ -301,6 +308,12 @@ async def deletion_report(user_id: str, kb_id: str | None = None, document_id: s
 @router.delete("/admin/documents/{document_id}")
 async def delete_document(document_id: str, user_id: str, kb_id: str) -> dict:
     deleted = vector_store.delete_document(user_id, kb_id, document_id)
+    return {"deleted_chunks": deleted, "document_id": document_id}
+
+
+@router.delete("/internal/cancelled-documents/{document_id}")
+async def cancel_document(document_id: str, user_id: str, kb_id: str) -> dict:
+    deleted = vector_store.cancel_document(user_id, kb_id, document_id)
     return {"deleted_chunks": deleted, "document_id": document_id}
 
 

@@ -147,12 +147,22 @@ public class ProcessingTaskService {
         JsonNode payload = objectMapper.readTree(task.getPayload());
         Path localFile = storage.materialize(payload.path("file_path").asText());
         lease.renew();
-        lease.write(row -> { record(task, "source_ready", "processing", Map.of(), null); return null; });
+        long generation = lease.write(row -> {
+            if (!"processing".equals(row.get("status"))) throw new TaskLeaseService.LostLease();
+            KnowledgeDocument document = documentMapper.selectForUpdate(task.getAggregateId());
+            if (document == null || !java.util.Objects.equals(document.getParseTaskId(), task.getTaskId())
+                || "deleting".equals(document.getStatus())) throw new IllegalStateException("文档已变更，拒绝解析");
+            long next = Math.addExact(document.getIndexGeneration(), 1);
+            if (documentMapper.advanceGeneration(task.getAggregateId(), document.getIndexGeneration()) != 1)
+                throw new IllegalStateException("解析代已变化，拒绝分配");
+            record(task, "source_ready", "processing", Map.of("index_generation", next), null);
+            return next;
+        });
         IngestionRequest request = new IngestionRequest(
             payload.path("user_id").asText(),
             payload.path("kb_id").asText(),
             localFile.toString(),
-            payload.path("document_id").asText(), task.getTaskId(), payload.path("source_name").asText(null)
+            payload.path("document_id").asText(), task.getTaskId(), payload.path("source_name").asText(null), generation
         );
         IngestionResult result = restTemplate.postForObject(
             pythonAgentUrl + "/api/v1/knowledge/internal/ingest", request, IngestionResult.class
@@ -172,26 +182,29 @@ public class ProcessingTaskService {
     }
 
     private void persistIngestion(ProcessingTask task, IngestionResult result, TaskLeaseService.Lease lease) throws Exception {
-        record(task, "index_ready", "processing", Map.of("chunks", result.chunks()), null);
-        KnowledgeDocument document = documentMapper.selectById(task.getAggregateId());
-        if (document != null) {
-            if (document.getParseTaskId() != null && !document.getParseTaskId().equals(task.getTaskId())) {
-                throw new IllegalStateException("文档已转入其他解析任务，拒绝覆盖结果");
-            }
-            Map<String, Object> report = result.report() == null ? Map.of() : result.report();
-            boolean indexPending = report.containsKey("vector_index_version") &&
-                (!java.util.Objects.equals(report.get("vector_index_version"), report.get("lexical_index_version"))
-                || !"ready".equals(report.get("index_status")));
-            boolean partial = "partial".equals(result.status());
-            document.setStatus(indexPending ? "index_pending" : partial ? "partial" : "ready");
-            document.setChunkCount(result.chunks());
-            document.setErrorMessage(indexPending ? "向量索引可用，词法索引待修复" : partial ? "部分页面或解析步骤未完成，请查看解析报告后重试" : null);
-            document.setParseReport(objectMapper.writeValueAsString(result.report() == null ? Map.of() : result.report()));
-            documentMapper.updateById(document);
-            Object hash = result.report() == null ? null : result.report().get("content_sha256");
-            if (hash != null) jdbc.update("UPDATE knowledge_document_version SET parse_report=? WHERE document_id=? AND sha256=?",
-                document.getParseReport(), document.getId(), String.valueOf(hash));
+        KnowledgeDocument document = documentMapper.selectForUpdate(task.getAggregateId());
+        if (document == null) throw new IllegalStateException("文档已删除，拒绝发布索引");
+        if (!java.util.Objects.equals(document.getParseTaskId(), task.getTaskId()) || "deleting".equals(document.getStatus())
+            || !("doc_" + task.getAggregateId()).equals(result.documentId())) {
+            throw new IllegalStateException("文档已转入其他解析任务，拒绝覆盖结果");
         }
+        Map<String, Object> report = result.report() == null ? Map.of() : result.report();
+        Object rawGeneration = report.get("index_generation");
+        if (!(rawGeneration instanceof Number) || new java.math.BigDecimal(rawGeneration.toString()).longValueExact() != document.getIndexGeneration())
+            throw new IllegalStateException("解析代不匹配，拒绝旧 worker 结果");
+        record(task, "index_ready", "processing", Map.of("chunks", result.chunks(), "index_generation", document.getIndexGeneration()), null);
+        boolean indexPending = report.containsKey("vector_index_version") &&
+            (!java.util.Objects.equals(report.get("vector_index_version"), report.get("lexical_index_version"))
+            || !"ready".equals(report.get("index_status")));
+        boolean partial = "partial".equals(result.status());
+        document.setStatus(indexPending ? "index_pending" : partial ? "partial" : "ready");
+        document.setChunkCount(result.chunks());
+        document.setErrorMessage(indexPending ? "向量索引可用，词法索引待修复" : partial ? "部分页面或解析步骤未完成，请查看解析报告后重试" : null);
+        document.setParseReport(objectMapper.writeValueAsString(report));
+        documentMapper.updateById(document);
+        Object hash = report.get("content_sha256");
+        if (hash != null) jdbc.update("UPDATE knowledge_document_version SET parse_report=? WHERE document_id=? AND sha256=?",
+            document.getParseReport(), document.getId(), String.valueOf(hash));
         // Publish document readiness and task completion under the same cancellation lock.
         completeLocked(task, lease);
     }
@@ -448,7 +461,7 @@ public class ProcessingTaskService {
         if (ingestionActive(task)) return true;
         try {
             JsonNode payload = objectMapper.readTree(task.getPayload());
-            restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + payload.path("document_id").asText()
+            restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/internal/cancelled-documents/" + payload.path("document_id").asText()
                 + "?user_id=" + payload.path("user_id").asText() + "&kb_id=" + payload.path("kb_id").asText());
             lease.write(row -> {
                 jdbc.update("UPDATE knowledge_document SET status='failed',chunk_count=0,error_message='任务已由用户取消' WHERE id=? AND parse_task_id=?", task.getAggregateId(), task.getTaskId());

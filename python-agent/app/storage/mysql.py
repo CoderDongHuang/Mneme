@@ -60,7 +60,7 @@ def placeholders(count: int) -> str:
 
 def require_tables(*tables: str) -> None:
     """Wait for Gateway Flyway, without granting DDL to the Python runtime."""
-    allowed = {"agent_trace", "memory_version", "agent_tool_usage", "agent_tool_approval"}
+    allowed = {"agent_trace", "memory_version", "agent_tool_usage", "agent_tool_approval", "knowledge_index_state"}
     if not tables or not set(tables) <= allowed:
         raise ValueError("Unsupported auxiliary schema check")
     connector = _connector()

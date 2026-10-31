@@ -8,6 +8,8 @@ from app.knowledge.qdrant_store import VectorClient, InvalidCollectionException
 from app.core.config import settings
 from app.core.logging import setup_logger
 from app.knowledge.lexical_index import lexical_index
+from app.knowledge.generations import generation_store
+from app.knowledge.filters import MetadataScope
 from app.utils.embedding import embeddings
 
 
@@ -120,6 +122,11 @@ class VectorStore:
         return collection
 
     def delete_collection(self, user_id: str, kb_id: str) -> bool:
+        generation_store.tombstone(user_id, kb_id)
+        with generation_store.locked(user_id):
+            return self._delete_collection(user_id, kb_id)
+
+    def _delete_collection(self, user_id: str, kb_id: str) -> bool:
         for client, collection in self._deletion_collections(user_id, kb_id):
             client.delete_collection(name=collection.name)
         lexical_index.delete_collection(user_id, kb_id)
@@ -127,6 +134,16 @@ class VectorStore:
         return True
 
     def delete_document(self, user_id: str, kb_id: str, document_id: str) -> int:
+        generation_store.tombstone(user_id, kb_id, document_id)
+        with generation_store.locked(user_id):
+            return self._delete_document(user_id, kb_id, document_id)
+
+    def cancel_document(self, user_id: str, kb_id: str, document_id: str) -> int:
+        generation_store.suspend(user_id, kb_id, document_id)
+        with generation_store.locked(user_id):
+            return self._delete_document(user_id, kb_id, document_id)
+
+    def _delete_document(self, user_id: str, kb_id: str, document_id: str) -> int:
         deleted = 0
         for _, collection in self._deletion_collections(user_id, kb_id):
             ids = collection.get(where={"document_id": document_id}).get("ids", [])
@@ -192,7 +209,7 @@ class VectorStore:
         collection = self.get_collection(user_id, kb_id)
         if collection is None:
             return []
-        result = collection.get(
+        result = MetadataScope(collection, generation_store.where(user_id, kb_id)).get(
             where={"document_id": document_id},
             include=["documents", "metadatas"],
         )
@@ -229,7 +246,7 @@ class VectorStore:
                     "kb_id": metadata.get("kb_id", collection.name.split("_kb_")[-1]),
                     "vector_shard_id": metadata.get("vector_shard_id", 0),
                     "vector_shard_count": metadata.get("vector_shard_count", 1),
-                    "chunk_count": collection.count(),
+                    "chunk_count": MetadataScope(collection, generation_store.where(user_id, str(metadata.get("kb_id", "")))).count(),
                     "metadata": metadata,
                 }
             )
@@ -257,6 +274,11 @@ class VectorStore:
         }
 
     def delete_user_collections(self, user_id: str) -> int:
+        generation_store.tombstone(user_id)
+        with generation_store.locked(user_id):
+            return self._delete_user_collections(user_id)
+
+    def _delete_user_collections(self, user_id: str) -> int:
         deleted = 0
         for client in self.clients:
             for collection in self._collections_for_client(client):

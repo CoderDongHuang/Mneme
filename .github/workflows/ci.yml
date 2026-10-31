@@ -291,6 +291,8 @@ jobs:
         run: npx playwright test e2e/real-stack.spec.js --project=桌面端 --reporter=html
       - name: Verify Redis lease renewal and crash recovery
         run: $COMPOSE exec -T python-agent python scripts/check_ingestion_lease.py
+      - name: Verify durable generation fencing with shared MySQL
+        run: $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_index_generation.py
       - name: Verify Redis authentication and AOF pending-task recovery
         run: python scripts/verify_redis_durability.py
       - name: Verify least privilege deployment roles and startup order
@@ -320,6 +322,13 @@ jobs:
           MNEME_INDEX_QA_FAULTS: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/index-reconciliation-real.spec.js --workers=1 --retries=0
+      - name: Verify stale generation fencing on the real Gateway and indexes
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_INDEX_QA_FAULTS: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/index-generation-real.spec.js --workers=1 --retries=0
       - name: Verify deletion readback and retry on desktop and mobile
         working-directory: frontend
         env:

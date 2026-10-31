@@ -43,7 +43,12 @@ def _filter(where: dict | None) -> models.Filter | None:
         field = f"metadata.{key}"
         operators = value if isinstance(value, dict) else {"$eq": value}
         for op, operand in operators.items():
-            if op in {"$eq", "$ne"}:
+            if op == "$exists":
+                if not isinstance(operand, bool):
+                    raise ValueError("Existence filters require a boolean")
+                condition = models.IsEmptyCondition(is_empty=models.PayloadField(key=field))
+                conditions.append(models.Filter(must_not=[condition]) if operand else condition)
+            elif op in {"$eq", "$ne"}:
                 if isinstance(operand, float):
                     if not math.isfinite(operand):
                         raise ValueError("Numeric metadata filters must be finite")

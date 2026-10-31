@@ -10,6 +10,7 @@ class DocumentIngestRequest(BaseModel):
     document_id: str | None = None
     task_id: str | None = Field(default=None, max_length=128)
     source_name: str | None = Field(default=None, max_length=255)
+    index_generation: int | None = Field(default=None, strict=True, ge=1, le=9223372036854775807)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
