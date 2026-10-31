@@ -52,7 +52,7 @@ class ChatServiceTest {
             (RedisTemplate<String, Object>) mock(RedisTemplate.class),
             new ObjectMapper(),
             sessions,
-            mock(PendingMemoryService.class)
+            mock(PendingMemoryService.class), mock(ChatStreamMonitor.class)
         );
     }
 

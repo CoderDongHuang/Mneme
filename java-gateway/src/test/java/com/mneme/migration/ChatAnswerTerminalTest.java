@@ -118,4 +118,43 @@ class ChatAnswerTerminalTest {
         jdbc.update("DELETE FROM chat_message WHERE id=2");
         assertThatThrownBy(() -> service.finishAnswer(2L, 1L, "answer", "[]")).isInstanceOf(IllegalStateException.class);
     }
+
+    @Test void stopIsOwnedIdempotentAndCannotAffectANewerAttempt() {
+        assertThatThrownBy(() -> service.stopAnswer(99L, 1L, "request", 1L)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.stopAnswer(1L, 1L, "missing", 1L)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(service.stopAnswer(1L, 1L, "request", 1L)).isEqualTo("stopped");
+        assertThat(service.stopAnswer(1L, 1L, "request", 1L)).isEqualTo("stopped");
+        service.saveStoppedPartial(2L, 1L, "partial answer", "[]");
+        assertThat(messages.selectById(2L).getContent()).isEqualTo("partial answer");
+        assertThat(messages.selectById(2L).getErrorCode()).isEqualTo("USER_STOPPED");
+        service.prepareExchange(1L, 1L, "request", "question");
+        assertThatThrownBy(() -> service.stopAnswer(1L, 1L, "request", 1L)).isInstanceOf(com.mneme.exception.RequestInProgressException.class);
+        service.saveStoppedPartial(2L, 1L, "late old partial", "[]");
+        assertThat(messages.selectById(2L).getStatus()).isEqualTo("processing");
+        assertThat(messages.selectById(2L).getContent()).isEmpty();
+        service.finishAnswer(2L, 2L, "new answer", "[]");
+        assertThat(service.stopAnswer(1L, 1L, "request", 2L)).isEqualTo("completed");
+        assertThat(messages.selectById(2L).getContent()).isEqualTo("new answer");
+    }
+
+    @Test void simultaneousStopAndCompletionNeverRegressACommittedAnswer() throws Exception {
+        var pool = Executors.newFixedThreadPool(2); var start = new CountDownLatch(1);
+        try {
+            var complete = pool.submit(() -> {
+                start.await();
+                try { service.finishAnswer(2L, 1L, "verified answer", "[]"); } catch (IllegalStateException lost) { }
+                return true;
+            });
+            var stop = pool.submit(() -> { start.await(); return service.stopAnswer(1L, 1L, "request", 1L); });
+            start.countDown(); complete.get(10, TimeUnit.SECONDS);
+            var ack = stop.get(10, TimeUnit.SECONDS);
+            var saved = messages.selectById(2L);
+            assertThat(saved.getStatus()).isEqualTo(ack);
+            if ("completed".equals(ack)) {
+                assertThat(saved.getContent()).isEqualTo("verified answer"); assertThat(saved.getErrorCode()).isNull();
+            } else {
+                assertThat(ack).isEqualTo("stopped"); assertThat(saved.getErrorCode()).isEqualTo("USER_STOPPED");
+            }
+        } finally { pool.shutdownNow(); }
+    }
 }

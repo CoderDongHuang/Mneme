@@ -69,6 +69,7 @@ management:
         http.server.requests: true
 
 mneme:
+  chat-stream-timeout-ms: ${CHAT_STREAM_TIMEOUT_MS:180000}
   recovery-worker-url: ${RECOVERY_WORKER_URL:}
   recovery-worker-token: ${RECOVERY_WORKER_TOKEN:}
   production: ${MNEME_PRODUCTION:false}

@@ -90,6 +90,7 @@ class ChatStreamTerminalTest {
         final CountDownLatch release = new CountDownLatch(1);
         final ExecutorService executor = Executors.newCachedThreadPool();
         final ChatService service;
+        final ChatStreamMonitor monitor;
         @SuppressWarnings("unchecked") Fixture(String response, boolean holdOpen) throws Exception {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.setExecutor(executor);
@@ -107,8 +108,10 @@ class ChatStreamTerminalTest {
             var assistant = new ChatMessage(); assistant.setId(2L); assistant.setAnswerGeneration(3L);
             when(sessions.prepareExchange(7L, 9L, "request", "question"))
                 .thenReturn(new ChatSessionService.Exchange(null, assistant, false));
+            when(sessions.answerState(2L)).thenReturn(new ChatSessionService.AnswerState(3L, "processing"));
+            monitor = new ChatStreamMonitor(sessions);
             service = new ChatService(mock(RestTemplate.class), (RedisTemplate<String,Object>) mock(RedisTemplate.class),
-                new ObjectMapper(), sessions, mock(PendingMemoryService.class));
+                new ObjectMapper(), sessions, mock(PendingMemoryService.class), monitor);
             ReflectionTestUtils.setField(service, "pythonAgentUrl", "http://127.0.0.1:" + server.getAddress().getPort());
             ReflectionTestUtils.setField(service, "internalServiceToken", "test-only");
         }
@@ -116,6 +119,6 @@ class ChatStreamTerminalTest {
             var request = new ChatRequest(); request.setSessionId("9"); request.setRequestId("request"); request.setMessage("question");
             service.stream(7L, request).writeTo(out);
         }
-        public void close() { release.countDown(); server.stop(0); executor.shutdownNow(); }
+        public void close() { monitor.close(); release.countDown(); server.stop(0); executor.shutdownNow(); }
     }
 }

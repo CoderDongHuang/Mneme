@@ -58,6 +58,8 @@ def test_upstream_closed_on_completion_error_and_timeout(monkeypatch, mode):
         events = [event async for event in response.body_iterator]
         assert provider.closes == 1
         assert any("event: error" in event for event in events) == (mode == "error")
+        if mode == "error":
+            assert any('"code": "MODEL_ERROR"' in event for event in events)
         assert complete.call_count == (0 if mode == "error" else 1)
     asyncio.run(run())
 

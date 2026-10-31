@@ -57,6 +57,7 @@ test('真实完成事件到达时答案引用已落库，立即断流重放及�
             while ((end = buffer.indexOf('\n\n')) >= 0) {
               const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2)
               const type = frame.split('\n').find(line => line.startsWith('event:'))?.slice(6).trim()
+              if (!type) continue // SSE comments are connection heartbeats, not JSON events.
               const data = JSON.parse(frame.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n'))
               if (type === 'error') throw new Error('unexpected stream error')
               if (type === 'token') answer += data.content
@@ -95,7 +96,7 @@ test('真实完成事件到达时答案引用已落库，立即断流重放及�
     await expect(page.locator('.message-assistant')).toContainText('QZ-7294')
     await expect(page.getByRole('button', { name: /查看 \d+ 条资料依据/ })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
-    await page.screenshot({ path: testInfo.outputPath('answer-persisted.png'), fullPage: true })
+    await page.screenshot({ path: testInfo.outputPath('answer-persisted.png'), fullPage: true, animations: 'disabled' })
     await testInfo.attach('answer-terminal.json', { body: JSON.stringify({ completed_at_done: true, immediate_cancel: true, sources_persisted: true, replay_unchanged: true, viewport: testInfo.project.use.viewport }), contentType: 'application/json' })
   } finally {
     if (account) await api('delete', '/profile/account')

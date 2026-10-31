@@ -1,12 +1,20 @@
 {$PUBLIC_DOMAIN} {
-    encode gzip
+    # Keep SSE out of compression buffers, including streams with no model tokens.
+    handle /api/v1/chat/stream {
+        reverse_proxy java-gateway:8080 {
+            # Keep downstream disconnect cancellation enabled (negative disables it).
+            flush_interval 10ms
+        }
+    }
     handle /api/* {
+        encode gzip
         reverse_proxy java-gateway:8080
     }
     handle /ws/* {
         reverse_proxy java-gateway:8080
     }
     handle {
+        encode gzip
         root * /srv/frontend
         try_files {path} /index.html
         file_server

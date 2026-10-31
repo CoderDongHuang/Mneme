@@ -186,6 +186,36 @@ public class ChatSessionService {
             content == null ? "" : content, errorCode, messageId, generation);
     }
 
+    public record AnswerState(long generation, String status) { }
+
+    public AnswerState answerState(Long messageId) {
+        return jdbc.query("SELECT answer_generation,status FROM chat_message WHERE id=? AND role='assistant'",
+            (row, index) -> new AnswerState(row.getLong(1), row.getString(2)), messageId)
+            .stream().findFirst().orElse(null);
+    }
+
+    @Transactional
+    public String stopAnswer(Long userId, Long sessionId, String requestId, long generation) {
+        if (jdbc.queryForList("SELECT id FROM chat_session WHERE id=? AND user_id=? FOR UPDATE",
+            Long.class, sessionId, userId).isEmpty()) throw new IllegalArgumentException("会话不存在");
+        var candidates = jdbc.query("SELECT id,answer_generation FROM chat_message"
+            + " WHERE session_id=? AND request_id=? AND role='assistant' FOR UPDATE", (row, index) -> {
+                var item = new ChatMessage(); item.setId(row.getLong(1)); item.setAnswerGeneration(row.getLong(2)); return item;
+            }, sessionId, requestId);
+        if (candidates.isEmpty()) throw new IllegalArgumentException("回答不存在");
+        ChatMessage message = candidates.get(0);
+        if (message.getAnswerGeneration() != generation)
+            throw new RequestInProgressException("回答已开始新的执行，请刷新状态");
+        jdbc.update("UPDATE chat_message SET status='stopped',error_code='USER_STOPPED'"
+            + " WHERE id=? AND answer_generation=? AND status='processing'", message.getId(), generation);
+        return jdbc.queryForObject("SELECT status FROM chat_message WHERE id=? FOR UPDATE", String.class, message.getId());
+    }
+
+    public void saveStoppedPartial(Long messageId, long generation, String content, String sourcesJson) {
+        jdbc.update("UPDATE chat_message SET content=?,sources_json=? WHERE id=?"
+            + " AND answer_generation=? AND status='stopped'", content, sourcesJson, messageId, generation);
+    }
+
     @Transactional
     public void deleteSession(Long userId, Long sessionId) {
         getOwnedSession(userId, sessionId);
