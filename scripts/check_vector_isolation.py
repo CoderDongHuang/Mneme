@@ -1,6 +1,7 @@
 """Verify that Compose keeps Qdrant private to the Python agents."""
 
 import json
+import os
 import subprocess
 import sys
 
@@ -12,6 +13,9 @@ def check(filenames: tuple[str, ...], qdrant_names: tuple[str, ...], agent_names
         capture_output=True,
         text=True,
         check=True,
+        # Static rendering only: satisfy production's required secret without
+        # weakening the deployment check or launching a service with this value.
+        env={**os.environ, "REDIS_PASSWORD": "isolated-compose-validation-not-a-deployment-key"},
     )
     config = json.loads(result.stdout)
     services = config["services"]
