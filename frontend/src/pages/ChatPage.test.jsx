@@ -6,7 +6,7 @@ import { endpoints, streamChat } from '../api/client'
 
 vi.mock('../api/client', () => ({ endpoints: {
   sessions: vi.fn(), knowledgeBases: vi.fn(), sessionMessages: vi.fn(), createSession: vi.fn(),
-  deleteSession: vi.fn(), confirmMemory: vi.fn(),
+  deleteSession: vi.fn(), confirmMemory: vi.fn(), stopChat: vi.fn(),
 }, streamChat: vi.fn() }))
 vi.mock('../components/RetrievalFilters', () => ({ default: () => null, emptyFilters: {} }))
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
@@ -72,4 +72,89 @@ test('memory failure preserves the item and duplicate clicks send only one reque
   expect(screen.getByText('喜欢示例')).toBeInTheDocument()
   expect(button).toBeEnabled()
   expect(screen.getByRole('alert')).toHaveTextContent('保存失败')
+})
+
+function controlledStream() {
+  let handlers, payload
+  let resolve, reject
+  const promise = new Promise((done, fail) => { resolve = done; reject = fail })
+  streamChat.mockImplementation((body, options) => {
+    payload = body; handlers = options
+    options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    return promise
+  })
+  return {
+    start: () => handlers.onEvent('start', { session_id: payload.session_id, request_id: payload.request_id, answer_generation: 2 }),
+    done: () => { handlers.onEvent('done', {}); resolve({ status: 'completed' }) },
+    stopped: () => { handlers.onEvent('stopped', {}); resolve({ status: 'stopped' }) },
+    reject, signal: () => handlers.signal,
+  }
+}
+
+test('early stop waits for generation handshake and server acknowledgement before aborting', async () => {
+  const stream = controlledStream(); const ack = deferred()
+  endpoints.stopChat.mockReturnValue(ack.promise)
+  await open(); send(); await act(async () => {})
+  fireEvent.click(screen.getByRole('button', { name: '停止生成' }))
+  expect(endpoints.stopChat).not.toHaveBeenCalled()
+  await act(async () => stream.start())
+  expect(endpoints.stopChat).toHaveBeenCalledWith({ session_id: '3', request_id: expect.any(String), answer_generation: 2 })
+  expect(stream.signal().aborted).toBe(false)
+  await act(async () => ack.resolve({ status: 'stopped' }))
+  expect(stream.signal().aborted).toBe(true)
+  expect(await screen.findByText('已停止生成')).toBeInTheDocument()
+})
+
+test('failed stop acknowledgement keeps reading and permits another stop attempt', async () => {
+  const stream = controlledStream()
+  endpoints.stopChat.mockRejectedValueOnce(new Error('网络中断')).mockResolvedValueOnce({ status: 'stopped' })
+  await open(); send(); await act(async () => {}); await act(async () => stream.start())
+  fireEvent.click(screen.getByRole('button', { name: '停止生成' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('停止未确认')
+  expect(stream.signal().aborted).toBe(false)
+  fireEvent.click(screen.getByRole('button', { name: '停止生成' }))
+  expect(await screen.findByText('已停止生成')).toBeInTheDocument()
+  expect(endpoints.stopChat).toHaveBeenCalledTimes(2)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+test('done winning a stop race cannot be overwritten by a late acknowledgement', async () => {
+  const stream = controlledStream(); const ack = deferred()
+  endpoints.stopChat.mockReturnValue(ack.promise)
+  await open(); send(); await act(async () => {}); await act(async () => stream.start())
+  fireEvent.click(screen.getByRole('button', { name: '停止生成' }))
+  await act(async () => stream.done())
+  await act(async () => ack.resolve({ status: 'stopped' }))
+  expect(stream.signal().aborted).toBe(false)
+  expect(screen.queryByText('已停止生成')).not.toBeInTheDocument()
+})
+
+test('unexpected AbortError is a failed connection rather than a user stop', async () => {
+  streamChat.mockRejectedValue(new DOMException('连接中断', 'AbortError'))
+  await open(); send()
+  expect(await screen.findByRole('alert')).toHaveTextContent('连接中断')
+  expect(screen.queryByText('已停止生成')).not.toBeInTheDocument()
+})
+
+test('server stopped event has the same confirmed stopped terminal state', async () => {
+  const stream = controlledStream()
+  await open(); send(); await act(async () => {}); await act(async () => stream.stopped())
+  expect(await screen.findByText('已停止生成')).toBeInTheDocument()
+  expect(endpoints.stopChat).not.toHaveBeenCalled()
+})
+
+test.each([
+  ['CLIENT_DISCONNECTED', '连接已中断'], ['MODEL_TIMEOUT', '模型响应超时'],
+  ['GROUNDING_FAILED', '引用核验失败'], ['MODEL_ERROR', '模型生成失败'],
+])('reloaded %s history retains its failure reason and partial answer', async (errorCode, label) => {
+  endpoints.sessionMessages.mockResolvedValue([
+    { id: 1, role: 'user', content: '问题' },
+    { id: 2, role: 'assistant', content: '部分正文', status: 'failed', errorCode },
+  ])
+  await open()
+  fireEvent.click(screen.getByRole('button', { name: '打开对话：会话 A' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(label)
+  expect(screen.getByRole('alert')).toHaveTextContent('已保留部分回答')
+  expect(screen.getByText('部分正文')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '重试' })).toBeEnabled()
 })

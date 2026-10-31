@@ -1,7 +1,9 @@
 package com.mneme.service;
 
 import io.minio.MinioClient;
+import io.minio.BucketExistsArgs;
 import io.minio.RemoveObjectArgs;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -26,6 +28,19 @@ class ObjectStorageReadbackTest {
         .withEnv("RUSTFS_UNSAFE_BYPASS_DISK_CHECK", "true")
         .withExposedPorts(9000)
         .waitingFor(Wait.forHttp("/health").forPort(9000));
+    @BeforeAll static void waitForStorageQuorum() throws Exception {
+        // The HTTP health endpoint can return 200 before the S3 storage quorum.
+        var client = MinioClient.builder().endpoint("http://" + S3.getHost() + ":" + S3.getMappedPort(9000))
+            .credentials(ACCESS, SECRET).build();
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(60);
+        while (true) {
+            try { client.bucketExists(BucketExistsArgs.builder().bucket("mneme-readiness-probe").build()); return; }
+            catch (io.minio.errors.InvalidResponseException starting) {
+                if (!starting.getMessage().contains("storage_quorum") || System.nanoTime() >= deadline) throw starting;
+                Thread.sleep(200);
+            }
+        }
+    }
     @TempDir Path root;
     String endpoint() { return "http://" + S3.getHost() + ":" + S3.getMappedPort(9000); }
     ObjectStorageService storage() { return new ObjectStorageService("s3", root.toString(), endpoint(), ACCESS, SECRET, "mneme"); }

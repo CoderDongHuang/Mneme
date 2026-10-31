@@ -6,10 +6,8 @@ import {
   ArrowUp, BookOpen, Check, ChevronDown, CircleStop, FileText, MessageSquarePlus,
   PanelLeftClose, PanelLeftOpen, Quote, Search, SlidersHorizontal, Sparkles, Trash2, X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { endpoints, streamChat } from '../api/client'
 import { Modal } from '../components/ui'
 import LoadingState from '../components/LoadingState'
@@ -19,6 +17,16 @@ import logo from '../assets/mneme-logo.svg'
 import '../styles/chat.css'
 import '../styles/reference-chat.css'
 
+const AnswerMarkdown = lazy(() => import('../components/AnswerMarkdown'))
+
+function answerFailure(message) {
+  const labels = {
+    CLIENT_DISCONNECTED: '连接已中断，请重试', MODEL_TIMEOUT: '模型响应超时，请重试',
+    MODEL_ERROR: '模型生成失败，请重试', GROUNDING_FAILED: '引用核验失败，请重试',
+    MEMORY_FAILED: '记忆处理失败，请重试',
+  }
+  return message.error || t(Object.hasOwn(labels, message.errorCode) ? labels[message.errorCode] : '回答未完成，请重试')
+}
 
 export default function ChatPage({ renderTools, workspace = false }) {
   useI18n();
@@ -55,6 +63,8 @@ export default function ChatPage({ renderTools, workspace = false }) {
   const [sourceDrawer, setSourceDrawer] = useState(null)
   const [error, setError] = useState('')
   const abortRef = useRef(null)
+  const activeRequestRef = useRef(null)
+  const [stopBusy, setStopBusy] = useState(false)
   const memoryLocks = useRef(new Set())
   const [memoryBusy, setMemoryBusy] = useState({})
   const sessionLocks = useRef(new Set())
@@ -187,10 +197,13 @@ export default function ChatPage({ renderTools, workspace = false }) {
     const text = (retryText ?? input).trim()
     if (!text || abortRef.current || loading || switching) return
     const controller = new AbortController()
+    const active = { controller, requestId: crypto.randomUUID(), sent: false, stopRequested: false, stopped: false, stopInFlight: false, terminal: false }
+    activeRequestRef.current = active
     abortRef.current = controller
     setError('')
     setInput('')
     setStreaming(true)
+    setStopBusy(false)
     const userMessage = { id: `u-${crypto.randomUUID()}`, role: 'user', content: text }
     const assistantId = `a-${crypto.randomUUID()}`
     scrollToBottom()
@@ -200,8 +213,10 @@ export default function ChatPage({ renderTools, workspace = false }) {
     try {
       const session = await ensureSession()
       controller.signal.throwIfAborted()
-      await streamChat({
-        request_id: crypto.randomUUID(),
+      active.sent = true
+      active.sessionId = String(session.id)
+      const result = await streamChat({
+        request_id: active.requestId,
         session_id: String(session.id),
         message: text,
         knowledge_base_ids: selectedKbIds,
@@ -210,7 +225,15 @@ export default function ChatPage({ renderTools, workspace = false }) {
         signal: controller.signal,
         onEvent(name, data) {
           if (abortRef.current !== controller || controller.signal.aborted) return
-          if (name === 'meta') {
+          if (name === 'start' && data.request_id === active.requestId && String(data.session_id) === active.sessionId && Number.isSafeInteger(data.answer_generation) && data.answer_generation > 0) {
+            active.generation = data.answer_generation
+            if (active.stopRequested) void confirmStop(active)
+          } else if (name === 'done') {
+            active.terminal = true
+          } else if (name === 'stopped') {
+            active.stopped = true
+            active.terminal = true
+          } else if (name === 'meta') {
             setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, sources: data.sources || [], intent: data.intent } : message))
           } else if (name === 'token') {
             setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, content: message.content + (data.content || '') } : message))
@@ -220,20 +243,57 @@ export default function ChatPage({ renderTools, workspace = false }) {
           }
         },
       })
-      updateAssistant({ status: 'complete' })
+      active.terminal = true
+      setError(current => current === active.stopError ? '' : current)
+      updateAssistant({ status: result?.status === 'stopped' ? 'stopped' : 'complete' })
       try {
         const refreshed = await endpoints.sessions()
         if (abortRef.current === controller) setSessions(refreshed || [])
       } catch { /* completed answers remain available if the history refresh fails */ }
     } catch (requestError) {
-      const stopped = controller.signal.aborted || requestError.name === 'AbortError'
-      updateAssistant({ status: stopped ? 'stopped' : 'failed', error: stopped ? '' : requestError.message })
+      const stopped = active.stopped
+      if (stopped) setError(current => current === active.stopError ? '' : current)
+      updateAssistant({ status: stopped ? 'stopped' : 'failed', error: stopped ? '' : requestError.message,
+        errorCode: requestError.payload?.code || (requestError.status === 0 || requestError.name === 'AbortError' ? 'CLIENT_DISCONNECTED' : undefined) })
     } finally {
       if (abortRef.current === controller) {
         setStreaming(false)
         abortRef.current = null
+        activeRequestRef.current = null
+        setStopBusy(false)
       }
     }
+  }
+
+  async function confirmStop(active) {
+    if (activeRequestRef.current !== active || active.terminal || active.stopInFlight || !active.generation) return
+    active.stopInFlight = true
+    try {
+      const result = await endpoints.stopChat({ session_id: active.sessionId, request_id: active.requestId, answer_generation: active.generation })
+      if (activeRequestRef.current !== active || active.terminal) return
+      if (result?.status === 'stopped') {
+        active.stopped = true
+        active.controller.abort()
+      } else if (result?.status !== 'completed') throw new Error(t('停止未确认，请重试；当前回答仍在生成'))
+    } catch (requestError) {
+      if (activeRequestRef.current === active && !active.terminal) {
+        active.stopError = `${t('停止未确认，请重试；当前回答仍在生成')}：${requestError.message}`
+        setError(active.stopError)
+        active.stopRequested = false
+      }
+    } finally {
+      active.stopInFlight = false
+      if (activeRequestRef.current === active) setStopBusy(false)
+    }
+  }
+
+  function stopGeneration() {
+    const active = activeRequestRef.current
+    if (!active || active.terminal || active.stopRequested) return
+    active.stopRequested = true
+    setStopBusy(true)
+    if (!active.sent) { active.stopped = true; active.controller.abort() }
+    else if (active.generation) void confirmStop(active)
   }
 
   async function removeSession(event, session) {
@@ -348,10 +408,10 @@ export default function ChatPage({ renderTools, workspace = false }) {
               <div className="message-label">{message.role === 'user' ? <span className="message-avatar">{t('我')}</span> : <img src={logo} alt="Mneme" />}</div>
               <div className="message-body">
                 {message.role === 'assistant' ? (
-                  message.content ? <><div className="assistant-name">Mneme</div><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown></> : message.status === 'streaming' ? <div className="thinking" role="status" aria-label={t("正在生成回答")}><span /><span /><span /></div> : <p>{message.status === 'stopped' ? t("已停止生成") : t("未生成回答")}</p>
+                  message.content ? <><div className="assistant-name">Mneme</div><Suspense fallback={<p style={{ whiteSpace: 'pre-wrap' }}>{message.content}</p>}><AnswerMarkdown>{message.content}</AnswerMarkdown></Suspense></> : message.status === 'streaming' ? <div className="thinking" role="status" aria-label={t("正在生成回答")}><span /><span /><span /></div> : <p>{message.status === 'stopped' ? t("已停止生成") : t("未生成回答")}</p>
                 ) : <p>{message.content}</p>}
                 {message.role === 'assistant' && <div className="message-actions">
-                  {message.error && <p role="alert">{message.error}</p>}
+                  {message.status === 'failed' && <p role="alert">{answerFailure(message)}{message.content ? ` · ${t('已保留部分回答')}` : ''}</p>}
                   {message.content && <button onClick={async () => { try { await navigator.clipboard.writeText(message.content + (message.sources?.length ? '\n\n' + message.sources.map((source, index) => `[${index + 1}] ${source.document_name || source.document_id} · ${source.page || t("全文")}\n${source.chunk_content || ''}`).join('\n\n') : '')) } catch { setError(t("复制失败，请手动选择文本复制")) } }}>{t("复制回答")}</button>}
                   {message.status === 'stopped' && message.content && <span role="status">{t("已停止 · 保留部分回答")}</span>}
                   {['failed', 'stopped'].includes(message.status) && message.requestText && <button disabled={streaming || switching} onClick={() => sendMessage(null, message.requestText)}>{t("重试")}</button>}
@@ -374,7 +434,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
           <div className="composer-tools"><RetrievalFilters kbIds={selectedKbIds} value={retrievalFilters} onChange={setRetrievalFilters} /><button type="button" onClick={() => navigate('/knowledge')}><FileText size={14} />{t('导入资料')}</button><button type="button" onClick={() => setKbMenuOpen(!kbMenuOpen)}><Quote size={14} />{t('引用检索')}</button><button type="button" onClick={() => setSourceDrawer(displaySources)}><BookOpen size={14} />{t('引用与原文')}{displaySources.length ? ` · ${displaySources.length}` : ''}</button></div>
           <textarea aria-label={t("向忆知提问...")} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); sendMessage() } }} placeholder={t("向忆知提问...")} rows={1} />
           <span className="composer-context"><FileText size={14} />{selectedLabel}</span>
-          {streaming ? <button type="button" className="stop-send" onClick={() => abortRef.current?.abort()} title={t("停止生成")} aria-label={t("停止生成")}><CircleStop size={19} /></button> : <button className="send-message" disabled={loading || switching || !input.trim()} title={t("发送")} aria-label={t("发送")}><ArrowUp size={20} /></button>}
+          {streaming ? <button type="button" className="stop-send" disabled={stopBusy} onClick={stopGeneration} title={t("停止生成")} aria-label={t("停止生成")}><CircleStop size={19} /></button> : <button className="send-message" disabled={loading || switching || !input.trim()} title={t("发送")} aria-label={t("发送")}><ArrowUp size={20} /></button>}
         </form>
       </section>
 

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mneme.dto.ChatRequest;
 import com.mneme.dto.ChatResponse;
+import com.mneme.dto.ChatStopRequest;
 import com.mneme.entity.ChatMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,8 +17,11 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
@@ -30,6 +34,8 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final ChatSessionService sessionService;
     private final PendingMemoryService pendingMemoryService;
+    private final ChatStreamMonitor streamMonitor;
+    private final HttpClient streamClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private RetrievalScopeService retrievalScope;
     @org.springframework.beans.factory.annotation.Autowired
@@ -46,13 +52,21 @@ public class ChatService {
         RedisTemplate<String, Object> redisTemplate,
         ObjectMapper objectMapper,
         ChatSessionService sessionService,
-        PendingMemoryService pendingMemoryService
+        PendingMemoryService pendingMemoryService,
+        ChatStreamMonitor streamMonitor
     ) {
         this.restTemplate = restTemplate;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.sessionService = sessionService;
         this.pendingMemoryService = pendingMemoryService;
+        this.streamMonitor = streamMonitor;
+    }
+
+    public record StopResult(String status) { }
+
+    public StopResult stop(Long userId, ChatStopRequest request) {
+        return new StopResult(sessionService.stopAnswer(userId, request.sessionId(), request.requestId(), request.answerGeneration()));
     }
 
     public ChatResponse chat(Long userId, ChatRequest request) {
@@ -125,37 +139,36 @@ public class ChatService {
     }
 
     private void proxyStream(Long userId, Long sessionId, Long assistantMessageId, long generation, ChatRequest request, OutputStream output) {
-        HttpURLConnection connection = null;
+        ChatStreamMonitor.Control control = null;
         StringBuilder answer = new StringBuilder();
+        String sourcesJson = "[]";
         boolean completed = false;
         boolean failed = false;
         try {
-            connection = (HttpURLConnection) URI.create(
-                pythonAgentUrl + "/api/v1/chat/stream"
-            ).toURL().openConnection();
-            connection.setRequestMethod("POST");
-            connection.setDoOutput(true);
-            connection.setRequestProperty("Content-Type", "application/json");
-            connection.setRequestProperty("X-Internal-Service-Token", internalServiceToken);
+            control = streamMonitor.watch(assistantMessageId, generation, output);
+            control.frame("start", objectMapper.writeValueAsString(java.util.Map.of(
+                "session_id", sessionId.toString(), "request_id", request.getRequestId(), "answer_generation", generation)));
+            var builder = HttpRequest.newBuilder(URI.create(pythonAgentUrl + "/api/v1/chat/stream"))
+                .header("Content-Type", "application/json")
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)));
             if (userSettings != null) {
                 String model = userSettings.modelHeader(userId);
-                if (!model.isEmpty()) connection.setRequestProperty("X-Mneme-Model", model);
+                if (!model.isEmpty()) builder.header("X-Mneme-Model", model);
             }
-            connection.setConnectTimeout(10_000);
-            connection.setReadTimeout(180_000);
-            try (OutputStream requestBody = connection.getOutputStream()) {
-                objectMapper.writeValue(requestBody, request);
-            }
-            if (connection.getResponseCode() != 200) {
-                throw new IllegalStateException("Python Agent 返回 " + connection.getResponseCode());
-            }
+            control.check();
+            var pending = streamClient.sendAsync(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+            control.response(pending);
+            var response = pending.get();
+            control.body(response.body());
 
-            String sourcesJson = "[]";
             try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8)
+                new InputStreamReader(response.body(), StandardCharsets.UTF_8)
             )) {
+                if (response.statusCode() != 200) throw new IllegalStateException("AGENT_UNAVAILABLE");
                 SseEvent event;
                 while ((event = readEvent(reader)) != null) {
+                    control.check();
                     JsonNode payload = objectMapper.readTree(event.data());
                     switch (event.type()) {
                         case "token" -> answer.append(payload.path("content").asText(""));
@@ -166,15 +179,18 @@ public class ChatService {
                         case "done" -> {
                             sessionService.finishAnswer(assistantMessageId, generation, answer.toString(), sourcesJson);
                             completed = true;
+                            control.close();
                         }
                         case "error" -> {
-                            sessionService.failMessage(assistantMessageId, generation, answer.toString(), "AGENT_ERROR");
+                            String code = payload.path("code").asText("AGENT_ERROR");
+                            if (!java.util.Set.of("MODEL_ERROR", "MODEL_TIMEOUT", "GROUNDING_FAILED", "MEMORY_FAILED").contains(code)) code = "AGENT_ERROR";
+                            sessionService.failMessage(assistantMessageId, generation, answer.toString(), code);
                             failed = true;
+                            control.close();
                         }
                         default -> { }
                     }
-                    output.write(("event: " + event.type() + "\ndata: " + objectMapper.writeValueAsString(payload) + "\n\n").getBytes(StandardCharsets.UTF_8));
-                    output.flush();
+                    control.frame(event.type(), objectMapper.writeValueAsString(payload));
                     // Browser stops reading on done. Never wait for provider EOF to persist.
                     if (completed || failed) break;
                 }
@@ -182,22 +198,36 @@ public class ChatService {
             if (!completed && !failed) throw new IllegalStateException("INCOMPLETE_RESPONSE");
         } catch (Exception error) {
             if (completed) return; // Delivery failure cannot roll back a committed answer.
-            try { sessionService.failMessage(assistantMessageId, generation, answer.toString(), error.getClass().getSimpleName()); }
-            catch (Exception persistenceError) { log.error("SSE 失败状态保存异常: messageId={}", assistantMessageId, persistenceError); }
+            String code = control == null ? "STREAM_CAPACITY_EXCEEDED" : control.reason();
+            if (control != null) control.close();
+            Throwable cause = error;
+            while ((cause instanceof java.util.concurrent.ExecutionException || cause instanceof java.util.concurrent.CompletionException)
+                && cause.getCause() != null) cause = cause.getCause();
+            if (cause instanceof InterruptedException) Thread.currentThread().interrupt();
+            try {
+                var state = sessionService.answerState(assistantMessageId);
+                if (state != null && state.generation() == generation && "stopped".equals(state.status())) code = "USER_STOPPED";
+                if (code == null) code = cause instanceof java.net.http.HttpTimeoutException ? "MODEL_TIMEOUT" : cause.getClass().getSimpleName();
+                if ("USER_STOPPED".equals(code)) sessionService.saveStoppedPartial(assistantMessageId, generation, answer.toString(), sourcesJson);
+                else sessionService.failMessage(assistantMessageId, generation, answer.toString(), code);
+            }
+            catch (Exception persistenceError) { log.error("SSE 状态保存异常: messageId={}, errorType={}", assistantMessageId, persistenceError.getClass().getSimpleName()); }
             log.error("SSE 转发失败: userId={}, sessionId={}, errorType={}", userId, sessionId, error.getClass().getSimpleName());
             try {
                 String payload = objectMapper.writeValueAsString(
-                    java.util.Map.of("message", "Agent 服务暂时不可用")
+                    java.util.Map.of("message", "USER_STOPPED".equals(code) ? "已停止生成" : "Agent 服务暂时不可用", "code", code == null ? "AGENT_ERROR" : code)
                 );
-                output.write(("event: error\ndata: " + payload + "\n\n").getBytes(StandardCharsets.UTF_8));
-                output.flush();
+                String terminal = "USER_STOPPED".equals(code) ? "stopped" : "error";
+                if (control != null) control.frame(terminal, payload);
+                else {
+                    output.write(("event: " + terminal + "\ndata: " + payload + "\n\n").getBytes(StandardCharsets.UTF_8));
+                    output.flush();
+                }
             } catch (Exception ignored) {
                 // Client connection may already be closed.
             }
         } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
+            if (control != null) control.close();
         }
     }
 

@@ -6,6 +6,7 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.beans.factory.annotation.Value;
 import java.util.Arrays;
+import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
@@ -16,6 +17,14 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Value("${mneme.cors-origins:http://localhost:5173}")
     private String corsOrigins;
+    @Value("${mneme.chat-stream-timeout-ms:180000}")
+    private long chatStreamTimeoutMillis;
+
+    @Override
+    public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+        // Let the stream monitor persist its classified terminal state before MVC times out.
+        configurer.setDefaultTimeout(chatStreamTimeoutMillis + 30_000);
+    }
 
     public WebMvcConfig(TraceIdInterceptor traceIdInterceptor, JwtAuthInterceptor jwtAuthInterceptor, RateLimitInterceptor rateLimitInterceptor, AuditInterceptor auditInterceptor) {
         this.traceIdInterceptor = traceIdInterceptor;

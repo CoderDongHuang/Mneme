@@ -124,6 +124,18 @@ describe('api client', () => {
     ])
   })
 
+  it('treats an acknowledged stopped event as terminal and cancels the reader', async () => {
+    const reader = {
+      read: vi.fn().mockResolvedValueOnce({ value: new TextEncoder().encode('event: stopped\ndata: {"code":"USER_STOPPED"}\n\n'), done: false }),
+      cancel: vi.fn(), releaseLock: vi.fn(),
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => reader } }))
+    await expect(streamChat({}, { onEvent: vi.fn() })).resolves.toEqual({ status: 'stopped' })
+    expect(reader.read).toHaveBeenCalledOnce()
+    expect(reader.cancel).toHaveBeenCalledOnce()
+    expect(reader.releaseLock).toHaveBeenCalledOnce()
+  })
+
   it('reconnects notification SSE with backoff and stops after close', () => {
     vi.useFakeTimers()
     const sources = []

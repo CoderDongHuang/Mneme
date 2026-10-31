@@ -360,6 +360,14 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/answer-terminal-real.spec.js --workers=1 --retries=0
+      - name: Verify explicit stop and disconnected provider cleanup on desktop and mobile
+        # All provider fault hooks are scoped to a new QA account and restored.
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_STREAM_QA_FAULTS: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/chat-stop-real.spec.js --workers=1 --retries=0
       - name: Verify report UI, personal settings and archive restoration
         working-directory: frontend
         env:

@@ -84,6 +84,7 @@ export async function streamChat(payload, { signal, onEvent }) {
   let eventName = 'message'
   let dataLines = []
   let completed = false
+  let terminalStatus = 'completed'
   const dispatch = () => {
     if (!dataLines.length) { eventName = 'message'; return }
     const raw = dataLines.join('\n')
@@ -95,6 +96,7 @@ export async function streamChat(payload, { signal, onEvent }) {
     onEvent(name, data)
     if (name === 'error') throw new ApiError(data.message || '回答生成失败', 200, data)
     if (name === 'done') completed = true
+    if (name === 'stopped') { completed = true; terminalStatus = 'stopped' }
   }
   const consumeLine = (line) => {
     line = line.replace(/\r$/, '')
@@ -124,6 +126,7 @@ export async function streamChat(payload, { signal, onEvent }) {
       dispatch()
     }
     if (!completed) throw new ApiError('连接已中断，回答未完成，请重试', 0)
+    return { status: terminalStatus }
   } finally {
     try { await reader.cancel?.() } catch { /* the stream may already be closed */ }
     reader.releaseLock?.()
@@ -131,6 +134,7 @@ export async function streamChat(payload, { signal, onEvent }) {
 }
 
 export const endpoints = {
+  stopChat: (body) => api('/chat/stop', { method: 'POST', body: JSON.stringify(body) }),
   preferences: () => api('/settings/preferences'),
   savePreferences: (body) => api('/settings/preferences', { method: 'PUT', body: JSON.stringify(body) }),
   modelSettings: () => api('/settings/models'),

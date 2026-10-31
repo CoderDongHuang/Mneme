@@ -157,7 +157,7 @@ async def chat_stream(request: ChatRequest, http_request: Request = None) -> Str
             if http_request is not None:
                 http_request.scope["mneme.stream.reason"] = phase
             logger.error("流式回答失败: %s", type(error).__name__)
-            yield _event("error", {"message": "模型服务暂时不可用，请稍后重试或检查服务配置。"})
+            yield _event("error", {"message": "模型服务暂时不可用，请稍后重试或检查服务配置。", "code": phase.upper()})
 
     async def model_events():
         with tracer.start_as_current_span("mneme.llm.stream") as span:

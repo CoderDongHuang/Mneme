@@ -232,3 +232,19 @@ P2-10 最终结果：PR #64 全部 9 项 CI（含真实删除故障注入、整�
 验证：完整 Java package 170 项通过，零失败、零错误、零跳过；其中真实 MySQL 迁移/事务/并发及真实 HTTP 流定向 16 项通过。前端 lint、CI YAML 解析和 diff 检查通过。停写并保存数据库及镜像标识后，真实站点 http://127.0.0.1:3000 部署 V31；桌面与移动浏览器两项通过。测试收到 done 后立即取消连接并立即读取历史，不加等待或轮询掩盖落库延迟；验证正文引用一致、completed/error 清空、同步及流式重放不重复、刷新可读与无横向溢出。两张截图已目视检查，QA 账号通过既有删除流程清理。证据 artifacts/p106-terminal-java-full.log、p106-terminal-targeted.log、p106-terminal-real.log、p106-terminal-browser。
 
 边界：只完成回答保存子项。Python complete_conversation 和候选记忆处理仍在回答链路，持久可重试记忆任务、主动停止与断开/超时分类仍需后续独立实现；不能据此关闭整个 P1-06。升级不混跑旧新 Gateway，回滚须停写恢复匹配数据库快照和应用镜像，详见 docs/CHAT_ANSWER_TERMINALS.md。
+
+P1-06a 最终结果：PR #66 全部 9 项 CI（含完整整栈、桌面/移动完成即读回及实际整站恢复）通过，已于 2026-11-01 独立合并，提交 aa6287094654e6d3a7c5985bc59bb959ec2e2f2b。
+
+## 2026-11-01：MN-007 / P1-06b 显式停止、断流与超时
+
+对照要求：逐条回查原 P1-06 关于主动停止、断流、模型超时、核验失败和记忆失败的分类，以及上游 iterator 关闭要求。本项实现停止与资源回收，不提前关闭尚未完成的持久记忆任务解耦。
+
+实现：认证停止接口锁定归属及回答执行代，旧代 409、重复幂等，停止与完成竞争只有一个终态。前端等持久停止回执后再取消读取，未握手时保存停止意图，迟到回执不能覆盖完成。Gateway 跨实例轮询持久状态，独立有界心跳检测断流，取消无响应头 future 或关闭沉默响应体；保留部分回答并持久区分 USER_STOPPED、CLIENT_DISCONNECTED、MODEL_TIMEOUT。刷新后仍显示中文/英文失败原因和重试。默认总时限 180 秒、最多 64 条监视流，终态释放资源。Python 明确传递各阶段错误码。
+
+真实回归还发现 Spring 7 默认 nonFlushing 输出包装导致握手和部分回答滞留；Controller 仅对 SSE 显式 servlet flush，Caddy 对 SSE 关闭压缩并使用正刷新间隔保留断开传播。新增真实 Jetty/Spring MVC socket 测试要求上游仍阻塞时收到握手与心跳，避免仅测试内存流遗漏框架缓冲。对象存储测试对 RustFS 刚健康但 quorum 尚未就绪的明确 storage_quorum 错误有限等待，其他错误立即失败。
+
+验证：最终 Java package 179 项通过，零失败、错误或跳过；Python 3.11 Ruff 和全套 775 项通过；前端 23 文件 96 项通过，Lint、生产构建与原路由包大小门禁通过。备份并部署真实 http://127.0.0.1:3000 后，最终桌面/移动 4 项全部通过，涵盖有正文停止、无 Token 停止、刷新断流、上游 5 秒内关闭、持久终态、旧代拒绝、完成即读回及重放。最终八张截图逐一回查，错误提示完整、无横向溢出。证据 artifacts/p106-stop-{java-release,python-final,ui-reasons-test,ui-reasons-lint,ui-reasons-build,real-accepted}.log，截图 artifacts/p106-stop-browser-accepted。测试钩子按字节恢复并删除临时目录，隔离 QA 账号提交删除。
+
+回归过程：中间一轮移动刷新仍处于历史加载，数据及 iterator 关闭断言已通过，不能据此认定数据丢失；补充独立历史 HTTP 状态和时长附件、10 秒网络截止及原渲染截止后重跑全部通过，没有整项重试或放宽业务断言。最终截图又发现历史失败原因缺失，补齐持久错误码提示后重新运行前端全套和真实四项验收。
+
+边界：当前 complete_conversation 与候选记忆仍同步，停止不能撤销既有记忆副作用；P1-06c 将独立实现持久、可重试记忆任务。本项 PR 和最终 CI 结果合并后补记。
