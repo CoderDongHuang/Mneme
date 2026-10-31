@@ -27,6 +27,16 @@
 
 ## 备份恢复
 
+### Redis 认证与持久化
+
+生产必须设置非空 `REDIS_PASSWORD`；同一变量供 Redis 服务器、Java 和 Python 使用。仅本地开发、自托管本机和离线演示允许空密码，端口只绑定回环地址。Redis 启用 `appendonly yes`、`appendfsync everysec`，客户端启动前等待带认证的 PING 健康检查。不要将 Redis 暴露到公网。
+
+AOF 每秒同步意味着异常掉电时仍可能丢失约一秒内尚未落盘的写入，不提供零 RPO 保证。反思任务必须写入 Redis Stream，Redis 不可用时返回失败且不回退内存队列；Agent 就绪检查返回 503，并分别展示 `reflection_queue=unavailable_no_memory_fallback` 与可降级的会话缓存状态。恢复 Redis 后就绪检查自动恢复，pending 任务由 consumer group 接管重试。
+
+下述统一备份工具停写并停止 Redis 后归档完整 `data/redis`，包含 `appendonlydir` 的 manifest、base 和 incremental 文件及存在的 RDB。恢复必须整体恢复该目录及匹配的应用数据库，不能只复制 `dump.rdb` 或单个 AOF 片段；Redis 同时存在两者时优先加载 AOF。密钥通过独立密钥管理恢复，不写入归档。每次演练检查 AUTH/PING、AOF 配置和 Stream pending 消费恢复。
+
+可运行 `python scripts/verify_redis_durability.py`，在独立容器、网络和临时卷验证空密码、密码认证、AOF fsync 后 SIGKILL 及 pending 任务恢复；它不会访问现有项目 Redis 数据。
+
 统一工具会先停止写入服务和 Redis，再创建 MySQL、Redis 持久化目录（含待处理反思 Stream）、原文件、头像、Qdrant、内置 MinIO 和 Python SQLite/会话状态的一致快照。归档内的版本化 `manifest.json` 记录每个文件的大小和 SHA-256；恢复前会拒绝校验失败、缺项、未知文件、链接和路径穿越。
 
 ```powershell

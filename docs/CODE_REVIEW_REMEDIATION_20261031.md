@@ -11,3 +11,13 @@
 验证：Java 全套 93 项通过（含真实 MySQL/Flyway）；补充 HTTP 503 和日志断言后，认证及邮件 6 项定向回归通过；前端运维页 2 项通过，Lint、生产构建与包大小门禁通过。实际 Compose 合并验证生产 SMTP 参数、强制 STARTTLS、生产无 Mailpit、本地显式 Mailpit。`http://localhost:3000` 真实回归通过注册、绑定邮箱、Mailpit SMTP 收信、重置、验证码一次使用、旧密码失效、新密码登录、敏感日志扫描，并提交删除专用 QA 账号。证据保存在本地忽略目录 `artifacts/review-mn001/real-reset.json`。
 
 边界：未提供运营方外部 SMTP 凭证，公网测试邮箱的最终收信尚不能验证；生产部署指南列出上线验收步骤。代码与本地真实 SMTP 链路已验证，不将本地收件箱冒充公网邮箱验收。
+
+## MN-002 / P1-02：Redis 认证、持久化与可靠队列
+
+对照要求：服务器、Java、Python 使用同一密码；本地允许空密码，生产要求非空；AOF、健康检查和依赖等待；可靠反思任务不得静默转内存。
+
+实现：基础/演示 Redis 显式 AOF everysec，生产强制密码，健康检查携带认证，两个应用等待健康；反思计数、排队故障显式失败，移除本地计数/租约回退。Agent 就绪检查实时 PING 并单列反思队列状态，故障返回 503；普通会话缓存保留降级能力，保存/恢复失败时更新可用状态。生产指南说明完整 AOF/RDB 目录备份与恢复、everysec 的 RPO 边界。
+
+验证：正式 Python 3.11 镜像 Lint 与全套 660 项通过；Spring 真实 Redis Testcontainers 两种密码连接/AOF 配置 2 项通过。`scripts/verify_redis_durability.py` 从实际 Compose 渲染配置验证三方密码/健康依赖；独立 Redis 的空密码和认证模式均通过 Python 实际客户端连接、Stream 写入/消费进入 pending、等待 AOF fsync、SIGKILL、重启、XAUTOCLAIM、执行并 ACK/扣减计数。测试仅使用临时独立容器/网络/卷并清理。故障注入测试确认 Redis 不可用不接受内存任务，排队失败保留计数并释放租约，就绪状态明确降级。
+
+边界：everysec 不是零数据丢失；普通会话缓存与可靠任务的可用性保证不同。生成后的记忆处理解耦按 MN-007 单独修复。

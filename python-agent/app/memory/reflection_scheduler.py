@@ -65,8 +65,6 @@ end
 class ReflectionScheduler:
     def __init__(self, redis_client=None, executor=None):
         self.scheduler = BackgroundScheduler()
-        self._session_counts: dict[str, int] = {}
-        self._local_leases: set[str] = set()
         self._redis = redis_client or redis.Redis(
             host=settings.REDIS_HOST,
             port=settings.REDIS_PORT,
@@ -127,7 +125,7 @@ class ReflectionScheduler:
         return True
 
     def record_session(self, user_id: str) -> int:
-        """Increment shared state atomically, falling back only for local development."""
+        """Reliable task state must never silently fall back to process memory."""
         try:
             count = int(self._redis.incr(self._counter_key(user_id)))
             if count == 1:
@@ -136,8 +134,8 @@ class ReflectionScheduler:
             return count
         except redis.RedisError:
             self._redis_available = False
-            self._session_counts[user_id] = self._session_counts.get(user_id, 0) + 1
-            return self._session_counts[user_id]
+            logger.warning("reflection_counter_unavailable operation=record_session")
+            raise
 
     def check_and_trigger(self, user_id: str) -> bool:
         """Use a Redis lease so only one node submits a reflection job."""
@@ -150,21 +148,16 @@ class ReflectionScheduler:
             lease_token = uuid.uuid4().hex
             if not self._acquire_shared_lease(user_id, lease_token):
                 return False
-            shared = True
         except redis.RedisError:
             self._redis_available = False
-            count = self._session_counts.get(user_id, 0)
-            if count < threshold or user_id in self._local_leases:
-                return False
-            lease_token = "local"
-            self._local_leases.add(user_id)
-            REFLECTION_LEASE_ACQUISITIONS.labels("local").inc()
-            shared = False
+            logger.warning("reflection_queue_unavailable operation=check_and_trigger")
+            raise
         logger.info("触发用户 %s 的记忆反思（可靠队列）", user_id)
         try:
             self._enqueue_reflection(user_id, count)
         except redis.RedisError:
-            self._release_shared(user_id, lease_token) if shared else self._local_leases.discard(user_id)
+            self._redis_available = False
+            self._release_shared(user_id, lease_token)
             raise
         return True
 
@@ -197,7 +190,7 @@ class ReflectionScheduler:
             if not self._acquire_shared_lease(user_id, lease_token):
                 logger.info("用户 %s 反思任务等待租约，保留 pending", user_id)
                 return
-        if self._run_reflection_safe(user_id, claimed_count, lease_token, True):
+        if self._run_reflection_safe(user_id, claimed_count, lease_token):
             self._redis.xack(_QUEUE_KEY, _QUEUE_GROUP, message_id)
 
     def reclaim_stale_reflections(self, min_idle_ms: int | None = None) -> int:
@@ -213,23 +206,15 @@ class ReflectionScheduler:
         return len(entries)
 
     def _run_reflection_safe(
-        self, user_id: str, claimed_count: int = 0, lease_token: str = "", shared: bool = False
+        self, user_id: str, claimed_count: int = 0, lease_token: str = ""
     ) -> bool:
         """在线程池中执行反思，捕获所有异常避免线程静默死亡"""
         try:
             run_reflection(user_id)
-            if shared:
-                self._complete_shared(user_id, claimed_count, lease_token)
-            else:
-                self._session_counts[user_id] = max(
-                    0, self._session_counts.get(user_id, 0) - claimed_count
-                )
-                self._local_leases.discard(user_id)
+            self._complete_shared(user_id, claimed_count, lease_token)
             logger.info("用户 %s 反思完成", user_id)
             return True
         except Exception as e:
-            if not shared:
-                self._local_leases.discard(user_id)
             # A queued task keeps its lease until expiry. This prevents a new
             # trigger from creating a duplicate while the pending entry waits
             # for XAUTOCLAIM to retry it.
@@ -246,6 +231,13 @@ class ReflectionScheduler:
             lease_token,
             claimed_count,
         )
+
+    def queue_available(self) -> bool:
+        try:
+            self._redis_available = bool(self._redis.ping())
+        except redis.RedisError:
+            self._redis_available = False
+        return self._redis_available
 
     def _release_shared(self, user_id: str, lease_token: str) -> None:
         try:

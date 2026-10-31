@@ -4,6 +4,7 @@ from fastapi import APIRouter, Response
 
 from app.knowledge.vector_store import vector_store
 from app.memory.session_persistence import session_persistence
+from app.memory.reflection_scheduler import reflection_scheduler
 from app.utils.llm import llm
 from app.core.config import settings
 from app.core.provider_diagnostics import profiles, check_providers
@@ -24,7 +25,8 @@ async def readiness(response: Response) -> dict:
         vector_ok = vector_store.heartbeat()
     except Exception:
         vector_ok = False
-    ready = vector_ok and llm.configured
+    queue_ok = reflection_scheduler.queue_available()
+    ready = vector_ok and llm.configured and queue_ok
     if not ready:
         response.status_code = 503
     return {
@@ -33,6 +35,7 @@ async def readiness(response: Response) -> dict:
             "qdrant": "up" if vector_ok else "down",
             "llm": llm.status,
             "redis": "up" if session_persistence.available else "optional_down",
+            "reflection_queue": "up" if queue_ok else "unavailable_no_memory_fallback",
         },
     }
 
