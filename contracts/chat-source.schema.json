@@ -1,0 +1,116 @@
+{
+  "properties": {
+    "retrieval_ranks": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Retrieval Ranks",
+      "type": "object"
+    },
+    "content_sha256": {
+      "default": "",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "indexed_at": {
+      "default": "",
+      "title": "Indexed At",
+      "type": "string"
+    },
+    "parser_version": {
+      "default": "",
+      "title": "Parser Version",
+      "type": "string"
+    },
+    "document_id": {
+      "default": "",
+      "title": "Document Id",
+      "type": "string"
+    },
+    "document_name": {
+      "title": "Document Name",
+      "type": "string"
+    },
+    "chunk_content": {
+      "title": "Chunk Content",
+      "type": "string"
+    },
+    "page": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Page"
+    },
+    "section": {
+      "default": "",
+      "title": "Section",
+      "type": "string"
+    },
+    "score": {
+      "default": 0.0,
+      "title": "Score",
+      "type": "number"
+    },
+    "chunk_type": {
+      "default": "text",
+      "title": "Chunk Type",
+      "type": "string"
+    },
+    "evidence_type": {
+      "default": "text",
+      "title": "Evidence Type",
+      "type": "string"
+    },
+    "visual_page": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Visual Page"
+    },
+    "visual_region": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Visual Region"
+    },
+    "ocr_confidence": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ocr Confidence"
+    }
+  },
+  "required": [
+    "document_name",
+    "chunk_content"
+  ],
+  "title": "Source",
+  "type": "object"
+}

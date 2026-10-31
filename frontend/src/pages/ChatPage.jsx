@@ -115,6 +115,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
     drawer.addEventListener('keydown', keydown)
     return () => { drawer.removeEventListener('keydown', keydown); if (previous?.isConnected) previous.focus() }
   }, [sourceDrawer, narrow])
+  /** @param {import("../api/generated/chat-source").ChatSource} source */
   function openSource(source) {
     const documentId = String(source.document_id || '').replace(/^doc_/, '')
     if (!/^\d+$/.test(documentId)) return

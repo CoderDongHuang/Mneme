@@ -8,7 +8,6 @@ import pytest
 import app.api.chat as chat_api
 import app.api.memory as memory_api
 from app.agents.trace_store import AgentTraceStore
-from app.api.chat import _visual_region
 from app.api.chat_stream import _source_payload
 from app.api.knowledge import document_report
 from app.memory.version_store import MemoryVersionStore
@@ -97,7 +96,7 @@ def test_source_payload_includes_visual_evidence_metadata():
     assert source["evidence_type"] == "visual"
     assert source["visual_page"] == 3
     assert source["ocr_confidence"] == 0.88
-    assert _visual_region(chunks[0]["metadata"]) == [0.1, 0.2, 0.7, 0.8]
+    assert source["visual_region"] == [0.1, 0.2, 0.7, 0.8]
 
 
 def test_memory_version_store_prunes_old_versions(tmp_path):
