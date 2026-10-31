@@ -1113,5 +1113,16 @@
   "尚未尝试": "Not attempted",
   "SMTP 已接收": "Accepted by SMTP",
   "投递失败": "Delivery failed",
-  "配置状态与最近投递仅代表当前网关实例；SMTP 接收不保证邮件已到达收件箱。": "Configuration and latest delivery apply to this gateway instance. SMTP acceptance does not guarantee inbox delivery."
+  "配置状态与最近投递仅代表当前网关实例；SMTP 接收不保证邮件已到达收件箱。": "Configuration and latest delivery apply to this gateway instance. SMTP acceptance does not guarantee inbox delivery.",
+  "等待项已取消，请重新选择文件": "Waiting upload cancelled. Select the file again.",
+  "上传结果待确认，请核实服务端状态": "Upload outcome unknown. Check its server status.",
+  "已离开页面，等待项已取消": "Page closed. Waiting upload cancelled.",
+  "已提交，解析取消请到任务中心": "Submitted. To cancel parsing, open Tasks.",
+  "已取消上传": "Upload cancelled",
+  "正在上传文件": "Uploading file",
+  "等待上传": "Waiting to upload",
+  "已取消等待上传": "Waiting upload cancelled",
+  "正在确认服务端上传状态": "Checking upload status with the server",
+  "文件已不在内存中，请重新选择文件": "File is no longer in memory. Select it again.",
+  "核实上传状态": "Check upload status"
 }

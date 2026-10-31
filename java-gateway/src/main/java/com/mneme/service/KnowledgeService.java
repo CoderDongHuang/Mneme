@@ -137,8 +137,11 @@ public class KnowledgeService {
         }
         try {
             Files.createDirectories(targetDirectory);
-            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+            try (var input = file.getInputStream()) {
+                Files.copy(input, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (Exception error) {
+            try { Files.deleteIfExists(targetPath); } catch (Exception cleanup) { error.addSuppressed(cleanup); }
             throw new IllegalStateException("文件保存失败", error);
         }
 

@@ -22,6 +22,33 @@ import static org.mockito.Mockito.*;
 class KnowledgeServiceSecurityTest {
     @TempDir Path root;
 
+    @Test void interruptedCopyClosesStreamAndRemovesPartialFileBeforeAnyDatabaseWrite() throws Exception {
+        Fixture fixture = fixture();
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var closed = new java.util.concurrent.atomic.AtomicBoolean();
+        var file = new MockMultipartFile("file", "interrupted.txt", "text/plain", "hello".getBytes()) {
+            @Override public java.io.InputStream getInputStream() {
+                // Validation reads the header first; copying then fails mid-file.
+                if (calls.incrementAndGet() == 1) return new java.io.ByteArrayInputStream("hello".getBytes());
+                return new java.io.InputStream() {
+                    int count;
+                    @Override public int read() throws java.io.IOException {
+                        if (count++ >= 2) throw new java.io.IOException("connection interrupted");
+                        return 'a';
+                    }
+                    @Override public void close() { closed.set(true); }
+                };
+            }
+        };
+        assertThrows(IllegalStateException.class, () -> fixture.service.uploadDocument(7L, 3L, file));
+        assertTrue(closed.get());
+        try (var paths = java.nio.file.Files.walk(root)) {
+            assertEquals(0, paths.filter(java.nio.file.Files::isRegularFile).count());
+        }
+        verify(fixture.documents, never()).insert(any(KnowledgeDocument.class));
+        verify(fixture.tasks, never()).insert(any(ProcessingTask.class));
+    }
+
     @Test
     void rejectsPdfWhoseContentDoesNotMatchExtension() {
         Fixture fixture = fixture();

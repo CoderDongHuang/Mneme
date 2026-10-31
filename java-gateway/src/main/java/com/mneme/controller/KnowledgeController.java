@@ -4,6 +4,7 @@ import com.mneme.dto.Result;
 import com.mneme.entity.KnowledgeBase;
 import com.mneme.entity.KnowledgeDocument;
 import com.mneme.service.KnowledgeService;
+import com.mneme.service.UploadSubmissionService;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -14,9 +15,11 @@ import java.util.Map;
 @RequestMapping("/api/v1/knowledge")
 public class KnowledgeController {
     private final KnowledgeService knowledgeService;
+    private final UploadSubmissionService uploads;
 
-    public KnowledgeController(KnowledgeService knowledgeService) {
+    public KnowledgeController(KnowledgeService knowledgeService, UploadSubmissionService uploads) {
         this.knowledgeService = knowledgeService;
+        this.uploads = uploads;
     }
 
     @PostMapping("/base")
@@ -47,9 +50,19 @@ public class KnowledgeController {
     public Result<KnowledgeDocument> uploadDocument(
         @RequestAttribute("userId") Long userId,
         @RequestParam("kbId") Long kbId,
+        @RequestParam(value = "requestId", required = false) String requestId,
         @RequestParam("file") MultipartFile file
     ) {
-        return Result.success(knowledgeService.uploadDocument(userId, kbId, file));
+        return Result.success(uploads.upload(userId, kbId, requestId, file));
+    }
+
+    @PostMapping("/document/uploads/{requestId}/cancel")
+    public Result<Map<String, Object>> cancelUpload(
+        @RequestAttribute("userId") Long userId,
+        @RequestParam("kbId") Long kbId,
+        @PathVariable String requestId
+    ) {
+        return Result.success(uploads.cancel(userId, kbId, requestId));
     }
 
     @GetMapping("/base/{kbId}/documents")
