@@ -128,6 +128,26 @@ def test_real_model_sampling_includes_unanswerable_cases_at_end():
     assert evaluate_rag.select_model_sample_indices(cases, 0) == set()
 
 
+def test_real_evaluation_ingests_fresh_scope_then_deletes_it(tmp_path):
+    from app.knowledge.generations import generation_store
+    fixture = tmp_path / "generation-evaluation.txt"
+    fixture.write_text("Generation evaluation evidence: marker EVAL-FRESH-742.", encoding="utf-8")
+    dataset = tmp_path / "cases.json"
+    dataset.write_text(json.dumps([{
+        "question": "EVAL-FRESH-742", "fixture": str(fixture),
+        "expected_source": fixture.name, "expected_terms": ["EVAL-FRESH-742"],
+    }]), encoding="utf-8")
+    before = set(generation_store.snapshot("rag_evaluation").get("libraries", {}))
+    report = evaluate_rag.evaluate(dataset, 5, False)
+    assert report["recall@5"] == 1
+    libraries = generation_store.snapshot("rag_evaluation")["libraries"]
+    created = set(libraries) - before
+    assert len(created) == 1
+    kb = created.pop()
+    assert libraries[kb]["deleted"] is True
+    assert evaluate_rag.retrieve("rag_evaluation", kb, "EVAL-FRESH-742", 5) == []
+
+
 def test_answer_points_are_scored_semantically_and_keep_reasons(monkeypatch):
     calls = []
     responses = iter([SimpleNamespace(content="甲方案于五月开放。"), SimpleNamespace(content=json.dumps({
