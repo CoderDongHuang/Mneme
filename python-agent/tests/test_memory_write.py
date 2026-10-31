@@ -8,7 +8,7 @@
 - 蒸馏时排除当前轮消息
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from app.models.chat import Message
 from app.agents.nodes import memory_write_node
@@ -16,7 +16,7 @@ from app.agents.nodes import memory_write_node
 
 def make_message(role: str, content: str, minutes_ago: float = 0) -> Message:
     """创建一条 Message，时间戳为现在减去 minutes_ago 分钟"""
-    ts = datetime.now() - timedelta(minutes=minutes_ago)
+    ts = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
     return Message(
         role=role,
         content=content,

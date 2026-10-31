@@ -11,6 +11,7 @@
 from typing import List
 from datetime import datetime
 from langchain_core.messages import HumanMessage, SystemMessage
+from app.core.time import utc_now
 from app.models.chat import Message
 from app.utils.llm import llm
 from app.core.config import settings
@@ -146,7 +147,7 @@ class ShortTermMemoryManager:
         summary_msg = Message(
             role="system",
             content=f"[历史摘要] {response.content}",
-            timestamp=datetime.now().isoformat(),
+            timestamp=utc_now().isoformat(),
             token_count=len(response.content) // 4,
         )
 

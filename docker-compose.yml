@@ -147,7 +147,7 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/mneme
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/mneme?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
       - REDIS_HOST=redis

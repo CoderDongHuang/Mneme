@@ -1,3 +1,4 @@
+import { useDateFormatter } from '../hooks/useDateFormatter'
 import { t, useI18n } from '../i18n'
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -6,6 +7,7 @@ import { FeedbackBlock, StatusPill } from '../components/ui'
 
 const labels = { knowledge_bases: '资料库', documents: '原始文件', sessions: '会话', messages: '消息', branches: '分支', plans: '学习计划', reviews: '复习卡', quizzes: '测验', quiz_attempts: '答题记录', learning_outcomes: '学习记录' }
 export default function PersonalRecovery() {
+  const dates = useDateFormatter()
   useI18n();
   const [file, setFile] = useState(null)
   const [scope, setScope] = useState('all')
@@ -32,7 +34,7 @@ export default function PersonalRecovery() {
       if (file.size > 50 * 1024 * 1024) throw new Error(t("归档不得超过 50 MB"))
       const checked = await endpoints.previewArchive(file, scope); setPreview(checked); setStep(2)
     })}>{busy ? t("正在校验…") : t("验证清单与文件完整性")}</button>}
-    {preview && <section className="restore-preview"><h2>{t("恢复预览")}</h2><StatusPill tone="success">{t("清单及现有文件哈希校验通过")}</StatusPill><dl className="definition-grid"><dt>{t("备份格式")}</dt><dd>Mneme workspace v{preview.version}</dd><dt>{t("创建时间")}</dt><dd>{preview.created_at === 'unknown' ? t("归档未提供") : preview.created_at}</dd><dt>{t("大小 / 加密")}</dt><dd>{(preview.bytes / 1024).toFixed(1)}{t(" KB · 未加密")}</dd><dt>{t("兼容性")}</dt><dd>{t("当前服务支持")}</dd><dt>{t("覆盖 / 保留")}</dt><dd>{t("覆盖 0 项，保留全部现有数据")}</dd><dt>SHA-256</dt><dd className="break-word">{preview.sha256}</dd></dl>
+    {preview && <section className="restore-preview"><h2>{t("恢复预览")}</h2><StatusPill tone="success">{t("清单及现有文件哈希校验通过")}</StatusPill><dl className="definition-grid"><dt>{t("备份格式")}</dt><dd>Mneme workspace v{preview.version}</dd><dt>{t("创建时间")}</dt><dd>{preview.created_at === 'unknown' ? t("归档未提供") : dates.dateTime(preview.created_at)}</dd><dt>{t("大小 / 加密")}</dt><dd>{(preview.bytes / 1024).toFixed(1)}{t(" KB · 未加密")}</dd><dt>{t("兼容性")}</dt><dd>{t("当前服务支持")}</dd><dt>{t("覆盖 / 保留")}</dt><dd>{t("覆盖 0 项，保留全部现有数据")}</dd><dt>SHA-256</dt><dd className="break-word">{preview.sha256}</dd></dl>
       <table><caption>{t("本次新增范围")}</caption><thead><tr><th>{t("数据类型")}</th><th>{t("清单记录数")}</th></tr></thead><tbody>{Object.entries(preview.counts).map(([key, count]) => <tr key={key}><td>{t(labels[key] || key)}</td><td>{count}</td></tr>)}</tbody></table>
       {preview.missing_files > 0 && <p role="alert">{t("清单中有 ")}{preview.missing_files}{t(" 个原文件缺失，无法恢复这些文件。其他记录可以恢复。")}</p>}
       {preview.same_name_libraries.length > 0 && <p>{t("同名资料库：")}{preview.same_name_libraries.join('、')}{t("。将创建副本，原库保留。")}</p>}

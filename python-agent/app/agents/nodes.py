@@ -1,6 +1,5 @@
 import json
 import re
-from datetime import datetime
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -13,6 +12,7 @@ from app.agents.prompts import (
 )
 from app.agents.trace_store import agent_trace_store
 from app.core.config import settings
+from app.core.time import parse_utc, utc_now
 from app.core.logging import setup_logger
 from app.knowledge.vector_store import vector_store
 from app.knowledge.citations import build_evidence_context
@@ -222,10 +222,10 @@ def memory_write_node(state: dict) -> dict:
     if len(history) < 2:
         return {"memory_entries_to_write": []}
     try:
-        previous_time = datetime.fromisoformat(history[-2].timestamp)
+        previous_time = parse_utc(history[-2].timestamp)
     except (TypeError, ValueError):
         return {"memory_entries_to_write": []}
-    idle_seconds = (datetime.now(previous_time.tzinfo) - previous_time).total_seconds()
+    idle_seconds = (utc_now() - previous_time).total_seconds()
     if idle_seconds <= settings.distillation_idle_minutes * 60:
         return {"memory_entries_to_write": []}
     conversation = [

@@ -414,7 +414,7 @@ public class WorkspaceService {
         for (var card : cards) {
             jdbc.update("INSERT INTO review_card(user_id,plan_id,prompt,answer,due_at,origin,topic) VALUES(?,?,?,?,?,?,?)",
                 userId, id, required(card, "prompt"), required(card, "answer"),
-                Timestamp.valueOf(LocalDateTime.now()), "user", abbreviate(goal, 200));
+                Timestamp.from(java.time.Instant.now()), "user", abbreviate(goal, 200));
         }
         return one("SELECT * FROM learning_plan WHERE id=? AND user_id=?", id, userId);
     }
@@ -436,7 +436,7 @@ public class WorkspaceService {
         jdbc.update("""
             UPDATE review_card SET interval_days=?,ease_factor=?,due_at=?,last_rating=?,review_count=review_count+1
             WHERE id=? AND user_id=?
-            """, interval, ease, Timestamp.valueOf(LocalDateTime.now().plusDays(interval)), normalized, cardId, userId);
+            """, interval, ease, Timestamp.from(java.time.Instant.now().plus(interval, java.time.temporal.ChronoUnit.DAYS)), normalized, cardId, userId);
         jdbc.update("INSERT INTO learning_outcome_event(user_id,event_type,topic,score,success,source_id) SELECT ?,?,?,?,?,id FROM review_card WHERE id=? AND user_id=?",
             userId, "review", topic, normalized * 20.0, normalized >= 3, cardId, userId);
         return one("SELECT * FROM review_card WHERE id=?", cardId);
@@ -627,7 +627,7 @@ public class WorkspaceService {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("schema", "mneme.workspace");
         data.put("version", 2);
-        data.put("exported_at", LocalDateTime.now().toString());
+        data.put("exported_at", LocalDateTime.now(java.time.ZoneOffset.UTC).toString());
         data.put("knowledge_bases", rows("SELECT id,name,description,status,created_at FROM knowledge_base WHERE user_id=?", userId));
         data.put("sessions", rows("SELECT id,title,created_at,updated_at FROM chat_session WHERE user_id=?", userId));
         data.put("messages", rows("SELECT m.id,m.session_id,m.role,m.content,m.status,m.sources_json,m.created_at FROM chat_message m JOIN chat_session s ON s.id=m.session_id WHERE s.user_id=?", userId));
@@ -1230,7 +1230,18 @@ public class WorkspaceService {
     private String limited(Map<String, Object> item, String key, String fallback, int maximum) { return abbreviate(String.valueOf(item.getOrDefault(key, fallback)), maximum); }
     private String safeStatus(Map<String, Object> item, String key, String fallback) { String value = limited(item, key, fallback, 20); return value.matches("[a-z_]{1,20}") ? value : fallback; }
     private Date parseDate(Object value) { try { return value == null ? null : Date.valueOf(String.valueOf(value).substring(0, 10)); } catch (RuntimeException ignored) { return null; } }
-    private Timestamp parseTimestamp(Object value) { try { return value == null ? null : Timestamp.valueOf(String.valueOf(value).replace('T', ' ').substring(0, 19)); } catch (RuntimeException ignored) { return null; } }
+    private Timestamp parseTimestamp(Object value) {
+        if (value == null) return null;
+        String text = String.valueOf(value).trim().replace(' ', 'T');
+        try {
+            return Timestamp.from(java.time.OffsetDateTime.parse(text).toInstant());
+        } catch (java.time.format.DateTimeParseException missingOffset) {
+            try {
+                // Older exports contain UTC SQL timestamps without an offset.
+                return Timestamp.from(LocalDateTime.parse(text).toInstant(java.time.ZoneOffset.UTC));
+            } catch (java.time.format.DateTimeParseException invalid) { return null; }
+        }
+    }
     private List<String> stringList(Object value) { return mapper.convertValue(value == null ? List.of() : value, new TypeReference<>() {}); }
 
     private void requireKb(Long userId, Long kbId) { one("SELECT id FROM knowledge_base WHERE id=? AND user_id=?", kbId, userId); }

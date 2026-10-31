@@ -62,7 +62,7 @@ for (const [path, title] of [['tasks', '任务中心'], ['recovery', '备份与�
       await page.getByLabel('管理员凭证').fill('test-admin-token-'.repeat(3))
       await page.getByRole('button', { name: '验证权限' }).click()
       await expect(page.getByRole('button', { name: '锁定', exact: true })).toBeVisible()
-      await expect(page.getByText(path === 'operations' ? '检查时间：2026-10-03T10:00:00Z' : '#1 · 2026-10-03')).toBeVisible()
+      await expect(page.getByText(path === 'operations' ? '检查时间：2026年10月3日 18:00' : '#1 · 2026年10月3日 08:00')).toBeVisible()
       expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('test-admin-token')
     }
     if (path === 'privacy') await expect(page.getByRole('button', { name: '保存策略' })).toBeVisible()

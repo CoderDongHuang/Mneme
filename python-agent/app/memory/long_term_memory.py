@@ -11,6 +11,7 @@
 from datetime import datetime
 from typing import List, Optional
 
+from app.core.time import utc_now, parse_utc
 from app.memory.memory_store import memory_store
 from app.core.logging import setup_logger, memory_log_fields
 from app.memory.cache_revision import memory_cache_revision
@@ -192,13 +193,13 @@ class LongTermMemoryManager:
         weak_points = self._store.get_by_category(
             user_id, "weak_point", limit=MAX_WEAK_POINTS
         )
-        now = datetime.now()
+        now = utc_now()
         for wp in weak_points:
             created_at = wp.get("created_at", "")
             if not created_at:
                 continue
             try:
-                created_time = datetime.fromisoformat(created_at)
+                created_time = parse_utc(created_at)
                 days_since = (now - created_time).days
                 if days_since > 30:
                     new_importance = max(0.0, wp.get("importance", 0.5) - 0.2)

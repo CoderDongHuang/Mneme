@@ -84,7 +84,7 @@ public class ProcessingTaskService {
         List<ProcessingTask> tasks = taskMapper.selectList(
             new LambdaQueryWrapper<ProcessingTask>()
                 .in(ProcessingTask::getStatus, "pending", "retry")
-                .le(ProcessingTask::getNextAttemptAt, LocalDateTime.now())
+                .le(ProcessingTask::getNextAttemptAt, LocalDateTime.now(java.time.ZoneOffset.UTC))
                 .orderByAsc(ProcessingTask::getCreatedAt)
                 .last("LIMIT 5")
         );
@@ -105,7 +105,7 @@ public class ProcessingTaskService {
             .eq(ProcessingTask::getId, task.getId())
             .in(ProcessingTask::getStatus, "pending", "retry")
             .set(ProcessingTask::getStatus, "processing")
-            .set(ProcessingTask::getLockedAt, LocalDateTime.now())
+            .set(ProcessingTask::getLockedAt, LocalDateTime.now(java.time.ZoneOffset.UTC))
             .set(ProcessingTask::getLockedBy, hostName())) == 1;
         if (claimed) record(task, "claim", "processing", Map.of("locked_by", hostName()), null);
         return claimed;
@@ -270,7 +270,7 @@ public class ProcessingTaskService {
         boolean exhausted = attempts >= maxAttempts;
         task.setAttemptCount(attempts);
         task.setStatus(exhausted ? "failed" : "retry");
-        task.setNextAttemptAt(LocalDateTime.now().plusSeconds(Math.min(300, 1L << attempts)));
+        task.setNextAttemptAt(LocalDateTime.now(java.time.ZoneOffset.UTC).plusSeconds(Math.min(300, 1L << attempts)));
         task.setLockedAt(null);
         task.setLockedBy(null);
         task.setErrorCode(error.getClass().getSimpleName());
@@ -305,20 +305,20 @@ public class ProcessingTaskService {
         // before cleanup, so an abandoned Python request cannot write after acknowledgement.
         List<ProcessingTask> cancelled = taskMapper.selectList(new LambdaQueryWrapper<ProcessingTask>()
             .eq(ProcessingTask::getStatus, "cancelling")
-            .lt(ProcessingTask::getLockedAt, LocalDateTime.now().minusMinutes(5)).last("LIMIT 10"));
+            .lt(ProcessingTask::getLockedAt, LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(5)).last("LIMIT 10"));
         for (ProcessingTask task : cancelled) {
             try { finishCancelled(task); } catch (Exception error) { log.warn("取消清理等待重试: {}", task.getTaskId()); }
         }
         List<ProcessingTask> abandoned = taskMapper.selectList(new LambdaQueryWrapper<ProcessingTask>()
             .eq(ProcessingTask::getStatus, "processing")
-            .lt(ProcessingTask::getLockedAt, LocalDateTime.now().minusMinutes(5)).last("LIMIT 10"));
+            .lt(ProcessingTask::getLockedAt, LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(5)).last("LIMIT 10"));
         for (ProcessingTask task : abandoned) {
             if ("document_ingest".equals(task.getTaskType()) && cancellationRedis != null
                 && Boolean.TRUE.equals(cancellationRedis.hasKey("mneme:ingestion:active:" + task.getUserId() + ":" + task.getTaskId()))) continue;
             taskMapper.update(null, new LambdaUpdateWrapper<ProcessingTask>()
                 .eq(ProcessingTask::getId, task.getId()).eq(ProcessingTask::getStatus, "processing")
-                .lt(ProcessingTask::getLockedAt, LocalDateTime.now().minusMinutes(5))
-                .set(ProcessingTask::getStatus, "retry").set(ProcessingTask::getNextAttemptAt, LocalDateTime.now())
+                .lt(ProcessingTask::getLockedAt, LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(5))
+                .set(ProcessingTask::getStatus, "retry").set(ProcessingTask::getNextAttemptAt, LocalDateTime.now(java.time.ZoneOffset.UTC))
                 .set(ProcessingTask::getLockedAt, null).set(ProcessingTask::getLockedBy, null));
         }
     }

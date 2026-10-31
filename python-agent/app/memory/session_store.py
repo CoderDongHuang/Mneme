@@ -13,9 +13,10 @@
 import json
 import os
 import threading
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List, Dict
 
+from app.core.time import utc_now, parse_utc
 from app.core.logging import setup_logger
 from app.core.config import settings
 
@@ -67,7 +68,7 @@ class SessionStore:
         """注册或更新会话。首次注册时自动生成标题。"""
         data = self._load(user_id)
 
-        now = datetime.now().isoformat()
+        now = utc_now().isoformat()
         if session_id in data:
             # 更新已有会话
             existing = data[session_id]
@@ -94,7 +95,7 @@ class SessionStore:
         data = self._load(user_id)
         if session_id in data:
             data[session_id]["title"] = title[:50]
-            data[session_id]["last_updated"] = datetime.now().isoformat()
+            data[session_id]["last_updated"] = utc_now().isoformat()
             self._save(user_id, data)
 
     def increment_message_count(self, user_id: str, session_id: str):
@@ -104,7 +105,7 @@ class SessionStore:
             data[session_id]["message_count"] = (
                 data[session_id].get("message_count", 0) + 1
             )
-            data[session_id]["last_updated"] = datetime.now().isoformat()
+            data[session_id]["last_updated"] = utc_now().isoformat()
             self._save(user_id, data)
 
     def get_sessions(self, user_id: str) -> List[Dict]:
@@ -112,11 +113,11 @@ class SessionStore:
         data = self._load(user_id)
 
         # 清理过期会话
-        cutoff = datetime.now() - timedelta(days=SESSION_TTL_DAYS)
+        cutoff = utc_now() - timedelta(days=SESSION_TTL_DAYS)
         expired = []
         for sid, info in data.items():
             try:
-                last_updated = datetime.fromisoformat(info.get("last_updated", ""))
+                last_updated = parse_utc(info.get("last_updated", ""))
                 if last_updated < cutoff:
                     expired.append(sid)
             except (ValueError, TypeError):
@@ -138,7 +139,12 @@ class SessionStore:
             }
             for sid, info in data.items()
         ]
-        sessions.sort(key=lambda s: s["last_updated"], reverse=True)
+        def updated_at(session):
+            try:
+                return parse_utc(session["last_updated"]).timestamp()
+            except (ValueError, TypeError):
+                return float("-inf")
+        sessions.sort(key=updated_at, reverse=True)
         return sessions
 
     def delete_session(self, user_id: str, session_id: str):

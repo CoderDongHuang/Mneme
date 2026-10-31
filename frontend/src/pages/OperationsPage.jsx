@@ -1,3 +1,4 @@
+import { useDateFormatter } from '../hooks/useDateFormatter'
 import { t, useI18n } from '../i18n'
 import { useState } from 'react'
 import { Activity, HardDrive, RefreshCw, Server, Timer } from 'lucide-react'
@@ -8,11 +9,12 @@ import { FeedbackBlock, PageHeader, StatusPill } from '../components/ui'
 import '../styles/centers.css'
 
 function Table({ rows = [], columns }) {
+  const dates = useDateFormatter()
   const [page, setPage] = useState(0)
   const lastPage = Math.max(0, Math.ceil(rows.length / 10) - 1)
   const currentPage = Math.min(page, lastPage)
   return rows.length ? <>
-    <div className="reference-table-wrap"><table className="reference-table"><thead><tr>{columns.map(([key, label]) => <th scope="col" key={key}>{t(label)}</th>)}</tr></thead><tbody>{rows.slice(currentPage * 10, (currentPage + 1) * 10).map((row, index) => <tr key={row.id || index}>{columns.map(([key]) => <td key={key}>{String(row[key] ?? '—')}</td>)}</tr>)}</tbody></table></div>
+    <div className="reference-table-wrap"><table className="reference-table"><thead><tr>{columns.map(([key, label]) => <th scope="col" key={key}>{t(label)}</th>)}</tr></thead><tbody>{rows.slice(currentPage * 10, (currentPage + 1) * 10).map((row, index) => <tr key={row.id || index}>{columns.map(([key]) => <td key={key}>{['createdAt', 'next_attempt_at', 'completed_at'].includes(key) ? dates.dateTime(row[key]) : String(row[key] ?? '—')}</td>)}</tr>)}</tbody></table></div>
     {lastPage > 0 && <div className="operations-pagination"><button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t('上一页')}</button><span aria-live="polite">{t('第 {0} 页', [currentPage + 1])} / {lastPage + 1}</span><button disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>{t('下一页')}</button></div>}
   </> : <p className="account-empty">{t('暂无记录')}</p>
 }
@@ -20,6 +22,7 @@ const statuses = { available: '可用', not_configured: '未配置监控数据�
 const status = v => t(statuses[v] || v || '未知')
 export default function OperationsPage() {
   useI18n()
+  const dates = useDateFormatter()
   const [token, setToken] = useState('')
   const [data, setData] = useState(null)
   const [audit, setAudit] = useState([])
@@ -46,7 +49,7 @@ export default function OperationsPage() {
     <FeedbackBlock error={error} onRetry={error && token ? refresh : undefined} />
     {token && !data && !error && <p role="status">{t('加载中...')}</p>}
     {token && data && <>
-      <p className="muted">{t('检查时间：')}{data.checked_at}</p>
+      <p className="muted">{t('检查时间：')}{dates.dateTime(data.checked_at)}</p>
       <div className="operations-metrics">
         {[[Activity, '依赖就绪', `${ready} / ${services.length}`, '依赖健康'], [Server, '网关可用率', monitoring['mneme:gateway_availability:rate5m'] == null ? '—' : `${(Number(monitoring['mneme:gateway_availability:rate5m']) * 100).toFixed(2)}%`, '最近 5 分钟'], [Timer, '网关 P95（秒）', monitoring['mneme:gateway_latency_p95:rate5m'] == null ? '—' : Number(monitoring['mneme:gateway_latency_p95:rate5m']).toFixed(3), '最近 5 分钟'], [HardDrive, '网关磁盘使用率', disk == null ? '—' : `${disk.toFixed(1)}%`, '网关本地磁盘']].map(([Icon, label, value, note]) => <div className="account-card" key={label}><span><Icon size={17} />{t(label)}</span><strong>{value}</strong><small>{t(note)}</small></div>)}
       </div>

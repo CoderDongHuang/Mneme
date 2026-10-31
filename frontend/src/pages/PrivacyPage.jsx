@@ -1,3 +1,4 @@
+import { useDateFormatter } from '../hooks/useDateFormatter'
 import { t, useI18n } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
 import { Download, Save, Trash2 } from 'lucide-react'
@@ -9,6 +10,7 @@ import '../styles/centers.css'
 import '../styles/reference-pages.css'
 
 export default function PrivacyPage() {
+  const dates = useDateFormatter()
   useI18n();
   const { logout } = useAuth()
   const lock = useRef(false)
@@ -50,6 +52,6 @@ export default function PrivacyPage() {
       </section>
     </>}
     <DangerZone title={t("删除账号及全部关联数据")} description={t("提交不可撤销的账号删除任务：包括会话、学习记录、模型配置、原始文件、向量索引与记忆。确认后立即退出，后台任务继续清理；管理员可在运维中心追踪操作编号。请先导出需要保留的资料。")} action={t("删除我的账号")} confirmText="DELETE MY ACCOUNT" busy={!!busy} onConfirm={async () => { const result = await endpoints.deleteAccount(); window.alert(t("删除任务已提交，操作编号：{0}", [result.operation_id])); logout() }} />
-    <section><h2>{t("审计记录")}</h2><ul className="center-list">{logs.map((l, i) => <li key={`${l.operation_id}-${i}`}><strong>{l.operation_type}</strong> · {l.step} · {l.status}<time>{l.created_at}</time></li>)}</ul>{!logs.length && <p>{t("暂无记录")}</p>}</section>
+    <section><h2>{t("审计记录")}</h2><ul className="center-list">{logs.map((l, i) => <li key={`${l.operation_id}-${i}`}><strong>{l.operation_type}</strong> · {l.step} · {l.status}<time>{dates.dateTime(l.created_at)}</time></li>)}</ul>{!logs.length && <p>{t("暂无记录")}</p>}</section>
   </div>
 }

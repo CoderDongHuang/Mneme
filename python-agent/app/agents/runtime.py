@@ -1,4 +1,4 @@
-from datetime import datetime
+from app.core.time import utc_now
 from app.core.privacy import require_cloud_processing
 
 from app.agents.nodes import memory_write_node, run_pre_llm_nodes
@@ -15,7 +15,7 @@ def prepare_conversation(request: ChatRequest) -> dict:
     user_message = Message(
         role="user",
         content=request.message,
-        timestamp=datetime.now().isoformat(),
+        timestamp=utc_now().isoformat(),
         token_count=max(1, len(request.message) // 4),
     )
     working_memory.add_message(request.session_id, user_message)
@@ -55,7 +55,7 @@ def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dic
     assistant_message = Message(
         role="assistant",
         content=answer,
-        timestamp=datetime.now().isoformat(),
+        timestamp=utc_now().isoformat(),
         token_count=max(1, len(answer) // 4),
     )
     working_memory.add_message(request.session_id, assistant_message)

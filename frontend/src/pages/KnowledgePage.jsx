@@ -1,3 +1,4 @@
+import { useDateFormatter } from '../hooks/useDateFormatter'
 import { t, useI18n } from '../i18n'
 import {
   ArrowUpRight,
@@ -29,11 +30,12 @@ import '../styles/reference-knowledge.css'
 
 function ParseReport({ value }) {
   useI18n();
+  const dates = useDateFormatter();
   let report;
   try { report = JSON.parse(value); } catch { return <small>{t("解析报告格式无效，请重新解析")}</small>; }
   const reasons = { no_text: t("未提取到文本（可能为空白页或扫描件）"), ocr_unavailable: t("OCR 不可用"), low_ocr_confidence: t("OCR 置信度偏低，请核对原文"), table_parser_unavailable: t("表格解析器不可用"), table_parse_failed: t("表格解析失败"), vision_parse_failed: t("图片理解失败") };
   return <div className="parse-report">
-    <small>{t("解析器：")}{report.parser_version || t("未知")}{t(" · 索引时间：")}{report.indexed_at || t("未知")}</small>
+    <small>{t("解析器：")}{report.parser_version || t("未知")}{t(" · 索引时间：")}{report.indexed_at ? dates.dateTime(report.indexed_at) : t("未知")}</small>
     <small>{t("文件 SHA-256：")}{report.content_sha256 || t("未知")}</small>
     {(report.warnings || []).map((warning, index) => <small key={index}>
       {warning.page > 0 ? t("第 {0} 页：", [warning.page]) : t("文件：")}{reasons[warning.code] || warning.code}
@@ -52,6 +54,7 @@ function fileIcon(name = "") {
 }
 
 export default function KnowledgePage() {
+  const dates = useDateFormatter()
   useI18n();
   const [knowledgeBases, setKnowledgeBases] = useState([]);
   const [activeKbId, setActiveKbId] = useState(null);
@@ -284,7 +287,7 @@ export default function KnowledgePage() {
               <div className="document-row document-header"><span>{t('文件信息')}</span><span>{t('语义片段')}</span><span>{t('最后更新')}</span><span>{t('索引状态')}</span><span /></div>
               {visibleDocuments.map(document => { const Icon = fileIcon(document.fileName); return <div className={`document-row ${previewDocument?.id === document.id ? 'is-selected' : ''}`} key={document.id}>
                 <div className="document-name"><input type="checkbox" aria-label={t('选择 {0}', [document.fileName])} disabled={bulkBusy || ['deleting', 'parsing'].includes(document.status)} checked={selectedIds.includes(document.id)} onChange={e => setSelectedIds(ids => e.target.checked ? [...ids, document.id] : ids.filter(id => id !== document.id))} /><span className={`file-icon file-${document.fileName.split('.').at(-1).toLowerCase()}`}><Icon size={26} /><small>{document.fileName.split('.').at(-1).toUpperCase()}</small></span><div><button className="document-title" onClick={() => setDetail(document)}>{document.fileName}</button><small>{document.errorMessage || t('文档编号 {0}', [document.id])}</small></div></div>
-                <span>{document.chunkCount || 0}</span><time>{document.updatedAt ? new Date(document.updatedAt).toLocaleDateString(preferences.language, { month: 'short', day: 'numeric', timeZone: preferences.timezone }) : '—'}</time><StatusBadge status={document.status} />
+                <span>{document.chunkCount || 0}</span><time>{document.updatedAt ? dates.date(document.updatedAt) : '—'}</time><StatusBadge status={document.status} />
                 <details className="row-actions"><summary aria-label={t('文档操作：{0}', [document.fileName])}>···</summary><div>{!['deleting', 'parsing'].includes(document.status) && <><button disabled={documentBusy[document.id]} onClick={() => showVersions(document)}><History size={15} />{t('版本历史')}</button><button disabled={documentBusy[document.id]} onClick={() => { setReplacingDocument(document); replaceRef.current?.click() }}><RefreshCw size={15} />{t('替换文件')}</button><button disabled={documentBusy[document.id]} onClick={() => reparseDocument(document)}><ArrowUpRight size={15} />{t('重新解析')}</button><button disabled={documentBusy[document.id]} onClick={() => deleteDocument(document)}><Trash2 size={15} />{t('删除文档')}</button></>}{document.parseReport && <details><summary>{t('解析报告')}</summary><ParseReport value={document.parseReport} /></details>}</div></details>
               </div> })}
               {!visibleDocuments.length && <div className="documents-empty"><BookCopy size={30} /><strong>{t('这里还没有资料')}</strong><span>{t('可将文件拖入列表，或点击导入资料。')}</span></div>}
@@ -356,7 +359,7 @@ export default function KnowledgePage() {
                 <button key={version.version_number} disabled={Boolean(version.active) || documentBusy[versionDialog.document.id]} onClick={() => restoreVersion(version)}>
                   <span>
                     <strong>v{version.version_number} · {version.file_name}</strong>
-                    <small>{String(version.sha256).slice(0, 12)} · {new Date(version.created_at).toLocaleString("zh-CN")}</small>
+                    <small>{String(version.sha256).slice(0, 12)} · {dates.dateTime(version.created_at)}</small>
                   </span>
                   <StatusBadge status={version.active ? "active" : "ready"} />
                 </button>

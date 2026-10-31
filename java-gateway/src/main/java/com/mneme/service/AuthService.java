@@ -62,13 +62,13 @@ public class AuthService {
         String token = HexFormat.of().formatHex(raw);
         PasswordResetToken record = new PasswordResetToken();
         record.setUserId(user.getId()); record.setTokenHash(hash(token));
-        record.setExpiresAt(LocalDateTime.now().plusMinutes(15)); resetTokens.insert(record);
+        record.setExpiresAt(LocalDateTime.now(java.time.ZoneOffset.UTC).plusMinutes(15)); resetTokens.insert(record);
         return token;
     }
 
     @Transactional
     public void confirmPasswordReset(String token, String password) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
         PasswordResetToken record = resetTokens.selectOne(new LambdaQueryWrapper<PasswordResetToken>()
             .eq(PasswordResetToken::getTokenHash, hash(token)));
         if (record == null || record.getUsedAt() != null || !record.getExpiresAt().isAfter(now)) {
@@ -164,7 +164,7 @@ public class AuthService {
 
     private AuthResponse payload(User user, boolean remember) {
         long lifetime = remember ? jwtRememberExpiration : jwtExpiration;
-        LocalDateTime expiresAt = LocalDateTime.now().plusNanos(lifetime * 1_000_000L);
+        LocalDateTime expiresAt = LocalDateTime.now(java.time.ZoneOffset.UTC).plusNanos(lifetime * 1_000_000L);
         String sessionId = sessions.create(user.getId(), expiresAt, remember);
         return new AuthResponse(
             generateToken(user, sessionId, lifetime),

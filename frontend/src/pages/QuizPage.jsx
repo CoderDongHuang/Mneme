@@ -1,17 +1,17 @@
+import { useDateFormatter } from '../hooks/useDateFormatter'
 import { t, useI18n } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, ChevronLeft, ChevronRight, Flag, Lightbulb, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { endpoints } from '../api/client'
 import { FeedbackBlock, Modal, PageHeader, StatusPill } from '../components/ui'
-import { usePreferences } from '../state/PreferencesContext'
 
 import { MetricCards } from '../components/ReferenceUI'
 
 function json(value, fallback = []) { try { return typeof value === 'string' ? JSON.parse(value) : value || fallback } catch { return fallback } }
 export default function QuizPage() {
+  const dates = useDateFormatter()
   useI18n();
-  const { preferences } = usePreferences()
   const [quizzes, setQuizzes] = useState([])
   const [bases, setBases] = useState([])
   const [selected, setSelected] = useState(null)
@@ -96,7 +96,7 @@ export default function QuizPage() {
   }
   return <div className="standard-page reference-page reference-quiz"><PageHeader eyebrow={t("用问题检验理解")} title={t("知识测验")} description={t("围绕你的资料生成题目，回答后查看解释与原文依据。")}><button className="primary-button" onClick={() => setOpen(true)}><Plus size={17} />{t("创建测验")}</button></PageHeader>
     <FeedbackBlock error={error} message={notice} />
-    <div className="quiz-workspace"><div className="study-main"><nav className="quiz-selection"><h3>{t("我的测验")}</h3>{quizzes.map(quiz => <button disabled={busy} className={selected?.id === quiz.id ? 'active' : ''} key={quiz.id} onClick={() => choose(quiz)}>{quiz.title}<small>{new Date(quiz.created_at).toLocaleDateString(preferences.language, { timeZone: preferences.timezone })}</small></button>)}{!quizzes.length && <p className="muted">{t("还没有测验。")}</p>}</nav><MetricCards items={[{label:t('我的测验'),value:quizzes.length},{label:t('当前题目'),value:questions.length},{label:t('已作答'),value:answers.filter(answer=>answer?.trim()).length}]} />
+    <div className="quiz-workspace"><div className="study-main"><nav className="quiz-selection"><h3>{t("我的测验")}</h3>{quizzes.map(quiz => <button disabled={busy} className={selected?.id === quiz.id ? 'active' : ''} key={quiz.id} onClick={() => choose(quiz)}>{quiz.title}<small>{dates.date(quiz.created_at)}</small></button>)}{!quizzes.length && <p className="muted">{t("还没有测验。")}</p>}</nav><MetricCards items={[{label:t('我的测验'),value:quizzes.length},{label:t('当前题目'),value:questions.length},{label:t('已作答'),value:answers.filter(answer=>answer?.trim()).length}]} />
       <section className="study-card">{!selected ? <div className="empty-state"><CheckCircle2 size={34} /><h2>{t("给知识一次回应")}</h2><p>{t("选择已有测验，或从资料库创建新测验。答案会保存为个人草稿。")}</p><button onClick={() => setOpen(true)}>{t("创建测验")}</button></div> : !ready ? <div className="empty-state"><p>{t("正在恢复测验草稿…")}</p>{error && <button onClick={() => choose(selected)}>{t("重试")}</button>}</div> : question ? <>
         <div className="action-row"><StatusPill>{result ? t("已提交") : t("作答中")}</StatusPill><span className="muted" role="status">{t("第 ")}{index + 1} / {questions.length}{t(" 题 · ")}{saved}</span></div><progress value={index + 1} max={questions.length} aria-label={t("答题进度")} />
         <h2>{question.prompt}</h2>
@@ -106,7 +106,7 @@ export default function QuizPage() {
         <footer className="question-controls"><button disabled={index === 0 || busy} onClick={() => move(index - 1)}><ChevronLeft size={17} />{t("上一题")}</button>{index < questions.length - 1 ? <button disabled={busy} onClick={() => move(index + 1)}>{answers[index] ? t("下一题") : t("跳过此题")}<ChevronRight size={17} /></button> : !result && <button className="primary-button" disabled={busy} onClick={submit}>{busy ? t("提交中…") : t("提交测验（已答 {0} 题）", [answers.filter(a => a?.trim()).length])}</button>}</footer>
         {result && <p role="status">{t("本次原始得分 ")}{result.raw_score ?? result.score}{t(" / 100 · 校准得分 ")}{result.score}{t(" / 100。错题已加入复习记录。")}<Link className="text-link" to="/review">{t("去复习 →")}</Link></p>}
       </> : <p>{t("此测验暂无题目。")}</p>}</section></div>
-      <aside className="context-panel"><h3>{t("作答记录")}</h3>{attempts.length ? <ul className="plain-list">{attempts.map(attempt => <li key={attempt.id}><button className="text-button" disabled={busy} onClick={() => { clearTimeout(draftTimer.current); currentDraft.current = null; selection.current++; setResult({ score: attempt.score, raw_score: attempt.raw_score, feedback: json(attempt.feedback_json) }); setAnswers(json(attempt.answers_json)); setIndex(0) }}>{attempt.score} / 100 · {new Date(attempt.created_at).toLocaleString(preferences.language, { timeZone: preferences.timezone })}</button></li>)}</ul> : <p className="muted">{t("提交后会在这里保留历史记录。")}</p>}<h3>{t("评价说明")}</h3><p className="muted">{t("简答题按关键点覆盖评分，选择题按选项匹配。结果用于安排复习，不代表专业认证。")}</p>{result && selected && <button onClick={() => choose(selected)}>{t("重新作答")}</button>}</aside></div>
+      <aside className="context-panel"><h3>{t("作答记录")}</h3>{attempts.length ? <ul className="plain-list">{attempts.map(attempt => <li key={attempt.id}><button className="text-button" disabled={busy} onClick={() => { clearTimeout(draftTimer.current); currentDraft.current = null; selection.current++; setResult({ score: attempt.score, raw_score: attempt.raw_score, feedback: json(attempt.feedback_json) }); setAnswers(json(attempt.answers_json)); setIndex(0) }}>{attempt.score} / 100 · {dates.dateTime(attempt.created_at)}</button></li>)}</ul> : <p className="muted">{t("提交后会在这里保留历史记录。")}</p>}<h3>{t("评价说明")}</h3><p className="muted">{t("简答题按关键点覆盖评分，选择题按选项匹配。结果用于安排复习，不代表专业认证。")}</p>{result && selected && <button onClick={() => choose(selected)}>{t("重新作答")}</button>}</aside></div>
     <Modal open={open} title={t("创建知识测验")} busy={busy} onClose={() => setOpen(false)}><form className="form-stack" onSubmit={e => { e.preventDefault(); run(async () => { const quiz = await endpoints.generateQuiz(form); setQuizzes(items => [quiz, ...items]); setOpen(false); await choose(quiz) }) }}><FeedbackBlock error={error} /><label>{t("资料库")}<select required value={form.kb_id} onChange={e => setForm({ ...form, kb_id: e.target.value })}><option value="">{t("选择资料库")}</option>{bases.map(base => <option key={base.id} value={base.id}>{base.name}</option>)}</select></label><label>{t("测验主题")}<input required maxLength={200} value={form.topic} onChange={e => setForm({ ...form, topic: e.target.value })} /></label><p className="muted">{t("需要可用的模型与已完成索引的资料。生成失败时会保留输入。")}</p><button className="primary-button" disabled={busy || !bases.length}>{busy ? t("生成中…") : t("生成题目")}</button></form></Modal>
     <Modal open={report} title={t("报告题目问题")} busy={busy} onClose={() => setReport(false)}><form className="form-stack" onSubmit={e => { e.preventDefault(); run(async () => { await endpoints.reportQuestion(selected.id, { question: index, reason }); setReport(false); setNotice(t("问题已记录，感谢反馈")) }) }}><FeedbackBlock error={error} /><label>{t("问题说明")}<textarea required maxLength={2000} value={reason} onChange={e => setReason(e.target.value)} /></label><button disabled={busy}>{t("提交反馈")}</button></form></Modal>
   </div>
