@@ -18,6 +18,7 @@ class AuthServiceSecurityTest {
         UserMapper users = mock(UserMapper.class); PasswordResetTokenMapper tokens = mock(PasswordResetTokenMapper.class);
         AuthSessionService sessions = mock(AuthSessionService.class);
         User user = new User(); user.setId(7L); user.setEmail("a@example.com"); user.setUsername("alice");
+        user.setEmailVerifiedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         when(users.selectOne(any())).thenReturn(user);
         AuthService service = new AuthService(users, tokens, sessions);
         String raw = service.issuePasswordResetToken("alice", "a@example.com");
@@ -44,6 +45,9 @@ class AuthServiceSecurityTest {
         PasswordResetToken token = validToken();
         when(tokens.selectOne(any())).thenReturn(token);
         when(tokens.update(isNull(), any())).thenReturn(0);
+        User user = new User(); user.setId(7L); user.setEmail("a@example.com");
+        user.setEmailVerifiedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+        when(users.selectOne(any())).thenReturn(user);
 
         AuthService service = new AuthService(users, tokens, sessions);
         assertThatThrownBy(() -> service.confirmPasswordReset("contended", "new-password"))
@@ -59,15 +63,15 @@ class AuthServiceSecurityTest {
         AuthSessionService sessions = mock(AuthSessionService.class);
         PasswordResetToken token = validToken();
         User user = new User(); user.setId(7L); user.setStatus("active");
+        user.setEmail("a@example.com"); user.setEmailVerifiedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         when(tokens.selectOne(any())).thenReturn(token);
         when(tokens.update(isNull(), any())).thenReturn(1);
-        when(users.selectById(7L)).thenReturn(user);
+        when(users.selectOne(any())).thenReturn(user);
 
         new AuthService(users, tokens, sessions).confirmPasswordReset("valid", "new-password");
 
-        verify(users).updateById(user);
+        verify(users).update(isNull(), any());
         verify(sessions).revokeAll(7L);
-        assertThat(user.getPasswordHash()).startsWith("$2");
     }
 
     @Test void rememberLoginUsesConfiguredLongerLifetime() {

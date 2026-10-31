@@ -1149,5 +1149,17 @@
   "清理待核验": "Cleanup verification pending",
   "未知（读取失败）": "Unknown (read failed)",
   "清理核验": "Cleanup verification",
+  "邮箱验证": "Email verification",
+  "仅已验证的邮箱可用于找回密码。请在登录后的个人资料中完成邮箱验证。": "Only a verified email can recover your password. Verify your email in your profile while signed in.",
+  "邮箱有未保存的修改，请先保存资料。": "Save your profile before verifying the changed email.",
+  "当前邮箱已验证，可用于找回密码。": "This email is verified and can be used for password recovery.",
+  "当前邮箱尚未验证，不能用于找回密码。": "Verify this email before using it for password recovery.",
+  "发送邮箱验证码": "Send verification code",
+  "重新发送验证码": "Resend verification code",
+  "请复制邮件中的完整验证码；重新发送需间隔 60 秒，新验证码会使旧验证码失效。": "Copy the complete code from the email. Wait 60 seconds before resending; a new code invalidates the previous code.",
+  "邮箱验证码": "Email verification code",
+  "验证邮箱": "Verify email",
+  "验证邮件已提交至邮件服务器，请检查收件箱。验证码 15 分钟内有效。": "The verification email was accepted by the mail server. Check your inbox; the code expires in 15 minutes.",
+  "邮箱验证成功，现在可以用于找回密码。": "Email verified. You can now use it for password recovery.",
   "仅核验在线数据的逻辑删除；备份与磁盘物理擦除适用独立策略。": "Verifies logical deletion of live data only. Backups and physical erasure follow separate policies."
 }

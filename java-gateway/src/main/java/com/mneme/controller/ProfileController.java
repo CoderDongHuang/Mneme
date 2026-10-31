@@ -4,6 +4,9 @@ import com.mneme.dto.PasswordChangeRequest;
 import com.mneme.dto.ProfileUpdateRequest;
 import com.mneme.dto.Result;
 import com.mneme.service.ProfileService;
+import com.mneme.service.EmailVerificationService;
+import com.mneme.dto.EmailVerificationRequest;
+import com.mneme.dto.EmailVerificationConfirmRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +20,23 @@ import java.util.Map;
 @RequestMapping("/api/v1/profile")
 public class ProfileController {
     private final ProfileService profiles;
-    public ProfileController(ProfileService profiles) { this.profiles = profiles; }
+    private final EmailVerificationService verification;
+    public ProfileController(ProfileService profiles, EmailVerificationService verification) {
+        this.profiles = profiles;
+        this.verification = verification;
+    }
+
+    @PostMapping("/email-verification/request")
+    public Result<Map<String, Object>> requestEmail(@RequestAttribute("userId") Long userId, @Valid @RequestBody EmailVerificationRequest request) {
+        verification.request(userId, request.email());
+        return Result.success(Map.of("expiresInSeconds", 900, "resendAfterSeconds", 60));
+    }
+
+    @PostMapping("/email-verification/confirm")
+    public Result<Map<String, Object>> confirmEmail(@RequestAttribute("userId") Long userId, @Valid @RequestBody EmailVerificationConfirmRequest request) {
+        verification.confirm(userId, request.token());
+        return Result.success(profiles.profile(userId));
+    }
 
     @GetMapping public Result<Map<String, Object>> get(@RequestAttribute("userId") Long userId) { return Result.success(profiles.profile(userId)); }
     @GetMapping("/sessions") public Result<?> sessions(@RequestAttribute("userId") Long userId) { return Result.success(profiles.sessions(userId)); }

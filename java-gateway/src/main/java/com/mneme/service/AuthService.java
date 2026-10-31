@@ -52,11 +52,13 @@ public class AuthService {
         this.sessions = sessions;
     }
 
+    @Transactional
     public String issuePasswordResetToken(String username, String email) {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
-            .eq(User::getUsername, username.trim()).eq(User::getEmail, email.trim().toLowerCase()));
+            .eq(User::getUsername, username.trim()).eq(User::getEmail, EmailVerificationService.normalizeEmail(email)).last("FOR UPDATE"));
         if (user == null) throw new IllegalArgumentException("用户名与绑定邮箱不匹配");
         requireActive(user);
+        requireVerifiedEmail(user);
         resetTokens.delete(new LambdaQueryWrapper<PasswordResetToken>().eq(PasswordResetToken::getUserId, user.getId()));
         byte[] raw = new byte[32]; new SecureRandom().nextBytes(raw);
         String token = HexFormat.of().formatHex(raw);
@@ -74,17 +76,26 @@ public class AuthService {
         if (record == null || record.getUsedAt() != null || !record.getExpiresAt().isAfter(now)) {
             throw new IllegalArgumentException("重置链接无效或已过期");
         }
+        // Serialize with email changes and deletion before claiming the token.
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getId, record.getUserId()).last("FOR UPDATE"));
+        if (user == null) throw new IllegalArgumentException("用户不存在");
+        requireActive(user);
+        requireVerifiedEmail(user);
+        LocalDateTime claimTime = LocalDateTime.now(java.time.ZoneOffset.UTC);
         int claimed = resetTokens.update(null, new UpdateWrapper<PasswordResetToken>()
             .eq("id", record.getId())
             .isNull("used_at")
-            .gt("expires_at", now)
-            .set("used_at", now));
+            .gt("expires_at", claimTime)
+            .set("used_at", claimTime));
         if (claimed != 1) throw new IllegalArgumentException("重置链接无效或已过期");
-        User user = userMapper.selectById(record.getUserId());
-        if (user == null) throw new IllegalArgumentException("用户不存在");
-        requireActive(user);
-        user.setPasswordHash(passwordEncoder.encode(password)); userMapper.updateById(user);
+        userMapper.update(null, new UpdateWrapper<User>().eq("id", user.getId()).set("password_hash", passwordEncoder.encode(password)));
         sessions.revokeAll(user.getId());
+    }
+
+    private void requireVerifiedEmail(User user) {
+        if (user.getEmail() == null || user.getEmailVerifiedAt() == null) {
+            throw new IllegalArgumentException("请先登录并验证绑定邮箱");
+        }
     }
 
     private String hash(String value) { try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); } catch (Exception e) { throw new IllegalStateException(e); } }

@@ -1,6 +1,5 @@
 package com.mneme.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mneme.dto.PasswordChangeRequest;
 import com.mneme.dto.ProfileUpdateRequest;
 import com.mneme.entity.User;
@@ -24,6 +23,7 @@ public class ProfileService {
     private final UserMapper users;
     private final AccountDeletionService accountDeletions;
     private final AuthSessionService sessions;
+    private final EmailVerificationService emailVerification;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
     private final Path avatarRoot;
 
@@ -31,6 +31,7 @@ public class ProfileService {
         UserMapper users,
         AccountDeletionService accountDeletions,
         AuthSessionService sessions,
+        EmailVerificationService emailVerification,
         @Value("${mneme.avatar-storage-path:${mneme.file-storage-path:../data/files}/avatars}") String avatarStoragePath,
         @Value("${mneme.python-agent-url}") String ignoredPythonAgentUrl,
         @Value("${mneme.file-storage-path:../data/files}") String ignoredFileStoragePath
@@ -38,6 +39,7 @@ public class ProfileService {
         this.users = users;
         this.accountDeletions = accountDeletions;
         this.sessions = sessions;
+        this.emailVerification = emailVerification;
         this.avatarRoot = Path.of(avatarStoragePath).toAbsolutePath().normalize();
     }
 
@@ -46,6 +48,7 @@ public class ProfileService {
         return Map.of(
             "userId", user.getId(), "username", user.getUsername(),
             "nickname", value(user.getNickname()), "email", value(user.getEmail()), "role", user.getRole(),
+            "emailVerified", user.getEmail() != null && user.getEmailVerifiedAt() != null,
             "hasAvatar", user.getAvatarPath() != null && Files.isRegularFile(Path.of(user.getAvatarPath()))
         );
     }
@@ -54,15 +57,7 @@ public class ProfileService {
     public void revokeSession(Long userId, String sessionId) { sessions.revokeOwned(userId, sessionId); }
 
     public Map<String, Object> update(Long userId, ProfileUpdateRequest request) {
-        User user = requireUser(userId);
-        String email = normalize(request.email());
-        if (!email.isBlank()) {
-            User owner = users.selectOne(new LambdaQueryWrapper<User>().eq(User::getEmail, email));
-            if (owner != null && !owner.getId().equals(userId)) throw new IllegalArgumentException("该邮箱已被绑定");
-        }
-        user.setNickname(normalize(request.nickname()));
-        user.setEmail(email.isBlank() ? null : email);
-        users.updateById(user);
+        emailVerification.updateProfile(userId, normalize(request.nickname()), request.email());
         return profile(userId);
     }
 
@@ -101,15 +96,6 @@ public class ProfileService {
         user.setPasswordHash(encoder.encode(request.newPassword()));
         users.updateById(user);
         sessions.revokeAll(userId);
-    }
-
-    public void resetPassword(String username, String email, String password) {
-        User user = users.selectOne(new LambdaQueryWrapper<User>()
-            .eq(User::getUsername, username.trim()).eq(User::getEmail, email.trim().toLowerCase()));
-        if (user == null) throw new IllegalArgumentException("用户名与绑定邮箱不匹配");
-        user.setPasswordHash(encoder.encode(password));
-        users.updateById(user);
-        sessions.revokeAll(user.getId());
     }
 
     public String deleteAccount(Long userId) {

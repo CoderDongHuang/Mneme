@@ -103,6 +103,7 @@ export default function AuthPage() {
             <label className="auth-agreement"><input type="checkbox" checked={agreed} onChange={event => setAgreed(event.target.checked)} required /><span>{t('我已阅读并同意')} <Link to="/legal/terms" target="_blank" rel="noreferrer">{t('服务条款')}</Link> {t('与')} <Link to="/legal/privacy" target="_blank" rel="noreferrer">{t('隐私政策')}</Link></span></label>
           </>}
           {mode === 'reset' && <>
+            <p className="auth-demo">{t('仅已验证的邮箱可用于找回密码。请在登录后的个人资料中完成邮箱验证。')}</p>
             <label><span>{t("用户名")}</span><input value={resetForm.username} onChange={(e)=>setResetForm({...resetForm,username:e.target.value})} required placeholder={t("输入用户名")} /></label>
             <label><span>{t("绑定邮箱")}</span><input type="email" value={resetForm.email} onChange={(e)=>setResetForm({...resetForm,email:e.target.value})} required placeholder={t("输入已绑定邮箱")} /></label>
             {resetRequested && <><label><span>{t("邮箱验证码")}</span><input value={resetForm.token} onChange={(e)=>setResetForm({...resetForm,token:e.target.value})} required placeholder={t("输入 15 分钟内收到的验证码")} /></label><label><span>{t("新密码")}</span><input type="password" minLength="8" value={resetForm.newPassword} onChange={(e)=>setResetForm({...resetForm,newPassword:e.target.value})} required placeholder={t("至少 8 个字符")} /></label></>}

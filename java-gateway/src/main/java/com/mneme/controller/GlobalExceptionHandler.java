@@ -16,6 +16,13 @@ import com.mneme.exception.AdminAccessDeniedException;
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public org.springframework.http.ResponseEntity<Result<Void>> statusError(org.springframework.web.server.ResponseStatusException exception) {
+        var response = org.springframework.http.ResponseEntity.status(exception.getStatusCode());
+        if (exception.getStatusCode().value() == 429) response.header("Retry-After", "60");
+        return response.body(Result.error(exception.getStatusCode().value(), exception.getReason()));
+    }
+
     @ExceptionHandler(com.mneme.exception.MailDeliveryException.class)
     @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
     public Result<Void> mailUnavailable(com.mneme.exception.MailDeliveryException exception) {
@@ -34,7 +41,14 @@ public class GlobalExceptionHandler {
         return Result.error(401, exception.getMessage());
     }
 
-    @ExceptionHandler({IllegalArgumentException.class, MethodArgumentNotValidException.class})
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> invalidInput(MethodArgumentNotValidException exception) {
+        // Validation exceptions include rejected values, including credentials and tokens.
+        return Result.error(400, "请求参数格式不正确");
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Result<Void> badRequest(Exception exception) {
         return Result.error(400, exception.getMessage());
