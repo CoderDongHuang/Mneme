@@ -14,6 +14,7 @@ from typing import Any, Callable
 from app.agents.trace_store import agent_trace_store
 from app.core.config import settings
 from app.storage.mysql import connection as mysql_connection
+from app.storage.mysql import require_tables
 
 from app.knowledge.retriever import retrieve
 from app.memory.memory_store import memory_store
@@ -76,23 +77,9 @@ class ToolRegistry:
             self._init_governance_store()
 
     def _init_governance_store(self) -> None:
+        require_tables("agent_tool_usage", "agent_tool_approval")
         with mysql_connection() as connection:
             cursor = connection.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS agent_tool_usage (
-                    user_id VARCHAR(128) NOT NULL, usage_date DATE NOT NULL,
-                    used_units INT NOT NULL DEFAULT 0,
-                    PRIMARY KEY (user_id, usage_date)
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS agent_tool_approval (
-                    token_hash CHAR(64) PRIMARY KEY, tool_name VARCHAR(255) NOT NULL,
-                    user_id VARCHAR(128) NOT NULL, approved_by VARCHAR(128) NOT NULL,
-                    expires_at TIMESTAMP NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    INDEX idx_tool_approval_lookup (tool_name, user_id, expires_at)
-                )
-            """)
             cursor.execute("DELETE FROM agent_tool_usage WHERE usage_date < DATE_SUB(UTC_DATE(), INTERVAL 31 DAY)")
             cursor.execute("DELETE FROM agent_tool_approval WHERE expires_at < UTC_TIMESTAMP()")
             cursor.close()

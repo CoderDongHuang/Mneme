@@ -14,6 +14,22 @@ services:
       timeout: 3s
       retries: 20
 
+  mysql-users:
+    image: mysql:8.0
+    restart: "no"
+    entrypoint: ["sh", "/bootstrap/provision-users.sh"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
+      MYSQL_GATEWAY_PASSWORD: ${MYSQL_GATEWAY_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
+      MYSQL_AGENT_PASSWORD: ${MYSQL_AGENT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
+      MYSQL_MIGRATION_PASSWORD: ${MYSQL_MIGRATION_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
+    volumes:
+      - ./docker/mysql/provision-users.sh:/bootstrap/provision-users.sh:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+
   redis:
     image: redis:7-alpine
     environment:
@@ -103,8 +119,8 @@ services:
       - MYSQL_HOST=${MYSQL_HOST:-mysql}
       - MYSQL_PORT=${MYSQL_PORT:-3306}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-mneme}
-      - MYSQL_USER=${MYSQL_USER:-root}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-${MYSQL_ROOT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}}
+      - MYSQL_USER=mneme_agent
+      - MYSQL_PASSWORD=${MYSQL_AGENT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - SKIP_INTERNAL_AUTH=false
       - WORKING_MEMORY_WINDOW_SIZE=${WORKING_MEMORY_WINDOW_SIZE:-10}
@@ -132,6 +148,8 @@ services:
       # Persist existing local state without replacing the code baked into the image.
       - ./python-agent/data:/app/data
     depends_on:
+      mysql-users:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       qdrant:
@@ -149,8 +167,10 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/mneme?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
-      - SPRING_DATASOURCE_USERNAME=root
-      - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
+      - SPRING_DATASOURCE_USERNAME=mneme_gateway
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_GATEWAY_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
+      - SPRING_FLYWAY_USER=mneme_migrator
+      - SPRING_FLYWAY_PASSWORD=${MYSQL_MIGRATION_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}
       - REDIS_HOST=redis
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - NOTIFICATION_REDIS_ENABLED=true
@@ -196,12 +216,15 @@ services:
     volumes:
       - ./data:/data
     depends_on:
+      mysql-users:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
       python-agent:
-        condition: service_healthy
+        # Python waits for Flyway tables using SELECT only; do not make a cycle.
+        condition: service_started
 
 volumes:
   clamav-signatures:

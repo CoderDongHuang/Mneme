@@ -121,7 +121,10 @@ def main() -> None:
         print("Production release image references and data-only mounts verified")
         return
     env = {**os.environ, **IMAGE_ENV, "REDIS_PASSWORD": "isolated-check-only",
-           "MODEL_CONFIG_ENCRYPTION_KEY": "isolated-check-only-key-at-least-32-chars"}
+           "MODEL_CONFIG_ENCRYPTION_KEY": "isolated-check-only-key-at-least-32-chars",
+           "MYSQL_GATEWAY_PASSWORD": "isolated-gateway-password",
+           "MYSQL_AGENT_PASSWORD": "isolated-agent-password",
+           "MYSQL_MIGRATION_PASSWORD": "isolated-migration-password"}
     check_release(compose(env=env))
     check_release(compose("docker-compose.selfhost.yml", env=env))
     production = compose("docker-compose.prod.yml", env=env)

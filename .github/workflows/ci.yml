@@ -293,6 +293,8 @@ jobs:
         run: $COMPOSE exec -T python-agent python scripts/check_ingestion_lease.py
       - name: Verify Redis authentication and AOF pending-task recovery
         run: python scripts/verify_redis_durability.py
+      - name: Verify least privilege deployment roles and startup order
+        run: python scripts/verify_database_roles.py
       - name: Regress parsing, cancellation, filters and provider UI
         working-directory: frontend
         env:
