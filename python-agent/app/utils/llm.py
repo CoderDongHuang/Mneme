@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk
 from app.core.config import settings
 from app.core.user_model import user_model
 from app.core.logging import setup_logger
+from app.utils.async_stream import closing_async_iterator
 from app.core.metrics import (
     LLM_ACTIVE,
     LLM_BUDGET_BLOCKS,
@@ -387,8 +388,9 @@ class FallbackLLM:
         if personal is not None:
             LLM_ACTIVE.inc()
             try:
-                async for chunk in personal.get_client().astream(messages, **kwargs):
-                    yield chunk
+                async with closing_async_iterator(personal.get_client().astream(messages, **kwargs)) as stream:
+                    async for chunk in stream:
+                        yield chunk
             finally:
                 LLM_ACTIVE.dec()
             return
@@ -398,9 +400,10 @@ class FallbackLLM:
             model, using_fallback = self._selected()
             self._reserve_budget(messages, kwargs, using_fallback)
             try:
-                async for chunk in model.astream(messages, **kwargs):
-                    emitted = True
-                    yield chunk
+                async with closing_async_iterator(model.astream(messages, **kwargs)) as stream:
+                    async for chunk in stream:
+                        emitted = True
+                        yield chunk
                 if not using_fallback:
                     self._record_success()
                 LLM_REQUESTS.labels(
@@ -419,8 +422,9 @@ class FallbackLLM:
                 self._reserve_budget(messages, kwargs, True)
                 logger.info("流式请求切换至备用模型 %s", settings.fallback_model)
                 LLM_FALLBACKS.labels("stream").inc()
-                async for chunk in fallback.astream(messages, **kwargs):
-                    yield chunk
+                async with closing_async_iterator(fallback.astream(messages, **kwargs)) as stream:
+                    async for chunk in stream:
+                        yield chunk
                 LLM_REQUESTS.labels("stream", "fallback", "success").inc()
         finally:
             LLM_ACTIVE.dec()
