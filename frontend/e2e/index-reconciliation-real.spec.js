@@ -91,6 +91,8 @@ test('词法索引故障可见、持久任务重试且无原文件也能修复',
     const lexical = JSON.parse(python(`import json,sys\nfrom app.knowledge.lexical_index import lexical_index\nprint(json.dumps({'version':lexical_index.document_version(*sys.argv[1:4]),'matches':len(lexical_index.search(sys.argv[1],sys.argv[2],'reconciliation',5))}))`, user, kb.id, `doc_${doc.id}`).split('\n').at(-1))
     expect(lexical.version).toBe(report.vector_index_version)
     expect(lexical.matches).toBeGreaterThan(0)
+    // Repair is complete while the source is absent. Restore it before preview QA.
+    python(`from pathlib import Path\nimport sys\np=Path(sys.argv[1]).resolve()\nassert p.is_relative_to(Path('/data/files')) and not p.exists()\nPath(str(p)+'.index-qa-hold').rename(p)`, sourcePath)
     await page.goto('/knowledge')
     await page.getByRole('button', { name: 'index-repair.txt', exact: true }).click()
     await expect(health).toContainText('向量与词法索引版本一致')
