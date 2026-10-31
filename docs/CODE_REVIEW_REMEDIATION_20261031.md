@@ -190,3 +190,21 @@ P2-13 最终结果：本地 report-stack 真实补充回归 3 项通过；PR #62
 边界：目前没有供应商计费面板，费用/Token 格式提供纯工具和边界测试，不伪造真实账单；ID、API 载荷和计算不进行 locale 转换。其他可靠性待办仍分别处理，未因显示统一而关闭。
 
 CI 回归补充：新增真实用例后，原 report-stack 测试共享来源 IP，后续注册被生产限流明确拒绝（429）。测试 fixture 仅对注册的 429 按有效 Retry-After 最多等待重试两次；其他错误立即失败，不修改生产限流，不对整个失败用例盲目重试。修复后真实整栈与最终 CI 结果继续记录。
+
+P3-02 最终结果：PR #63 全部 9 项 CI（含完整整栈）通过，已于 2026-11-01 独立合并，提交 26503924b396e351d7b830df2883b775bca5cec0。
+
+## P2-10：持久解析代与暂停旧 worker 隔离
+
+对照要求：重新逐条核对原审查 P2-10 的建议和验收。Gateway 在任务租约事务内锁定文档并递增 index_generation，旧实体不能回退该字段；发布报告严格核对当前任务、文档 ID、状态和解析代。Python 独立持久 manifest 保存 latest/active，chunk ID 与 metadata 同时携带解析代；实际 Qdrant/FTS 写入、发布及清理使用数据库事务锁再次核验。单机 SQLite、多实例 MySQL；解析和模型调用在锁外。查询在排名前和返回前核对已发布代，删除先持久 tombstone，晚到写入不能复活。过时请求明确返回 409。
+
+验证：Java 全套 package 160 项通过，零失败、错误或跳过，包含真实 MySQL/Flyway V29→V30、并发分配、旧实体更新和事务回滚；补充取消路由与错误清空边界后，真实 MySQL 与入库服务定向 package 11 项再次通过。Python 3.11 Ruff 与最终全套 774 项通过，包括真实本地 Qdrant/SQLite 并发、三种检索渠道、写后失败、删除隔离、取消后重新解析、manifest 丢失及实际备份还原。最终前端 Lint 通过。匹配备份并部署真实站点后，MySQL 跨进程锁、进程退出释放和 tombstone 探针通过。
+
+最终补充镜像在真实 http://127.0.0.1:3000 完成桌面/移动 6 项回归：暂停旧 worker、新代完成再恢复、取消清理后公开接口重新解析、文档/知识库删除故障读回重试、限速上传取消及同批继续。原 worker 被明确拒绝，恢复前后全部向量内容/向量摘要与 FTS 版本相同，检索和网页预览只有最新代；就绪文档旧错误为空。桌面和移动截图已逐一检查，无横向溢出。证据 artifacts/p2-10-cancel-final-real.log、p2-10-python-cancel-final.log、p2-10-java-cancel-final.log、p2-10-java-cancel-targeted.log，截图另存 artifacts/p210-browser-cancel-final。
+
+补充边界：永久删除 tombstone 与取消暂停分开，取消清理失败仍不可检索，旧代始终拒绝；更高代成功发布可恢复同一文档。修正 MyBatis 默认忽略 null 导致成功后遗留旧错误的问题。完整 Python 回归发现 generation=0 的历史词法修复被误拒绝，已修正并重新全量通过，没有放宽断言。
+
+最终补充部署后又运行真实词法故障修复桌面/移动两项，均通过（artifacts/p2-10-cancel-reconciliation-real.log），确认无原文件、持久重试与既有索引路径兼容。
+
+回归过程：首轮脚本误写账号清理 URL，改为既有 /profile/account 后两种视口均通过；误用接口遗留的两个唯一 QA 账号已按准确 ID/名称核实，提交既有持久删除队列，读回任务 completed、用户为零。扩展删除/上传回归曾遇到本机 localhost 连接重置，保留失败日志并在最终部署后重跑，未修改业务断言或生产限流。正式 Dockerfile 构建遇到公网 PyPI 超时；本地最终镜像使用既有锁定依赖镜像复制同一源码，正式 CI 继续完整构建，不变更依赖锁和哈希校验。
+
+边界：不是跨 Qdrant/FTS/MySQL ACID。写后提交前崩溃可能留下不可见 staged chunk，后续解析清理；FTS 沿用可见待修复与持久 reconciliation。单用户写锁、SQLite 全库写锁和随文档数线性增长的过滤条件有容量边界。默认备份包含 manifest，自定义目录必须额外纳入匹配快照；旧新写入者不能混跑，升级回滚须整套匹配数据与镜像。细节见 docs/INDEX_GENERATIONS.md；账号其他存储的最终核验仍待 MN-006b，不提前标记完成。

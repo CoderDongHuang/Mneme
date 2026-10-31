@@ -8,8 +8,12 @@ public record IngestionRequest(
     @JsonProperty("file_path") String filePath,
     @JsonProperty("document_id") String documentId,
     @JsonProperty("task_id") String taskId,
-    @JsonProperty("source_name") String sourceName
+    @JsonProperty("source_name") String sourceName,
+    @JsonProperty("index_generation") Long indexGeneration
 ) {
+    public IngestionRequest(String userId, String knowledgeBaseId, String filePath, String documentId, String taskId, String sourceName) {
+        this(userId, knowledgeBaseId, filePath, documentId, taskId, sourceName, null);
+    }
     public IngestionRequest(String userId, String knowledgeBaseId, String filePath, String documentId, String taskId) {
         this(userId, knowledgeBaseId, filePath, documentId, taskId, null);
     }

@@ -86,11 +86,11 @@ python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 
 文档详情的“修复词法索引”创建持久化 `document_index_repair` 任务，自动尝试三次，失败后可从任务中心重试。它从当前租户 Qdrant 读取既有片段，只重建并读回 FTS，不读取原文件、不解析、不调用 Embedding。任务绑定预期向量版本，拒绝过时结果；原逐页预览、hash 和 OCR 警告保留，存在解析警告的文档仍为 partial。旧文档没有版本字段时需要重新解析一次以建立基线。
 
-该校验不提供跨 Qdrant/SQLite 的 ACID 事务，修复前后版本检查也不等同 generation fencing；暂停 worker 的写入隔离由独立 P2-10 实现处理。
+该校验不提供跨 Qdrant/SQLite 的 ACID 事务。配套 V30 通过持久 index_generation 与数据库写锁隔离暂停的旧 worker，检索仅接受 active 代；修复任务在同一写锁内核验版本。实现、升级与恢复边界见 [索引解析代](INDEX_GENERATIONS.md)。
 
 来源携带 SHA-256，打开原文时按 hash 选择对应文件、报告和页图；旧版本报告缺失会说明，未知 hash 拒绝。parser v3 提供有界逐页文字/文字层、OCR 区域置信度、正文/表格块和 chunk 摘要；达到预算标记截断。重复内容仅在原生文字页顶部/底部区域推断页眉页脚，不删除扫描页重复正文。
 
-运行中入库支持协作取消：检查解析、OCR/模型调用前后与索引阶段，Python 退出后清理再落库；重试用新 job ID。活动锁为 UUID owner 的 60 秒 Redis 租约，每 20 秒续租；续租与释放使用 owner 比较 Lua，每个处理检查点也校验 owner。先生成 embedding，确认租约后再写向量。续租失败停止后续处理，进程强杀后最多一个 TTL 释放。外部调用仍须返回或超时；该机制不是 fencing，暂停恰好发生在检查与写入之间的竞态、跨存储整体原子性仍不保证。不要强删仍在运行的任务锁。
+运行中入库支持协作取消：检查解析、OCR/模型调用前后与索引阶段，Python 退出后清理再落库；重试用新 job ID。活动锁为 UUID owner 的 60 秒 Redis 租约，每 20 秒续租；续租与释放使用 owner 比较 Lua，每个处理检查点也校验 owner。Embedding 在存储锁外生成，确认租约后还必须取得持久 generation 写锁并核验版本，才可修改索引。续租失败停止后续处理，进程强杀后最多一个 TTL 释放 Redis 租约，数据库事务由连接退出回滚。外部调用仍须返回或超时；跨存储整体原子性不保证。不要强删仍在运行的任务锁。
 
 真实模型裁判对 expected_answer_points 逐项语义评分，保留 index/matched/reason 与 coverage（scoring version 1）。要点缺失、重复索引或无理由拒绝通过。比较报告额外检查模型配置、QA/核验摘要与评分版本；瞬时熔断计数不参与版本一致性判断。小样本裁判仍非人工质量保证。
 

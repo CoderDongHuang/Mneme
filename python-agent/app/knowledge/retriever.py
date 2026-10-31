@@ -10,7 +10,8 @@ from app.core.privacy import require_cloud_processing
 from app.core.logging import setup_logger
 from app.core.telemetry import tracer
 from app.knowledge.lexical_index import lexical_index
-from app.knowledge.filters import DocumentScope
+from app.knowledge.filters import DocumentScope, MetadataScope
+from app.knowledge.generations import generation_store
 from app.knowledge.reranker import rerank
 from app.knowledge.vector_store import vector_store
 from app.utils.embedding import embeddings
@@ -259,6 +260,8 @@ def _supported_candidates(query: str, candidates: list[dict]) -> list[dict]:
 def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None, document_ids: list[str] | None = None) -> list[dict]:
     limit = max(1, min(top_k or settings.retriever_top_k, 20))
     collection = vector_store.get_collection(user_id, kb_id)
+    if collection is not None:
+        collection = MetadataScope(collection, generation_store.where(user_id, kb_id))
     if document_ids is not None:
         if not document_ids or collection is None:
             return []
@@ -318,7 +321,15 @@ def _retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None, do
         ),
     )
     candidates = _supported_candidates(query, _deduplicate(ranked, pool_size))
-    return rerank(query, candidates, limit)
+    ranked = rerank(query, candidates, limit)
+    # Publication may have changed during embedding/reranking. Never return a
+    # retired generation even when it was active at the start of this request.
+    latest = vector_store.get_collection(user_id, kb_id)
+    if latest is None:
+        return []
+    live_ids = set(MetadataScope(latest, generation_store.where(user_id, kb_id)).get(
+        ids=[item["id"] for item in ranked], include=[]).get("ids", [])) if ranked else set()
+    return [item for item in ranked if item["id"] in live_ids]
 
 
 def retrieve(user_id: str, kb_id: str, query: str, top_k: int | None = None, document_ids: list[str] | None = None) -> list[dict]:

@@ -44,6 +44,30 @@ def test_archive_round_trip_verification(tmp_path):
     }
 
 
+def test_backup_restores_published_generation_and_deletion_fence(tmp_path):
+    from app.knowledge.generations import GenerationStore, StaleGeneration
+
+    staging = tmp_path / "generation-staging"
+    database = staging / "payload/python-agent/data/index-generations.sqlite3"
+    store = GenerationStore(database)
+    store.begin("backup-user", "kb", "doc", 7)
+    with store.writing("backup-user", "kb", "doc", 7):
+        pass
+    store.tombstone("deleted-user")
+    (staging / "payload/mysql.sql").write_text("-- matched MySQL snapshot")
+    archive = tmp_path / "generations.tar.gz"
+    create_archive(staging, archive)
+    target = tmp_path / "restored-generations"
+    extract_verified(archive, target)
+    restored = GenerationStore(target / "payload/python-agent/data/index-generations.sqlite3")
+    assert restored.snapshot("backup-user")["libraries"]["kb"]["documents"]["doc"]["active"] == 7
+    with pytest.raises(StaleGeneration):
+        restored.begin("backup-user", "kb", "doc", 7)
+    with pytest.raises(StaleGeneration):
+        restored.begin("deleted-user", "kb", "late-doc", 8)
+    assert restored.begin("backup-user", "kb", "doc", 8) == 8
+
+
 @pytest.mark.parametrize("production", [False, True])
 def test_model_key_restore_preflight_requires_original_versions(monkeypatch, production):
     from scripts import backup_restore as module

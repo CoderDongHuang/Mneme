@@ -219,6 +219,9 @@ class TaskLeaseConcurrencyTest {
             var entered = new CountDownLatch(1); var resume = new CountDownLatch(1);
             var http = mock(RestTemplate.class); var storage = mock(ObjectStorageService.class);
             var documents = mock(KnowledgeDocumentMapper.class); var notifications = mock(NotificationService.class);
+            var document = new com.mneme.entity.KnowledgeDocument(); document.setParseTaskId(task.getTaskId());
+            when(documents.selectForUpdate(9L)).thenReturn(document);
+            when(documents.advanceGeneration(9L, 0L)).thenReturn(1);
             when(storage.materialize(anyString())).thenReturn(root.resolve("source.txt"));
             when(http.postForObject(anyString(), any(), eq(IngestionResult.class))).thenAnswer(call -> {
                 entered.countDown(); assertThat(resume.await(20, TimeUnit.SECONDS)).isTrue();
@@ -237,7 +240,10 @@ class TaskLeaseConcurrencyTest {
                     }
                 } finally { resume.countDown(); }
                 running.get(10, TimeUnit.SECONDS);
-                verifyNoInteractions(documents, notifications);
+                verify(documents).selectForUpdate(9L);
+                verify(documents).advanceGeneration(9L, 0L);
+                verify(documents, never()).updateById(any(com.mneme.entity.KnowledgeDocument.class));
+                verifyNoInteractions(notifications);
                 assertThat(state(TaskLeaseService.Queue.PROCESSING, id)).isEqualTo("completed");
             }
         }

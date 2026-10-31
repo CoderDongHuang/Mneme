@@ -94,6 +94,9 @@ class Settings:
     lexical_index_path: str = os.getenv(
         "LEXICAL_INDEX_PATH", str(PYTHON_AGENT_DIR / "data" / "lexical-index.sqlite3")
     )
+    index_generation_path: str = os.getenv(
+        "INDEX_GENERATION_PATH", str(PYTHON_AGENT_DIR / "data" / "index-generations.sqlite3")
+    )
     memory_version_store_path: str = os.getenv(
         "MEMORY_VERSION_STORE_PATH",
         str(PYTHON_AGENT_DIR / "data" / "memory_versions.sqlite3"),

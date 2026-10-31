@@ -25,6 +25,7 @@ for _name, _relative in {
     "CHROMA_PATH": "legacy-chroma",
     "SESSION_DATA_PATH": "sessions",
     "LEXICAL_INDEX_PATH": "lexical.sqlite3",
+    "INDEX_GENERATION_PATH": "index-generations.sqlite3",
     "MEMORY_VERSION_STORE_PATH": "memory_versions.sqlite3",
     "AGENT_TRACE_STORE_PATH": "agent_traces.sqlite3",
     "UPLOAD_DIR": "uploads",
@@ -38,6 +39,14 @@ os.environ["MNEME_OFFLINE_EMBEDDINGS"] = "true"
 os.environ["MNEME_DEMO_MODE"] = "false"
 os.environ["DEEPSEEK_API_KEY"] = "ci-dummy-key"
 os.environ["DASHSCOPE_API_KEY"] = "ci-dummy-key"
+
+
+@pytest.fixture(autouse=True)
+def isolated_generation_manifest(tmp_path, monkeypatch):
+    from app.knowledge.generations import GenerationStore, generation_store
+    path = tmp_path / "generations.sqlite3"
+    GenerationStore(path)
+    monkeypatch.setattr(generation_store, "path", path)
 
 
 @pytest.fixture
