@@ -10,20 +10,26 @@ import { useAuth } from '../state/AuthContext'
 import { usePreferences } from '../state/PreferencesContext'
 
 const navItems = [
-  { to: '/chat', label: '对话', icon: MessageSquareText },
-  { to: '/knowledge', label: '知识库', icon: Library },
-  { to: '/memory', label: '学习记忆', icon: BrainCircuit },
-  { to: '/review', label: '复习计划', icon: CalendarDays },
-  { to: '/quiz', label: '知识测验', icon: ClipboardCheck },
-  { to: '/workspace', label: '阅读工作台', icon: PanelsTopLeft },
-  { to: '/analytics', label: '学习分析', icon: Activity },
-  { to: '/tasks', label: '任务中心', icon: ListTodo },
-  { to: '/profile', label: '个人资料', icon: UserRound },
-  { to: '/legal/terms', label: '法律与协议', icon: FileText },
-  { to: '/recovery', label: '备份恢复', icon: ArchiveRestore },
-  { to: '/privacy', label: '数据与隐私', icon: ShieldCheck },
-  { to: '/operations', label: '管理员运维', icon: Activity, admin: true },
-  { to: '/settings', label: '设置', icon: Settings },
+  { to: '/chat', label: '对话', icon: MessageSquareText, group: 'learning' },
+  { to: '/knowledge', label: '知识库', icon: Library, group: 'learning' },
+  { to: '/memory', label: '学习记忆', icon: BrainCircuit, group: 'learning' },
+  { to: '/review', label: '复习计划', icon: CalendarDays, group: 'learning' },
+  { to: '/quiz', label: '知识测验', icon: ClipboardCheck, group: 'learning' },
+  { to: '/analytics', label: '学习分析', icon: Activity, group: 'learning' },
+  { to: '/workspace', label: '阅读工作台', icon: PanelsTopLeft, group: 'workspace' },
+  { to: '/tasks', label: '任务中心', icon: ListTodo, group: 'workspace' },
+  { to: '/profile', label: '个人资料', icon: UserRound, group: 'account' },
+  { to: '/legal/terms', label: '法律与协议', icon: FileText, group: 'account' },
+  { to: '/recovery', label: '备份恢复', icon: ArchiveRestore, group: 'account' },
+  { to: '/privacy', label: '数据与隐私', icon: ShieldCheck, group: 'account' },
+  { to: '/settings', label: '设置', icon: Settings, group: 'account' },
+  { to: '/operations', label: '管理员运维', icon: Activity, group: 'admin', admin: true },
+]
+const navGroups = [
+  { id: 'learning', label: '学习空间' },
+  { id: 'workspace', label: '工作空间' },
+  { id: 'account', label: '账户与设置' },
+  { id: 'admin', label: '管理' },
 ]
 
 export default function AppShell() {
@@ -34,6 +40,9 @@ export default function AppShell() {
   const [themeError, setThemeError] = useState('')
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const activeItem = navItems.find(item => item.to === pathname || (item.to === '/legal/terms' && pathname.startsWith('/legal/')))
+  const activeGroup = navGroups.find(group => group.id === activeItem?.group)
+  const groups = navGroups.map(group => ({ ...group, items: navItems.filter(item => item.group === group.id && (!item.admin || isAdmin)) })).filter(group => group.items.length)
   const mainRef = useRef(null)
   const navRef = useRef(null)
   const toggleRef = useRef(null)
@@ -76,16 +85,18 @@ export default function AppShell() {
       <aside ref={navRef} id="global-navigation" className={`global-nav ${open ? 'is-open' : ''}`} inert={mobile && !open}>
         <BrandLockup className="brand-mark" onClick={() => setOpen(false)} />
         <nav aria-label={t("主要导航")}>
-          {navItems.filter(item => !item.admin || isAdmin).map(({ to, label, icon: Icon }, index) => (
-            <div key={to} className={index > 0 && to === '/tasks' ? 'nav-section-divider' : ''}><NavLink to={to} onClick={() => setOpen(false)} className={({ isActive }) => isActive ? 'active' : ''}>
-              <Icon size={19} strokeWidth={1.8} />
-              <span>{t(label)}</span>
-            </NavLink></div>
+          {groups.map(group => (
+            <section className="nav-group" key={group.id} aria-labelledby={`nav-group-${group.id}`}>
+              <h2 id={`nav-group-${group.id}`}>{t(group.label)}</h2>
+              {group.items.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => isActive ? 'active' : ''}>
+                <Icon size={19} strokeWidth={1.8} /><span>{t(label)}</span>
+              </NavLink>)}
+            </section>
           ))}
         </nav>
         <div className="nav-note"><img src={logo} alt="" /><p>{t('知识是时间的礼物，')}<br />{t('而记忆是你的翅膀。')}</p><small>— Mneme</small></div>
       </aside>
-      {!['/chat','/workspace'].includes(pathname) && <div className="reference-topbar"><span>{t('学习空间')}</span><span>/</span><strong>{t(navItems.find(item=>item.to===pathname || (item.to === '/legal/terms' && pathname.startsWith('/legal/')))?.label || 'Mneme')}</strong></div>}
+      {!['/chat','/workspace'].includes(pathname) && <div className="reference-topbar"><span>{t(activeGroup?.label || 'Mneme')}</span><span>/</span><strong>{t(activeItem?.label || 'Mneme')}</strong></div>}
       <div className="shell-account">
           <button className="icon-button" aria-label={t('切换主题')} onClick={async () => { try { await save({ ...preferences, theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' }); setThemeError('') } catch (e) { setThemeError(e.message) } }}>{preferences.theme === 'dark' ? <Moon size={19} /> : <Sun size={19} />}</button>
         <div className="nav-profile">
