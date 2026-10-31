@@ -97,6 +97,7 @@ mneme:
   password-reset-from: ${PASSWORD_RESET_FROM:}
   admin-api-token: ${ADMIN_API_TOKEN:}
   account-deletion-max-attempts: ${ACCOUNT_DELETION_MAX_ATTEMPTS:8}
+  task-lease-seconds: ${TASK_LEASE_SECONDS:300}
   account-deletion-poll-delay-ms: ${ACCOUNT_DELETION_POLL_DELAY_MS:3000}
   notification-redis-enabled: ${NOTIFICATION_REDIS_ENABLED:false}
   malware-scan-enabled: ${MALWARE_SCAN_ENABLED:false}

@@ -1,7 +1,6 @@
 package com.mneme.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mneme.dto.internal.IngestionRequest;
@@ -17,7 +16,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.client.RestTemplate;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -42,11 +40,10 @@ public class ProcessingTaskService {
     private final NotificationService notificationService;
     private final JdbcTemplate jdbc;
     private final ObjectStorageService storage;
+    private final TaskLeaseService leases;
 
     @Autowired(required = false)
     private OperationLogService operationLog;
-    @Autowired(required = false)
-    private org.springframework.transaction.PlatformTransactionManager transactionManager;
     @Autowired(required = false)
     private org.springframework.data.redis.core.StringRedisTemplate cancellationRedis;
 
@@ -65,7 +62,8 @@ public class ProcessingTaskService {
         MeterRegistry meterRegistry,
         NotificationService notificationService,
         JdbcTemplate jdbc,
-        ObjectStorageService storage
+        ObjectStorageService storage,
+        TaskLeaseService leases
     ) {
         this.taskMapper = taskMapper;
         this.documentMapper = documentMapper;
@@ -76,6 +74,7 @@ public class ProcessingTaskService {
         this.notificationService = notificationService;
         this.jdbc = jdbc;
         this.storage = storage;
+        this.leases = leases;
     }
 
     @Scheduled(fixedDelayString = "${mneme.task-poll-delay-ms:2000}")
@@ -89,54 +88,64 @@ public class ProcessingTaskService {
                 .last("LIMIT 5")
         );
         for (ProcessingTask task : tasks) {
-            if (claim(task)) {
-                ProcessingTask claimed = taskMapper.selectById(task.getId());
-                if (claimed == null) continue;
-                notificationService.publish(claimed);
-                execute(claimed);
-            }
+            run(task, false);
         }
     }
 
-    private boolean claim(ProcessingTask task) {
-        if ("document_ingest".equals(task.getTaskType()) && cancellationRedis != null
-            && Boolean.TRUE.equals(cancellationRedis.hasKey("mneme:ingestion:active:" + task.getUserId() + ":" + task.getTaskId()))) return false;
-        boolean claimed = taskMapper.update(null, new LambdaUpdateWrapper<ProcessingTask>()
-            .eq(ProcessingTask::getId, task.getId())
-            .in(ProcessingTask::getStatus, "pending", "retry")
-            .set(ProcessingTask::getStatus, "processing")
-            .set(ProcessingTask::getLockedAt, LocalDateTime.now(java.time.ZoneOffset.UTC))
-            .set(ProcessingTask::getLockedBy, hostName())) == 1;
-        if (claimed) record(task, "claim", "processing", Map.of("locked_by", hostName()), null);
-        return claimed;
+    private void run(ProcessingTask task, boolean cleanup) {
+        if ("document_ingest".equals(task.getTaskType()) && ingestionActive(task)) return;
+        var lease = leases.claim(TaskLeaseService.Queue.PROCESSING, task.getId(), cleanup);
+        if (lease == null) return;
+        try (lease) {
+            lease.startHeartbeat();
+            // Keep the claimed attempt, not a subsequent owner's mutable row snapshot.
+            lease.write(row -> {
+                task.setStatus(String.valueOf(row.get("status")));
+                task.setAttemptCount(((Number) row.get("attempt_count")).intValue());
+                record(task, "claim", task.getStatus(), Map.of("owner", lease.owner(), "fence", lease.fence()), null);
+                notificationService.publish(task);
+                return null;
+            });
+            if (cleanup) finishCancelled(task, lease);
+            else execute(task, lease);
+        } catch (TaskLeaseService.LostLease lost) {
+            log.info("任务执行权已转移: {}", task.getTaskId());
+        } catch (Exception error) {
+            log.warn("任务等待恢复清理: {}", task.getTaskId());
+        }
     }
 
-    private void execute(ProcessingTask task) {
+    private void execute(ProcessingTask task, TaskLeaseService.Lease lease) {
         try {
+            lease.renew();
             if ("document_ingest".equals(task.getTaskType())) {
-                ingest(task);
+                ingest(task, lease);
             } else if ("document_delete".equals(task.getTaskType())) {
-                deleteDocument(task);
+                deleteDocument(task, lease);
             } else if ("knowledge_base_delete".equals(task.getTaskType())) {
-                deleteKnowledgeBase(task);
+                deleteKnowledgeBase(task, lease);
             } else {
                 throw new IllegalArgumentException("未知任务类型: " + task.getTaskType());
             }
-            if (!"completed".equals(task.getStatus()) && finishCancelled(task)) return;
-            if ("completed".equals(task.getStatus()) || complete(task)) {
+            if ("cancelled".equals(task.getStatus()) || "cancelling".equals(task.getStatus())) return;
+            if (!"completed".equals(task.getStatus()) && finishCancelled(task, lease)) return;
+            if ("completed".equals(task.getStatus())) {
                 record(task, "complete", "completed", Map.of(), null);
                 meterRegistry.counter("mneme.processing.tasks", "type", task.getTaskType(), "outcome", "completed").increment();
             }
+        } catch (TaskLeaseService.LostLease lost) {
+            log.info("任务结果因执行权转移而丢弃: {}", task.getTaskId());
         } catch (Exception error) {
-            try { retryOrFail(task, error); }
+            try { retryOrFail(task, lease, error); }
             catch (Exception cleanupError) { log.warn("任务等待恢复清理: {}", task.getTaskId(), cleanupError); }
         }
     }
 
-    private void ingest(ProcessingTask task) throws Exception {
+    private void ingest(ProcessingTask task, TaskLeaseService.Lease lease) throws Exception {
         JsonNode payload = objectMapper.readTree(task.getPayload());
         Path localFile = storage.materialize(payload.path("file_path").asText());
-        record(task, "source_ready", "processing", Map.of(), null);
+        lease.renew();
+        lease.write(row -> { record(task, "source_ready", "processing", Map.of(), null); return null; });
         IngestionRequest request = new IngestionRequest(
             payload.path("user_id").asText(),
             payload.path("kb_id").asText(),
@@ -146,21 +155,21 @@ public class ProcessingTaskService {
         IngestionResult result = restTemplate.postForObject(
             pythonAgentUrl + "/api/v1/knowledge/internal/ingest", request, IngestionResult.class
         );
-        if (finishCancelled(task)) return;
+        if (finishCancelled(task, lease)) return;
         if (result == null || !("done".equals(result.status()) || "partial".equals(result.status()))) {
             throw new IllegalStateException("Python Agent 未完成解析任务");
         }
-        if (transactionManager != null) {
-            new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-                try { persistIngestion(task, result); }
-                catch (Exception error) { throw new IllegalStateException(error); }
-            });
-        } else persistIngestion(task, result);
+        boolean persisted = lease.write(row -> {
+            if (!"processing".equals(row.get("status"))) return false;
+            try { persistIngestion(task, result, lease); }
+            catch (TaskLeaseService.LostLease lost) { throw lost; }
+            catch (Exception error) { throw new IllegalStateException(error); }
+            return true;
+        });
+        if (!persisted) finishCancelled(task, lease);
     }
 
-    private void persistIngestion(ProcessingTask task, IngestionResult result) throws Exception {
-        if (task.getTaskId() != null) jdbc.queryForList("SELECT id FROM processing_task WHERE task_id=? FOR UPDATE", task.getTaskId());
-        if (finishCancelled(task)) return;
+    private void persistIngestion(ProcessingTask task, IngestionResult result, TaskLeaseService.Lease lease) throws Exception {
         record(task, "index_ready", "processing", Map.of("chunks", result.chunks()), null);
         KnowledgeDocument document = documentMapper.selectById(task.getAggregateId());
         if (document != null) {
@@ -178,10 +187,10 @@ public class ProcessingTaskService {
                 document.getParseReport(), document.getId(), String.valueOf(hash));
         }
         // Publish document readiness and task completion under the same cancellation lock.
-        completeLocked(task);
+        completeLocked(task, lease);
     }
 
-    private void deleteDocument(ProcessingTask task) throws Exception {
+    private void deleteDocument(ProcessingTask task, TaskLeaseService.Lease lease) throws Exception {
         JsonNode payload = objectMapper.readTree(task.getPayload());
         String userId = payload.path("user_id").asText();
         String kbId = payload.path("kb_id").asText();
@@ -192,19 +201,24 @@ public class ProcessingTaskService {
             "SELECT file_path FROM knowledge_document_version WHERE document_id=?", task.getAggregateId());
         if (versions.isEmpty()) versions = List.of(Map.of("file_path", payload.path("file_path").asText()));
         for (Map<String, Object> version : versions) {
+            lease.renew();
             storage.delete(String.valueOf(version.get("file_path")));
         }
-        documentMapper.deleteById(task.getAggregateId());
+        lease.write(row -> {
+            documentMapper.deleteById(task.getAggregateId());
+            completeLocked(task, lease);
+            return null;
+        });
     }
 
-    @Transactional
-    protected void deleteKnowledgeBase(ProcessingTask task) throws Exception {
+    private void deleteKnowledgeBase(ProcessingTask task, TaskLeaseService.Lease lease) throws Exception {
         JsonNode payload = objectMapper.readTree(task.getPayload());
         String userId = payload.path("user_id").asText();
         String knowledgeBaseId = payload.path("kb_id").asText();
         restTemplate.delete(
             pythonAgentUrl + "/api/v1/knowledge/admin/collections/" + knowledgeBaseId + "?user_id=" + userId
         );
+        lease.renew();
         storage.deleteKnowledgeBasePrefix(Long.valueOf(userId), Long.valueOf(knowledgeBaseId));
         Path root = Path.of(fileStoragePath).toAbsolutePath().normalize();
         Path directory = root.resolve(userId).resolve(knowledgeBaseId).normalize();
@@ -212,12 +226,16 @@ public class ProcessingTaskService {
             Path checkedDirectory = checkedStoragePath(directory.toString(), false);
             try (var paths = Files.walk(checkedDirectory)) {
                 paths.sorted(Comparator.reverseOrder()).forEach(path -> {
-                    try { Files.deleteIfExists(path); }
+                    try { lease.renew(); Files.deleteIfExists(path); }
                     catch (Exception error) { throw new IllegalStateException(error); }
                 });
             }
         }
-        knowledgeBaseMapper.deleteById(task.getAggregateId());
+        lease.write(row -> {
+            knowledgeBaseMapper.deleteById(task.getAggregateId());
+            completeLocked(task, lease);
+            return null;
+        });
     }
 
     private Path checkedStoragePath(String rawPath, boolean requireRegularFile) {
@@ -237,53 +255,50 @@ public class ProcessingTaskService {
         return path;
     }
 
-    private boolean complete(ProcessingTask task) {
-        if (transactionManager != null) {
-            return Boolean.TRUE.equals(new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(status -> completeLocked(task)));
-        } else return completeLocked(task);
-    }
-
-    private boolean completeLocked(ProcessingTask task) {
-        if (task.getTaskId() != null) jdbc.queryForList("SELECT id FROM processing_task WHERE task_id=? FOR UPDATE", task.getTaskId());
-        if (finishCancelled(task)) return false;
+    private void completeLocked(ProcessingTask task, TaskLeaseService.Lease lease) {
+        jdbc.update("UPDATE processing_task SET error_code=NULL WHERE id=? AND owner_token=? AND lease_fence=?",
+            task.getId(), lease.owner(), lease.fence());
+        lease.finish("completed", null);
         task.setStatus("completed");
         task.setLockedAt(null);
         task.setLockedBy(null);
         task.setErrorCode(null);
         task.setErrorMessage(null);
-        taskMapper.updateById(task);
         notificationService.publish(task);
-        return true;
     }
 
-    private void retryOrFail(ProcessingTask task, Exception error) {
-        if (transactionManager != null) {
-            new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status -> retryOrFailLocked(task, error));
-        } else retryOrFailLocked(task, error);
+    private void retryOrFail(ProcessingTask task, TaskLeaseService.Lease lease, Exception error) {
+        if (finishCancelled(task, lease)) return;
+        boolean updated = lease.write(row -> {
+            if (!"processing".equals(row.get("status"))) return false;
+            retryOrFailLocked(task, lease, error);
+            return true;
+        });
+        if (!updated) finishCancelled(task, lease);
     }
 
-    private void retryOrFailLocked(ProcessingTask task, Exception error) {
-        if (task.getTaskId() != null) jdbc.queryForList("SELECT id FROM processing_task WHERE task_id=? FOR UPDATE", task.getTaskId());
-        if (finishCancelled(task)) return;
+    private void retryOrFailLocked(ProcessingTask task, TaskLeaseService.Lease lease, Exception error) {
         int attempts = (task.getAttemptCount() == null ? 0 : task.getAttemptCount()) + 1;
         int maxAttempts = task.getMaxAttempts() == null ? 3 : task.getMaxAttempts();
         boolean exhausted = attempts >= maxAttempts;
         task.setAttemptCount(attempts);
         task.setStatus(exhausted ? "failed" : "retry");
-        task.setNextAttemptAt(LocalDateTime.now(java.time.ZoneOffset.UTC).plusSeconds(Math.min(300, 1L << attempts)));
+        task.setNextAttemptAt(LocalDateTime.now(java.time.ZoneOffset.UTC).plusSeconds(Math.min(300, 1L << Math.min(attempts, 10))));
         task.setLockedAt(null);
         task.setLockedBy(null);
         task.setErrorCode(error.getClass().getSimpleName());
         task.setErrorMessage(error.getMessage());
-        taskMapper.updateById(task);
-        notificationService.publish(task);
+        jdbc.update("UPDATE processing_task SET attempt_count=?,next_attempt_at=TIMESTAMPADD(SECOND,?,UTC_TIMESTAMP(6)),error_code=?"
+            + " WHERE id=? AND owner_token=? AND lease_fence=?", attempts, Math.min(300, 1L << Math.min(attempts, 10)),
+            task.getErrorCode(), task.getId(), lease.owner(), lease.fence());
+        lease.finish(task.getStatus(), error.getMessage());
         record(task, "retry_or_fail", task.getStatus(), Map.of("attempts", attempts), error);
         meterRegistry.counter(
             "mneme.processing.tasks", "type", task.getTaskType(), "outcome", exhausted ? "failed" : "retry"
         ).increment();
         if ("document_ingest".equals(task.getTaskType())) {
             KnowledgeDocument document = documentMapper.selectById(task.getAggregateId());
-            if (document != null) {
+            if (document != null && task.getTaskId().equals(document.getParseTaskId())) {
                 document.setStatus(exhausted ? "failed" : "parsing");
                 document.setErrorMessage(error.getMessage());
                 documentMapper.updateById(document);
@@ -298,56 +313,48 @@ public class ProcessingTaskService {
             }
         }
         log.warn("任务执行失败: taskId={}, attempt={}/{}", task.getTaskId(), attempts, task.getMaxAttempts(), error);
+        notificationService.publish(task);
     }
 
     private void recoverAbandonedTasks() {
-        // Cancel requests survive JVM restarts. Wait beyond the bounded ingestion HTTP timeout
-        // before cleanup, so an abandoned Python request cannot write after acknowledgement.
+        leases.recover(TaskLeaseService.Queue.PROCESSING);
         List<ProcessingTask> cancelled = taskMapper.selectList(new LambdaQueryWrapper<ProcessingTask>()
             .eq(ProcessingTask::getStatus, "cancelling")
-            .lt(ProcessingTask::getLockedAt, LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(5)).last("LIMIT 10"));
+            .last("AND (owner_token IS NULL OR lease_until<=UTC_TIMESTAMP(6)) LIMIT 10"));
         for (ProcessingTask task : cancelled) {
-            try { finishCancelled(task); } catch (Exception error) { log.warn("取消清理等待重试: {}", task.getTaskId()); }
-        }
-        List<ProcessingTask> abandoned = taskMapper.selectList(new LambdaQueryWrapper<ProcessingTask>()
-            .eq(ProcessingTask::getStatus, "processing")
-            .lt(ProcessingTask::getLockedAt, LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(5)).last("LIMIT 10"));
-        for (ProcessingTask task : abandoned) {
-            if ("document_ingest".equals(task.getTaskType()) && cancellationRedis != null
-                && Boolean.TRUE.equals(cancellationRedis.hasKey("mneme:ingestion:active:" + task.getUserId() + ":" + task.getTaskId()))) continue;
-            taskMapper.update(null, new LambdaUpdateWrapper<ProcessingTask>()
-                .eq(ProcessingTask::getId, task.getId()).eq(ProcessingTask::getStatus, "processing")
-                .lt(ProcessingTask::getLockedAt, LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(5))
-                .set(ProcessingTask::getStatus, "retry").set(ProcessingTask::getNextAttemptAt, LocalDateTime.now(java.time.ZoneOffset.UTC))
-                .set(ProcessingTask::getLockedAt, null).set(ProcessingTask::getLockedBy, null));
+            run(task, true);
         }
     }
 
-    private boolean finishCancelled(ProcessingTask task) {
+    private boolean finishCancelled(ProcessingTask task, TaskLeaseService.Lease lease) {
         if (!"document_ingest".equals(task.getTaskType()) || task.getTaskId() == null) return false;
-        List<Map<String, Object>> rows = jdbc.queryForList("SELECT status FROM processing_task WHERE task_id=?", task.getTaskId());
-        if (rows.isEmpty()) return false;
-        String status = String.valueOf(rows.get(0).get("status"));
-        if ("cancelled".equals(status)) return true;
+        String status = lease.write(row -> String.valueOf(row.get("status")));
         if (!"cancelling".equals(status)) return false;
-        if (cancellationRedis != null && Boolean.TRUE.equals(cancellationRedis.hasKey("mneme:ingestion:active:" + task.getUserId() + ":" + task.getTaskId()))) return true;
+        task.setStatus("cancelling");
+        if (ingestionActive(task)) return true;
         try {
             JsonNode payload = objectMapper.readTree(task.getPayload());
             restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/documents/" + payload.path("document_id").asText()
                 + "?user_id=" + payload.path("user_id").asText() + "&kb_id=" + payload.path("kb_id").asText());
-            jdbc.update("UPDATE knowledge_document SET status='failed',chunk_count=0,error_message='任务已由用户取消' WHERE id=? AND parse_task_id=?", task.getAggregateId(), task.getTaskId());
-            jdbc.update("UPDATE processing_task SET status='cancelled',locked_at=NULL,locked_by=NULL WHERE task_id=? AND status='cancelling'", task.getTaskId());
+            lease.write(row -> {
+                jdbc.update("UPDATE knowledge_document SET status='failed',chunk_count=0,error_message='任务已由用户取消' WHERE id=? AND parse_task_id=?", task.getAggregateId(), task.getTaskId());
+                lease.finish("cancelled", null);
+                record(task, "cancel", "cancelled", Map.of(), null);
+                task.setStatus("cancelled");
+                notificationService.publish(task);
+                return null;
+            });
             task.setStatus("cancelled");
-            notificationService.publish(task);
-            record(task, "cancel", "cancelled", Map.of(), null);
             return true;
+        } catch (TaskLeaseService.LostLease lost) { throw lost;
         } catch (Exception error) {
             throw new IllegalStateException("取消后的索引清理尚未完成", error);
         }
     }
 
-    private String hostName() {
-        return System.getenv().getOrDefault("HOSTNAME", "local-worker");
+    private boolean ingestionActive(ProcessingTask task) {
+        return cancellationRedis != null && Boolean.TRUE.equals(cancellationRedis.hasKey(
+            "mneme:ingestion:active:" + task.getUserId() + ":" + task.getTaskId()));
     }
 
     private void record(
