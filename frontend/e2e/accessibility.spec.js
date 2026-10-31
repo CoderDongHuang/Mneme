@@ -87,6 +87,29 @@ for (const [path, title] of [['tasks', '任务中心'], ['recovery', '备份与�
   })
 }
 
+test('导航分组按角色展示且个人设置不属于管理员组', async ({ page }, testInfo) => {
+  await page.goto('/settings')
+  await expect(page.getByRole('heading', { name: '设置', exact: true })).toBeVisible()
+  if (page.viewportSize().width < 1100) await page.getByRole('button', { name: '打开导航', exact: true }).click()
+  const nav = page.getByRole('navigation', { name: '主要导航' })
+  await expect(nav.getByRole('heading')).toHaveText(['学习空间', '工作空间', '账户与设置', '管理'])
+  await expect(nav.getByRole('region', { name: '管理', exact: true }).getByRole('link')).toHaveText(['管理员运维'])
+  await expect(nav.getByRole('region', { name: '账户与设置' }).getByRole('link')).toHaveText(['个人资料', '法律与协议', '备份恢复', '数据与隐私', '设置'])
+  await nav.getByRole('link', { name: '管理员运维', exact: true }).scrollIntoViewIfNeeded()
+  await expect(nav.getByRole('link', { name: '管理员运维', exact: true })).toBeInViewport()
+  await page.screenshot({ path: testInfo.outputPath('admin-navigation.png'), fullPage: true })
+  await page.route('**/api/v1/profile', route => route.fulfill(ok({ userId: 1, username: 'tester', role: 'user' })))
+  await page.goto('/settings')
+  await expect(page.getByRole('heading', { name: '设置', exact: true })).toBeVisible()
+  if (page.viewportSize().width < 1100) await page.getByRole('button', { name: '打开导航', exact: true }).click()
+  await expect(nav.getByRole('heading')).toHaveText(['学习空间', '工作空间', '账户与设置'])
+  await expect(nav.getByRole('link')).toHaveCount(13)
+  await expect(nav.getByRole('link', { name: '管理员运维', exact: true })).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath('user-navigation.png'), fullPage: true })
+  await page.goto('/operations')
+  await expect(page.getByRole('heading', { name: '无访问权限' })).toBeVisible()
+})
+
 test('键盘跳转、导航焦点隔离与路由焦点', async ({ page }) => {
   await page.goto('/tasks')
   await expect(page.getByRole('heading', { name: '任务中心' })).toBeVisible()
@@ -103,7 +126,7 @@ test('键盘跳转、导航焦点隔离与路由焦点', async ({ page }) => {
     await page.keyboard.press('Shift+Tab')
     await expect(page.getByRole('button', { name: '关闭导航', exact: true })).toBeFocused()
     await page.keyboard.press('Shift+Tab')
-    await expect(page.getByRole('link', { name: '设置', exact: true })).toBeFocused()
+    await expect(page.getByRole('link', { name: '管理员运维', exact: true })).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(page.getByRole('button', { name: '关闭导航', exact: true })).toBeFocused()
     await page.keyboard.press('Escape')
