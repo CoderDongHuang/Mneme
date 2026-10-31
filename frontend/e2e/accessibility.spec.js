@@ -132,9 +132,24 @@ test('键盘跳转、导航焦点隔离与路由焦点', async ({ page }) => {
     await page.keyboard.press('Escape')
     await expect(toggle).toBeFocused()
     await expect(page.locator('#global-navigation')).toHaveAttribute('inert', '')
+    await page.evaluate(() => {
+      window.navigationFrames = []
+      window.originalNavigationRaf = window.requestAnimationFrame
+      window.requestAnimationFrame = callback => window.navigationFrames.push(callback)
+    })
     await toggle.click()
   }
-  await page.getByRole('link', { name: '学习分析', exact: true }).focus()
+  const analyticsLink = page.getByRole('link', { name: '学习分析', exact: true })
+  await analyticsLink.focus()
+  if (page.viewportSize().width < 760) {
+    await page.evaluate(() => {
+      window.requestAnimationFrame = window.originalNavigationRaf
+      for (const callback of window.navigationFrames) callback(performance.now())
+      delete window.navigationFrames
+      delete window.originalNavigationRaf
+    })
+  }
+  await expect(analyticsLink).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: '学习分析', exact: true })).toBeVisible()
   await expect(page.getByRole('main')).toBeFocused()

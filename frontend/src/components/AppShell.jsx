@@ -1,6 +1,6 @@
 import { t, useI18n } from '../i18n'
 import { Activity, ArchiveRestore, BrainCircuit, CalendarDays, ClipboardCheck, Library, ListTodo, LogOut, Menu, MessageSquareText, Moon, PanelsTopLeft, Settings, ShieldCheck, Sun, X, UserRound, FileText } from 'lucide-react'
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { endpoints } from '../api/client'
 import logo from '../assets/mneme-logo.svg'
@@ -54,12 +54,12 @@ export default function AppShell() {
     return () => query.removeEventListener('change', update)
   }, [])
   useEffect(() => { mainRef.current?.focus({ preventScroll: true }) }, [pathname])
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open || !mobile) return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const controls = () => [toggleRef.current, ...navRef.current.querySelectorAll('a,button:not(:disabled)')]
-    const focusFrame = requestAnimationFrame(() => controls()[1]?.focus())
+    controls()[1]?.focus()
     function keydown(event) {
       if (event.key === 'Escape') { setOpen(false); toggleRef.current?.focus(); event.preventDefault() }
       if (event.key !== 'Tab') return
@@ -71,7 +71,7 @@ export default function AppShell() {
       }
     }
     document.addEventListener('keydown', keydown)
-    return () => { cancelAnimationFrame(focusFrame); document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', keydown) }
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', keydown) }
   }, [open, mobile])
 
   function closeNav() { setOpen(false); toggleRef.current?.focus() }
