@@ -38,7 +38,7 @@ class ObjectStorageReadbackTest {
             catch (io.minio.errors.InvalidResponseException starting) {
                 String message = starting.getMessage();
                 boolean initializing = message.contains("Response code: 503")
-                    && (message.contains("storage_quorum") || message.contains("Service not ready: waiting for iam"));
+                    && (message.contains("storage_quorum") || message.contains("Service not ready: waiting for "));
                 if (!initializing || System.nanoTime() >= deadline) throw starting;
                 Thread.sleep(200);
             }

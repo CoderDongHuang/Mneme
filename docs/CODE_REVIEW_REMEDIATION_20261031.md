@@ -249,4 +249,4 @@ P1-06a 最终结果：PR #66 全部 9 项 CI（含完整整栈、桌面/移动�
 
 边界：当前 complete_conversation 与候选记忆仍同步，停止不能撤销既有记忆副作用；P1-06c 将独立实现持久、可重试记忆任务。本项 PR 和最终 CI 结果合并后补记。
 
-CI 夹具修正：整栈镜像以非 root 身份运行，而应用文件由 root 拥有，原故障钩子安装在业务断言前被权限拒绝。测试仅以 root 安装和逐字节恢复钩子，服务仍使用原身份，临时标记目录归运行用户；安装中断也进入清理。修正后真实桌面、移动两项全部通过，六张截图已复核，钩子不存在、临时目录为零，服务健康。RustFS 启动还可能先返回明确的 IAM 初始化 503；测试仅对这一状态及 storage_quorum 503 有限等待，不吞其他错误。证据 artifacts/p106-stop-harness-real.log、p106-stop-harness-browser，前端 Lint 再次通过。
+CI 夹具修正：整栈镜像以非 root 身份运行，而应用文件由 root 拥有，原故障钩子安装在业务断言前被权限拒绝。测试仅以 root 安装和逐字节恢复钩子，服务仍使用原身份，临时标记目录归运行用户；安装中断也进入清理。修正后真实桌面、移动两项全部通过，六张截图已复核，钩子不存在、临时目录为零，服务健康。RustFS 启动还可能先返回明确的 IAM 或 startup_finalization 初始化 503；测试仅对 Service not ready: waiting for 初始化状态及 storage_quorum 503 有限等待，不吞其他错误。证据 artifacts/p106-stop-harness-real.log、p106-stop-harness-browser，前端 Lint 再次通过。
