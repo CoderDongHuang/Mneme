@@ -215,7 +215,8 @@ async def _evaluate(
     )
     user_id = "rag_evaluation"
     kb_id = "run_" + uuid.uuid4().hex
-    vector_store.delete_collection(user_id, kb_id)
+    # This unique scope is new. Deleting it before ingestion would permanently
+    # tombstone it; only delete the evaluation scope after the run has ended.
 
     fixtures = {}
     for case in cases:

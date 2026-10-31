@@ -32,8 +32,8 @@ class FakeCollection:
             ],
         }
 
-    def query(self, query_embeddings, n_results, include):
-        del query_embeddings, n_results, include
+    def query(self, query_embeddings, n_results, include, **kwargs):
+        del query_embeddings, n_results, include, kwargs
         return {
             "ids": [["pomodoro", "gradient", "chain"]],
             "documents": [[self.documents[1], self.documents[0], self.documents[2]]],
@@ -134,7 +134,7 @@ def test_stale_lexical_hits_are_never_returned(monkeypatch):
             if "ids" in kwargs:
                 return {"ids": ["live"], "documents": ["current version"],
                         "metadatas": [{"document_id": "new", "visual_region": "0,0,1,1"}]}
-            return {"ids": [], "documents": [], "metadatas": []}
+            return {"ids": ["live"], "documents": ["current version"], "metadatas": [{"document_id": "new"}]}
 
     monkeypatch.setattr("app.knowledge.retriever.vector_store.get_collection", lambda *_: LiveCollection())
     monkeypatch.setattr("app.knowledge.retriever._semantic_candidates", lambda *_: [])

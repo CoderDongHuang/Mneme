@@ -3,6 +3,8 @@ package com.mneme.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import java.time.LocalDateTime;
 
 @TableName("knowledge_document")
@@ -15,8 +17,11 @@ public class KnowledgeDocument {
     private String status;
     private String parseTaskId;
     private Integer chunkCount;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String errorMessage;
     private String parseReport;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private Long indexGeneration = 0L;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -37,6 +42,8 @@ public class KnowledgeDocument {
     public void setChunkCount(Integer chunkCount) { this.chunkCount = chunkCount; }
     public String getErrorMessage() { return errorMessage; }
     public String getParseReport() { return parseReport; }
+    public Long getIndexGeneration() { return indexGeneration; }
+    public void setIndexGeneration(Long indexGeneration) { this.indexGeneration = indexGeneration; }
     public void setParseReport(String parseReport) { this.parseReport = parseReport; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public LocalDateTime getCreatedAt() { return createdAt; }

@@ -42,6 +42,7 @@ class IndexReconciliationTest {
             "warnings", List.of(Map.of("page", 2, "code", "no_text")), "pages", List.of(Map.of("page", 1, "text", "source preview")),
             "content_sha256", "hash", "index_error", "lexical_index_pending")));
         when(documents.selectById(7L)).thenReturn(document);
+        when(documents.selectForUpdate(7L)).thenReturn(document);
         when(lease.write(any())).thenAnswer(invocation -> {
             java.util.function.Function<Map<String, Object>, Object> change = invocation.getArgument(0);
             return change.apply(Map.of("status", "processing"));
@@ -50,7 +51,7 @@ class IndexReconciliationTest {
 
     @Test void repairPreservesParseWarningsAndPreviewWithoutMaterializingFile() throws Exception {
         when(http.postForObject(anyString(), any(), eq(IngestionResult.class))).thenReturn(new IngestionResult("done", "doc_7", 3,
-            Map.of("vector_index_version", VERSION, "lexical_index_version", VERSION, "index_status", "ready")));
+            Map.of("index_generation", 0, "vector_index_version", VERSION, "lexical_index_version", VERSION, "index_status", "ready")));
         ReflectionTestUtils.invokeMethod(service, "repairIndex", task, lease);
         assertEquals("partial", document.getStatus()); // A lexical repair cannot fix OCR warnings.
         assertEquals(3, document.getChunkCount());
@@ -80,7 +81,7 @@ class IndexReconciliationTest {
     }
 
     @Test void denseOnlyResultCannotBecomeReadyEvenIfAgentSaysDone() throws Exception {
-        var result = new IngestionResult("done", "doc_7", 3, Map.of("vector_index_version", VERSION, "index_status", "pending"));
+        var result = new IngestionResult("done", "doc_7", 3, Map.of("index_generation", 0, "vector_index_version", VERSION, "index_status", "pending"));
         ReflectionTestUtils.invokeMethod(service, "persistIngestion", task, result, lease);
         assertEquals("index_pending", document.getStatus());
         assertEquals("completed", task.getStatus());
