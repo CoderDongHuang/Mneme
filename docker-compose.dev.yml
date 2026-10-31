@@ -1,0 +1,6 @@
+# Opt in only for local source development; never combine with the production overlay.
+services:
+  python-agent:
+    volumes:
+      - ./python-agent:/app
+    command: [uvicorn, main:app, --host, 0.0.0.0, --port, "8001", --reload]

@@ -157,6 +157,8 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d --forc
 
 ## 6. 数据与升级
 
+发行版从构建镜像加载 Python 代码，不挂载源码。只修改宿主源码或重启容器不会升级；拉取修复后必须执行下方 `up -d --build`。本地开发可额外加入 `-f docker-compose.dev.yml`，启用源码挂载和自动 reload，该覆盖文件不得用于生产。
+
 持久化目录：
 
 ```text
@@ -165,6 +167,7 @@ data/redis
 data/qdrant
 data/files
 data/avatars
+python-agent/data
 ```
 
 升级前先执行备份脚本，再拉取代码并重建：

@@ -1,5 +1,6 @@
 services:
   frontend:
+    image: ${MNEME_FRONTEND_IMAGE:?Production requires a versioned frontend image or digest}
     build:
       context: .
       dockerfile: frontend/Dockerfile
@@ -23,6 +24,7 @@ services:
   qdrant:
     restart: unless-stopped
   python-agent:
+    image: ${MNEME_PYTHON_IMAGE:?Production requires a versioned Python image or digest}
     restart: unless-stopped
     environment:
       AUXILIARY_STORE_BACKEND: ${AUXILIARY_STORE_BACKEND:-mysql}
@@ -32,6 +34,7 @@ services:
       MYSQL_USER: ${MYSQL_USER:-root}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-${MYSQL_ROOT_PASSWORD:-${SPRING_DATASOURCE_PASSWORD}}}
   java-gateway:
+    image: ${MNEME_JAVA_IMAGE:?Production requires a versioned gateway image or digest}
     restart: unless-stopped
     environment:
       MNEME_PRODUCTION: "true"
