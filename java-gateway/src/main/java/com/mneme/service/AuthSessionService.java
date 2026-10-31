@@ -26,15 +26,23 @@ public class AuthSessionService {
 
     public boolean isActive(String sessionId, Long userId) {
         if (sessionId == null || sessionId.isBlank()) return false;
-        Long count = jdbc.queryForObject("""
-            SELECT COUNT(*) FROM auth_session
+        Long activity = jdbc.queryForObject("""
+            SELECT COALESCE(MAX(CASE WHEN last_seen_at IS NULL
+                OR last_seen_at<=DATE_SUB(NOW(), INTERVAL 2 MINUTE) THEN 2 ELSE 1 END),0)
+            FROM auth_session
             WHERE session_id=? AND user_id=? AND revoked_at IS NULL AND expires_at>NOW()
             """, (rs, rowNum) -> rs.getLong(1), sessionId, userId);
-        if (count != null && count == 1) {
-            jdbc.update("UPDATE auth_session SET last_seen_at=NOW() WHERE session_id=?", sessionId);
-            return true;
+        if (activity == null || activity == 0) return false;
+        if (activity == 2) {
+            // Keep every authorization read authoritative. Only activity writes
+            // are throttled; the DB clock and predicate work across instances.
+            jdbc.update("""
+                UPDATE auth_session SET last_seen_at=NOW()
+                WHERE session_id=? AND user_id=? AND revoked_at IS NULL AND expires_at>NOW()
+                    AND (last_seen_at IS NULL OR last_seen_at<=DATE_SUB(NOW(), INTERVAL 2 MINUTE))
+                """, sessionId, userId);
         }
-        return false;
+        return true;
     }
 
     public void revoke(String sessionId) {
