@@ -7,7 +7,7 @@ import io.micrometer.tracing.Tracer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.restclient.RestTemplateBuilder;
 import org.springframework.http.client.InterceptingClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.http.HttpMethod;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -67,7 +67,55 @@ class RestTemplateConfigTest {
         assertThat(template.getRequestFactory())
             .isInstanceOf(InterceptingClientHttpRequestFactory.class);
         assertThat(ReflectionTestUtils.getField(template.getRequestFactory(), "requestFactory"))
-            .isInstanceOf(SimpleClientHttpRequestFactory.class);
+            .isInstanceOf(JdkClientHttpRequestFactory.class);
+    }
+
+    @Test
+    void memoryPatchUsesRealHttp11TransportAndPreservesJsonAndInternalAuthentication() throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        var received = new java.util.concurrent.atomic.AtomicReference<String>();
+        var method = new java.util.concurrent.atomic.AtomicReference<String>();
+        var protocol = new java.util.concurrent.atomic.AtomicReference<String>();
+        var upgrade = new java.util.concurrent.atomic.AtomicReference<String>();
+        var token = new java.util.concurrent.atomic.AtomicReference<String>();
+        server.createContext("/api/v1/memory/admin/test", exchange -> {
+            method.set(exchange.getRequestMethod());
+            protocol.set(exchange.getProtocol());
+            upgrade.set(exchange.getRequestHeaders().getFirst("Upgrade"));
+            token.set(exchange.getRequestHeaders().getFirst("X-Internal-Service-Token"));
+            received.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            byte[] response = "{\"status\":\"updated\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var config = new RestTemplateConfig();
+            String origin = "http://127.0.0.1:" + server.getAddress().getPort();
+            ReflectionTestUtils.setField(config, "pythonAgentUrl", origin);
+            var tokens = mock(InternalServiceTokenProvider.class);
+            when(tokens.current()).thenReturn("patch-test-token");
+            var template = config.restTemplate(new RestTemplateBuilder(), tokens, mock(Tracer.class));
+            var result = template.exchange(origin + "/api/v1/memory/admin/test", HttpMethod.PATCH,
+                new org.springframework.http.HttpEntity<>(java.util.Map.of("content", "修改后的记忆", "tags", java.util.List.of("复习"))),
+                java.util.Map.class);
+            assertThat(result.getBody()).containsEntry("status", "updated");
+            assertThat(method.get()).isEqualTo("PATCH");
+            assertThat(protocol.get()).isEqualTo("HTTP/1.1");
+            assertThat(upgrade.get()).isNull();
+            assertThat(token.get()).isEqualTo("patch-test-token");
+            var body = new com.fasterxml.jackson.databind.ObjectMapper().readTree(received.get());
+            assertThat(body.path("content").asText()).isEqualTo("修改后的记忆");
+            assertThat(body.path("tags").get(0).asText()).isEqualTo("复习");
+            // An unrelated origin must not receive the service credential.
+            ReflectionTestUtils.setField(config, "pythonAgentUrl", "http://unrelated.invalid:8001");
+            template.exchange(origin + "/api/v1/memory/admin/test", HttpMethod.POST,
+                new org.springframework.http.HttpEntity<>(java.util.Map.of("content", "普通请求")), java.util.Map.class);
+            assertThat(method.get()).isEqualTo("POST");
+            assertThat(token.get()).isNull();
+        } finally { server.stop(0); }
     }
 
     @Test
