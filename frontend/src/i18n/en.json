@@ -1178,5 +1178,8 @@
   "取消请求已接受，正在等待后台清理；尚未完成。": "Cancellation accepted. Background cleanup is pending; the task has not finished.",
   "任务已取消。": "The task was cancelled.",
   "本次执行未成功。请检查文件和服务状态，修复原因后重试；联系管理员时提供执行编号。": "This attempt failed. Check the file and service status before retrying. Share the execution ID when contacting your administrator.",
-  "诊断副本仅包含执行编号、类型、状态、次数、时间与阶段，不包含文件名、原始错误或内部路径。": "Diagnostics include only execution IDs, types, statuses, counts, timestamps and stages. Filenames, raw errors and internal paths are excluded."
+  "诊断副本仅包含执行编号、类型、状态、次数、时间与阶段，不包含文件名、原始错误或内部路径。": "Diagnostics include only execution IDs, types, statuses, counts, timestamps and stages. Filenames, raw errors and internal paths are excluded.",
+  "登录会话加载失败：": "Could not load sign-in sessions: ",
+  "已有会话记录可能不是最新状态。": "The displayed session records may be out of date.",
+  "正在读取登录会话": "Loading sign-in sessions"
 }
