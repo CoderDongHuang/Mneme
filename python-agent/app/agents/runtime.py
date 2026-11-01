@@ -1,3 +1,5 @@
+import uuid
+
 from app.core.time import utc_now
 from app.core.privacy import require_cloud_processing
 
@@ -31,6 +33,13 @@ def prepare_conversation(request: ChatRequest) -> dict:
         "message": request.message,
         "knowledge_base_ids": request.knowledge_base_ids,
         "document_ids": request.document_ids,
+        # Freeze the input before model generation. A delayed completion must
+        # never distill a later turn or use its execution time as the idle gap.
+        "memory_input": {
+            "history": [message.model_dump() for message in short_term_memory.get_history(request.session_id)],
+            "reference_time": user_message.timestamp,
+            "delivery_id": request.request_id or uuid.uuid4().hex,
+        },
     }
     with agent_trace_store.span(
         request.user_id,

@@ -122,7 +122,7 @@ def distill_conversation(user_id: str, session_id: str, conversation: list) -> l
 HIGH_CONFIDENCE_THRESHOLD = 0.8
 
 
-def apply_distilled_entries(user_id: str, entries: list) -> list:
+def apply_distilled_entries(user_id: str, entries: list, *, candidate_scope: list[str] | None = None) -> list:
     """应用蒸馏结果到长期记忆。
 
     决策逻辑：
@@ -153,13 +153,19 @@ def apply_distilled_entries(user_id: str, entries: list) -> list:
         if confidence < HIGH_CONFIDENCE_THRESHOLD:
             import uuid
 
+            candidate = {
+                "category": category,
+                "content": content,
+                "topic": topic,
+                "confidence": confidence,
+            }
+            identity = json.dumps([candidate_scope, candidate], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             pending.append(
                 {
-                    "temp_id": f"pending_{uuid.uuid4().hex[:8]}",
-                    "category": category,
-                    "content": content,
-                    "topic": topic,
-                    "confidence": confidence,
+                    # Gateway pending_memory.memory_id is VARCHAR(64). Keep a
+                    # 224-bit scoped digest within that existing contract.
+                    "temp_id": "pending_" + (hashlib.sha256(identity.encode()).hexdigest()[:56] if candidate_scope else uuid.uuid4().hex),
+                    **candidate,
                 }
             )
             continue
