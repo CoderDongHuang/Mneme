@@ -1234,5 +1234,10 @@
   "运维状态加载失败：": "Could not load operations status: ",
   "已有运维数据可能不是最新状态。": "The displayed operations data may be out of date.",
   "数据不可用，请刷新运维状态重试。": "Data unavailable. Refresh operations status to retry.",
-  "运维响应格式不正确，请重试。": "Invalid operations response. Please retry."
+  "运维响应格式不正确，请重试。": "Invalid operations response. Please retry.",
+  "正在读取模型配置…": "Loading model settings…",
+  "模型配置加载失败：{0}": "Could not load model settings: {0}",
+  "服务状态加载失败：{0}": "Could not load service status: {0}",
+  "模型配置响应格式不正确": "Invalid model settings response",
+  "服务状态响应格式不正确": "Invalid service status response"
 }
