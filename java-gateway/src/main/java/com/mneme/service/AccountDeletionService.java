@@ -160,7 +160,7 @@ public class AccountDeletionService {
         switch (step) {
             case "knowledge_cleanup" -> restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/user/" + id);
             case "memory_cleanup" -> restTemplate.delete(pythonAgentUrl + "/api/v1/memory/admin/user/" + id);
-            case "session_cleanup" -> restTemplate.delete(pythonAgentUrl + "/api/v1/admin/user/" + id);
+            case "session_cleanup" -> cleanupSessions(userId);
             case "file_cleanup" -> {
                 storage.deleteUserPrefix(userId);
                 deleteDirectory(fileRoot.resolve(id).normalize());
@@ -172,6 +172,30 @@ public class AccountDeletionService {
             }
             default -> throw new IllegalArgumentException("未知删除步骤: " + step);
         }
+    }
+
+    private void cleanupSessions(Long userId) {
+        // The Agent's UI list prunes old entries and may be missing entirely.
+        // Keep MySQL rows until all cache batches and the local manifest succeed.
+        long after = 0;
+        while (true) {
+            List<Long> batch = jdbc.queryForList("SELECT id FROM chat_session WHERE user_id=? AND id>? ORDER BY id LIMIT 1000",
+                Long.class, userId, after);
+            if (batch.isEmpty()) break;
+            Map<?, ?> receipt = restTemplate.postForObject(pythonAgentUrl + "/api/v1/admin/user/" + userId + "/session-cache",
+                Map.of("session_ids", batch.stream().map(String::valueOf).toList()), Map.class);
+            if (receipt == null || !"verified".equals(receipt.get("status"))
+                || !integerEquals(receipt.get("redis_sessions"), 0)
+                || !integerEquals(receipt.get("checked_sessions"), batch.size())) {
+                throw new IllegalStateException("会话缓存清理未通过读回核验");
+            }
+            after = batch.get(batch.size() - 1);
+        }
+        restTemplate.delete(pythonAgentUrl + "/api/v1/admin/user/" + userId);
+    }
+
+    private static boolean integerEquals(Object value, long expected) {
+        return (value instanceof Integer || value instanceof Long) && ((Number) value).longValue() == expected;
     }
 
     private void deleteDirectory(Path directory) throws Exception {

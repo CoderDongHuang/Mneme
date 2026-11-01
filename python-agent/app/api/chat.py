@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 from app.models.chat import ChatRequest, ChatResponse, PendingMemory
 from app.agents.nodes import build_llm_prompt
 from app.agents.runtime import complete_conversation, prepare_conversation
@@ -6,6 +7,7 @@ from app.utils.llm import llm
 from app.memory.session_store import session_store
 from app.memory.short_term_memory import short_term_memory
 from app.memory.working_memory import working_memory
+from app.memory.session_persistence import session_persistence
 from app.agents.trace_store import agent_trace_store
 from langchain_core.messages import HumanMessage
 from app.core.logging import setup_logger
@@ -57,15 +59,40 @@ async def delete_session(session_id: str, user_id: str = "default"):
 
 @router.delete("/admin/user/{user_id}")
 async def delete_user_sessions(user_id: str):
-    for session in session_store.get_sessions(user_id):
-        session_id = str(session.get("id", ""))
-        if session_id:
-            short_term_memory.clear(session_id)
-            working_memory.clear(session_id)
-    session_store.delete_user(user_id)
+    session_ids = session_store.cleanup_session_ids(user_id)
+    for session_id in session_ids:
+        short_term_memory.clear(session_id)
+        working_memory.clear(session_id)
     traces = agent_trace_store.delete_user(user_id)
     privacy_store.delete(user_id)
+    for offset in range(0, len(session_ids), 1000):
+        if session_persistence.count_sessions(session_ids[offset:offset + 1000]) != 0:
+            raise RuntimeError("Redis 会话清理后仍有残留")
+    # Keep the cleanup manifest until all preceding stages have succeeded.
+    session_store.delete_user(user_id)
     return {"status": "deleted", "user_id": user_id, "traces": traces}
+
+
+class SessionCacheCleanup(BaseModel):
+    session_ids: list[str] = Field(min_length=1, max_length=1000)
+
+
+@router.post("/admin/user/{user_id}/session-cache")
+async def delete_canonical_session_caches(user_id: str, request: SessionCacheCleanup):
+    """Internal only: Gateway supplies its authoritative, user-scoped MySQL IDs.
+
+    This includes sessions missing from the Agent's optional JSON/TTL cache.
+    Batches bound request size without requiring an unbounded account manifest.
+    """
+    if any(not value.isascii() or not value.isdecimal() or len(value) > 20 for value in request.session_ids):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail="会话编号无效")
+    for session_id in request.session_ids:
+        short_term_memory.clear(session_id)
+        working_memory.clear(session_id)
+    if session_persistence.count_sessions(request.session_ids) != 0:
+        raise RuntimeError("Redis 会话清理后仍有残留")
+    return {"status": "verified", "checked_sessions": len(request.session_ids), "redis_sessions": 0}
 
 
 @router.post(

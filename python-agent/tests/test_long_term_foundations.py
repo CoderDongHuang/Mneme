@@ -136,7 +136,7 @@ def test_account_cleanup_endpoints_remove_versions_and_traces(monkeypatch):
     trace_calls = []
     monkeypatch.setattr(memory_api.memory_store, "delete_user_memories", lambda user_id: None)
     monkeypatch.setattr(memory_api.memory_version_store, "delete_user", lambda user_id: memory_calls.append(user_id) or 2)
-    monkeypatch.setattr(chat_api.session_store, "get_sessions", lambda user_id: [])
+    monkeypatch.setattr(chat_api.session_store, "cleanup_session_ids", lambda user_id: [])
     monkeypatch.setattr(chat_api.session_store, "delete_user", lambda user_id: None)
     monkeypatch.setattr(chat_api.agent_trace_store, "delete_user", lambda user_id: trace_calls.append(user_id) or 3)
 
