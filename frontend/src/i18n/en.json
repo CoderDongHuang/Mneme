@@ -1229,5 +1229,10 @@
   "暂无可用于测验的资料库。": "No quiz libraries available yet.",
   "正在读取作答记录…": "Loading attempts…",
   "作答记录加载失败：{0}": "Could not load attempts: {0}",
-  "已有作答记录可能不是最新状态。": "The displayed attempts may be out of date."
+  "已有作答记录可能不是最新状态。": "The displayed attempts may be out of date.",
+  "正在读取运维状态": "Loading operations status",
+  "运维状态加载失败：": "Could not load operations status: ",
+  "已有运维数据可能不是最新状态。": "The displayed operations data may be out of date.",
+  "数据不可用，请刷新运维状态重试。": "Data unavailable. Refresh operations status to retry.",
+  "运维响应格式不正确，请重试。": "Invalid operations response. Please retry."
 }
