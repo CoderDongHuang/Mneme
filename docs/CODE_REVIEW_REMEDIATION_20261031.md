@@ -286,3 +286,15 @@ PR #68 最终结果：全部 9 项 CI（含整栈、真实资料与邮箱链路�
 验证：Python 3.11 Ruff 及全套 794 项通过；包含已完成个人资料改动的最终 Java package 191 项通过，零失败、错误或跳过；前端 24 文件 103 项、Lint、生产构建及原包大小门禁通过。停写并保留匹配数据库快照与旧容器后，部署真实 http://127.0.0.1:3000。桌面/移动两项全部通过：上传真实 PDF、同步及 SSE 生成、立即读取 MySQL 历史、幂等重放、将唯一 QA 消息恢复为旧 CSV 后再次同步及 SSE 重放、刷新会话和引用面板。两张截图已目视复核，无横向溢出；独立读回 QA 用户为零、127 个删除任务全部 completed、两个服务健康检查均 200。证据 artifacts/citation-contract-{python-full,java-accepted,frontend-accepted,lint-final,build-accepted,real-accepted}.log，截图 citation-contract-browser-accepted；真实用例纳入整栈 CI。
 
 回归过程：第一轮真实用例误按纯数字断言索引文档 ID；核对入库代码与既有整栈回归确认 doc_ 前缀后修正测试，并完整重跑通过，未放松答案、字段、坐标和持久化断言。本项 PR 最终 CI 与独立合并结果后续补记。
+
+PR #69 最终结果：冲突解决后的最新提交全部 9 项 CI 通过，已独立合并，提交 7303fc15ddf732e9bb5a3a98f84c8584d2547a3c。
+
+## 2026-11-01：P1-05 / MN-006 会话清理权威清单及 Redis、文件读回
+
+对照要求：重新回查原审查 P1-05 第 2 项的跨存储清单、失败重试及残留核验。本项只覆盖会话缓存和元数据，账号其他存储最终核验、在途写入防复活及物理保留仍待独立处理，不提前关闭整个 MN-006。
+
+实现：Gateway 从 MySQL 按用户和 ID 游标每批最多 1000 条读取权威会话 ID，先清 Agent 的工作/短期记忆与 Redis，再严格检查批次数和零残留回执；会话行保留到后续账号删除，故障重试不丢范围。Agent 同时读取不经过 TTL 裁剪的原始 JSON 清单，文件缺失可接受，损坏和权限错误必须失败。Redis DEL 后以 EXISTS 独立读回；缓存、Trace、隐私及最终 Redis 读回均成功后才删本地清单，再检查文件确实不存在。内部接口沿用服务认证，输入在任何修改前完整验证。
+
+验证：Python 3.11 Ruff 与全套 809 项通过；新增真实 MySQL/Flyway Saga 分页、错误回执和恢复测试，最终 Java package 196 项通过，零失败、错误或跳过。首次受限环境 Docker 不可用的跳过结果不计入，通过正常 Docker 权限重新全量验证。独立空 Redis 实例运行真实 DEL/EXISTS 故障注入，验证静默无效删除、读错误、清单保留、幂等和其他用户隔离，全部通过。前端 Lint 通过。
+
+保存匹配数据库快照和旧容器后，部署真实 http://127.0.0.1:3000。桌面/移动两项全部通过：真实创建两租户及会话、构造过期和缺失 JSON 条目、删除首个账号并直接读回 MySQL/Redis/文件，确认另一用户会话不受影响且实际网页可见；最后独立核验 QA 用户为零、131 个删除任务全部 completed、Gateway/Agent 健康均 200。两张截图已逐一回查，无横向溢出。真实用例纳入整栈 CI。证据 artifacts/session-cleanup-{python-full,java-full,redis-real,frontend-lint,real}.log，截图 artifacts/session-cleanup-browser；设计与升级边界见 docs/SESSION_CLEANUP_READBACK.md。最终 CI 和合并结果后续单独确认。

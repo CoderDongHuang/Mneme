@@ -115,9 +115,24 @@ class SessionPersistence:
             raise RuntimeError("Redis 不可用，无法确认会话数据已删除")
         try:
             self._redis.delete(self._session_key(session_id))
+            # DEL returning normally is not proof (a proxy/fault can no-op).
+            # Do not acknowledge erasure while the original key is still there.
+            if self.count_sessions([session_id]) != 0:
+                raise RuntimeError("Redis 会话删除后仍有残留")
         except Exception as error:
             self._available = False
             raise RuntimeError("Redis 会话删除失败") from error
+
+    def count_sessions(self, session_ids: list[str]) -> int:
+        if not session_ids:
+            return 0
+        if not self._ensure_connection():
+            raise RuntimeError("Redis 不可用，无法核验会话残留")
+        try:
+            return self._redis.exists(*(self._session_key(session_id) for session_id in session_ids))
+        except Exception as error:
+            self._available = False
+            raise RuntimeError("Redis 会话读回失败") from error
 
     @property
     def available(self) -> bool:

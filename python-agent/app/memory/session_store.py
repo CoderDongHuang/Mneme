@@ -161,9 +161,29 @@ class SessionStore:
             try:
                 if os.path.exists(file_path):
                     os.unlink(file_path)
+                if os.path.lexists(file_path):
+                    raise OSError("用户会话文件删除后仍有残留")
             except OSError as error:
                 logger.error("用户会话文件删除失败: %s", error)
                 raise
+
+    def cleanup_session_ids(self, user_id: str) -> list[str]:
+        """Read the unpruned manifest strictly: corruption is not an empty list.
+
+        get_sessions is a UI/TTL operation and can discard expired entries.
+        Deletion must enumerate them before any cleanup changes the manifest.
+        """
+        try:
+            with open(self._get_file_path(user_id), "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except FileNotFoundError:
+            return []
+        if not isinstance(data, dict) or any(
+            not isinstance(key, str) or not key or len(key) > 128 or not isinstance(value, dict)
+            for key, value in data.items()
+        ):
+            raise ValueError("会话清理清单损坏，无法确认删除范围")
+        return list(data)
 
     def get_session_count(self, user_id: str) -> int:
         """获取用户会话数量"""
