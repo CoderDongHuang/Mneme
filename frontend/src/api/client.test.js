@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, createTraceparent, endpoints, openNotificationStream, streamChat } from './client'
+import citationExamples from '../../../contracts/chat-source.examples.json'
 
 describe('api client', () => {
   beforeEach(() => {
@@ -122,6 +123,22 @@ describe('api client', () => {
       ['token', { content: '你好' }],
       ['done', { ok: true }],
     ])
+  })
+
+  it('preserves every shared citation field and null value across split metadata frames', async () => {
+    const body = `event: meta\ndata: ${JSON.stringify({ sources: citationExamples })}\n\nevent: done\ndata: {"ok":true}\n\n`
+    const bytes = new TextEncoder().encode(body)
+    let index = 0
+    const reader = {
+      read: async () => index < bytes.length ? { value: bytes.slice(index, ++index), done: false } : { done: true },
+      cancel: vi.fn(), releaseLock: vi.fn(),
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => reader } }))
+    const onEvent = vi.fn()
+    await streamChat({}, { onEvent })
+    expect(onEvent).toHaveBeenCalledWith('meta', { sources: citationExamples })
+    expect(reader.cancel).toHaveBeenCalledOnce()
+    expect(reader.releaseLock).toHaveBeenCalledOnce()
   })
 
   it('treats an acknowledged stopped event as terminal and cancels the reader', async () => {

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.models.chat import ChatRequest, ChatResponse, Source, PendingMemory
+from app.models.chat import ChatRequest, ChatResponse, PendingMemory
 from app.agents.nodes import build_llm_prompt
 from app.agents.runtime import complete_conversation, prepare_conversation
 from app.utils.llm import llm
@@ -13,22 +13,10 @@ from app.knowledge.citations import select_citations, NO_EVIDENCE_ANSWER
 from app.knowledge.grounding import verify_evidence_answer
 from app.core.telemetry import tracer
 from app.core.privacy import privacy_store
+from app.knowledge.source_payload import citation_sources
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = setup_logger("chat_api")
-
-
-def _visual_region(metadata: dict) -> list[float] | None:
-    value = metadata.get("visual_region")
-    if isinstance(value, list):
-        return [float(item) for item in value[:4]]
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = [float(item.strip()) for item in value.split(",")]
-        except ValueError:
-            return None
-        return parsed[:4]
-    return None
 
 
 @router.get(
@@ -101,31 +89,7 @@ async def chat(request: ChatRequest):
     completion = complete_conversation(request, state, answer)
     result = {**state, **completion, "answer": answer}
 
-    sources = []
-    for chunk in select_citations(result.get("retrieved_chunks", [])):
-        content = chunk.get("content")
-        if not content:
-            continue
-        metadata = chunk.get("metadata", {})
-        sources.append(
-            Source(
-                retrieval_ranks=chunk.get("retrieval_ranks", {}),
-                content_sha256=metadata.get("content_sha256", ""),
-                indexed_at=metadata.get("indexed_at", ""),
-                parser_version=metadata.get("parser_version", ""),
-                document_id=str(metadata.get("document_id", "")),
-                document_name=metadata.get("source", "unknown"),
-                chunk_content=content,
-                page=metadata.get("page"),
-                section=metadata.get("section", ""),
-                score=chunk.get("score", 0.0),
-                chunk_type=metadata.get("chunk_type", "text"),
-                evidence_type=metadata.get("evidence_type", "text"),
-                visual_page=metadata.get("visual_page") or metadata.get("page") or None,
-                visual_region=_visual_region(metadata),
-                ocr_confidence=metadata.get("ocr_confidence"),
-            )
-        )
+    sources = citation_sources(select_citations(result.get("retrieved_chunks", [])))
 
     # 待确认记忆
     pending_memories = [

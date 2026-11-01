@@ -13,6 +13,7 @@ from app.core.logging import setup_logger
 from app.knowledge.citations import select_citations, NO_EVIDENCE_ANSWER
 from app.knowledge.grounding import verify_evidence_answer
 from app.models.chat import ChatRequest
+from app.knowledge.source_payload import citation_sources
 from app.utils.llm import llm
 from app.utils.async_stream import closing_async_iterator
 from app.core.telemetry import tracer
@@ -55,29 +56,7 @@ def _event(event: str, payload: dict) -> str:
 
 
 def _source_payload(chunks: list[dict]) -> list[dict]:
-    sources = []
-    for chunk in chunks:
-        metadata = chunk.get("metadata", {})
-        sources.append(
-            {
-                "document_id": str(metadata.get("document_id", "")),
-                "document_name": metadata.get("source", "未知文档"),
-                "page": metadata.get("page") or None,
-                "section": metadata.get("section", ""),
-                "chunk_type": metadata.get("chunk_type", "text"),
-                "evidence_type": metadata.get("evidence_type", "text"),
-                "visual_page": metadata.get("visual_page") or metadata.get("page") or None,
-                "visual_region": metadata.get("visual_region"),
-                "ocr_confidence": metadata.get("ocr_confidence"),
-                "chunk_content": chunk.get("content", ""),
-                "score": chunk.get("score", 0.0),
-                "retrieval_ranks": chunk.get("retrieval_ranks", {}),
-                "content_sha256": metadata.get("content_sha256", ""),
-                "indexed_at": metadata.get("indexed_at", ""),
-                "parser_version": metadata.get("parser_version", ""),
-            }
-        )
-    return sources
+    return [source.model_dump(mode="json") for source in citation_sources(chunks)]
 
 
 def _retrieval_fallback(state: dict) -> str:

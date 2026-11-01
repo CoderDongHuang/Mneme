@@ -15,62 +15,74 @@ public class ChatResponse {
 
     public static class Source {
         @com.fasterxml.jackson.annotation.JsonProperty("retrieval_ranks")
-        private java.util.Map<String, Integer> retrievalRanks;
+        private java.util.Map<String, Integer> retrievalRanks = java.util.Map.of();
         @com.fasterxml.jackson.annotation.JsonProperty("content_sha256")
-        private String contentSha256;
+        private String contentSha256 = "";
         @com.fasterxml.jackson.annotation.JsonProperty("indexed_at")
-        private String indexedAt;
+        private String indexedAt = "";
         @com.fasterxml.jackson.annotation.JsonProperty("parser_version")
-        private String parserVersion;
+        private String parserVersion = "";
         public java.util.Map<String, Integer> getRetrievalRanks() { return retrievalRanks; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setRetrievalRanks(java.util.Map<String, Integer> value) { retrievalRanks = value; }
         public String getContentSha256() { return contentSha256; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setContentSha256(String value) { contentSha256 = value; }
         public String getIndexedAt() { return indexedAt; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setIndexedAt(String value) { indexedAt = value; }
         public String getParserVersion() { return parserVersion; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setParserVersion(String value) { parserVersion = value; }
         @com.fasterxml.jackson.annotation.JsonProperty("document_id")
-        private String documentId;
+        private String documentId = "";
         public String getDocumentId() { return documentId; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setDocumentId(String value) { this.documentId = value; }
         @com.fasterxml.jackson.annotation.JsonProperty("visual_page")
         private Integer visualPage;
         public Integer getVisualPage() { return visualPage; }
         public void setVisualPage(Integer value) { this.visualPage = value; }
         @com.fasterxml.jackson.annotation.JsonProperty("visual_region")
-        private Object visualRegion;
-        public Object getVisualRegion() { return visualRegion; }
-        public void setVisualRegion(Object value) { this.visualRegion = value; }
+        @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = VisualRegionDeserializer.class)
+        private List<Double> visualRegion;
+        public List<Double> getVisualRegion() { return visualRegion; }
+        public void setVisualRegion(List<Double> value) { this.visualRegion = value; }
         @com.fasterxml.jackson.annotation.JsonProperty("ocr_confidence")
         private Double ocrConfidence;
         public Double getOcrConfidence() { return ocrConfidence; }
         public void setOcrConfidence(Double value) { this.ocrConfidence = value; }
         @com.fasterxml.jackson.annotation.JsonProperty("evidence_type")
-        private String evidenceType;
+        private String evidenceType = "text";
         public String getEvidenceType() { return evidenceType; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setEvidenceType(String value) { this.evidenceType = value; }
         @com.fasterxml.jackson.annotation.JsonProperty("document_name")
-        private String documentName;
+        private String documentName = "未知文档";
         @com.fasterxml.jackson.annotation.JsonProperty("chunk_content")
-        private String chunkContent;
+        private String chunkContent = "";
         private Integer page;
-        private Double score;
-        private String section;
+        private Double score = 0.0;
+        private String section = "";
         @com.fasterxml.jackson.annotation.JsonProperty("chunk_type")
-        private String chunkType;
+        private String chunkType = "text";
 
         public String getDocumentName() { return documentName; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setDocumentName(String documentName) { this.documentName = documentName; }
         public String getChunkContent() { return chunkContent; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setChunkContent(String chunkContent) { this.chunkContent = chunkContent; }
         public Integer getPage() { return page; }
         public void setPage(Integer page) { this.page = page; }
         public Double getScore() { return score; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setScore(Double score) { this.score = score; }
         public String getSection() { return section; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setSection(String section) { this.section = section; }
         public String getChunkType() { return chunkType; }
+        @com.fasterxml.jackson.annotation.JsonSetter(nulls = com.fasterxml.jackson.annotation.Nulls.SKIP)
         public void setChunkType(String chunkType) { this.chunkType = chunkType; }
     }
 
