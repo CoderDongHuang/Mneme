@@ -446,3 +446,18 @@ PR #80 最终结果：最新提交 9a9d1b58b65ef716699597bb0453acc0779befa3 全�
 保留原容器、配置及停写 SQL 快照后部署真实 http://127.0.0.1:3000，桌面/手机两项全部通过，无整项重试：回答保留、候选入库故障、Gateway 重启、网页手动重试、唯一候选、真实向量确认、刷新及同请求重放均通过，正式 complete 的反思投递标记存在且 TTL 有效。六张截图已逐一复核，无页面横向溢出。独立读回 QA 用户及触发器为零、205 个删除任务均 completed、临时夹具及两类反思 QA 键/Stream 为零；五个部署源码规范换行后哈希匹配，Gateway/Agent 健康均 200。
 
 本地镜像沿用依赖未改且锁文件哈希一致的已验收基础镜像，仅复制本次源码；正式 CI 继续使用标准 Dockerfile 全构建。证据 artifacts/reflection-delivery-{targeted,python-full,frontend-lint,redis-isolated,redis-live,build,deploy,real,readback}.log 与 reflection-delivery-browser。范围、七天去重窗口和匹配快照回退见 docs/REFLECTION_DELIVERY_IDEMPOTENCY.md；无新依赖、配置或迁移。没有 request_id 的新 HTTP 请求无法跨请求去重，账号删除反思清理与在途防复活仍待独立修复。独立 PR 最终 CI 与合并结果继续补记。
+
+
+PR #81 最终结果：最新提交 3f38a570cf22ad85204989735b9991532f6eb65b 全部九项 CI 通过，已独立合并，提交 e418b84cce66a4e04517125f6a54ef8e07f7e0bb。
+
+## 2026-11-02：P1-05 / MN-006 账号反思数据清理与持久拒绝
+
+对照要求：逐条回查原 P1-05 的跨存储清理、异常传播、独立残留读回及恢复重试，并核对 P2-01 旧 owner 不能提交。本项只关闭反思子边界，全部记忆、会话、缓存、轨迹迟到写入防复活仍需继续验收，不把整个 MN-006 或 MN-007 标记完成。
+
+实现：复用现有用户持久 deleted 状态；计数、排队、领取、旧协议迁移、完成在同一用户数据库事务内检查后变更 Redis。删除先提交 tombstone，排空已有持锁写入，后续 Redis 失败不撤销拒绝；清理阶段不长期持数据库锁。分页清四类准确键、投递标记与共享 Stream 用户条目，并 XACK/XDEL 清 pending，转义 glob 并精确摘要后缀避免前缀用户误删；独立读取发现残留或读错就失败。会话删除先执行此步骤，失败保留清理清单。数据库检查临时失败不再让消费者线程退出，任务保留待重试，日志只含异常类型。无新依赖、配置或迁移。
+
+验证：最终 Python 3.11 Ruff 与完整 840 项通过，七条上游弃用警告；前端 Lint 和 diff 检查通过。有/无密码两组隔离真实 Redis 的 AUTH、AOF fsync、SIGKILL、pending 恢复、投递去重与清理全部通过。实际部署内分别用 SQLite 和共享 MySQL 验证 450 条跨页混合队列、410 个额外标记、pending/未投递清理、前缀/glob 租户隔离、模型暂停时删除、旧 owner 不能完成、静默 DEL/Stream 及读取异常被拒绝、恢复重试与幂等；独立 QA 数据结束后清零。
+
+保留原容器、配置与停写 SQL 快照后部署实际 http://127.0.0.1:3000，桌面/手机两项全部通过，无整项重试。正式注册与删除两个账号，实际读回目标键、队列及已知 PEL 均零；新进程的计数、排队、领取、旧协议迁移、完成均不能复活，另一账号五键、两任务、两会话及网页历史保持。两张截图逐一复核，无横向溢出。独立 SQL 读回 sessionqa 用户与合成 manifest 行为零、209 个删除任务均 completed；六个部署源码换行规范化哈希匹配，QA 键/Stream/SQLite manifest/模型夹具均零，Gateway/Agent 健康均 200。真实已删除用户 tombstone 保留。
+
+过程：修正一条本地验收命令的 PowerShell 变量拼写后，SQLite/MySQL 两组完整重跑通过；早期日志保留。最终证据 artifacts/reflection-cleanup-{python-final,frontend-final,redis-final,live-sqlite-final,live-mysql-final,build,deploy,real,readback}.log 与 reflection-cleanup-browser。范围、只读在途调用限制、单主机/多实例及停旧工作器升级和匹配快照恢复见 docs/REFLECTION_ACCOUNT_CLEANUP.md。不能取消已发出的供应商请求，也不宣称备份物理擦除；最终独立 PR CI 与合并结果后续补记。

@@ -34,6 +34,7 @@ def resources(tmp_path, monkeypatch):
     traces = Mock(return_value=1)
     monkeypatch.setattr(chat.agent_trace_store, 'delete_user', traces)
     monkeypatch.setattr(chat.privacy_store, 'delete', Mock())
+    monkeypatch.setattr(chat.reflection_scheduler, 'delete_user', Mock(return_value={'keys': 0, 'queue_entries': 0}))
     app = FastAPI()
     app.include_router(chat.router)
     return store, persistence, keys, traces, TestClient(app, raise_server_exceptions=False)
@@ -98,6 +99,22 @@ def test_later_stage_failure_keeps_raw_cleanup_scope_for_retry(resources, monkey
     assert store.cleanup_session_ids('alice') == ['11', '12']
     traces.side_effect = None
     assert http.delete('/api/v1/admin/user/alice').status_code == 200
+
+
+def test_reflection_cleanup_failure_cannot_finish_or_remove_session_manifest(resources, monkeypatch):
+    store, _, keys, traces, http = resources
+    store._save('alice', {'11': {}, '12': {}})
+    cleanup = chat.reflection_scheduler.delete_user
+    cleanup.side_effect = OSError('Redis unavailable')
+    assert http.delete('/api/v1/admin/user/alice').status_code == 500
+    assert store.cleanup_session_ids('alice') == ['11', '12']
+    assert len(keys) == 3
+    traces.assert_not_called()
+    cleanup.side_effect = None
+    response = http.delete('/api/v1/admin/user/alice')
+    assert response.status_code == 200
+    assert response.json()['reflection'] == {'keys': 0, 'queue_entries': 0}
+    assert keys == {'mneme:session:22'}
 
 
 def test_silent_file_unlink_failure_is_detected(resources, monkeypatch):

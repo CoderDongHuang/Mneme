@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app.memory.reflection_scheduler as module  # noqa: E402
+from reflection_qa import remove_probe_users  # noqa: E402
 
 
 def check():
@@ -140,6 +141,7 @@ def check():
         assert not any(values.get("user_id") == user for _, values in client.xrange(module._QUEUE_KEY))
         client.delete(module._QUEUE_KEY)
         module._QUEUE_KEY, module._QUEUE_GROUP = original_queue, original_group
+        remove_probe_users(user)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import socket
 import time
 import hashlib
 import json
+import re
 
 import redis
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -13,6 +14,7 @@ from app.memory.long_term_memory import long_term_memory
 from app.memory.memory_store import memory_store
 from app.core.logging import setup_logger, memory_log_fields
 from app.core.config import settings
+from app.knowledge.generations import generation_store, StaleGeneration
 from app.core.metrics import (
     REFLECTION_LEASE_ACQUISITIONS,
     REFLECTION_LEASE_CONTENTIONS,
@@ -34,6 +36,16 @@ _QUEUE_BLOCK_MS = 1000
 _QUEUE_SOCKET_TIMEOUT_SECONDS = 2
 _DELIVERY_PREFIX = "mneme:reflection:delivery:"
 _COUNTER_TTL_SECONDS = 7 * 24 * 60 * 60
+_DELETE_ENTRIES_SCRIPT = """
+for i = 2, #ARGV do
+  local ack = redis.pcall('xack', KEYS[1], ARGV[1], ARGV[i])
+  if type(ack) == 'table' and ack.err and not string.find(ack.err, 'NOGROUP', 1, true) then
+    return redis.error_reply(ack.err)
+  end
+  redis.call('xdel', KEYS[1], ARGV[i])
+end
+return #ARGV - 1
+"""
 _RECORD_SCRIPT = """
 if redis.call('exists', KEYS[2]) == 1 then
   return tonumber(redis.call('get', KEYS[1]) or '0')
@@ -141,8 +153,10 @@ class ReflectionScheduler:
                 raise
 
     def _claim_shared(self, user_id: str, job_token: str, owner: str) -> bool:
-        result = int(
-            self._redis.eval(
+        with generation_store.locked(user_id) as state:
+            if state.get("deleted"):
+                return False
+            result = int(self._redis.eval(
                 _CLAIM_SCRIPT,
                 3,
                 self._job_key(user_id),
@@ -151,8 +165,7 @@ class ReflectionScheduler:
                 job_token,
                 owner,
                 self._lease_seconds(),
-            )
-        )
+            ))
         if result == 0:
             REFLECTION_LEASE_CONTENTIONS.inc()
             return False
@@ -172,10 +185,13 @@ class ReflectionScheduler:
         if not delivery_id:
             session_id, delivery_id = "legacy", uuid.uuid4().hex
         try:
-            count = int(self._redis.eval(
-                _RECORD_SCRIPT, 2, self._counter_key(user_id),
-                self._delivery_key(user_id, session_id, delivery_id), _COUNTER_TTL_SECONDS,
-            ))
+            with generation_store.locked(user_id) as state:
+                if state.get("deleted"):
+                    raise StaleGeneration("账号已删除，拒绝反思投递")
+                count = int(self._redis.eval(
+                    _RECORD_SCRIPT, 2, self._counter_key(user_id),
+                    self._delivery_key(user_id, session_id, delivery_id), _COUNTER_TTL_SECONDS,
+                ))
             self._redis_available = True
             return count
         except redis.RedisError:
@@ -186,12 +202,15 @@ class ReflectionScheduler:
     def check_and_trigger(self, user_id: str) -> bool:
         """Persist the job and its per-user reservation in one Redis operation."""
         try:
-            self._ensure_queue()
-            entry = self._redis.eval(
-                _ENQUEUE_SCRIPT, 4, self._job_key(user_id), self._lease_key(user_id),
-                self._counter_key(user_id), _QUEUE_KEY,
-                settings.memory_reflection_every_sessions, user_id, str(time.time()), uuid.uuid4().hex,
-            )
+            with generation_store.locked(user_id) as state:
+                if state.get("deleted"):
+                    return False
+                self._ensure_queue()
+                entry = self._redis.eval(
+                    _ENQUEUE_SCRIPT, 4, self._job_key(user_id), self._lease_key(user_id),
+                    self._counter_key(user_id), _QUEUE_KEY,
+                    settings.memory_reflection_every_sessions, user_id, str(time.time()), uuid.uuid4().hex,
+                )
             self._redis_available = True
         except redis.RedisError:
             self._redis_available = False
@@ -211,9 +230,12 @@ class ReflectionScheduler:
                 for _, entries in messages:
                     for message_id, values in entries:
                         self._run_queued_reflection(message_id, values)
-            except redis.RedisError:
-                logger.warning("反思队列消费失败，将在稍后重试", exc_info=True)
-                time.sleep(1)
+            except Exception as error:
+                # The durable deletion fence may be temporarily unavailable too.
+                # Leave the message pending and keep the consumer alive without
+                # logging provider/storage exception bodies.
+                logger.warning("reflection_consumer_retry error_type=%s", type(error).__name__)
+                self._queue_stop.wait(1)
 
     def _run_queued_reflection(self, message_id, values) -> None:
         def value(name: str) -> str:
@@ -226,11 +248,14 @@ class ReflectionScheduler:
         if not job_token:
             # Upgrade only after the old owner lease expires. Read the current
             # aggregate counter, not a possibly duplicated legacy snapshot.
-            migrated = self._redis.eval(
-                _MIGRATE_SCRIPT, 4, self._job_key(user_id), self._lease_key(user_id),
-                self._counter_key(user_id), _QUEUE_KEY, _QUEUE_GROUP, message_id,
-                user_id, str(time.time()), uuid.uuid4().hex,
-            )
+            with generation_store.locked(user_id) as state:
+                if state.get("deleted"):
+                    return
+                migrated = self._redis.eval(
+                    _MIGRATE_SCRIPT, 4, self._job_key(user_id), self._lease_key(user_id),
+                    self._counter_key(user_id), _QUEUE_KEY, _QUEUE_GROUP, message_id,
+                    user_id, str(time.time()), uuid.uuid4().hex,
+                )
             logger.info(memory_log_fields(
                 "reflection_upgrade", "migrated" if migrated else "pending", user_id=user_id
             ))
@@ -300,20 +325,81 @@ class ReflectionScheduler:
     def _complete_shared(
         self, user_id: str, claimed_count: int, job_token: str, owner: str, message_id: str
     ) -> bool:
-        return bool(self._redis.eval(
-            _COMPLETE_SCRIPT,
-            5,
-            self._counter_key(user_id),
-            self._lease_key(user_id),
-            self._lease_state_key(user_id),
-            self._job_key(user_id),
-            _QUEUE_KEY,
-            job_token,
-            owner,
-            claimed_count,
-            _QUEUE_GROUP,
-            message_id,
-        ))
+        with generation_store.locked(user_id) as state:
+            if state.get("deleted"):
+                return False
+            return bool(self._redis.eval(
+                _COMPLETE_SCRIPT,
+                5,
+                self._counter_key(user_id),
+                self._lease_key(user_id),
+                self._lease_state_key(user_id),
+                self._job_key(user_id),
+                _QUEUE_KEY,
+                job_token,
+                owner,
+                claimed_count,
+                _QUEUE_GROUP,
+                message_id,
+            ))
+
+    def _delivery_keys(self, user_id: str):
+        prefix = f"{_DELIVERY_PREFIX}{user_id}:"
+        # User IDs normally come from MySQL. Escape glob syntax even for older
+        # imported identities, and require an exact digest to avoid prefix users.
+        pattern = "".join("\\" + c if c in "\\*?[]" else c for c in prefix) + "?" * 64
+        for key in self._redis.scan_iter(match=pattern, count=200):
+            text = key.decode() if isinstance(key, bytes) else key
+            if text.startswith(prefix) and re.fullmatch(r"[0-9a-f]{64}", text[len(prefix):]):
+                yield key
+
+    def _user_queue_batches(self, user_id: str):
+        # Bound the scan to a snapshot. Other users may keep enqueueing while
+        # this user's DB row prevents any new mutation for the deleted user.
+        tail = self._redis.xrevrange(_QUEUE_KEY, count=1)
+        if not tail:
+            return
+        upper, cursor = tail[0][0], "-"
+        while True:
+            entries = self._redis.xrange(_QUEUE_KEY, min=cursor, max=upper, count=200)
+            if not entries:
+                return
+            matched = []
+            for identifier, values in entries:
+                value = values.get("user_id", values.get(b"user_id"))
+                if (value.decode() if isinstance(value, bytes) else value) == str(user_id):
+                    matched.append(identifier)
+            if matched:
+                yield matched
+            last = entries[-1][0]
+            cursor = "(" + (last.decode() if isinstance(last, bytes) else last)
+
+    def delete_user(self, user_id: str) -> dict:
+        """Fence first, then remove and independently verify all reflection data.
+
+        Keep the durable tombstone on Redis failure so retries cannot resurrect
+        tasks. Provider calls already in flight are read-only and cannot settle.
+        """
+        generation_store.tombstone(user_id)
+        keys = [self._counter_key(user_id), self._job_key(user_id),
+                self._lease_key(user_id), self._lease_state_key(user_id)]
+        self._redis.delete(*keys)
+        batch = []
+        for key in self._delivery_keys(user_id):
+            batch.append(key)
+            if len(batch) == 200:
+                self._redis.delete(*batch)
+                batch.clear()
+        if batch:
+            self._redis.delete(*batch)
+        for identifiers in self._user_queue_batches(user_id):
+            self._redis.eval(_DELETE_ENTRIES_SCRIPT, 1, _QUEUE_KEY, _QUEUE_GROUP, *identifiers)
+        # Never turn a silent no-op, scan error or unreadable stream into a
+        # successful Saga step. The session cleanup manifest stays on error.
+        if (self._redis.exists(*keys) or next(self._delivery_keys(user_id), None) is not None
+                or next(self._user_queue_batches(user_id), None) is not None):
+            raise RuntimeError("反思数据清理后仍有残留")
+        return {"keys": 0, "queue_entries": 0}
 
     def queue_available(self) -> bool:
         try:

@@ -42,15 +42,35 @@ test('账号删除覆盖过期及缺失元数据会话，真实 Redis 与 MySQL 
     return JSON.parse(python(`import json,sys
 from app.memory.session_store import session_store
 from app.memory.session_persistence import session_persistence
-user,*ids=sys.argv[1:]
-print(json.dumps({'redis':session_persistence.count_sessions(ids),'manifest':session_store.cleanup_session_ids(user)}))`, entry.account.userId, ...entry.sessions))
+import app.memory.reflection_scheduler as reflection
+user,raw_entries,*ids=sys.argv[1:]
+scheduler=reflection.ReflectionScheduler(); client=scheduler._redis
+exact=[scheduler._counter_key(user),scheduler._job_key(user),scheduler._lease_key(user),scheduler._lease_state_key(user)]
+print(json.dumps({'redis':session_persistence.count_sessions(ids),'manifest':session_store.cleanup_session_ids(user),
+ 'reflection_keys':client.exists(*exact)+len(list(scheduler._delivery_keys(user))),
+ 'reflection_entries':sum(len(batch) for batch in scheduler._user_queue_batches(user)),
+ 'reflection_pending':sum(len(client.xpending_range(reflection._QUEUE_KEY,reflection._QUEUE_GROUP,identifier,identifier,1)) for identifier in json.loads(raw_entries))}))`, entry.account.userId, JSON.stringify(entry.reflectionIds), ...entry.sessions))
   }
   async function waitDeleted(entry) {
     expect(String(entry.account.userId)).toMatch(/^\d+$/)
     await expect.poll(() => query(`SELECT status FROM account_deletion_task WHERE user_id=${entry.account.userId} ORDER BY id DESC LIMIT 1;`),
       { timeout: 60000, intervals: [500, 1000, 2000] }).toBe('completed')
     expect(query(`SELECT COUNT(*) FROM user WHERE id=${entry.account.userId}; SELECT COUNT(*) FROM chat_session WHERE user_id=${entry.account.userId};`)).toBe('0\n0')
-    expect(readback(entry)).toEqual({ redis: 0, manifest: [] })
+    expect(readback(entry)).toEqual({ redis: 0, manifest: [], reflection_keys: 0, reflection_entries: 0, reflection_pending: 0 })
+    expect(python(`import sys
+from app.knowledge.generations import generation_store,StaleGeneration
+from app.memory.reflection_scheduler import ReflectionScheduler
+user=sys.argv[1]; scheduler=ReflectionScheduler()
+assert generation_store.snapshot(user)['deleted']
+try: scheduler.record_session(user,'late-session','late-turn')
+except StaleGeneration: pass
+else: raise AssertionError('Deleted reflection counter was resurrected')
+assert not scheduler.check_and_trigger(user)
+assert not scheduler._claim_shared(user,'qa-job','late-owner')
+scheduler._run_queued_reflection('1-0',{'user_id':user,'claimed_count':'1'})
+assert not scheduler._complete_shared(user,1,'qa-job','qa-owner','1-0')
+print('late-reflection-rejected')`, entry.account.userId)).toBe('late-reflection-rejected')
+    expect(readback(entry)).toEqual({ redis: 0, manifest: [], reflection_keys: 0, reflection_entries: 0, reflection_pending: 0 })
     entry.verified = true
   }
   try {
@@ -66,16 +86,28 @@ print(json.dumps({'redis':session_persistence.count_sessions(ids),'manifest':ses
       }
       // Reproduce stale metadata and an existing canonical session absent from it.
       // This writes only IDs created by this test; never scans or edits other keys.
-      python(`import sys
+      entry.reflectionIds = JSON.parse(python(`import json,sys
 from app.memory.session_store import session_store
 from app.memory.session_persistence import session_persistence
+import app.memory.reflection_scheduler as reflection
 user,first,missing=sys.argv[1:]
 assert all(value.isascii() and value.isdecimal() for value in (user,first,missing))
 assert session_persistence._ensure_connection()
 session_store._save(user,{first:{'last_updated':'2000-01-01T00:00:00'}})
 for value in (first,missing): session_persistence._redis.set('mneme:session:'+value,'isolated QA')
-print('ok')`, account.userId, ...entry.sessions)
-      expect(readback(entry)).toEqual({ redis: 2, manifest: [entry.sessions[0]] })
+scheduler=reflection.ReflectionScheduler(); client=scheduler._redis
+assert scheduler.record_session(user,first,'qa-turn')==1
+scheduler._ensure_queue()
+client.set(scheduler._job_key(user),'qa-job')
+client.set(scheduler._lease_key(user),'qa-owner',ex=600)
+client.set(scheduler._lease_state_key(user),'active',ex=600)
+entries=[]
+for fields in ({'user_id':user,'claimed_count':'1','job_token':'qa-job'},
+               {'user_id':user,'claimed_count':'1'}):
+ identifier=client.xadd(reflection._QUEUE_KEY,fields); entries.append(identifier)
+ client.xclaim(reflection._QUEUE_KEY,reflection._QUEUE_GROUP,'qa-cleanup',0,[identifier],force=True)
+print(json.dumps(entries))`, account.userId, ...entry.sessions))
+      expect(readback(entry)).toEqual({ redis: 2, manifest: [entry.sessions[0]], reflection_keys: 5, reflection_entries: 2, reflection_pending: 2 })
     }
     const [target, protectedUser] = accounts
     await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), protectedUser.account)
@@ -84,7 +116,7 @@ print('ok')`, account.userId, ...entry.sessions)
     target.queued = true
     await waitDeleted(target)
     await page.context().addCookies(await other.storageState().then(state => state.cookies))
-    expect(readback(protectedUser)).toEqual({ redis: 2, manifest: [protectedUser.sessions[0]] })
+    expect(readback(protectedUser)).toEqual({ redis: 2, manifest: [protectedUser.sessions[0]], reflection_keys: 5, reflection_entries: 2, reflection_pending: 2 })
     expect(query(`SELECT COUNT(*) FROM chat_session WHERE user_id=${protectedUser.account.userId};`)).toBe('2')
     await page.goto('/chat')
     const toggle = page.getByRole('button', { name: '切换会话栏' })
@@ -92,7 +124,7 @@ print('ok')`, account.userId, ...entry.sessions)
     await expect(page.getByRole('button', { name: /打开对话：Session cleanup QA/ })).toHaveCount(2)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('protected-session-history.png'), fullPage: true, animations: 'disabled' })
-    await testInfo.attach('session-cleanup.json', { body: JSON.stringify({ expired_and_missing_manifest: true, redis_readback_zero: true, mysql_readback_zero: true, protected_tenant_sessions: 2 }), contentType: 'application/json' })
+    await testInfo.attach('session-cleanup.json', { body: JSON.stringify({ expired_and_missing_manifest: true, redis_readback_zero: true, mysql_readback_zero: true, reflection_keys_stream_and_pending_zero: true, durable_late_reflection_rejected: true, protected_tenant_sessions: 2 }), contentType: 'application/json' })
   } finally {
     for (const entry of accounts) {
       if (!entry.queued) { await api(entry.client, 'delete', '/profile/account'); entry.queued = true }
