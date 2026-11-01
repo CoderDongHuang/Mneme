@@ -12,6 +12,8 @@ public class ChatResponse {
     private List<String> memoryInsights;
     @com.fasterxml.jackson.annotation.JsonProperty("pending_memories")
     private List<PendingMemory> pendingMemories;
+    @com.fasterxml.jackson.annotation.JsonProperty("memory_status")
+    private String memoryStatus;
 
     public static class Source {
         @com.fasterxml.jackson.annotation.JsonProperty("retrieval_ranks")
@@ -118,4 +120,6 @@ public class ChatResponse {
     public void setMemoryInsights(List<String> memoryInsights) { this.memoryInsights = memoryInsights; }
     public List<PendingMemory> getPendingMemories() { return pendingMemories; }
     public void setPendingMemories(List<PendingMemory> pendingMemories) { this.pendingMemories = pendingMemories; }
+    public String getMemoryStatus() { return memoryStatus; }
+    public void setMemoryStatus(String value) { memoryStatus = value; }
 }

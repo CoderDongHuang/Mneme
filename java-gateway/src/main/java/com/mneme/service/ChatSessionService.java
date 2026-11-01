@@ -17,15 +17,18 @@ public class ChatSessionService {
     private final ChatSessionMapper sessionMapper;
     private final ChatMessageMapper messageMapper;
     private final JdbcTemplate jdbc;
+    private final com.fasterxml.jackson.databind.ObjectMapper json;
 
     public ChatSessionService(
         ChatSessionMapper sessionMapper,
         ChatMessageMapper messageMapper,
-        JdbcTemplate jdbc
+        JdbcTemplate jdbc,
+        com.fasterxml.jackson.databind.ObjectMapper json
     ) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
         this.jdbc = jdbc;
+        this.json = json;
     }
 
     public ChatSession createSession(Long userId, String title) {
@@ -172,11 +175,30 @@ public class ChatSessionService {
     /** Commit verified text, evidence and terminal state before exposing done. */
     @Transactional
     public void finishAnswer(Long messageId, long generation, String content, String sourcesJson) {
+        finishAnswer(messageId, generation, content, sourcesJson, List.of());
+    }
+
+    /** The answer and durable candidate handoff commit together; candidate writes run separately. */
+    @Transactional
+    public void finishAnswer(Long messageId, long generation, String content, String sourcesJson,
+                             List<com.mneme.dto.ChatResponse.PendingMemory> candidates) {
         if (content == null || content.isBlank()) throw new IllegalArgumentException("回答内容为空");
         if (jdbc.update("UPDATE chat_message SET content=?,sources_json=?,status='completed',error_code=NULL"
             + " WHERE id=? AND role='assistant' AND status='processing' AND answer_generation=?",
             content, sourcesJson, messageId, generation) != 1)
             throw new IllegalStateException("回答执行权已失效，拒绝发布完成状态");
+        if (candidates == null || candidates.isEmpty()) return;
+        String payload;
+        try { payload = json.writeValueAsString(candidates); }
+        catch (Exception error) { throw new IllegalStateException("记忆任务交接失败", error); }
+        int inserted = jdbc.update("""
+            INSERT INTO processing_task(task_id,task_type,user_id,aggregate_id,idempotency_key,payload)
+            SELECT ?, 'memory_candidates',s.user_id,m.id,?,CAST(? AS JSON)
+            FROM chat_message m JOIN chat_session s ON s.id=m.session_id
+            WHERE m.id=? AND m.answer_generation=? AND m.status='completed'
+            """, "task_" + java.util.UUID.randomUUID().toString().replace("-", ""),
+            "memory:" + messageId + ":" + generation, payload, messageId, generation);
+        if (inserted != 1) throw new IllegalStateException("记忆任务交接失败");
     }
 
     public void failMessage(Long messageId, long generation, String content, String errorCode) {
@@ -219,6 +241,10 @@ public class ChatSessionService {
     @Transactional
     public void deleteSession(Long userId, Long sessionId) {
         getOwnedSession(userId, sessionId);
+        jdbc.update("""
+            DELETE t FROM processing_task t JOIN chat_message m ON m.id=t.aggregate_id
+            WHERE t.task_type='memory_candidates' AND t.user_id=? AND m.session_id=?
+            """, userId, sessionId);
         messageMapper.delete(new LambdaQueryWrapper<ChatMessage>().eq(ChatMessage::getSessionId, sessionId));
         sessionMapper.deleteById(sessionId);
     }

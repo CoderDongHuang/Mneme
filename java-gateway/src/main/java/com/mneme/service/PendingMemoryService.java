@@ -25,10 +25,17 @@ public class PendingMemoryService {
     public void store(Long userId, Long sessionId, Long sourceMessageId, List<ChatResponse.PendingMemory> candidates) {
         if (candidates == null) return;
         for (ChatResponse.PendingMemory candidate : candidates) {
-            if (candidate.getTempId() == null || candidate.getTempId().isBlank()) continue;
+            if (candidate == null || candidate.getTempId() == null || candidate.getTempId().isBlank())
+                throw new IllegalArgumentException("候选记忆编号无效");
             Long count = mapper.selectCount(new LambdaQueryWrapper<PendingMemory>()
                 .eq(PendingMemory::getMemoryId, candidate.getTempId()));
-            if (count > 0) continue;
+            if (count > 0) {
+                if (mapper.selectCount(new LambdaQueryWrapper<PendingMemory>()
+                    .eq(PendingMemory::getMemoryId, candidate.getTempId()).eq(PendingMemory::getUserId, userId)
+                    .eq(PendingMemory::getSourceMessageId, sourceMessageId)) != 1)
+                    throw new IllegalArgumentException("候选记忆编号冲突");
+                continue;
+            }
             PendingMemory memory = new PendingMemory();
             memory.setMemoryId(candidate.getTempId());
             memory.setUserId(userId);

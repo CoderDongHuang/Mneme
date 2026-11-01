@@ -33,7 +33,6 @@ public class ChatService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
     private final ChatSessionService sessionService;
-    private final PendingMemoryService pendingMemoryService;
     private final ChatStreamMonitor streamMonitor;
     private final HttpClient streamClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -52,14 +51,12 @@ public class ChatService {
         RedisTemplate<String, Object> redisTemplate,
         ObjectMapper objectMapper,
         ChatSessionService sessionService,
-        PendingMemoryService pendingMemoryService,
         ChatStreamMonitor streamMonitor
     ) {
         this.restTemplate = restTemplate;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.sessionService = sessionService;
-        this.pendingMemoryService = pendingMemoryService;
         this.streamMonitor = streamMonitor;
     }
 
@@ -88,8 +85,12 @@ public class ChatService {
                 pythonAgentUrl + "/api/v1/chat", request, ChatResponse.class
             );
             if (response == null) throw new IllegalStateException("Python Agent 返回空响应");
-            pendingMemoryService.store(userId, sessionId, assistant.getId(), response.getPendingMemories());
-            sessionService.finishAnswer(assistant.getId(), assistant.getAnswerGeneration(), response.getAnswer(), serializeSources(response.getSources()));
+            finishAnswer(assistant.getId(), assistant.getAnswerGeneration(), response.getAnswer(),
+                serializeSources(response.getSources()), response.getPendingMemories());
+            if (response.getPendingMemories() != null && !response.getPendingMemories().isEmpty()) {
+                response.setMemoryStatus("queued");
+                response.setPendingMemories(java.util.List.of());
+            }
         } catch (Exception error) {
             sessionService.failMessage(assistant.getId(), assistant.getAnswerGeneration(), "", error.getClass().getSimpleName());
             throw error;
@@ -144,6 +145,7 @@ public class ChatService {
         String sourcesJson = "[]";
         boolean completed = false;
         boolean failed = false;
+        java.util.List<ChatResponse.PendingMemory> candidates = java.util.List.of();
         try {
             control = streamMonitor.watch(assistantMessageId, generation, output);
             control.frame("start", objectMapper.writeValueAsString(java.util.Map.of(
@@ -173,13 +175,15 @@ public class ChatService {
                     switch (event.type()) {
                         case "token" -> answer.append(payload.path("content").asText(""));
                         case "meta" -> sourcesJson = payload.path("sources").isArray() ? payload.path("sources").toString() : "[]";
-                        case "memory" -> pendingMemoryService.store(userId, sessionId, assistantMessageId,
-                            objectMapper.convertValue(payload.path("pending"), objectMapper.getTypeFactory()
-                                .constructCollectionType(java.util.List.class, ChatResponse.PendingMemory.class)));
+                        case "memory" -> candidates = payload.path("pending").isArray()
+                            ? objectMapper.convertValue(payload.path("pending"), objectMapper.getTypeFactory()
+                                .constructCollectionType(java.util.List.class, ChatResponse.PendingMemory.class))
+                            : java.util.List.of();
                         case "done" -> {
-                            sessionService.finishAnswer(assistantMessageId, generation, answer.toString(), sourcesJson);
+                            finishAnswer(assistantMessageId, generation, answer.toString(), sourcesJson, candidates);
                             completed = true;
                             control.close();
+                            if (!candidates.isEmpty()) control.frame("memory", "{\"pending\":[],\"status\":\"queued\"}");
                         }
                         case "error" -> {
                             String code = payload.path("code").asText("AGENT_ERROR");
@@ -190,7 +194,8 @@ public class ChatService {
                         }
                         default -> { }
                     }
-                    control.frame(event.type(), objectMapper.writeValueAsString(payload));
+                    // Uncommitted candidates must not expose confirmation buttons or report success.
+                    if (!"memory".equals(event.type())) control.frame(event.type(), objectMapper.writeValueAsString(payload));
                     // Browser stops reading on done. Never wait for provider EOF to persist.
                     if (completed || failed) break;
                 }
@@ -232,6 +237,12 @@ public class ChatService {
     }
 
     private record SseEvent(String type, String data) { }
+
+    private void finishAnswer(Long messageId, long generation, String answer, String sources,
+                              java.util.List<ChatResponse.PendingMemory> candidates) {
+        if (candidates == null || candidates.isEmpty()) sessionService.finishAnswer(messageId, generation, answer, sources);
+        else sessionService.finishAnswer(messageId, generation, answer, sources, candidates);
+    }
 
     private SseEvent readEvent(BufferedReader reader) throws java.io.IOException {
         String type = "message";

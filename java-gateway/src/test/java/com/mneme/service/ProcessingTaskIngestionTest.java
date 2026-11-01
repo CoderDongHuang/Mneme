@@ -27,7 +27,7 @@ class ProcessingTaskIngestionTest {
         var http = mock(RestTemplate.class);
         var service = new ProcessingTaskService(mock(ProcessingTaskMapper.class), mock(KnowledgeDocumentMapper.class),
             mock(KnowledgeBaseMapper.class), new ObjectMapper(), http, new SimpleMeterRegistry(),
-            mock(NotificationService.class), mock(JdbcTemplate.class), mock(ObjectStorageService.class), mock(TaskLeaseService.class));
+            mock(NotificationService.class), mock(JdbcTemplate.class), mock(ObjectStorageService.class), mock(TaskLeaseService.class), mock(PendingMemoryService.class));
         ReflectionTestUtils.setField(service, "pythonAgentUrl", "http://agent");
         var task = new ProcessingTask(); task.setTaskType("document_ingest"); task.setTaskId("cancelled");
         task.setPayload("{\"user_id\":\"1\",\"kb_id\":\"2\",\"document_id\":\"doc_7\"}");
@@ -52,7 +52,7 @@ class ProcessingTaskIngestionTest {
         var jdbc = mock(JdbcTemplate.class);
         var service = new ProcessingTaskService(tasks, documents, mock(KnowledgeBaseMapper.class), new ObjectMapper(),
             mock(RestTemplate.class), new SimpleMeterRegistry(), mock(NotificationService.class), jdbc,
-            mock(ObjectStorageService.class), mock(TaskLeaseService.class));
+            mock(ObjectStorageService.class), mock(TaskLeaseService.class), mock(PendingMemoryService.class));
         var task = new ProcessingTask(); task.setAggregateId(7L); task.setTaskId("current");
         var document = new KnowledgeDocument(); document.setIndexGeneration(2L); document.setParseTaskId("current"); document.setStatus("processing");
         when(documents.selectForUpdate(7L)).thenReturn(document);
@@ -70,7 +70,7 @@ class ProcessingTaskIngestionTest {
             var tasks = mock(ProcessingTaskMapper.class);
             var service = new ProcessingTaskService(tasks, documents, mock(KnowledgeBaseMapper.class), new ObjectMapper(),
                 mock(RestTemplate.class), new SimpleMeterRegistry(), mock(NotificationService.class), mock(JdbcTemplate.class),
-                mock(ObjectStorageService.class), mock(TaskLeaseService.class));
+                mock(ObjectStorageService.class), mock(TaskLeaseService.class), mock(PendingMemoryService.class));
             var task = new ProcessingTask(); task.setAggregateId(7L); task.setTaskId("current");
             var document = new KnowledgeDocument(); document.setIndexGeneration(2L);
             document.setParseTaskId(state.equals("new_task") ? "successor" : "current");
@@ -90,7 +90,7 @@ class ProcessingTaskIngestionTest {
         var storage = mock(ObjectStorageService.class);
         var service = new ProcessingTaskService(mock(ProcessingTaskMapper.class), documents,
             mock(KnowledgeBaseMapper.class), new ObjectMapper(), http, new SimpleMeterRegistry(),
-            mock(NotificationService.class), mock(JdbcTemplate.class), storage, mock(TaskLeaseService.class));
+            mock(NotificationService.class), mock(JdbcTemplate.class), storage, mock(TaskLeaseService.class), mock(PendingMemoryService.class));
         ReflectionTestUtils.setField(service, "pythonAgentUrl", "http://agent");
         var task = new ProcessingTask();
         task.setAggregateId(7L);

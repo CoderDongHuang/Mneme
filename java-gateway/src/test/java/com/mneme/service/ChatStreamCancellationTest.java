@@ -138,7 +138,7 @@ class ChatStreamCancellationTest {
             var assistant = new ChatMessage(); assistant.setId(2L); assistant.setAnswerGeneration(3L);
             when(sessions.prepareExchange(7L, 9L, "request", "question")).thenReturn(new ChatSessionService.Exchange(null, assistant, false));
             when(sessions.answerState(2L)).thenAnswer(call -> state.get());
-            service = new ChatService(mock(RestTemplate.class), (RedisTemplate<String,Object>) mock(RedisTemplate.class), new ObjectMapper(), sessions, mock(PendingMemoryService.class), monitor);
+            service = new ChatService(mock(RestTemplate.class), (RedisTemplate<String,Object>) mock(RedisTemplate.class), new ObjectMapper(), sessions, monitor);
             ReflectionTestUtils.setField(service, "pythonAgentUrl", "http://127.0.0.1:" + server.getAddress().getPort());
             ReflectionTestUtils.setField(service, "internalServiceToken", "test-only");
         }

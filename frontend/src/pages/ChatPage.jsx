@@ -7,7 +7,7 @@ import {
   PanelLeftClose, PanelLeftOpen, Quote, Search, SlidersHorizontal, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { endpoints, streamChat } from '../api/client'
 import { Modal } from '../components/ui'
 import LoadingState from '../components/LoadingState'
@@ -239,7 +239,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
           } else if (name === 'token') {
             setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, content: message.content + (data.content || '') } : message))
           } else if (name === 'memory') {
-            setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, pending: data.pending || [] } : message))
+            setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, pending: data.pending || [], memoryStatus: data.status } : message))
 
           }
         },
@@ -420,6 +420,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
                 {!!message.sources?.length && (
                   <button className="source-trigger" onClick={() => setSourceDrawer(message.sources)}><Quote size={15} />{t("查看 ")}{message.sources.length}{t(" 条资料依据")}</button>
                 )}
+                {message.memoryStatus === 'queued' && <p className="muted" role="status">{t('回答已保存，候选记忆正在后台保存。')} <Link to="/tasks">{t('查看记忆任务')}</Link> · <Link to="/memory">{t('前往学习记忆确认')}</Link></p>}
                 {!!message.pending?.length && <div className="memory-confirmations">{message.pending.map((memory) => (
                   <div key={memory.temp_id} aria-busy={!!memoryBusy[memory.temp_id]}><Sparkles size={16} /><span><small>{t("是否记住")}</small>{memory.content}</span><button disabled={!!memoryBusy[memory.temp_id]} onClick={() => resolveMemory(message.id, memory, 'confirm')} title={t("确认")} aria-label={t("确认记忆")}><Check size={15} /></button><button disabled={!!memoryBusy[memory.temp_id]} onClick={() => resolveMemory(message.id, memory, 'dismiss')} title={t("忽略")} aria-label={t("忽略记忆")}><X size={15} /></button></div>
                 ))}</div>}

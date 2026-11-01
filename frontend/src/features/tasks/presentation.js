@@ -29,9 +29,10 @@ export function taskDiagnostics(task, events) {
   }
 }
 
-export function taskFailureMessage(status) {
+export function taskFailureMessage(status, type) {
   if (status === 'retry') return '本次执行未成功，后台将按计划重试。'
   if (status === 'cancelling') return '取消请求已接受，正在等待后台清理；尚未完成。'
   if (status === 'cancelled') return '任务已取消。'
+  if (type === 'memory_candidates') return '候选记忆保存未成功，回答已保留。请检查服务状态后重试；联系管理员时提供执行编号。'
   return '本次执行未成功。请检查文件和服务状态，修复原因后重试；联系管理员时提供执行编号。'
 }

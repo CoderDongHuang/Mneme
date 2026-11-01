@@ -1208,5 +1208,12 @@
   "暂无历史版本。": "No version history yet.",
   "记忆已确认": "Memory confirmed",
   "记忆已忽略": "Memory dismissed",
-  "记忆已添加": "Memory added"
+  "记忆已添加": "Memory added",
+  "回答已保存，候选记忆正在后台保存。": "Your answer is saved. Memory candidates are being saved in the background.",
+  "查看记忆任务": "View memory tasks",
+  "前往学习记忆确认": "Review saved memories",
+  "候选记忆保存": "Save memory candidates",
+  "回答已保存。候选记忆保存失败不会更改回答状态，可在修复服务后重试此任务。": "Your answer is saved. A memory save failure does not change its status. Retry this task after restoring the service.",
+  "来源回答": "Source answer",
+  "候选记忆保存未成功，回答已保留。请检查服务状态后重试；联系管理员时提供执行编号。": "Candidate memory could not be saved. Your answer is retained. Check the service and retry; include the task ID when contacting support."
 }

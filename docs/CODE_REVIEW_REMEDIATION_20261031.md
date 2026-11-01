@@ -336,3 +336,19 @@ PR #72 最终结果：最新提交 bc51df267a1190d20e1d2b8fc83672c2acf8eb7a 全�
 验证：前端全量 25 文件 123 项通过，含原到期测试和新增七项状态/竞态回归；Lint 零警告、生产构建及原包大小门禁通过。受限 Vite 子进程 EPERM 记录保留，正常权限完整重跑通过。保留旧容器与匹配数据库快照后部署真实 http://127.0.0.1:3000，桌面/移动两项通过，仅读取故障注入 503，其余创建、评分、成功重试和刷新均访问实际服务；独立读回计划、评分次数为一及未来到期日。六张实际视口截图复核、无横向溢出；独立核验 QA 用户为零、177 个账号删除任务全部 completed、Gateway/Agent 健康均 200。真实回归纳入整栈 CI。
 
 证据 artifacts/review-states-{unit-targeted-accepted,unit-full,lint-final,build,real}.log、review-states-browser。回查原文确认本次范围符合要求，其他页面、服务拆分和全部审查仍待分别处理。无数据库迁移，回退与传输重试边界见 docs/REVIEW_READ_STATES.md。最终 PR CI 与独立合并结果后续补记。
+
+PR #73 最终结果：最新提交 67518171f23b94b729a3d4c8a2e4f99f450c8567 全部九项 CI 通过，已独立合并，提交 f84bbb6dad07aac735f1f15f76f170b6df8326e8。
+
+PR #74 最终结果：最新提交 e4c22c0eab95c11e52afe5e56eb00590069dfd8f 全部九项 CI 通过（整栈 23 分 59 秒），已独立合并，提交 875777b0bcd0b78858ef812d5cdd7aee51558f78。
+
+## 2026-11-01：P1-06c / MN-007 Gateway 候选记忆持久化交接
+
+对照要求：重新阅读原 P1-06 的回答/记忆两条生命周期和故障验收。本项只完成 Gateway 候选保存部分，不将 Python complete_conversation 中的提取、蒸馏、摘要、反思提前视为异步或幂等；整个 MN-007 仍待后续处理。
+
+实现：回答 completed 与非空候选任务在同一 MySQL 事务提交，交接失败回滚；提交后返回 queued，未入库候选不暴露确认按钮。候选写入由现有 processing_task 工作器单独有限重试，受 owner/lease/fence 保护，整批候选、任务完成和载荷清空保持原子；同源候选重试不复位已确认/忽略状态，跨用户/回答 ID 冲突拒绝。账号/会话删除不能被迟到工作器复活；任务页明确来源回答，失败提示与重试不会修改数字 ID 相同的无关文档。时间线与详情均使用记忆专用指引，错误不暴露正文或底层 SQL。
+
+验证：Java 完整 package 211 项通过，零失败、错误或跳过，含真实 MySQL/Flyway/MyBatis 事务及并发删除回归；前端全量 25 文件 125 项通过，Lint 零警告、生产构建及原包大小门禁通过。受限 Vite 子进程 EPERM 的原始日志保留，正常权限重跑通过。
+
+保留原容器、配置及匹配 SQL 快照后部署实际 http://127.0.0.1:3000。桌面/移动两项完整通过，无整项重试：唯一 QA 用户注入 INSERT 故障，验证回答完成、三次失败、真实 Gateway 重启、网页手动重试、候选恰好一条、载荷清空、同请求重放及真实确认记忆后刷新可见。六张视口截图已逐一对照，无横向溢出。独立读回 QA 用户与触发器均零、183 个账号删除任务全部 completed；Agent 源文件规范换行后与仓库哈希一致，无临时夹具，Gateway/Agent 健康均 200。
+
+过程记录：前两轮保留失败证据；测试修正了独立意图分类请求、移动抽屉定位，并改为先有界等待真实确认请求返回后再核对即时 UI 回执，不重试写入、不放松数据库与刷新断言。真实夹具只替换隔离 QA 会话的模型输出和候选结果，不代表 Python 记忆处理失败已解耦。真实回归加入整栈 CI。证据 artifacts/memory-outbox-{java-full,unit-final2-accepted,lint-final2,build-final2-accepted,real-final,readback-final}.log 与 memory-outbox-browser-final；升级/回退及保留边界见 docs/PENDING_MEMORY_OUTBOX.md。最终 PR 检查与独立合并结果后续补记。

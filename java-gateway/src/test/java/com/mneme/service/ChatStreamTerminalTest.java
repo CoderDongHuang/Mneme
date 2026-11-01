@@ -21,6 +21,62 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ChatStreamTerminalTest {
+    private static String withCandidates() {
+        return "event: token\ndata: {\"content\":\"answer\"}\n\n"
+            + "event: memory\ndata: {\"pending\":[{\"temp_id\":\"m1\",\"content\":\"private candidate\"}]}\n\n"
+            + "event: done\ndata: {\"ok\":true}\n\n";
+    }
+
+    @Test void candidatesAreHandedOffBeforePublishingQueuedWithoutExposingUnstoredItems() throws Exception {
+        try (var fixture = new Fixture(withCandidates(), true)) {
+            var committed = new AtomicBoolean();
+            doAnswer(call -> {
+                java.util.List<com.mneme.dto.ChatResponse.PendingMemory> items = call.getArgument(4);
+                assertThat(items).hasSize(1);
+                assertThat(items.get(0).getTempId()).isEqualTo("m1");
+                committed.set(true); return null;
+            }).when(fixture.sessions).finishAnswer(eq(2L), eq(3L), eq("answer"), eq("[]"), anyList());
+            var output = new ByteArrayOutputStream() {
+                @Override public synchronized void write(byte[] data, int offset, int length) {
+                    if (new String(data, offset, length, StandardCharsets.UTF_8).contains("event: memory"))
+                        assertThat(committed).isTrue();
+                    super.write(data, offset, length);
+                }
+            };
+            fixture.run(output);
+            String body = output.toString(StandardCharsets.UTF_8);
+            assertThat(body).contains("\"pending\":[],\"status\":\"queued\"", "event: done")
+                .doesNotContain("private candidate", "m1");
+            assertThat(body.indexOf("event: memory")).isLessThan(body.indexOf("event: done"));
+            verify(fixture.sessions, never()).failMessage(anyLong(), anyLong(), anyString(), anyString());
+        }
+    }
+
+    @Test void failedHandoffNeverPublishesQueuedOrDone() throws Exception {
+        try (var fixture = new Fixture(withCandidates(), false)) {
+            doThrow(new IllegalStateException("private database detail")).when(fixture.sessions)
+                .finishAnswer(anyLong(), anyLong(), anyString(), anyString(), anyList());
+            var output = new ByteArrayOutputStream(); fixture.run(output);
+            assertThat(output.toString(StandardCharsets.UTF_8)).contains("event: error")
+                .doesNotContain("queued", "event: memory", "event: done", "private database detail");
+            verify(fixture.sessions).failMessage(2L, 3L, "answer", "IllegalStateException");
+        }
+    }
+
+    @Test void disconnectDeliveringQueuedCannotUndoAnswerOrDurableTask() throws Exception {
+        try (var fixture = new Fixture(withCandidates(), false)) {
+            fixture.run(new ByteArrayOutputStream() {
+                @Override public synchronized void write(byte[] data, int offset, int length) {
+                    if (new String(data, offset, length, StandardCharsets.UTF_8).contains("event: memory"))
+                        throw new java.io.UncheckedIOException(new IOException("client closed"));
+                    super.write(data, offset, length);
+                }
+            });
+            verify(fixture.sessions).finishAnswer(eq(2L), eq(3L), eq("answer"), eq("[]"), anyList());
+            verify(fixture.sessions, never()).failMessage(anyLong(), anyLong(), anyString(), anyString());
+        }
+    }
+
     @Test void persistsBeforeDoneWithoutWaitingForProviderEof() throws Exception {
         try (var fixture = new Fixture("event:meta\ndata:{\"sources\":[]}\n\nevent:token\ndata:{\n"
             + "data: \"content\":\"verified answer\"}\n\nevent:done\ndata:{\"ok\":true}\n\n", true)) {
@@ -111,7 +167,7 @@ class ChatStreamTerminalTest {
             when(sessions.answerState(2L)).thenReturn(new ChatSessionService.AnswerState(3L, "processing"));
             monitor = new ChatStreamMonitor(sessions);
             service = new ChatService(mock(RestTemplate.class), (RedisTemplate<String,Object>) mock(RedisTemplate.class),
-                new ObjectMapper(), sessions, mock(PendingMemoryService.class), monitor);
+                new ObjectMapper(), sessions, monitor);
             ReflectionTestUtils.setField(service, "pythonAgentUrl", "http://127.0.0.1:" + server.getAddress().getPort());
             ReflectionTestUtils.setField(service, "internalServiceToken", "test-only");
         }
