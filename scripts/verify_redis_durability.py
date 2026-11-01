@@ -48,6 +48,9 @@ def probe(phase):
         assert calls == ["redis-qa"]
         assert client.xpending(module._QUEUE_KEY, module._QUEUE_GROUP)["pending"] == 0
         assert client.get(scheduler._counter_key("redis-qa")) is None
+        sys.path.insert(0, "/repo/python-agent/scripts")
+        from check_reflection_lease import check
+        check()
 
 
 def run(*args, env=None, check=True):
