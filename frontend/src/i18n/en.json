@@ -1215,5 +1215,19 @@
   "候选记忆保存": "Save memory candidates",
   "回答已保存。候选记忆保存失败不会更改回答状态，可在修复服务后重试此任务。": "Your answer is saved. A memory save failure does not change its status. Retry this task after restoring the service.",
   "来源回答": "Source answer",
-  "候选记忆保存未成功，回答已保留。请检查服务状态后重试；联系管理员时提供执行编号。": "Candidate memory could not be saved. Your answer is retained. Check the service and retry; include the task ID when contacting support."
+  "候选记忆保存未成功，回答已保留。请检查服务状态后重试；联系管理员时提供执行编号。": "Candidate memory could not be saved. Your answer is retained. Check the service and retry; include the task ID when contacting support.",
+  "正在读取测验…": "Loading quizzes…",
+  "测验列表加载失败：{0}": "Could not load quizzes: {0}",
+  "已有测验列表可能不是最新状态。": "The displayed quizzes may be out of date.",
+  "测验草稿加载失败：{0}": "Could not load the quiz draft: {0}",
+  "草稿保存失败：{0}。当前答案已保留，请重试保存后再切换。": "Could not save the draft: {0}. Your answers are retained. Retry saving before switching.",
+  "选择测验后查看作答记录。": "Select a quiz to view attempts.",
+  "测验已创建": "Quiz created",
+  "测验资料库": "Quiz libraries",
+  "正在读取资料库…": "Loading libraries…",
+  "测验资料库加载失败：{0}": "Could not load quiz libraries: {0}",
+  "暂无可用于测验的资料库。": "No quiz libraries available yet.",
+  "正在读取作答记录…": "Loading attempts…",
+  "作答记录加载失败：{0}": "Could not load attempts: {0}",
+  "已有作答记录可能不是最新状态。": "The displayed attempts may be out of date."
 }
