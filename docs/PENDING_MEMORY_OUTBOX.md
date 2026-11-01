@@ -18,7 +18,7 @@ Gateway 在同一 MySQL 事务中，将带执行代的回答从 processing 更�
 - ChatServiceTest、ChatStreamTerminalTest 检查同步和 SSE 的交接顺序、交接失败及下游断开；前端检查独立队列提示和任务来源/错误/重试。
 - memory-outbox-real.spec.js 对唯一 QA 用户注入 pending_memory INSERT 故障，使用实际网页、Gateway、MySQL 和任务工作器验证回答完成、三次失败、真实重启、手动重试、载荷清空、幂等重放及实际确认记忆。桌面与移动均运行，检查横向溢出并保留视口截图。
 
-真实测试中的模型与 complete_conversation 结果由仅匹配 QA 用户/会话的夹具提供，测试结束恢复 Agent 原文件并重启、移除触发器和账号。因此该用例验证 Gateway 候选交接及下游真实确认，不冒充 Python 记忆提取失败已解耦的证据。生产代码不包含测试故障开关。
+初版真实测试中的模型与 complete_conversation 结果由隔离夹具提供。后续[记忆输入快照](MEMORY_INPUT_SNAPSHOT.md)回归保留实际完成和蒸馏流程，仅控制匹配 QA 用户/会话的回答模型及蒸馏模型输出，并验证快照和稳定候选编号。测试结束恢复 Agent 原文件并重启、移除触发器和账号。该用例不冒充 Python 记忆提取失败已解耦的证据。生产代码不包含测试故障开关。
 
 ## 升级和回退
 

@@ -379,3 +379,13 @@ PR #76 最终结果：最新提交 787875ec887269aad4556a1241c238b08f78f672 全�
 部署保留原容器、配置和匹配 SQL 快照后，在实际 http://127.0.0.1:3000 运行桌面/移动回归，两项全部通过，无整项重试；含真实向量确认、刷新可读，以及候选保存故障、重启与重试。此次本机 Agent 同时包含下一项快照修改，分项 PR 的独立范围另由 CI 验证。六张截图已目视复核，无页面横向溢出；独立读回 QA 用户与触发器均为零、193 个删除任务全部 completed、源文件统一换行哈希一致、临时夹具为零、Gateway/Agent 健康均 200。
 
 证据 artifacts/embedding-deadline-{python-full,frontend-lint,deploy}.log、memory-snapshot-real-deadline.log、memory-snapshot-readback-deadline.log、memory-snapshot-browser-deadline。升级回退与限制见 docs/EMBEDDING_REQUEST_TIMEOUT.md；无迁移或新依赖，完整 MN-007 继续开放。独立 PR 最终 CI 和合并结果后续补记。
+
+## 2026-11-01：P1-06 / MN-007 记忆蒸馏输入快照与稳定候选编号
+
+对照要求：再次回查 P1-06 的独立记忆生命周期和失败可重试要求，先固定输入和候选编号，避免模型完成较晚时处理后续消息。prepare 在加入当前用户消息后、模型前复制完整消息对象；memory_write 使用副本，空副本不回退实时缓存。空闲时间按本轮开始计算，长模型耗时不触发假空闲。候选按用户/会话/请求及规范化字段生成稳定 64 字符编号，同轮重排不变、跨轮隔离。
+
+验证：Python 3.11 Ruff 与完整 822 项通过，其中七项新回归覆盖副本、延迟、空输入、重排和隔离；前端最终 Lint 通过。实际 http://127.0.0.1:3000 桌面/手机两项通过，无整项重试；隔离夹具只控制模型输出，实际运行 prepare/complete/memory_write，模型期间追加的后续消息与当前助手回答不进入蒸馏，重复记忆节点候选一致。随后正式 Gateway 的故障入库、重启、网页重试、唯一候选、载荷清空、真实向量确认与刷新均通过。
+
+六张截图已目视核验，无页面横向溢出；独立读回 QA 账号、触发器、临时夹具均零，193 个删除任务全部 completed，Agent 源文件换行规范化哈希匹配，两个服务健康均 200。首轮候选编号超过 VARCHAR(64) 的真实失败保留，缩短摘要并增加长度断言后重跑全部通过。证据 artifacts/embedding-deadline-python-full.log、embedding-deadline-frontend-lint.log、memory-snapshot-real-deadline.log、memory-snapshot-readback-deadline.log、memory-snapshot-browser-deadline。
+
+范围：输入仍仅驻内存，complete 仍同步执行；高置信度写入、摘要、反思计数尚不支持整体安全重试。此项不是完整 MN-007，不能据此打开整函数自动重试。无迁移，部署回退和测试边界见 docs/MEMORY_INPUT_SNAPSHOT.md；独立 PR 的最终 CI 和合并结果后续补记。

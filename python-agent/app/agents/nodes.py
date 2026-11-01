@@ -20,6 +20,7 @@ from app.memory.distillation import apply_distilled_entries, distill_conversatio
 from app.memory.long_term_memory import long_term_memory
 from app.memory.reflection import run_reflection
 from app.memory.short_term_memory import short_term_memory
+from app.models.chat import Message
 from app.utils.llm import llm
 from app.tools.registry import tool_registry
 
@@ -218,21 +219,29 @@ def format_response_node(state: dict) -> dict:
 def memory_write_node(state: dict) -> dict:
     user_id = state["user_id"]
     session_id = state["session_id"]
-    history = short_term_memory.get_history(session_id)
+    memory_input = state.get("memory_input")
+    history = (
+        [Message.model_validate(message) for message in memory_input["history"]]
+        if memory_input is not None else short_term_memory.get_history(session_id)
+    )
     if len(history) < 2:
         return {"memory_entries_to_write": []}
     try:
         previous_time = parse_utc(history[-2].timestamp)
     except (TypeError, ValueError):
         return {"memory_entries_to_write": []}
-    idle_seconds = (utc_now() - previous_time).total_seconds()
+    reference_time = parse_utc(memory_input["reference_time"]) if memory_input is not None else utc_now()
+    idle_seconds = (reference_time - previous_time).total_seconds()
     if idle_seconds <= settings.distillation_idle_minutes * 60:
         return {"memory_entries_to_write": []}
     conversation = [
         {"role": message.role, "content": message.content} for message in history[:-1]
     ]
     distilled = distill_conversation(user_id, session_id, conversation)
-    pending = apply_distilled_entries(user_id, distilled)
+    pending = (
+        apply_distilled_entries(user_id, distilled, candidate_scope=[user_id, session_id, memory_input["delivery_id"]])
+        if memory_input is not None else apply_distilled_entries(user_id, distilled)
+    )
     return {"memory_entries_to_write": distilled, "pending_memories": pending}
 
 

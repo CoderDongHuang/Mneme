@@ -54,7 +54,7 @@ test('候选记忆入库失败不覆盖已完成回答，重启后真实重试�
     const fixture = fs.readFileSync('../test-fixtures/memory-outbox-probe.py', 'utf8')
     folder = python("import tempfile\nprint(tempfile.mkdtemp(prefix='mneme-memory-qa-'))")
     expect(folder).toMatch(/^\/tmp\/mneme-memory-qa-/)
-    const scope = { user: String(account.userId), session: String(session.id), memory: `memqa_${suffix}` }
+    const scope = { user: String(account.userId), session: String(session.id) }
     python(`import os,json,sys
 from pathlib import Path
 root=Path(sys.argv[1]); assert str(root).startswith('/tmp/mneme-memory-qa-')
@@ -85,6 +85,8 @@ DELIMITER ;`)
     const messages = await api('get', `/sessions/${session.id}/messages`)
     const saved = messages.find(m => m.role === 'assistant'); assistantId = saved.id
     expect(saved).toMatchObject({ status: 'completed', errorCode: null, content: 'Candidate memory QA verified answer' })
+    expect(JSON.parse(python("import sys\nfrom pathlib import Path\nprint((Path(sys.argv[1])/'snapshot-check.json').read_text())", folder)))
+      .toEqual({ snapshot_frozen: true, candidate_stable: true, actual_completion: true })
     await expect.poll(async () => (await memoryTask())?.status, { timeout: 45_000, intervals: [1000] }).toBe('failed')
     const failed = await memoryTask(); taskId = failed.task_id
     expect(failed.attempt_count).toBe(failed.max_attempts)
@@ -107,6 +109,7 @@ DELIMITER ;`)
     await expect.poll(async () => (await memoryTask()).status, { timeout: 30_000, intervals: [1000] }).toBe('completed')
     expect(sql(`SELECT JSON_LENGTH(payload) FROM processing_task WHERE task_id='${taskId}'`)).toBe('0')
     expect(sql(`SELECT COUNT(*) FROM pending_memory WHERE user_id=${account.userId} AND source_message_id=${assistantId}`)).toBe('1')
+    expect(Number(sql(`SELECT MAX(CHAR_LENGTH(memory_id)) FROM pending_memory WHERE user_id=${account.userId}`))).toBeLessThanOrEqual(64)
     const persisted = (await api('get', `/sessions/${session.id}/messages`)).find(m => m.id === assistantId)
     expect(persisted).toEqual(saved)
     // Replaying the same answer never starts another candidate task.
