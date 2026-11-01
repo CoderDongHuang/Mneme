@@ -298,3 +298,19 @@ PR #69 最终结果：冲突解决后的最新提交全部 9 项 CI 通过，已
 验证：Python 3.11 Ruff 与全套 809 项通过；新增真实 MySQL/Flyway Saga 分页、错误回执和恢复测试，最终 Java package 196 项通过，零失败、错误或跳过。首次受限环境 Docker 不可用的跳过结果不计入，通过正常 Docker 权限重新全量验证。独立空 Redis 实例运行真实 DEL/EXISTS 故障注入，验证静默无效删除、读错误、清单保留、幂等和其他用户隔离，全部通过。前端 Lint 通过。
 
 保存匹配数据库快照和旧容器后，部署真实 http://127.0.0.1:3000。桌面/移动两项全部通过：真实创建两租户及会话、构造过期和缺失 JSON 条目、删除首个账号并直接读回 MySQL/Redis/文件，确认另一用户会话不受影响且实际网页可见；最后独立核验 QA 用户为零、131 个删除任务全部 completed、Gateway/Agent 健康均 200。两张截图已逐一回查，无横向溢出。真实用例纳入整栈 CI。证据 artifacts/session-cleanup-{python-full,java-full,redis-real,frontend-lint,real}.log，截图 artifacts/session-cleanup-browser；设计与升级边界见 docs/SESSION_CLEANUP_READBACK.md。最终 CI 和合并结果后续单独确认。
+
+PR #70 最终结果：最新提交全部 9 项 CI 通过，已独立合并，提交 f635bd69bccfbdebdd37962ce7fc8fb3bec8d24e。PR #71 最终结果：最新提交 7eec7eb067d513fd914acf8af5e87d00d545e63f 全部 9 项 CI 通过，已独立合并，提交 aed57e2e7af818edfa10d01e525b7dfd35014c51。
+
+## 2026-11-01：P3-03 学习记忆异常状态及 P2-14 版本边界
+
+对照要求：重新回查 P3-03 首次加载、成功空结果、部分失败、服务不可用和可重试状态，以及 P2-14 每次只拆一个业务边界。本项覆盖记忆列表、待确认及版本历史，不提前关闭所有页面或全部渐进拆分建议。
+
+实现：两类列表分别记录加载、成功和失败，未知指标显示 —，读取失败不显示假空结果；刷新失败保留缓存与草稿并提示过期。保存/确认回执与后续读取错误分别展示，确认成功先移除已消费候选。写入使旧读取失效并锁定选择。版本历史迁至 features/memory/MemoryVersions，独立加载、重试、缓存及迟到响应隔离；恢复同步正文、主题、标签和状态。
+
+真实保存回归发现原 HttpURLConnection 不支持 PATCH，主要业务客户端改为 JDK HttpClient，固定 HTTP/1.1、禁止重定向并保留模型/内部认证/Trace 拦截器；真实 HTTP 测试检查中文 PATCH、标签、协议和凭据隔离。连续回归另发现上游 429 被误报 500，新增受限 Retry-After 与统一 429 映射，不转发内部正文或其他头。测试只对明确 429 有界重试，不重试 500、不调高生产限制。
+
+验证：Java 完整 package 198 项通过，零失败/错误/跳过；前端全量串行 25 文件 111 项通过、Lint 与生产构建及原包大小门禁通过。并行运行 Maven 时曾有既有聊天组件 5 秒超时，保留失败日志并单独运行全量通过，未修改该断言或时限。桌面/移动连续三轮共六项真实回归通过，所有写入、恢复、读取重试均访问实际 Gateway/Agent/数据库，故障仅注入 GET 503。Windows fullPage 截图曾触发 1×1 resize，使详情栏切为抽屉并重新挂载；改用真实视口截图并检查截图前后展开状态一致。截图复核另发现移动搜索框挤压，修复同页响应式规则并增加实际输入宽度与输入操作断言，修正后的最终部署验收结果继续补记。
+
+证据：artifacts/memory-states-{java-final,unit-accepted,lint-final,build,real-accepted}.log；移动修正构建 artifacts/memory-states-build-mobile-accepted.log。受限构建的 EPERM 保留原日志，正常权限构建通过。部署保留原容器和匹配数据库快照；无新增迁移，升级和回退见 docs/MEMORY_READ_STATES.md。用户附件和调试记录未纳入提交。
+
+最终部署验收：移动搜索修正后再次运行桌面、移动各三轮共六项，全部通过，未整项重试；十张视口截图复核，搜索输入、状态提示、详情与版本操作可用，无页面横向溢出。独立数据库读回本项 QA 账号为零、167 个账号删除任务全部 completed，Gateway/Agent 健康均 200。证据 artifacts/memory-layout-real.log、memory-layout-browser、memory-states-lint-mobile.log。回查原 P3-03 与 P2-14 后确认本次范围符合要求，PR 最终检查与独立合并结果后续补记。

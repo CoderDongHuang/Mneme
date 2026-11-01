@@ -1181,5 +1181,20 @@
   "诊断副本仅包含执行编号、类型、状态、次数、时间与阶段，不包含文件名、原始错误或内部路径。": "Diagnostics include only execution IDs, types, statuses, counts, timestamps and stages. Filenames, raw errors and internal paths are excluded.",
   "登录会话加载失败：": "Could not load sign-in sessions: ",
   "已有会话记录可能不是最新状态。": "The displayed session records may be out of date.",
-  "正在读取登录会话": "Loading sign-in sessions"
+  "正在读取登录会话": "Loading sign-in sessions",
+  "刷新记忆": "Refresh memories",
+  "记忆读取状态": "Memory loading status",
+  "记忆列表加载失败，请重试。": "Could not load memories. Please retry.",
+  "待确认记忆加载失败，请重试。": "Could not load pending memories. Please retry.",
+  "已有记忆记录可能不是最新状态。": "The displayed memories may be out of date.",
+  "已有待确认记录可能不是最新状态。": "The displayed pending memories may be out of date.",
+  "历史版本": "Version history",
+  "记忆历史版本": "Memory version history",
+  "正在读取记忆版本…": "Loading memory versions…",
+  "记忆版本加载失败，请重试。": "Could not load memory versions. Please retry.",
+  "已有版本记录可能不是最新状态。": "The displayed versions may be out of date.",
+  "暂无历史版本。": "No version history yet.",
+  "记忆已确认": "Memory confirmed",
+  "记忆已忽略": "Memory dismissed",
+  "记忆已添加": "Memory added"
 }

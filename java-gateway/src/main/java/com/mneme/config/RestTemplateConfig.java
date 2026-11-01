@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Primary;
 import com.mneme.service.InternalServiceTokenProvider;
 import io.micrometer.tracing.Tracer;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
@@ -25,8 +26,14 @@ public class RestTemplateConfig {
         InternalServiceTokenProvider tokens,
         Tracer tracer
     ) {
-        var requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofSeconds(30));
+        // HttpURLConnection rejects PATCH. Force HTTP/1.1 to retain compatibility
+        // with Uvicorn without an h2c upgrade, while supporting memory edits.
+        var httpClient = java.net.http.HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .version(java.net.http.HttpClient.Version.HTTP_1_1)
+            .followRedirects(java.net.http.HttpClient.Redirect.NEVER)
+            .build();
+        var requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(Duration.ofSeconds(120));
         return builder
             .requestFactory(() -> requestFactory)

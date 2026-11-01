@@ -130,6 +130,11 @@
  .reference-privacy>section { padding:22px; border:1px solid var(--mn-border); border-radius:8px; background:var(--mn-surface); margin-bottom:16px; }
  .reference-privacy h2 { font-size:16px; }
  .reference-privacy p,.reference-privacy li { font-size:13px; line-height:1.9; }
+ @media (max-width:700px) {
+   .reference-memory .memory-list-panel .page-toolbar .search-field { flex:0 0 100%; flex-wrap:nowrap; max-width:100%; box-sizing:border-box; }
+   .reference-memory .memory-list-panel .search-field input { width:0; }
+   .reference-memory .memory-list-panel .search-field svg { flex-shrink:0; }
+ }
  .reference-chat .composer-tools .retrieval-filters { display:block; }
  .reference-chat .composer-tools .retrieval-filters>button { min-height:25px; height:auto; padding:4px 6px; font-size:10px; }
  @media (max-width:1500px) and (min-width:1101px) { .memory-split,.task-split { grid-template-columns:minmax(0,1fr) 300px; } .reference-review .study-layout,.reference-quiz .quiz-workspace { grid-template-columns:minmax(0,1fr) 290px; } .reference-settings .settings-layout { grid-template-columns:minmax(0,1fr) 280px; } .reference-metrics>div { padding:16px; } }

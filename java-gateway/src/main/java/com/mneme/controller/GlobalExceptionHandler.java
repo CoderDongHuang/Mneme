@@ -16,6 +16,18 @@ import com.mneme.exception.AdminAccessDeniedException;
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(org.springframework.web.client.HttpClientErrorException.TooManyRequests.class)
+    public org.springframework.http.ResponseEntity<Result<Void>> upstreamRateLimit(
+            org.springframework.web.client.HttpClientErrorException.TooManyRequests exception) {
+        // Preserve backpressure without forwarding private upstream bodies or headers.
+        String retry = exception.getResponseHeaders() == null ? null
+            : exception.getResponseHeaders().getFirst("Retry-After");
+        if (retry == null || !retry.matches("[1-9][0-9]{0,2}")) retry = "1";
+        return org.springframework.http.ResponseEntity.status(429)
+            .header("Retry-After", retry)
+            .body(Result.error(429, "请求过于频繁，请稍后再试"));
+    }
+
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
     public org.springframework.http.ResponseEntity<Result<Void>> statusError(org.springframework.web.server.ResponseStatusException exception) {
         var response = org.springframework.http.ResponseEntity.status(exception.getStatusCode());
