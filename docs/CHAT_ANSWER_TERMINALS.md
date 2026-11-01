@@ -32,4 +32,4 @@ Python 的模型 iterator 由 `closing_async_iterator` 显式关闭，ASGI 接�
 
 `ChatServletStreamingTest` 在真实 Spring MVC / Jetty socket 上要求模型未结束时 3 秒内收到握手和心跳，防止仅用内存 OutputStream 测试遗漏框架缓冲。真实浏览器回归要求 10 秒内收到 SSE 响应头、无压缩、部分正文实时可见，停止或刷新后 5 秒内观察到上游 iterator 关闭，并直接核查 MySQL 历史状态与错误分类。测试截图禁用有限入场动画，仅用于采集最终渲染状态。
 
-这些是 P1-06/MN-007 的回答保存与停止子项。当前 Python 的同步 `complete_conversation` 和 Gateway 候选记忆保存仍在回答路径，持久记忆任务解耦尚待完成；停止不能撤销已发生的记忆副作用，同步记忆阶段的取消也仍受其阻塞调用约束。不能据此宣称完整 P1-06 已完成。
+这些是 P1-06/MN-007 的回答保存与停止子项。Gateway 的[候选入库已使用持久任务](PENDING_MEMORY_OUTBOX.md)，在答案事务中原子交接，后续入库失败不回滚答案。当前 Python 的同步 `complete_conversation` 仍在回答路径，[输入快照](MEMORY_INPUT_SNAPSHOT.md)尚不构成持久任务或整体幂等，完整记忆处理解耦仍待完成。停止不能撤销已发生的记忆副作用，同步记忆阶段的取消也仍受其阻塞调用约束。不能据此宣称完整 P1-06 已完成。

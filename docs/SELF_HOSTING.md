@@ -2,7 +2,9 @@
 
 本文面向从 GitHub 克隆 Mneme 后，在个人电脑运行完整系统的用户。无需购买服务器、域名、HTTPS 证书或 SMTP 服务。
 
-仅想试用且没有模型账号时，先按 [隔离离线演示](DEMO.md) 启动；正式功能仍需供应商配置。设置页可独立测试和保存每位用户的对话模型与密钥；Embedding、OCR 和后台任务使用部署方配置。已有资料切换 Embedding 前必须阅读 [索引迁移](EMBEDDING_MIGRATION.md)。当前最高 Flyway 为 V27（V26 上传提交回执、V27 任务租约）：V21 用户偏好和加密模型、V22 测验草稿与反馈、V23 会话引用、V24 测验提交幂等、V25 模型配置密钥版本。升级和回滚见 [发布说明](RELEASE_NOTES_2026-10-29.md)。
+仅想试用且没有模型账号时，先按 [隔离离线演示](DEMO.md) 启动；正式功能仍需供应商配置。设置页可独立测试和保存每位用户的对话模型与密钥；Embedding、OCR 和独立后台反思使用部署方配置。已有资料切换 Embedding 前必须阅读 [索引迁移](EMBEDDING_MIGRATION.md)。当前最高 Flyway 为 V31：V25 模型配置密钥版本、V26 上传提交回执、V27 任务租约、V28 删除清单、V29 邮箱验证、V30 索引解析代、V31 回答执行代。不要只按历史发布说明的迁移数量判断升级完成；逐项核验源码迁移与 Flyway 历史，当前改动和限制见 [源码审查修复记录](CODE_REVIEW_REMEDIATION_20261031.md)。
+
+升级前停止全部写入者，保留同一时间点的 MySQL、Qdrant、Agent data、文件/对象存储以及镜像和配置。尤其核对 [数据库角色](DATABASE_ROLES.md)、[任务租约](TASK_LEASES.md)、[索引解析代](INDEX_GENERATIONS.md)、[回答原子保存](CHAT_ANSWER_TERMINALS.md)和[候选记忆任务](PENDING_MEMORY_OUTBOX.md)各自的配套升级限制；不可混跑不认识这些机制的旧写入者。失败回退恢复整套匹配数据和镜像，不能删 Flyway 记录或只回退二进制。
 
 请为 `MODEL_CONFIG_ENCRYPTION_KEY` 设置独立、稳定、至少 32 字符的随机密钥，通过密钥管理器单独保管，不放入备份包。生产模式缺失或复用 JWT 密钥时拒绝启动；仅非生产保留 JWT 回退。已有部署升级前必须将原模型加密密钥（曾回退时为原 JWT_SECRET）加入 `MODEL_CONFIG_PREVIOUS_KEYS` 的 `legacy-v1` 项，按 [模型密钥轮换](MODEL_KEY_ROTATION.md) 验证迁移，不能直接丢弃旧密钥。整站网页恢复需要另行启用 [宿主机执行器](HOST_RECOVERY.md)，个人 ZIP 恢复不需要执行器。
 

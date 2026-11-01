@@ -26,7 +26,9 @@ Slow external calls run outside MySQL transactions. An already issued external
 delete cannot be recalled if the process loses ownership; deletes must remain
 idempotent and target a deleting entity. MySQL fencing prevents stale step/result
 commits, not arbitrary external-storage writes. Python index generation fencing
-is a separate P2-10 requirement and must not be inferred from this protocol.
+is implemented separately by V30 and the persistent publication/write locks in
+[INDEX_GENERATIONS.md](INDEX_GENERATIONS.md). Do not infer those guarantees from
+this task lease alone, or extend them to other account stores or all memory writes.
 
 ## Upgrade and rollback
 
