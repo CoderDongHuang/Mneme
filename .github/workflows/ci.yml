@@ -366,6 +366,12 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/memory-states-real.spec.js --workers=1 --retries=0
+      - name: Verify privacy read retries and durable write receipts on desktop and mobile
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/privacy-states-real.spec.js --workers=1 --retries=0
       - name: Verify shared display formats on desktop and mobile
         working-directory: frontend
         env:
