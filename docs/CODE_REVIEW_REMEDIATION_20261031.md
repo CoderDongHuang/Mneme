@@ -314,3 +314,13 @@ PR #70 最终结果：最新提交全部 9 项 CI 通过，已独立合并，提
 证据：artifacts/memory-states-{java-final,unit-accepted,lint-final,build,real-accepted}.log；移动修正构建 artifacts/memory-states-build-mobile-accepted.log。受限构建的 EPERM 保留原日志，正常权限构建通过。部署保留原容器和匹配数据库快照；无新增迁移，升级和回退见 docs/MEMORY_READ_STATES.md。用户附件和调试记录未纳入提交。
 
 最终部署验收：移动搜索修正后再次运行桌面、移动各三轮共六项，全部通过，未整项重试；十张视口截图复核，搜索输入、状态提示、详情与版本操作可用，无页面横向溢出。独立数据库读回本项 QA 账号为零、167 个账号删除任务全部 completed，Gateway/Agent 健康均 200。证据 artifacts/memory-layout-real.log、memory-layout-browser、memory-states-lint-mobile.log。回查原 P3-03 与 P2-14 后确认本次范围符合要求，PR 最终检查与独立合并结果后续补记。
+
+## 2026-11-01：P3-03 隐私页异常状态与 P2-14 审计边界
+
+对照要求：重新回查原审查 P3-03 的首次加载、成功空结果、部分失败、服务不可用与可重试，以及 P2-14 每次只拆一个业务边界。本项只覆盖隐私策略和审计记录，不将其他页面、后台保留清理或整个拆分计划提前关闭。
+
+实现：两类读取独立加载、失败与重试；首次失败不显示假空记录。审计记录迁至 features/privacy/PrivacyOperations，失败保留缓存并提示可能过期，重试不覆盖策略和确认草稿；迟到响应不能污染新一轮读取。导出和 Trace 删除不依赖策略加载成功。策略保存、Trace 删除的真实成功回执与后续审计读取失败分开展示；失败写入保留草稿，操作锁阻止重复提交。中英文提示同步。
+
+验证：全量前端 25 文件 116 项、最终 Lint、生产构建与原包大小门禁通过。真实 http://127.0.0.1:3000 桌面/移动两项通过，仅读取故障注入 503，写入和成功重试均访问实际服务；独立读取策略及审计完成记录，实际存储 SQL 验证本用户 Trace 为零、另一用户仍为一。六张视口截图已回查，无页面横向溢出。独立最终读回 QA 用户为零、MySQL/SQLite 测试 Trace 均为零、175 个账号删除任务全部 completed、Gateway/Agent 健康均 200。真实回归已加入整栈 CI。
+
+过程记录：初轮夹具误将 Trace 写入未启用的 MySQL，而本机实际后端为 SQLite；四条隔离 QA 残留已准确清理，夹具改用实际后端后全部重跑通过，不修改生产删除行为或放松断言。保留首轮失败日志，最终证据 artifacts/privacy-states-{unit-final,lint-final,build,real-accepted}.log 与 privacy-states-browser-accepted。受限环境 Docker 读回失败后按正常权限独立核验成功。无数据库迁移，部署与回退见 docs/PRIVACY_READ_STATES.md。回查原文要求符合本项范围，PR 最终 CI 与独立合并结果后续补记。
