@@ -389,3 +389,11 @@ PR #76 最终结果：最新提交 787875ec887269aad4556a1241c238b08f78f672 全�
 六张截图已目视核验，无页面横向溢出；独立读回 QA 账号、触发器、临时夹具均零，193 个删除任务全部 completed，Agent 源文件换行规范化哈希匹配，两个服务健康均 200。首轮候选编号超过 VARCHAR(64) 的真实失败保留，缩短摘要并增加长度断言后重跑全部通过。证据 artifacts/embedding-deadline-python-full.log、embedding-deadline-frontend-lint.log、memory-snapshot-real-deadline.log、memory-snapshot-readback-deadline.log、memory-snapshot-browser-deadline。
 
 范围：输入仍仅驻内存，complete 仍同步执行；高置信度写入、摘要、反思计数尚不支持整体安全重试。此项不是完整 MN-007，不能据此打开整函数自动重试。无迁移，部署回退和测试边界见 docs/MEMORY_INPUT_SNAPSHOT.md；独立 PR 的最终 CI 和合并结果后续补记。
+
+## 2026-11-01：文档与当前源码、部署迁移一致性
+
+对照要求：回查原审查第 7 节升级、回滚和逐项验收约束。纠正项目状态、自部署、路线图、任务租约和回答终态五处说明：最高迁移 V27 更新为实际 V31，区分 V27 任务 fence 与 V30 索引写入隔离，候选入库改为已实现的 Gateway 持久任务；Python 完整记忆解耦仍开放。明确旧批次测试数字和发布说明属于历史结果，不能据此宣布全部整改完成；升级停全部写入者、恢复匹配数据与镜像，不允许删除 Flyway 历史或只回退二进制。
+
+验证：五份文档的 35 个本地链接全部有效，源码最高迁移为 V31；实际 http://127.0.0.1:3000 对应 MySQL 最高迁移同为 V31，失败迁移为零，Gateway/Agent 健康均 200。证据 artifacts/document-current-state.log。本项只修改说明，不产生新的业务测试结果；相邻代码项的完整测试和浏览器证据仍按各项记录保留。独立 PR 最终 CI 与合并结果后续补记。
+
+PR #77 最终结果：最新提交 5d759a6c8a7a9c27f924ffdabade66a22677ef2d 全部九项 CI 通过，已独立合并，提交 48d31e862e0737be7097d35cc666107c25873213。
