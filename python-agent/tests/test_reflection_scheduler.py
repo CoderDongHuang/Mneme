@@ -12,6 +12,7 @@ class FakeRedis:
         self.states = {}
         self.stream = []
         self.acked = []
+        self.deliveries = {}
 
     def incr(self, key):
         self.values[key] = int(self.values.get(key, 0)) + 1
@@ -33,6 +34,12 @@ class FakeRedis:
         return True
 
     def eval(self, script, key_count, *args):
+        if script == module._RECORD_SCRIPT:
+            counter, delivery, ttl = args
+            if delivery not in self.deliveries:
+                self.incr(counter)
+                self.deliveries[delivery] = ttl
+            return int(self.values.get(counter, 0))
         if script == module._ENQUEUE_SCRIPT:
             job, lease, counter, queue, threshold, user, at, token = args
             count = int(self.values.get(counter, 0))
@@ -97,6 +104,54 @@ def test_idle_queue_wait_fits_within_redis_socket_timeout(monkeypatch):
     module.ReflectionScheduler()
 
     assert options["socket_timeout"] > module._QUEUE_BLOCK_MS / 1000
+
+
+def test_delivery_retries_remain_deduplicated_after_consumption():
+    fake = FakeRedis()
+    first = module.ReflectionScheduler(redis_client=fake)
+    second = module.ReflectionScheduler(redis_client=fake)
+    assert first.record_session("u", "session", "turn") == 1
+    assert second.record_session("u", "session", "turn") == 1
+    fake.values.pop(first._counter_key("u"))
+    assert second.record_session("u", "session", "turn") == 0
+    assert first._counter_key("u") not in fake.values
+    assert second.record_session("u", "session", "next-turn") == 1
+
+
+def test_delivery_identity_is_user_session_and_turn_scoped():
+    fake = FakeRedis()
+    scheduler = module.ReflectionScheduler(redis_client=fake)
+    assert scheduler.record_session("u", "session", "turn") == 1
+    assert scheduler.record_session("u", "other-session", "turn") == 2
+    assert scheduler.record_session("other-user", "session", "turn") == 1
+    assert scheduler.record_session("u", "session", "other-turn") == 3
+    assert scheduler._delivery_key("u", "a:b", "c") != scheduler._delivery_key("u", "a", "b:c")
+    assert all(ttl == 604800 for ttl in fake.deliveries.values())
+    assert all("session" not in key and "turn" not in key for key in fake.deliveries)
+
+
+@pytest.mark.parametrize("session,delivery", [("session", ""), ("", "turn")])
+def test_partial_delivery_identity_rejected_before_counting(session, delivery):
+    fake = FakeRedis()
+    with pytest.raises(ValueError):
+        module.ReflectionScheduler(redis_client=fake).record_session("u", session, delivery)
+    assert not fake.values and not fake.deliveries
+
+
+def test_retry_after_lost_record_response_does_not_count_again(monkeypatch):
+    fake = FakeRedis()
+    scheduler = module.ReflectionScheduler(redis_client=fake)
+    evaluate = fake.eval
+
+    def lose_response(*args):
+        evaluate(*args)
+        raise redis.ConnectionError("response lost after Redis applied script")
+
+    monkeypatch.setattr(fake, "eval", lose_response)
+    with pytest.raises(redis.ConnectionError):
+        scheduler.record_session("u", "session", "turn")
+    monkeypatch.setattr(fake, "eval", evaluate)
+    assert scheduler.record_session("u", "session", "turn") == 1
 
 
 def test_reflection_is_persisted_to_stream_before_execution(monkeypatch):

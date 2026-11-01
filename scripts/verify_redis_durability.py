@@ -33,7 +33,7 @@ def probe(phase):
     assert client.config_get("appendfsync")["appendfsync"] == "everysec"
     if phase == "enqueue":
         module.settings = replace(module.settings, memory_reflection_every_sessions=1)
-        assert scheduler.record_session("redis-qa") == 1
+        assert scheduler.record_session("redis-qa", "session", "turn") == 1
         assert scheduler.check_and_trigger("redis-qa")
         messages = client.xreadgroup(module._QUEUE_GROUP, "crashed-worker", {module._QUEUE_KEY: ">"})
         assert messages
@@ -48,9 +48,13 @@ def probe(phase):
         assert calls == ["redis-qa"]
         assert client.xpending(module._QUEUE_KEY, module._QUEUE_GROUP)["pending"] == 0
         assert client.get(scheduler._counter_key("redis-qa")) is None
+        assert scheduler.record_session("redis-qa", "session", "turn") == 0
+        assert client.get(scheduler._counter_key("redis-qa")) is None
         sys.path.insert(0, "/repo/python-agent/scripts")
         from check_reflection_lease import check
         check()
+        from check_reflection_delivery import check as check_delivery
+        check_delivery()
 
 
 def run(*args, env=None, check=True):
