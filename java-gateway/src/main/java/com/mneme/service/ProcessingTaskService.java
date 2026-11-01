@@ -41,6 +41,7 @@ public class ProcessingTaskService {
     private final JdbcTemplate jdbc;
     private final ObjectStorageService storage;
     private final TaskLeaseService leases;
+    private final PendingMemoryService pendingMemories;
 
     @Autowired(required = false)
     private OperationLogService operationLog;
@@ -63,7 +64,8 @@ public class ProcessingTaskService {
         NotificationService notificationService,
         JdbcTemplate jdbc,
         ObjectStorageService storage,
-        TaskLeaseService leases
+        TaskLeaseService leases,
+        PendingMemoryService pendingMemories
     ) {
         this.taskMapper = taskMapper;
         this.documentMapper = documentMapper;
@@ -75,6 +77,7 @@ public class ProcessingTaskService {
         this.jdbc = jdbc;
         this.storage = storage;
         this.leases = leases;
+        this.pendingMemories = pendingMemories;
     }
 
     @Scheduled(fixedDelayString = "${mneme.task-poll-delay-ms:2000}")
@@ -126,6 +129,8 @@ public class ProcessingTaskService {
                 deleteDocument(task, lease);
             } else if ("knowledge_base_delete".equals(task.getTaskType())) {
                 deleteKnowledgeBase(task, lease);
+            } else if ("memory_candidates".equals(task.getTaskType())) {
+                storeMemoryCandidates(task, lease);
             } else {
                 throw new IllegalArgumentException("未知任务类型: " + task.getTaskType());
             }
@@ -141,6 +146,35 @@ public class ProcessingTaskService {
             try { retryOrFail(task, lease, error); }
             catch (Exception cleanupError) { log.warn("任务等待恢复清理: {}", task.getTaskId(), cleanupError); }
         }
+    }
+
+    private void storeMemoryCandidates(ProcessingTask task, TaskLeaseService.Lease lease) {
+        lease.write(row -> {
+            // Every side effect is local SQL in this fenced transaction. Lock the
+            // active account and canonical session so deletion cannot be undone.
+            var users = jdbc.queryForList("SELECT status FROM user WHERE id=? FOR UPDATE", task.getUserId());
+            var messages = users.isEmpty() || !"active".equals(users.get(0).get("status")) ? List.<Map<String, Object>>of()
+                : jdbc.queryForList("""
+                    SELECT m.session_id FROM chat_session s JOIN chat_message m ON m.session_id=s.id
+                    WHERE s.user_id=? AND m.id=? AND m.role='assistant' AND m.status='completed' FOR UPDATE
+                    """, task.getUserId(), task.getAggregateId());
+            if (messages.isEmpty()) {
+                jdbc.update("UPDATE processing_task SET payload=JSON_ARRAY(),error_code=NULL WHERE id=?", task.getId());
+                lease.finish("cancelled", null);
+                task.setStatus("cancelled");
+                notificationService.publish(task);
+                return null;
+            }
+            try {
+                List<com.mneme.dto.ChatResponse.PendingMemory> candidates = objectMapper.readValue(String.valueOf(row.get("payload")),
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, com.mneme.dto.ChatResponse.PendingMemory.class));
+                pendingMemories.store(task.getUserId(), ((Number) messages.get(0).get("session_id")).longValue(),
+                    task.getAggregateId(), candidates);
+            } catch (Exception error) { throw new IllegalStateException("候选记忆保存失败", error); }
+            jdbc.update("UPDATE processing_task SET payload=JSON_ARRAY() WHERE id=?", task.getId());
+            completeLocked(task, lease);
+            return null;
+        });
     }
 
     private void ingest(ProcessingTask task, TaskLeaseService.Lease lease) throws Exception {
@@ -397,6 +431,8 @@ public class ProcessingTaskService {
     }
 
     private void retryOrFailLocked(ProcessingTask task, TaskLeaseService.Lease lease, Exception error) {
+        // SQL exceptions may embed bound memory text; persist only a fixed diagnosis.
+        if ("memory_candidates".equals(task.getTaskType())) error = new IllegalStateException("候选记忆保存失败，请重试任务");
         int attempts = (task.getAttemptCount() == null ? 0 : task.getAttemptCount()) + 1;
         int maxAttempts = task.getMaxAttempts() == null ? 3 : task.getMaxAttempts();
         boolean exhausted = attempts >= maxAttempts;

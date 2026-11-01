@@ -67,7 +67,7 @@ class DeletionReadbackTest {
         final AtomicReference<Map<String, Object>> agent = new AtomicReference<>(Map.of("qdrant_chunks", 0, "fts_rows", 0, "qdrant_collections", 0));
         final TaskLeaseService leases = new TaskLeaseService(jdbc, manager, 30);
         final ProcessingTaskService service = new ProcessingTaskService(mock(ProcessingTaskMapper.class), documents, bases,
-            json, http, new SimpleMeterRegistry(), mock(NotificationService.class), jdbc, storage, leases);
+            json, http, new SimpleMeterRegistry(), mock(NotificationService.class), jdbc, storage, leases, mock(PendingMemoryService.class));
         Fixture() throws Exception {
             user = user(); kb = kb(user); keepUser = user(); keepKb = kb(keepUser);
             original = file(user, kb, "current.txt"); version = file(user, kb, "history.txt");

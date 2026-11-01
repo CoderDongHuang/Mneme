@@ -15,6 +15,22 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ChatServiceTest {
+    @Test void synchronousAnswerReturnsQueuedOnlyAfterDurableHandoff() {
+        var rest = mock(RestTemplate.class); var sessions = mock(ChatSessionService.class);
+        var assistant = assistant(""); assistant.setAnswerGeneration(1L);
+        when(sessions.prepareExchange(7L, 9L, "request-1", "question"))
+            .thenReturn(new ChatSessionService.Exchange(null, assistant, false));
+        var response = new com.mneme.dto.ChatResponse(); response.setAnswer("verified answer");
+        var candidate = new com.mneme.dto.ChatResponse.PendingMemory(); candidate.setTempId("m1");
+        response.setPendingMemories(java.util.List.of(candidate));
+        when(rest.postForObject(anyString(), any(), eq(com.mneme.dto.ChatResponse.class))).thenReturn(response);
+        var result = service(rest, sessions).chat(7L, request());
+        verify(sessions).finishAnswer(2L, 1L, "verified answer", "[]", java.util.List.of(candidate));
+        assertThat(result.getMemoryStatus()).isEqualTo("queued");
+        assertThat(result.getPendingMemories()).isEmpty();
+        verify(sessions, never()).failMessage(anyLong(), anyLong(), anyString(), anyString());
+    }
+
     @Test
     void completedRequestDoesNotCallPythonAgain() {
         RestTemplate rest = mock(RestTemplate.class);
@@ -52,7 +68,7 @@ class ChatServiceTest {
             (RedisTemplate<String, Object>) mock(RedisTemplate.class),
             new ObjectMapper(),
             sessions,
-            mock(PendingMemoryService.class), mock(ChatStreamMonitor.class)
+            mock(ChatStreamMonitor.class)
         );
     }
 

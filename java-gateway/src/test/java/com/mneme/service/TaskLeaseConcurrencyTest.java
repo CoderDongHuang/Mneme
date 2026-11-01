@@ -228,7 +228,7 @@ class TaskLeaseConcurrencyTest {
                 return new IngestionResult("done", "9", 99, java.util.Map.of());
             });
             var worker = new ProcessingTaskService(mock(ProcessingTaskMapper.class), documents, mock(KnowledgeBaseMapper.class),
-                new ObjectMapper(), http, new SimpleMeterRegistry(), notifications, jdbc, storage, a);
+                new ObjectMapper(), http, new SimpleMeterRegistry(), notifications, jdbc, storage, a, mock(PendingMemoryService.class));
             ReflectionTestUtils.setField(worker, "pythonAgentUrl", "http://agent");
             try (var old = a.claim(TaskLeaseService.Queue.PROCESSING, id, false)) {
                 var running = pool.submit(() -> ReflectionTestUtils.invokeMethod(worker, "execute", task, old));

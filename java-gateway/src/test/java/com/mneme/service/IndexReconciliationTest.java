@@ -28,7 +28,7 @@ class IndexReconciliationTest {
     final ObjectStorageService storage = mock(ObjectStorageService.class);
     final ProcessingTaskService service = new ProcessingTaskService(mock(ProcessingTaskMapper.class), documents,
         mock(KnowledgeBaseMapper.class), json, http, new SimpleMeterRegistry(), mock(NotificationService.class),
-        mock(JdbcTemplate.class), storage, mock(TaskLeaseService.class));
+        mock(JdbcTemplate.class), storage, mock(TaskLeaseService.class), mock(PendingMemoryService.class));
     final TaskLeaseService.Lease lease = mock(TaskLeaseService.Lease.class);
     final KnowledgeDocument document = new KnowledgeDocument();
     final ProcessingTask task = new ProcessingTask();

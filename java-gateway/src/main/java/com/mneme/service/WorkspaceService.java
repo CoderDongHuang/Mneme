@@ -196,6 +196,13 @@ public class WorkspaceService {
         if (owned.isEmpty() || !List.of("failed", "retry", "cancelled").contains(String.valueOf(owned.get(0).get("status")))) {
             throw new IllegalArgumentException("任务不存在或当前状态不可重试");
         }
+        if ("memory_candidates".equals(owned.get(0).get("task_type"))) {
+            if ("cancelled".equals(owned.get(0).get("status")) || rows("""
+                SELECT m.id FROM user u JOIN chat_session s ON s.user_id=u.id JOIN chat_message m ON m.session_id=s.id
+                WHERE u.id=? AND u.status='active' AND m.id=? AND m.status='completed' FOR UPDATE
+                """, userId, owned.get(0).get("aggregate_id")).isEmpty())
+                throw new IllegalArgumentException("来源会话或账号已不可用，不能重试记忆任务");
+        }
         if (cancellationRedis != null && Boolean.TRUE.equals(cancellationRedis.hasKey("mneme:ingestion:active:" + userId + ":" + taskId))) {
             throw new IllegalArgumentException("上一次解析尚未退出，请稍后重试");
         }
@@ -232,6 +239,7 @@ public class WorkspaceService {
             SET d.status=CASE WHEN t.task_type='document_delete' THEN 'deleting'
                 WHEN t.task_type='document_index_repair' THEN 'index_repairing' ELSE 'parsing' END,
                 d.error_message=NULL WHERE t.user_id=? AND t.task_id=?
+                AND t.task_type IN ('document_ingest','document_index_repair','document_delete')
             """, userId, taskId);
         return Map.of("task_id", taskId, "status", "retry");
     }

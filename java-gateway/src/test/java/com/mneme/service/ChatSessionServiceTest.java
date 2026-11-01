@@ -95,7 +95,7 @@ class ChatSessionServiceTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(contains("FOR UPDATE"), eq(Long.class), eq(9L), eq(7L)))
             .thenReturn(List.of(9L));
-        return new Fixture(new ChatSessionService(sessions, messages, jdbc), sessions, messages, jdbc);
+        return new Fixture(new ChatSessionService(sessions, messages, jdbc, new com.fasterxml.jackson.databind.ObjectMapper()), sessions, messages, jdbc);
     }
 
     private ChatMessage message(Long id, String role, String content, String status) {

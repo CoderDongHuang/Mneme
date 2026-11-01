@@ -45,7 +45,7 @@ class ChatAnswerTerminalTest {
         var factory = new MybatisSqlSessionFactoryBean(); factory.setDataSource(source); factory.setConfiguration(config);
         var template = new SqlSessionTemplate(factory.getObject());
         messages = template.getMapper(ChatMessageMapper.class);
-        var proxy = new ProxyFactory(new ChatSessionService(template.getMapper(ChatSessionMapper.class), messages, jdbc));
+        var proxy = new ProxyFactory(new ChatSessionService(template.getMapper(ChatSessionMapper.class), messages, jdbc, new com.fasterxml.jackson.databind.ObjectMapper()));
         proxy.setProxyTargetClass(true);
         proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source), new AnnotationTransactionAttributeSource()));
         service = (ChatSessionService) proxy.getProxy();
