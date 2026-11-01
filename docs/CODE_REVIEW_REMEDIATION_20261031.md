@@ -354,6 +354,8 @@ PR #74 最终结果：最新提交 e4c22c0eab95c11e52afe5e56eb00590069dfd8f 全�
 过程记录：前两轮保留失败证据；测试修正了独立意图分类请求、移动抽屉定位，并改为先有界等待真实确认请求返回后再核对即时 UI 回执，不重试写入、不放松数据库与刷新断言。真实夹具只替换隔离 QA 会话的模型输出和候选结果，不代表 Python 记忆处理失败已解耦。真实回归加入整栈 CI。证据 artifacts/memory-outbox-{java-full,unit-final2-accepted,lint-final2,build-final2-accepted,real-final,readback-final}.log 与 memory-outbox-browser-final；升级/回退及保留边界见 docs/PENDING_MEMORY_OUTBOX.md。最终 PR 检查与独立合并结果后续补记。
 
 
+PR #75 最终结果：最新提交 4bff344793bd5901a6ce4a5a43793c3a230540d8 全部九项 CI 通过，已独立合并，提交 106db142a32c1e9ea00ab587b0423a3152be3108。
+
 ## 2026-11-01：P3-03 测验读取状态和草稿切换保护
 
 对照要求：回查原 P3-03 首次加载、成功空结果、部分失败及可重试状态；按 P2-14 仅拆出作答历史业务边界。列表和资料库分别读取，未知指标为 —；草稿与历史互不阻塞，各自失败重试，历史刷新保留缓存和成功提交回执。旧历史迟到不能覆盖当前测验。
