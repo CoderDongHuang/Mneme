@@ -365,3 +365,17 @@ PR #75 最终结果：最新提交 4bff344793bd5901a6ce4a5a43793c3a230540d8 全�
 验证：最终前端 26 文件 136 项通过，含 11 项测验回归；Lint 零警告、生产构建和原包大小门禁通过。受限构建 EPERM 保留失败日志并按正常权限重跑通过。保留旧前端和匹配 SQL 快照部署实际 http://127.0.0.1:3000，桌面/手机两项全部通过，无整项重试；仅 GET 故障注入 503，正式导入、草稿 PUT、提交、成功读取和刷新均访问实际服务，读回答案及唯一作答记录。六张截图已复核，无横向溢出；独立 SQL 核验 QA 用户为零、185 个删除任务均 completed、Gateway/Agent 健康均 200。真实用例纳入整栈 CI。
 
 过程中的测试定位和独立请求等待问题已修正，原失败日志保留。证据 artifacts/quiz-states-{unit-final,lint-final,build-accepted,real,readback}.log 与 quiz-states-browser；部署、回退及范围见 docs/QUIZ_READ_STATES.md。回查审查确认符合本项范围，其他页面和全部审查不提前关闭，最终 PR CI 和合并结果继续补记。
+
+PR #76 最终结果：最新提交 787875ec887269aad4556a1241c238b08f78f672 全部九项 CI 通过（整栈 24 分 40 秒），已独立合并，提交 5b15c96790cd18e992210626224b7828a0e5e965。
+
+## 2026-11-01：P1-06 / MN-007 前置修复——嵌入请求总超时
+
+对照要求：回查 P1-06 的记忆失败与回答状态分离、可重试及实际故障验收。本项处理真实候选确认时发现的网络等待，不把整个 Python 记忆后台生命周期标为完成。
+
+实现：原 SDK timeout 不是网络参数；改用 request_timeout 后实测多地址连接仍等待约一分钟。改用已有 aiohttp 依赖调用相同 DashScope 接口，以十秒总预算覆盖连接、响应和完整正文，禁止重定向；同步 Qdrant 回调自有事件循环和线程在请求取消后退出，不遗留等待网络的线程。失败不混入本地哈希向量，不自动重试写入。回调仍同步等待返回，不宣称整个 API 非阻塞或硬实时保证。
+
+验证：Python 3.11 Ruff 及完整 822 项通过（包含下一项尚未提交的七项快照测试；本项独立 CI 应为 815 项）。本地真实 HTTP 分别覆盖同步/异步路由中的正常响应、无响应、持续缓慢正文、线程清理及请求参数；前端最终 Lint 通过，diff 检查通过。原两轮 SDK 修复失败证据保留，不将首次参数更正误报完整解决。
+
+部署保留原容器、配置和匹配 SQL 快照后，在实际 http://127.0.0.1:3000 运行桌面/移动回归，两项全部通过，无整项重试；含真实向量确认、刷新可读，以及候选保存故障、重启与重试。此次本机 Agent 同时包含下一项快照修改，分项 PR 的独立范围另由 CI 验证。六张截图已目视复核，无页面横向溢出；独立读回 QA 用户与触发器均为零、193 个删除任务全部 completed、源文件统一换行哈希一致、临时夹具为零、Gateway/Agent 健康均 200。
+
+证据 artifacts/embedding-deadline-{python-full,frontend-lint,deploy}.log、memory-snapshot-real-deadline.log、memory-snapshot-readback-deadline.log、memory-snapshot-browser-deadline。升级回退与限制见 docs/EMBEDDING_REQUEST_TIMEOUT.md；无迁移或新依赖，完整 MN-007 继续开放。独立 PR 最终 CI 和合并结果后续补记。
