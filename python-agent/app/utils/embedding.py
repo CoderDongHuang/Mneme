@@ -1,7 +1,10 @@
+import asyncio
 import hashlib
 import math
 import os
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+
+import aiohttp
 
 from app.core.config import settings
 from app.core.logging import setup_logger
@@ -58,17 +61,35 @@ class DashScopeEmbeddingFunction:
     def _call_dashscope(self, texts: list[str]) -> list[list[float]]:
         import dashscope
 
-        response: Any = dashscope.TextEmbedding.call(
-            model=settings.embedding_model,
-            input=texts,
-            api_key=settings.dashscope_api_key,
-            timeout=10,
-        )
-        status_code = getattr(response, "status_code", 500)
-        if status_code != 200:
-            message = getattr(response, "message", "DashScope embedding 调用失败")
-            raise RuntimeError(message)
-        embeddings_data = response.output.get("embeddings", [])
+        async def request():
+            # The SDK's connect timeout applies separately to each DNS address.
+            # Bound the complete exchange, including attempts and body reads.
+            async with asyncio.timeout(10):
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=10), trust_env=True,
+                ) as session:
+                    async with session.post(
+                        dashscope.base_http_api_url.rstrip("/")
+                        + "/services/embeddings/text-embedding/text-embedding",
+                        json={"model": settings.embedding_model, "input": {"texts": texts}, "parameters": {}},
+                        headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
+                        allow_redirects=False,
+                    ) as response:
+                        if response.status != 200:
+                            raise RuntimeError(f"DashScope embedding HTTP {response.status}")
+                        return await response.json()
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            response = asyncio.run(request())
+        else:
+            # Qdrant requires a synchronous callback even in async routes.
+            # Own and join the loop; do not leave an SDK thread running after
+            # merely timing out its Future.
+            with ThreadPoolExecutor(max_workers=1, thread_name_prefix="mneme-embedding") as executor:
+                response = executor.submit(lambda: asyncio.run(request())).result()
+        embeddings_data = response.get("output", {}).get("embeddings", [])
         embeddings_data.sort(key=lambda item: item.get("text_index", 0))
         return [item["embedding"] for item in embeddings_data]
 
