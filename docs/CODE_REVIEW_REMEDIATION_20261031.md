@@ -544,3 +544,4 @@ PR #87 最终结果：最新提交 76b518d04e9ed7a3f7c8cb1812824f2dbc79a840 全�
 最终独立 SQL 读回测试用户零、279 个删除任务全 completed；230 个持久已删除账号会话文件零，SQLite/MySQL 合成 manifest、合成会话文件和临时文件均零，三个部署文件 LF 规范化哈希一致，Gateway/Agent 健康均 200。双存储脚本和真实回归加入整栈 CI。证据 artifacts/session-manifest-{python-accepted,frontend-lint,live-sqlite-final,live-mysql-final,build-final,deploy-final,real-final,readback}.log 与 session-manifest-browser-final。
 
 范围、单主机/共享目录前提、断电与临时文件留存限制、匹配数据回退见 docs/SESSION_MANIFEST_DELETION_FENCE.md。本项不关闭长期记忆、Redis、短期/工作记忆的迟到写入或整个 MN-006。独立 PR 最终 CI 与合并结果继续补记。
+PR #88 首次整栈 CI 暴露测试环境判断错误：CI 已配置执行器地址和凭证，但该阶段未启动 worker，真实返回不可用而非未配置。依据 Gateway 环境区分准确错误，仍拒绝任意 400 并阻止实际恢复写请求；重新回查 P3-03/P2-14，本地未配置状态桌面/手机 2 项通过（15.5 秒，无整项重试），定向 ESLint 通过，八张安全截图复核。证据 artifacts/pr88-fixed-real.log、pr88-fixed-browser。已配置不可用分支由同一真实整栈 CI 再验，不宣称本地启动了执行器。
