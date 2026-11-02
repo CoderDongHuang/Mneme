@@ -597,3 +597,10 @@ PR #88 最终结果：最新提交 8ba9ba0cab97f38e4304e73e7066835a8cb0b84b 全�
 八张安全截图逐一复核，无横向溢出。独立 SQL 读回 QA 用户、故障触发器、MySQL/SQLite 合成 manifest 均零，363 个账号删除任务全部 completed；314 个持久已删账号的会话文件和 scoped Redis 键零。临时会话文件、注入夹具、反思 QA 键与 Stream 均零，十份部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。证据 artifacts/session-memory-fence-{python-final,eslint,fixture-lint,live-sqlite,live-mysql,build,deploy,real,readback}.log 与 session-memory-fence-browser。
 
 无新依赖、配置或数据库结构迁移，Redis 载荷与用户状态增加版本协议，必须停旧工作器、保留匹配数据和镜像。双存储脚本和真实页面检查加入整栈 CI，范围与回退见 docs/SESSION_MEMORY_ACCOUNT_FENCE.md。工作记忆仍是实例内窗口；本项不关闭 Java 单会话删除清理、缓存/版本历史留存、物理擦除或整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。
+PR #89 最终结果：提交 b9f6ce9ac89035fa08d95e857976713d56f7ce5b 的九项 CI 全部通过（运行 41430838278），已独立合并，提交 cc5eff3416fe7da5d0bfdb51a32208e4f6757feb。
+
+PR #92 最终结果：提交 f9fbafb3149f5f4e0255d6811aac4b2650f9870f 的九项 CI 全部通过（运行 41477429853），已独立合并，提交 4fea584。保留上述缓存围栏的独立验收记录；该项单独发布，不与下一项混合。
+
+PR #93 首轮 CI（41483589966）在 Redis 停机注入时发现测试仍期待旧检查点。`current_step` 表示最后完成的阶段；缓存围栏使 Redis 断开时必须在记忆清理内失败，因此准确检查点应为 retry / knowledge_cleanup。已改为严格校验这一组合，没有放宽最终四种故障的跨存储零残留断言；新增四组接受/拒绝回归，相关 10 项测试全部通过。修正提交将重新执行完整 CI；通过前不合并。
+
+PR #93 最终结果：精确提交 fa29cbfd9ef52c734453c5a18c6df2f1235ce7ee 的九项 CI 全部通过（运行 41501416743），已独立合并，提交 2bdfdc10d548fc713c61e3b3fd48734284768f04。
