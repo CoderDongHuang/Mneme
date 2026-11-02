@@ -1,0 +1,45 @@
+package com.mneme.dto;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class ChatStreamContractTest {
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    @Test void malformedOrTrailingJsonNeverEchoesPrivateParserInput() {
+        for (String json : new String[]{"not-json-private", "{\"ok\":true} private",
+            "{\"ok\":true} {\"private\":123}", "{\"ok\":true} true"}) {
+            var error = assertThrows(IllegalArgumentException.class, () -> ChatStreamContract.read("done", json, true));
+            assertEquals("INVALID_CHAT_EVENT", error.getMessage());
+            assertNull(error.getCause());
+        }
+        assertDoesNotThrow(() -> ChatStreamContract.read("done", " {\"ok\":true}\n ", true));
+    }
+
+    @Test void sharedWireCasesAgreeForPublicAndInternalStreams() throws Exception {
+        var contract = mapper.readTree(Path.of("../contracts/chat-stream.schema.json").toFile());
+        var cases = mapper.readTree(Path.of("../contracts/chat-stream.cases.json").toFile());
+        for (var item : cases) for (boolean agent : new boolean[]{false, true}) {
+            String event = item.path("event").asText();
+            boolean allowed = !agent;
+            for (var name : contract.path("agent_events")) if (name.asText().equals(event)) allowed = true;
+            if (item.path("valid").asBoolean() && allowed)
+                assertDoesNotThrow(() -> ChatStreamContract.validate(event, item.get("data"), agent), item.path("id").asText());
+            else {
+                var error = assertThrows(IllegalArgumentException.class,
+                    () -> ChatStreamContract.validate(event, item.get("data"), agent), item.path("id").asText());
+                assertEquals("INVALID_CHAT_EVENT", error.getMessage());
+            }
+        }
+    }
+
+    @Test void packagedResourceCannotDriftFromCanonicalSchema() throws Exception {
+        try (var input = ChatStreamContract.class.getResourceAsStream("/contracts/chat-stream.schema.json")) {
+            assertNotNull(input);
+            assertArrayEquals(Files.readAllBytes(Path.of("../contracts/chat-stream.schema.json")), input.readAllBytes());
+        }
+    }
+}

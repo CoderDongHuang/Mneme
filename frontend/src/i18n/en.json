@@ -167,6 +167,7 @@
   "复制回答": "Copy answer",
   "已停止 · 保留部分回答": "Stopped · Partial answer preserved",
   "连接已中断，请重试": "Connection interrupted. Please retry.",
+  "回答流格式异常，请重试": "Invalid response stream. Please retry.",
   "模型响应超时，请重试": "The model timed out. Please retry.",
   "模型生成失败，请重试": "Model generation failed. Please retry.",
   "引用核验失败，请重试": "Citation verification failed. Please retry.",

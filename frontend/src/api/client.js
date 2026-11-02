@@ -1,3 +1,5 @@
+import { validChatEvent } from './chatStreamContract'
+
 const API_BASE = '/api/v1'
 
 export class ApiError extends Error {
@@ -92,7 +94,8 @@ export async function streamChat(payload, { signal, onEvent }) {
     const name = eventName
     eventName = 'message'
     let data
-    try { data = JSON.parse(raw) } catch { data = { content: raw } }
+    try { data = JSON.parse(raw) } catch { throw new ApiError('回答流格式异常，请重试', 200, { code: 'INVALID_CHAT_EVENT' }) }
+    if (!validChatEvent(name, data)) throw new ApiError('回答流格式异常，请重试', 200, { code: 'INVALID_CHAT_EVENT' })
     onEvent(name, data)
     if (name === 'error') throw new ApiError(data.message || '回答生成失败', 200, data)
     if (name === 'done') completed = true

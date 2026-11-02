@@ -1,0 +1,406 @@
+{
+  "version": 1,
+  "$defs": {
+    "StreamSource": {
+      "properties": {
+        "retrieval_ranks": {
+          "additionalProperties": {
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer"
+          },
+          "title": "Retrieval Ranks",
+          "type": "object"
+        },
+        "content_sha256": {
+          "default": "",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "indexed_at": {
+          "default": "",
+          "title": "Indexed At",
+          "type": "string"
+        },
+        "parser_version": {
+          "default": "",
+          "title": "Parser Version",
+          "type": "string"
+        },
+        "document_id": {
+          "default": "",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_name": {
+          "title": "Document Name",
+          "type": "string"
+        },
+        "chunk_content": {
+          "title": "Chunk Content",
+          "type": "string"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": -2147483648,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page"
+        },
+        "section": {
+          "default": "",
+          "title": "Section",
+          "type": "string"
+        },
+        "score": {
+          "default": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "chunk_type": {
+          "default": "text",
+          "title": "Chunk Type",
+          "type": "string"
+        },
+        "evidence_type": {
+          "default": "text",
+          "title": "Evidence Type",
+          "type": "string"
+        },
+        "visual_page": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": -2147483648,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Visual Page"
+        },
+        "visual_region": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Visual Region"
+        },
+        "ocr_confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ocr Confidence"
+        }
+      },
+      "required": [
+        "document_name",
+        "chunk_content"
+      ],
+      "title": "StreamSource",
+      "type": "object"
+    },
+    "StreamMemory": {
+      "properties": {
+        "temp_id": {
+          "title": "Temp Id",
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "preference",
+            "weak_point",
+            "progress"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "topic": {
+          "default": "",
+          "title": "Topic",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "temp_id",
+        "category",
+        "content",
+        "confidence"
+      ],
+      "title": "StreamMemory",
+      "type": "object"
+    }
+  },
+  "events": {
+    "start": {
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "request_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "answer_generation": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "title": "Answer Generation",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "request_id",
+        "answer_generation"
+      ],
+      "title": "Start",
+      "type": "object"
+    },
+    "meta": {
+      "additionalProperties": false,
+      "properties": {
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/StreamSource"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Intent"
+        }
+      },
+      "required": [
+        "sources"
+      ],
+      "title": "Meta",
+      "type": "object"
+    },
+    "token": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "Token",
+      "type": "object"
+    },
+    "memory": {
+      "additionalProperties": false,
+      "properties": {
+        "pending": {
+          "items": {
+            "$ref": "#/$defs/StreamMemory"
+          },
+          "title": "Pending",
+          "type": "array"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "const": "queued",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "required": [
+        "pending"
+      ],
+      "title": "Memory",
+      "type": "object"
+    },
+    "done": {
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "properties": {
+            "answer_length": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "answer_length"
+          ]
+        },
+        {
+          "properties": {
+            "ok": {
+              "const": true
+            }
+          },
+          "required": [
+            "ok"
+          ]
+        }
+      ],
+      "properties": {
+        "answer_length": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answer Length"
+        },
+        "ok": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ok"
+        },
+        "replayed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replayed"
+        }
+      },
+      "title": "Done",
+      "type": "object"
+    },
+    "error": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "Error",
+      "type": "object"
+    },
+    "stopped": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "const": "USER_STOPPED",
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "Stopped",
+      "type": "object"
+    }
+  },
+  "agent_events": [
+    "meta",
+    "token",
+    "memory",
+    "done",
+    "error"
+  ],
+  "terminal_events": [
+    "done",
+    "error",
+    "stopped"
+  ]
+}

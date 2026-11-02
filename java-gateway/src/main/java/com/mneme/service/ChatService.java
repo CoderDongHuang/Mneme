@@ -132,11 +132,16 @@ public class ChatService {
     private void replayStream(ChatMessage assistant, OutputStream output) throws java.io.IOException {
         String answer = assistant.getContent();
         String meta = objectMapper.writeValueAsString(java.util.Map.of("sources", readSources(assistant.getSourcesJson())));
-        output.write(("event: meta\ndata: " + meta + "\n\n").getBytes(StandardCharsets.UTF_8));
+        writeFrame(output, "meta", meta);
         String token = objectMapper.writeValueAsString(java.util.Map.of("content", answer));
-        output.write(("event: token\ndata: " + token + "\n\n").getBytes(StandardCharsets.UTF_8));
-        output.write("event: done\ndata: {\"ok\":true,\"replayed\":true}\n\n".getBytes(StandardCharsets.UTF_8));
+        writeFrame(output, "token", token);
+        writeFrame(output, "done", "{\"ok\":true,\"replayed\":true}");
         output.flush();
+    }
+
+    private void writeFrame(OutputStream output, String event, String json) throws java.io.IOException {
+        com.mneme.dto.ChatStreamContract.read(event, json, false);
+        output.write(("event: " + event + "\ndata: " + json + "\n\n").getBytes(StandardCharsets.UTF_8));
     }
 
     private void proxyStream(Long userId, Long sessionId, Long assistantMessageId, long generation, ChatRequest request, OutputStream output) {
@@ -171,7 +176,7 @@ public class ChatService {
                 SseEvent event;
                 while ((event = readEvent(reader)) != null) {
                     control.check();
-                    JsonNode payload = objectMapper.readTree(event.data());
+                    JsonNode payload = com.mneme.dto.ChatStreamContract.read(event.type(), event.data(), true);
                     switch (event.type()) {
                         case "token" -> answer.append(payload.path("content").asText(""));
                         case "meta" -> sourcesJson = payload.path("sources").isArray() ? payload.path("sources").toString() : "[]";
@@ -212,7 +217,10 @@ public class ChatService {
             try {
                 var state = sessionService.answerState(assistantMessageId);
                 if (state != null && state.generation() == generation && "stopped".equals(state.status())) code = "USER_STOPPED";
-                if (code == null) code = cause instanceof java.net.http.HttpTimeoutException ? "MODEL_TIMEOUT" : cause.getClass().getSimpleName();
+                if (code == null) code = cause instanceof java.net.http.HttpTimeoutException ? "MODEL_TIMEOUT"
+                    : cause instanceof com.fasterxml.jackson.core.JsonProcessingException
+                        || (cause instanceof IllegalArgumentException && "INVALID_CHAT_EVENT".equals(cause.getMessage()))
+                        ? "INVALID_CHAT_EVENT" : cause.getClass().getSimpleName();
                 if ("USER_STOPPED".equals(code)) sessionService.saveStoppedPartial(assistantMessageId, generation, answer.toString(), sourcesJson);
                 else sessionService.failMessage(assistantMessageId, generation, answer.toString(), code);
             }
@@ -220,12 +228,14 @@ public class ChatService {
             log.error("SSE 转发失败: userId={}, sessionId={}, errorType={}", userId, sessionId, error.getClass().getSimpleName());
             try {
                 String payload = objectMapper.writeValueAsString(
-                    java.util.Map.of("message", "USER_STOPPED".equals(code) ? "已停止生成" : "Agent 服务暂时不可用", "code", code == null ? "AGENT_ERROR" : code)
+                    java.util.Map.of("message", "USER_STOPPED".equals(code) ? "已停止生成"
+                        : "INVALID_CHAT_EVENT".equals(code) ? "回答流格式异常，请重试" : "Agent 服务暂时不可用",
+                        "code", code == null ? "AGENT_ERROR" : code)
                 );
                 String terminal = "USER_STOPPED".equals(code) ? "stopped" : "error";
                 if (control != null) control.frame(terminal, payload);
                 else {
-                    output.write(("event: " + terminal + "\ndata: " + payload + "\n\n").getBytes(StandardCharsets.UTF_8));
+                    writeFrame(output, terminal, payload);
                     output.flush();
                 }
             } catch (Exception ignored) {

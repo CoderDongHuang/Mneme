@@ -73,6 +73,7 @@ public class ChatStreamMonitor {
 
         public synchronized void frame(String type, String json) throws IOException {
             if (!closed.get()) check();
+            com.mneme.dto.ChatStreamContract.read(type, json, false);
             try {
                 output.write(("event: " + type + "\ndata: " + json + "\n\n").getBytes(StandardCharsets.UTF_8));
                 output.flush();

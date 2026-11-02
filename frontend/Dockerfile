@@ -5,6 +5,7 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
+COPY contracts/ /app/contracts/
 COPY LICENSE /app/LICENSE
 ARG VITE_DEMO_MODE=false
 ENV VITE_DEMO_MODE=${VITE_DEMO_MODE}
