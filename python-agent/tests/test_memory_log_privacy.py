@@ -14,7 +14,9 @@ from app.agents import trace_store
 from app.core.logging import JsonFormatter, log_identifier, trace_id_var
 from app.memory import distillation, long_term_memory as ltm_module
 from app.memory.memory_store import MemoryVectorStore
-from app.models.chat import MemoryConfirmRequest
+from app.models.chat import MemoryConfirmRequest, Message
+import app.agents.nodes as nodes
+import app.memory.short_term_memory as stm_module
 
 
 @pytest.fixture
@@ -23,7 +25,7 @@ def diagnostics():
     handler = logging.StreamHandler(stream)
     handler.setFormatter(JsonFormatter())
     loggers = [logging.getLogger(name) for name in (
-        "long_term_memory", "memory_api", "memory_store", "distillation",
+        "long_term_memory", "memory_api", "memory_store", "distillation", "nodes", "short_term_memory",
     )]
     previous = [(logger, logger.level) for logger in loggers]
     for logger in loggers:
@@ -104,3 +106,50 @@ def test_trace_keeps_metadata_without_memory_or_exception_text(tmp_path, monkeyp
     assert rows[0]["payload"]["content"]["redacted"]
     assert rows[0]["status"] == "error"
     assert json.loads(rows[0]["error"])["redacted"]
+
+
+def test_provider_fallbacks_never_log_body_or_raw_identity(diagnostics, monkeypatch):
+    body, user, session = "PRIVATE_PROVIDER_CANARY", "PRIVATE_USER_CANARY", "PRIVATE_SESSION_CANARY"
+    failure = Mock(invoke=Mock(side_effect=RuntimeError(body)))
+    monkeypatch.setattr(nodes, "llm", failure)
+    state = {"user_id": user, "session_id": session, "message": body}
+    assert nodes.intent_classification_node(state) == {"intent": "qa", "confidence": 0.5}
+    monkeypatch.setattr(nodes, "run_reflection", Mock(side_effect=RuntimeError(body)))
+    assert nodes.suggestion_generation_node(state) == {}
+    manager = stm_module.ShortTermMemoryManager()
+    manager._store[session] = [Message(role="user", content=body, timestamp=datetime.now().isoformat(),
+                                      token_count=500) for _ in range(30)]
+    before = manager._store[session].copy()
+    monkeypatch.setattr(stm_module, "llm", failure)
+    persist = Mock()
+    monkeypatch.setattr(manager, "_persist", persist)
+    manager.summarize(session)
+    assert manager._store[session] == before
+    assert session not in manager._last_summary_time
+    persist.assert_not_called()
+    output = diagnostics.getvalue()
+    assert all(private not in output for private in (body, user, session))
+    assert "RuntimeError" in output
+    assert log_identifier(user) in output and log_identifier(session) in output
+    records = [json.loads(line) for line in output.splitlines()]
+    assert len(records) == 4
+    assert all(row["trace_id"] == "privacy-request-trace" and "exception" not in row for row in records)
+
+
+def test_history_restore_summary_success_and_cooldown_hash_session(diagnostics, monkeypatch):
+    session, body = "PRIVATE_SESSION_CANARY", "PRIVATE_BODY_CANARY"
+    history = [Message(role="user", content=body, timestamp=datetime.now().isoformat(), token_count=500)
+               for _ in range(30)]
+    monkeypatch.setattr(stm_module, "session_persistence", Mock(load_messages=Mock(return_value=history)))
+    monkeypatch.setattr(stm_module, "llm", Mock(invoke=Mock(return_value=Mock(content=body))))
+    first, second = stm_module.ShortTermMemoryManager(), stm_module.ShortTermMemoryManager()
+    assert first.get_history(session) == history
+    second.add_message(session, history[0])
+    first.summarize(session)
+    assert body in first.get_history(session)[0].content
+    # Still enough tokens to reach the cooldown diagnostic.
+    first._store[session] = history
+    assert not first.should_summarize(session)
+    output = diagnostics.getvalue()
+    assert session not in output and body not in output
+    assert log_identifier(session) in output and '"cooldown"' in output.replace('\\"', '"')

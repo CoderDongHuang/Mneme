@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import process from 'node:process'
@@ -17,6 +17,8 @@ test('候选记忆入库失败不覆盖已完成回答，重启后真实重试�
   const python = (code, ...args) => execFileSync('docker', ['exec', '--user', '0', '-i', agent, 'python', '-', ...args.map(String)], { input: code, encoding: 'utf8', timeout: 30_000 }).trim().split('\n').at(-1)
   const sql = query => execFileSync('docker', ['exec', '-i', mysql, 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -B mneme'], { input: query, encoding: 'utf8', timeout: 30_000 }).trim()
   const suffix = randomUUID().replaceAll('-', '')
+  const privacyCanary = `MNEME_PRIVATE_PROVIDER_${suffix}`
+  const logStart = new Date().toISOString()
   const trigger = `qa_memory_${suffix}`
   let account, folder, session, taskId, assistantId
   async function api(method, path, data) {
@@ -54,7 +56,7 @@ test('候选记忆入库失败不覆盖已完成回答，重启后真实重试�
     const fixture = fs.readFileSync('../test-fixtures/memory-outbox-probe.py', 'utf8')
     folder = python("import tempfile\nprint(tempfile.mkdtemp(prefix='mneme-memory-qa-'))")
     expect(folder).toMatch(/^\/tmp\/mneme-memory-qa-/)
-    const scope = { user: String(account.userId), session: String(session.id) }
+    const scope = { user: String(account.userId), session: String(session.id), privacy_canary: privacyCanary }
     python(`import os,json,sys
 from pathlib import Path
 root=Path(sys.argv[1]); assert str(root).startswith('/tmp/mneme-memory-qa-')
@@ -87,6 +89,8 @@ DELIMITER ;`)
     expect(saved).toMatchObject({ status: 'completed', errorCode: null, content: 'Candidate memory QA verified answer' })
     expect(JSON.parse(python("import sys\nfrom pathlib import Path\nprint((Path(sys.argv[1])/'snapshot-check.json').read_text())", folder)))
       .toEqual({ snapshot_frozen: true, candidate_stable: true, actual_completion: true, reflection_delivery_recorded: true })
+    expect(JSON.parse(python("import sys\nfrom pathlib import Path\nprint((Path(sys.argv[1])/'privacy-check.json').read_text())", folder)))
+      .toEqual({ intent_fallback: true, suggestion_fallback: true, summary_history_preserved: true, real_trace_redacted: true })
     await expect.poll(async () => (await memoryTask())?.status, { timeout: 45_000, intervals: [1000] }).toBe('failed')
     const failed = await memoryTask(); taskId = failed.task_id
     expect(failed.attempt_count).toBe(failed.max_attempts)
@@ -133,6 +137,18 @@ DELIMITER ;`)
     await page.goto(`/chat?session=${session.id}`)
     await expect(page.locator('.message-assistant')).toContainText(saved.content)
     await expect(page.locator('.message-assistant [role="alert"]')).toHaveCount(0)
+    // Check captured server output without attaching private canaries or logs.
+    for (const id of [agent, gateway]) {
+      const result = spawnSync('docker', ['logs', '--since', logStart, id], { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 })
+      expect(result.status, 'Read service stdout and stderr').toBe(0)
+      const logs = result.stdout + result.stderr
+      expect(logs.includes(privacyCanary), 'Provider body absent from service logs').toBe(false)
+    }
+    for (const entry of fs.readdirSync(testInfo.outputDir, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !/\.(json|txt|log)$/.test(entry.name)) continue
+      const file = `${entry.parentPath ?? entry.path}/${entry.name}`
+      expect(fs.readFileSync(file, 'utf8').includes(privacyCanary), 'Provider body absent from test artifacts').toBe(false)
+    }
     await testInfo.attach('memory-outbox.json', { body: JSON.stringify({ sql_fault: true, answer_retained: true, restart: true, manual_retry: true, candidate_count: 1, payload_purged: true, confirmed: true, replay_idempotent: true }), contentType: 'application/json' })
   } finally {
     sql(`DROP TRIGGER IF EXISTS ${trigger}`)
