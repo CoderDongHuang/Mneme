@@ -54,9 +54,9 @@ def test_prepare_copies_message_objects_before_pre_llm_nodes(monkeypatch):
     history = [message("assistant", "old answer", 20)]
     monkeypatch.setattr(runtime, "require_cloud_processing", lambda _: None)
     monkeypatch.setattr(runtime, "utc_now", lambda: NOW)
-    monkeypatch.setattr(runtime, "working_memory", SimpleNamespace(add_message=lambda *args: None))
+    monkeypatch.setattr(runtime, "working_memory", SimpleNamespace(add_message=lambda *args, **kw: None))
     monkeypatch.setattr(runtime, "short_term_memory", SimpleNamespace(
-        add_message=lambda _, item: history.append(item), get_history=lambda _: history))
+        add_message=lambda _, item, **kw: history.append(item), get_history=lambda _, **kw: history))
     monkeypatch.setattr(runtime, "session_store", SimpleNamespace(register_session=lambda *args, **kw: None))
 
     def prepare(prepared):
@@ -97,10 +97,10 @@ def test_legacy_call_without_delivery_id_never_coalesces_unrelated_candidates():
 def test_completion_passes_stable_turn_identity_to_reflection(monkeypatch, request_id, captured_id):
     monkeypatch.setattr(runtime, "require_cloud_processing", lambda _: None)
     monkeypatch.setattr(runtime, "memory_write_node", lambda _: {})
-    monkeypatch.setattr(runtime, "working_memory", SimpleNamespace(add_message=lambda *args: None))
+    monkeypatch.setattr(runtime, "working_memory", SimpleNamespace(add_message=lambda *args, **kw: None))
     monkeypatch.setattr(runtime, "short_term_memory", SimpleNamespace(
-        add_message=lambda *args: None, should_summarize=lambda _: False))
-    monkeypatch.setattr(runtime, "session_store", SimpleNamespace(increment_message_count=lambda *args: None))
+        add_message=lambda *args, **kw: None, should_summarize=lambda _, **kw: False))
+    monkeypatch.setattr(runtime, "session_store", SimpleNamespace(increment_message_count=lambda *args, **kw: None))
     monkeypatch.setattr(runtime.agent_trace_store, "record", lambda *args, **kw: None)
     record = Mock()
     monkeypatch.setattr(runtime, "reflection_scheduler", SimpleNamespace(

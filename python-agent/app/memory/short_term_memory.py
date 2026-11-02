@@ -10,6 +10,7 @@
 
 from typing import List
 from datetime import datetime
+from threading import RLock
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.core.time import utc_now
 from app.models.chat import Message
@@ -17,6 +18,7 @@ from app.utils.llm import llm
 from app.core.config import settings
 from app.core.logging import setup_logger, memory_log_fields
 from app.memory.session_persistence import session_persistence
+from app.memory.session_scope import account_session, cache_key, session_revision
 
 logger = setup_logger("short_term_memory")
 
@@ -41,45 +43,63 @@ class ShortTermMemoryManager:
     def __init__(self):
         self._store: dict = {}
         self._last_summary_time: dict = {}
+        self._revisions: dict = {}
+        self._lock = RLock()
 
-    def _persist(self, session_id: str):
-        msgs = self._store.get(session_id)
-        if msgs:
-            session_persistence.save_messages(session_id, msgs)
+    @staticmethod
+    def _copy(messages):
+        return [message.model_copy(deep=True) for message in messages]
 
-    def add_message(self, session_id: str, message: Message) -> List[Message]:
-        if session_id not in self._store:
-            restored = session_persistence.load_messages(session_id)
+    def _history(self, session_id, user_id, state):
+        key = cache_key(user_id, session_id)
+        revision = session_revision(state, session_id)
+        if key not in self._store or self._revisions.get(key, "") != revision:
+            restored = session_persistence.load_messages(session_id, user_id=user_id)
+            self._store[key] = self._copy(restored or [])
+            self._revisions[key] = revision
+            self._last_summary_time.pop(key, None)
             if restored:
-                self._store[session_id] = restored
-                logger.debug("message_count=%d %s", len(restored), memory_log_fields(
+                logger.info("message_count=%d %s", len(restored), memory_log_fields(
                     "history_restore", "completed", source_session_id=session_id))
-            else:
-                self._store[session_id] = []
-        self._store[session_id].append(message)
-        self._persist(session_id)
-        return self._store[session_id]
+        return self._store[key]
 
-    def get_history(self, session_id: str) -> List[Message]:
-        msgs = self._store.get(session_id)
-        if msgs:
-            return msgs
-        restored = session_persistence.load_messages(session_id)
-        if restored:
-            self._store[session_id] = restored
-            logger.info("message_count=%d %s", len(restored), memory_log_fields(
-                "history_restore", "completed", source_session_id=session_id))
-            return restored
-        return []
+    def _persist(self, session_id, user_id, state):
+        key = cache_key(user_id, session_id)
+        session_persistence.save_messages(session_id, self._store[key], user_id=user_id)
+        self._revisions[key] = session_revision(state, session_id)
 
-    def clear(self, session_id: str):
-        self._store.pop(session_id, None)
-        self._last_summary_time.pop(session_id, None)
-        session_persistence.delete_session(session_id)
+    def add_message(self, session_id: str, message: Message, *, user_id="default") -> List[Message]:
+        with account_session(user_id) as state, self._lock:
+            history = self._history(session_id, user_id, state)
+            history.append(message.model_copy(deep=True))
+            self._persist(session_id, user_id, state)
+            return self._copy(history)
 
-    def should_summarize(self, session_id: str) -> bool:
+    def get_history(self, session_id: str, *, user_id="default") -> List[Message]:
+        with account_session(user_id) as state, self._lock:
+            return self._copy(self._history(session_id, user_id, state))
+
+    def clear(self, session_id: str, *, user_id="default"):
+        with account_session(user_id, cleanup=True), self._lock:
+            key = cache_key(user_id, session_id)
+            self._store.pop(key, None)
+            self._revisions.pop(key, None)
+            self._last_summary_time.pop(key, None)
+            session_persistence.delete_session(session_id, user_id=user_id)
+
+    def clear_user(self, user_id):
+        with account_session(user_id, cleanup=True), self._lock:
+            for key in list(self._store):
+                if isinstance(key, tuple) and key[0] == str(user_id):
+                    self._store.pop(key, None)
+                    self._revisions.pop(key, None)
+                    self._last_summary_time.pop(key, None)
+
+    def should_summarize(self, session_id: str, *, user_id="default") -> bool:
         """判断是否需要摘要压缩。"""
-        history = self._store.get(session_id, [])
+        with account_session(user_id) as state, self._lock:
+            history = self._copy(self._history(session_id, user_id, state))
+            last_time = self._last_summary_time.get(cache_key(user_id, session_id))
         if len(history) <= KEEP_RECENT_COUNT:
             return False
 
@@ -87,7 +107,6 @@ class ShortTermMemoryManager:
         if total_tokens <= settings.WORKING_MEMORY_MAX_TOKENS:
             return False
 
-        last_time = self._last_summary_time.get(session_id)
         if (
             last_time
             and (datetime.now() - last_time).total_seconds() < SUMMARY_COOLDOWN_SECONDS
@@ -101,9 +120,11 @@ class ShortTermMemoryManager:
 
         return True
 
-    def summarize(self, session_id: str):
+    def summarize(self, session_id: str, *, user_id="default"):
         """执行增量摘要压缩。"""
-        history = self._store.get(session_id, [])
+        with account_session(user_id) as state, self._lock:
+            history = self._copy(self._history(session_id, user_id, state))
+            revision = session_revision(state, session_id)
         if not history or len(history) <= KEEP_RECENT_COUNT:
             return
 
@@ -156,11 +177,18 @@ class ShortTermMemoryManager:
             token_count=len(response.content) // 4,
         )
 
-        self._store[session_id] = [summary_msg] + to_keep
-        self._last_summary_time[session_id] = datetime.now()
-        self._persist(session_id)
-
-        new_total = sum(m.token_count for m in self._store[session_id])
+        # The model runs outside all locks. A newer turn, another worker,
+        # clear or account deletion invalidates this captured result.
+        with account_session(user_id) as state, self._lock:
+            current = self._history(session_id, user_id, state)
+            if session_revision(state, session_id) != revision or current != history:
+                logger.info(memory_log_fields("summarize", "stale", source_session_id=session_id))
+                return
+            key = cache_key(user_id, session_id)
+            self._store[key] = [summary_msg] + to_keep
+            self._persist(session_id, user_id, state)
+            self._last_summary_time[key] = datetime.now()
+            new_total = sum(m.token_count for m in self._store[key])
         logger.info("token_count=%d %s", new_total, memory_log_fields(
             "summarize", "completed", source_session_id=session_id))
 

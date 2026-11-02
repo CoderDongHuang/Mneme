@@ -53,7 +53,7 @@ def test_distillation_idle_window_uses_utc_for_legacy_and_aware_history(monkeypa
 
     monkeypatch.setattr(nodes, 'utc_now', lambda: datetime(2026, 10, 31, tzinfo=timezone.utc))
     monkeypatch.setattr(nodes, 'settings', SimpleNamespace(distillation_idle_minutes=15))
-    monkeypatch.setattr(nodes.short_term_memory, 'get_history', lambda _: [
+    monkeypatch.setattr(nodes.short_term_memory, 'get_history', lambda _, **kw: [
         Message(role='assistant', content='Earlier', timestamp=timestamp),
         Message(role='user', content='Now', timestamp='2026-10-31T00:00:00Z'),
     ])

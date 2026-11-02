@@ -44,6 +44,16 @@ class SessionStore:
             raise ValueError("会话清理清单损坏，无法确认范围")
         return data
 
+    def owns_legacy_cache(self, user_id, session_id):
+        """Strict legacy ownership read inside the caller's account scope.
+
+        Do not enter another generation transaction: cache reads already hold
+        the shared account lock. No TTL pruning or manifest writes occur here.
+        """
+        with self._lock:
+            info = self._load(str(user_id)).get(session_id)
+            return isinstance(info, dict) and str(info.get("user_id", "")) == str(user_id)
+
     @contextmanager
     def _changing(self, user_id):
         # Serialize the complete read/modify/write across store instances.

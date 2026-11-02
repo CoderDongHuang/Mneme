@@ -309,6 +309,10 @@ jobs:
         run: |
           $COMPOSE exec -T python-agent python scripts/check_session_manifest_fence.py
           $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_session_manifest_fence.py
+      - name: Verify scoped session caches and stale-summary fences on both backends
+        run: |
+          $COMPOSE exec -T python-agent python scripts/check_session_memory_fence.py selftest
+          $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_session_memory_fence.py selftest
       - name: Verify long-term memories and version deletion fences on both storage backends
         run: |
           $COMPOSE exec -T python-agent python scripts/check_memory_deletion_fence.py selftest

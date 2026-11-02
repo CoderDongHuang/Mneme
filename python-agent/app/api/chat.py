@@ -37,10 +37,10 @@ async def list_sessions(user_id: str = "default"):
     summary="会话详情",
     description="获取指定会话的完整消息历史，优先从短期记忆读取，降级到工作记忆",
 )
-async def get_session(session_id: str):
-    messages = short_term_memory.get_history(session_id)
+async def get_session(session_id: str, user_id: str):
+    messages = short_term_memory.get_history(session_id, user_id=user_id)
     if not messages:
-        messages = working_memory.get_messages(session_id)
+        messages = working_memory.get_messages(session_id, user_id=user_id)
     return {
         "session_id": session_id,
         "messages": [
@@ -51,10 +51,10 @@ async def get_session(session_id: str):
 
 
 @router.delete("/session/{session_id}")
-async def delete_session(session_id: str, user_id: str = "default"):
+async def delete_session(session_id: str, user_id: str):
     session_store.delete_session(user_id, session_id)
-    short_term_memory.clear(session_id)
-    working_memory.clear(session_id)
+    short_term_memory.clear(session_id, user_id=user_id)
+    working_memory.clear(session_id, user_id=user_id)
     return {"deleted": True, "session_id": session_id}
 
 
@@ -63,13 +63,16 @@ async def delete_user_sessions(user_id: str):
     reflection = reflection_scheduler.delete_user(user_id)
     session_ids = session_store.cleanup_session_ids(user_id)
     for session_id in session_ids:
-        short_term_memory.clear(session_id)
-        working_memory.clear(session_id)
+        short_term_memory.clear(session_id, user_id=user_id)
+        working_memory.clear(session_id, user_id=user_id)
     traces = agent_trace_store.delete_user(user_id)
     privacy_store.delete(user_id)
     for offset in range(0, len(session_ids), 1000):
-        if session_persistence.count_sessions(session_ids[offset:offset + 1000]) != 0:
+        if session_persistence.count_sessions(session_ids[offset:offset + 1000], user_id=user_id) != 0:
             raise RuntimeError("Redis 会话清理后仍有残留")
+    session_persistence.delete_user_sessions(user_id)
+    short_term_memory.clear_user(user_id)
+    working_memory.clear_user(user_id)
     # Keep the cleanup manifest until all preceding stages have succeeded.
     session_store.delete_user(user_id)
     return {"status": "deleted", "user_id": user_id, "traces": traces, "reflection": reflection}
@@ -90,9 +93,9 @@ async def delete_canonical_session_caches(user_id: str, request: SessionCacheCle
         from fastapi import HTTPException
         raise HTTPException(status_code=422, detail="会话编号无效")
     for session_id in request.session_ids:
-        short_term_memory.clear(session_id)
-        working_memory.clear(session_id)
-    if session_persistence.count_sessions(request.session_ids) != 0:
+        short_term_memory.clear(session_id, user_id=user_id)
+        working_memory.clear(session_id, user_id=user_id)
+    if session_persistence.count_sessions(request.session_ids, user_id=user_id) != 0:
         raise RuntimeError("Redis 会话清理后仍有残留")
     return {"status": "verified", "checked_sessions": len(request.session_ids), "redis_sessions": 0}
 

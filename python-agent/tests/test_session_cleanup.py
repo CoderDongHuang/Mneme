@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api import chat
+from app.knowledge.generations import generation_store
 from app.memory.session_persistence import SessionPersistence
 from app.memory.session_store import SessionStore
 from app.memory.short_term_memory import ShortTermMemoryManager
@@ -24,6 +25,7 @@ def resources(tmp_path, monkeypatch):
     keys = {'mneme:session:11', 'mneme:session:12', 'mneme:session:22'}
     persistence._redis.delete.side_effect = lambda key: keys.discard(key)
     persistence._redis.exists.side_effect = lambda *requested: sum(key in keys for key in requested)
+    persistence._redis.scan_iter.side_effect = lambda **kw: iter(sorted(key for key in keys if key.startswith(kw['match'][:-1])))
     short = ShortTermMemoryManager()
     working = WorkingMemoryManager()
     monkeypatch.setattr('app.memory.short_term_memory.session_persistence', persistence)
@@ -34,7 +36,7 @@ def resources(tmp_path, monkeypatch):
     traces = Mock(return_value=1)
     monkeypatch.setattr(chat.agent_trace_store, 'delete_user', traces)
     monkeypatch.setattr(chat.privacy_store, 'delete', Mock())
-    monkeypatch.setattr(chat.reflection_scheduler, 'delete_user', Mock(return_value={'keys': 0, 'queue_entries': 0}))
+    monkeypatch.setattr(chat.reflection_scheduler, 'delete_user', Mock(side_effect=lambda user: (generation_store.tombstone(user), {'keys': 0, 'queue_entries': 0})[1]))
     app = FastAPI()
     app.include_router(chat.router)
     return store, persistence, keys, traces, TestClient(app, raise_server_exceptions=False)
@@ -69,7 +71,7 @@ def test_redis_failure_retains_manifest_and_retry_rechecks_all_keys(resources, m
         elif failure == 'read_error':
             fault.setattr(persistence._redis, 'exists', Mock(side_effect=OSError('offline')))
         else:
-            fault.setattr(chat.short_term_memory, 'clear', lambda _: None)
+            fault.setattr(chat.short_term_memory, 'clear', lambda _, **kw: None)
         assert http.delete('/api/v1/admin/user/alice').status_code == 500
         assert store.cleanup_session_ids('alice') == ['11', '12']
         assert 'mneme:session:22' in keys
@@ -110,7 +112,7 @@ def test_reflection_cleanup_failure_cannot_finish_or_remove_session_manifest(res
     assert store.cleanup_session_ids('alice') == ['11', '12']
     assert len(keys) == 3
     traces.assert_not_called()
-    cleanup.side_effect = None
+    cleanup.side_effect = lambda user: (generation_store.tombstone(user), {'keys': 0, 'queue_entries': 0})[1]
     response = http.delete('/api/v1/admin/user/alice')
     assert response.status_code == 200
     assert response.json()['reflection'] == {'keys': 0, 'queue_entries': 0}

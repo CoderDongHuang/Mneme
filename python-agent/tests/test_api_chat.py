@@ -36,7 +36,7 @@ class TestSessionEndpoints:
         assert "sessions" in data
 
     def test_get_session_not_found(self):
-        response = client.get("/api/v1/session/nonexistent_session_id")
+        response = client.get("/api/v1/session/nonexistent_session_id?user_id=test_integration")
         assert response.status_code == 200
         data = response.json()
         assert data["messages"] == []

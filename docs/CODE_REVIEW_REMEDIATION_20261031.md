@@ -583,3 +583,17 @@ PR #88 最终结果：最新提交 8ba9ba0cab97f38e4304e73e7066835a8cb0b84b 全�
 八张安全截图逐一复核，无页面横向溢出。独立读回本项 QA 用户、SQL 故障触发器、临时夹具、反思 QA 键与 Stream 均零；357 个账号删除任务全部 completed，六个部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。首次读回仅误估截图为十张，保留失败日志，依据两测试实际截图调用确认应为八张后重跑；未放宽存储或隐私断言。
 
 证据 artifacts/session-redis-privacy-{python-final,eslint,fixture-lint,build,deploy,real,readback-first,readback-final}.log 与 session-redis-privacy-browser。无依赖、配置、存储协议或迁移变化，范围与匹配恢复见 docs/SESSION_REDIS_LOG_PRIVACY.md；真实测试沿用既有整栈 CI 步骤。本项不关闭短期/工作记忆并发、Redis 会话迟到写入或整个删除审查。独立 PR 最终 CI 与合并结果继续补记。
+
+## 2026-11-02：P1-05 / MN-006 会话缓存账号隔离与迟到写入围栏
+
+对照要求：重新回查原 P1-05 的跨存储清理清单、严格故障传播、独立残留读回与恢复重试。本项使所有实际运行调用显式传用户 ID，内存及 Redis 按账号隔离；输入输出深拷贝。短同步事务复用持久用户锁与 tombstone，读取失败不返回旧缓存。Redis 新键带用户/会话哈希，随机共享版本防止跨工作器覆盖、Redis 故障读取旧载荷，以及数据库回滚后孤儿版本被复用。旧键仅在严格 manifest 明确归属且未建立新版本时恢复；运行时先注册再读取。
+
+摘要在全部锁外计算，回来重新检查共享版本与历史，追加、清理或删除后丢弃迟到结果。账号删除先永久停止写入，再清权威 ID、缺失元数据的用户前缀孤儿和本实例缓存，SCAN/EXISTS 独立读回，失败保留 manifest 供任务重试。其他实例下次访问必须重新检查持久 tombstone，不能恢复历史。
+
+验证：Python 3.11 Ruff、完整 932 项通过（139.35 秒，七条上游弃用警告）；定向原 73 项通过，故障夹具 Ruff、前端定向 ESLint 和 diff 检查通过。首次完整回归暴露旧详情测试未传用户、旧删除测试未模拟持久 tombstone，保留失败日志，修正夹具后完整重跑。独立临时摘要夹具明确断言模型已调用，六种 Redis 故障均使用测试账号与分离会话，避免默认账号残留与因版本失效跳过畸形载荷验证。
+
+停全部应用写入者后保存匹配 SQL/Agent 数据及旧容器/配置，再部署实际 http://127.0.0.1:3000。SQLite/MySQL 两组真实 Redis/数据库并发脚本均通过：多管理器追加、独立 Python 进程读回、发布中账号删除、冷进程拒读、另一账号保护、迟到摘要丢弃与孤儿清理。桌面/手机候选入库故障及账号会话清理四项全部通过，无整项重试，共 2.9 分钟；保留回答、实际重启、重试确认及敏感标记日志扫描继续通过。模型及独立 Redis 故障客户端使用明确夹具，不冒充外部供应商或生产网络断开。
+
+八张安全截图逐一复核，无横向溢出。独立 SQL 读回 QA 用户、故障触发器、MySQL/SQLite 合成 manifest 均零，363 个账号删除任务全部 completed；314 个持久已删账号的会话文件和 scoped Redis 键零。临时会话文件、注入夹具、反思 QA 键与 Stream 均零，十份部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。证据 artifacts/session-memory-fence-{python-final,eslint,fixture-lint,live-sqlite,live-mysql,build,deploy,real,readback}.log 与 session-memory-fence-browser。
+
+无新依赖、配置或数据库结构迁移，Redis 载荷与用户状态增加版本协议，必须停旧工作器、保留匹配数据和镜像。双存储脚本和真实页面检查加入整栈 CI，范围与回退见 docs/SESSION_MEMORY_ACCOUNT_FENCE.md。工作记忆仍是实例内窗口；本项不关闭 Java 单会话删除清理、缓存/版本历史留存、物理擦除或整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。
