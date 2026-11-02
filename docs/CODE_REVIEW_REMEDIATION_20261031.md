@@ -583,3 +583,10 @@ PR #88 最终结果：最新提交 8ba9ba0cab97f38e4304e73e7066835a8cb0b84b 全�
 八张安全截图逐一复核，无页面横向溢出。独立读回本项 QA 用户、SQL 故障触发器、临时夹具、反思 QA 键与 Stream 均零；357 个账号删除任务全部 completed，六个部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。首次读回仅误估截图为十张，保留失败日志，依据两测试实际截图调用确认应为八张后重跑；未放宽存储或隐私断言。
 
 证据 artifacts/session-redis-privacy-{python-final,eslint,fixture-lint,build,deploy,real,readback-first,readback-final}.log 与 session-redis-privacy-browser。无依赖、配置、存储协议或迁移变化，范围与匹配恢复见 docs/SESSION_REDIS_LOG_PRIVACY.md；真实测试沿用既有整栈 CI 步骤。本项不关闭短期/工作记忆并发、Redis 会话迟到写入或整个删除审查。独立 PR 最终 CI 与合并结果继续补记。
+PR #89 最终结果：提交 b9f6ce9ac89035fa08d95e857976713d56f7ce5b 的九项 CI 全部通过（运行 41430838278），已独立合并，提交 cc5eff3416fe7da5d0bfdb51a32208e4f6757feb。
+
+PR #92 最终结果：提交 f9fbafb3149f5f4e0255d6811aac4b2650f9870f 的九项 CI 全部通过（运行 41477429853），已独立合并，提交 4fea584。保留上述缓存围栏的独立验收记录；该项单独发布，不与下一项混合。
+
+PR #93 首轮 CI（41483589966）在 Redis 停机注入时发现测试仍期待旧检查点。`current_step` 表示最后完成的阶段；缓存围栏使 Redis 断开时必须在记忆清理内失败，因此准确检查点应为 retry / knowledge_cleanup。已改为严格校验这一组合，没有放宽最终四种故障的跨存储零残留断言；新增四组接受/拒绝回归，相关 10 项测试全部通过。修正提交将重新执行完整 CI；通过前不合并。
+
+PR #93 最终结果：精确提交 fa29cbfd9ef52c734453c5a18c6df2f1235ce7ee 的九项 CI 全部通过（运行 41501416743），已独立合并，提交 2bdfdc10d548fc713c61e3b3fd48734284768f04。
