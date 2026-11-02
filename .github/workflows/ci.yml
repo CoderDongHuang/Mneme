@@ -301,6 +301,10 @@ jobs:
           $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_reflection_cleanup.py
       - name: Verify durable generation fencing with shared MySQL
         run: $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_index_generation.py
+      - name: Verify trace and privacy deletion fences on both storage backends
+        run: |
+          $COMPOSE exec -T python-agent python scripts/check_trace_privacy_fence.py selftest
+          $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_trace_privacy_fence.py selftest
       - name: Verify Redis authentication and AOF pending-task recovery
         run: python scripts/verify_redis_durability.py
       - name: Verify least privilege deployment roles and startup order
@@ -374,6 +378,12 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/memory-states-real.spec.js --workers=1 --retries=0
+      - name: Verify trace and privacy deletion fences against actual shared MySQL
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/trace-privacy-fence-real.spec.js --workers=1 --retries=0
       - name: Verify privacy read retries and durable write receipts on desktop and mobile
         working-directory: frontend
         env:

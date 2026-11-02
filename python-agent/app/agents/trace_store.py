@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.privacy import privacy_store
 from app.storage.mysql import connection as mysql_connection
 from app.storage.mysql import require_tables
+from app.knowledge.generations import generation_store
 
 
 class AgentTraceStore:
@@ -73,6 +74,14 @@ class AgentTraceStore:
         # Preserve correlation, never a recoverable copy of the message.
         safe_error = json.dumps({"redacted": True, "sha256": hashlib.sha256(error.encode()).hexdigest()[:24],
                                  "length": len(error)}) if error else ""
+        # Hold the shared account row only for storage, never for provider calls.
+        # A writer that started before deletion must finish before its tombstone.
+        with generation_store.locked(user_id) as state:
+            if state.get("deleted"):
+                return
+            self._insert_record(user_id, session_id, node, status, duration_ms, safe_payload, safe_error)
+
+    def _insert_record(self, user_id, session_id, node, status, duration_ms, safe_payload, safe_error):
         if self.shared:
             with mysql_connection() as connection:
                 cursor = connection.cursor()
@@ -223,12 +232,28 @@ class AgentTraceStore:
                 cursor.execute("DELETE FROM agent_trace WHERE user_id=%s", (str(user_id),))
                 count = cursor.rowcount
                 cursor.close()
-                return max(0, count)
+                count = max(0, count)
+        else:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    "DELETE FROM agent_trace WHERE user_id=?", (str(user_id),)
+                )
+                count = max(0, cursor.rowcount)
+        if self.count_user(user_id) != 0:
+            raise RuntimeError("Trace 数据删除后仍有残留")
+        return count
+
+    def count_user(self, user_id: str) -> int:
+        if self.shared:
+            with mysql_connection() as connection:
+                cursor = connection.cursor()
+                try:
+                    cursor.execute("SELECT COUNT(*) FROM agent_trace WHERE user_id=%s", (str(user_id),))
+                    return int(cursor.fetchone()[0])
+                finally:
+                    cursor.close()
         with self._connect() as connection:
-            cursor = connection.execute(
-                "DELETE FROM agent_trace WHERE user_id=?", (str(user_id),)
-            )
-            return max(0, cursor.rowcount)
+            return int(connection.execute("SELECT COUNT(*) FROM agent_trace WHERE user_id=?", (str(user_id),)).fetchone()[0])
 
     def prune_user(self, user_id: str, retention_days: int) -> int:
         days = max(1, min(int(retention_days), settings.agent_trace_retention_days))
