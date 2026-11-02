@@ -40,12 +40,11 @@ public class ChatSessionController {
     }
 
     @DeleteMapping("/{sessionId}")
-    public Result<Map<String, Boolean>> delete(
+    public Result<Map<String, Object>> delete(
         @RequestAttribute("userId") Long userId,
         @PathVariable Long sessionId
     ) {
-        sessionService.deleteSession(userId, sessionId);
-        return Result.success(Map.of("deleted", true));
+        return Result.success(sessionService.deleteSession(userId, sessionId));
     }
 
     @PatchMapping("/{sessionId}")

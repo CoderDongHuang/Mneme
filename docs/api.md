@@ -23,7 +23,7 @@ Java 普通响应采用 `{ "code": 200, "message": "success", "data": ... }`。
 - `POST /sessions`：创建会话。
 - `GET /sessions`：按更新时间倒序查询。
 - `GET /sessions/{id}/messages`：读取消息。
-- `DELETE /sessions/{id}`：删除会话及消息。
+- `DELETE /sessions/{id}`：隔离归属会话并持久化清理任务，返回 `{accepted: true, task_id, status}`，不代表清理已完成。相同请求返回同一任务回执；在任务中心查看 `session_delete` 终态并重试失败。Agent 缓存核验和 SQL 消息、待确认记忆清理全部通过后任务才为 `completed`，详见 [单会话删除](SINGLE_SESSION_DELETION_FENCE.md)。
 
 ## 对话
 

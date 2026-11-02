@@ -1271,5 +1271,13 @@
   "回滚失败，服务已停止": "Rollback failed; services stopped",
   "个人归档响应格式不正确，请重新校验。": "The personal archive response is invalid. Validate the archive again.",
   "个人恢复结果未确认：{0}。请先到资料库、会话或学习页面核实，重复导入可能产生副本。": "Personal restore outcome is unconfirmed: {0}. Check your library, conversations or learning data first; importing again may create duplicates.",
-  "已核实结果，重新选择归档": "Outcome checked; select an archive again"
+  "已核实结果，重新选择归档": "Outcome checked; select an archive again",
+  "删除结果未确认，请刷新会话与任务中心核对后再操作。": "Deletion could not be confirmed. Refresh your conversations and check the task center before trying again.",
+  "会话清理已完成。": "Conversation cleanup is complete.",
+  "会话删除已受理，最终清理结果请在任务中心查看。": "Conversation deletion has been accepted. Check the task center for the final cleanup result.",
+  "查看清理任务": "View cleanup task",
+  "会话删除": "Conversation deletion",
+  "关联会话": "Related conversation",
+  "会话清理未完成，会话已隔离。请检查服务状态，修复后重试；联系管理员时提供执行编号。": "Cleanup is incomplete and the conversation is isolated. Check service health and retry after fixing the cause. Include the task ID when contacting an administrator.",
+  "会话已隔离；清理失败会保留重试依据。修复服务后重试，并以任务完成状态为准。": "The conversation is isolated. Failed cleanup retains the information needed to retry. Restore service health, retry, and check that the task completes."
 }

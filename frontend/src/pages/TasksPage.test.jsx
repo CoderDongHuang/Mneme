@@ -10,6 +10,19 @@ beforeEach(() => {
   endpoints.operations.mockResolvedValue([])
 })
 
+test('session cleanup failure identifies the isolated session and exposes retry without cancellation', async () => {
+  endpoints.tasks.mockResolvedValue([{ task_id: 's1', task_type: 'session_delete', aggregate_id: 42,
+    status: 'failed', error_message: 'private-service-error', attempt_count: 3, max_attempts: 3 }])
+  render(<TasksPage />)
+  fireEvent.click(await screen.findByRole('button', { name: /会话删除/ }))
+  const detail = screen.getByRole('complementary', { name: '任务详情' })
+  expect(detail).toHaveTextContent('关联会话')
+  expect(detail).toHaveTextContent('会话清理未完成，会话已隔离')
+  expect(detail).not.toHaveTextContent('private-service-error')
+  expect(within(detail).getByRole('button', { name: '重试任务' })).toBeEnabled()
+  expect(within(detail).queryByRole('button', { name: '请求取消' })).not.toBeInTheDocument()
+})
+
 test('latest stage and activity follow descending server order even when timestamps tie', async () => {
   const newest = { operation_id: 't1', step: 'complete', status: 'completed', created_at: '2026-11-01T00:00:00Z' }
   endpoints.operations.mockResolvedValue([newest, ...Array.from({ length: 9 }, (_, i) => ({ ...newest, step: `older_${i}` }))])

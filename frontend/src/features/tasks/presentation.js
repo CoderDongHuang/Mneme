@@ -34,5 +34,6 @@ export function taskFailureMessage(status, type) {
   if (status === 'cancelling') return '取消请求已接受，正在等待后台清理；尚未完成。'
   if (status === 'cancelled') return '任务已取消。'
   if (type === 'memory_candidates') return '候选记忆保存未成功，回答已保留。请检查服务状态后重试；联系管理员时提供执行编号。'
+  if (type === 'session_delete') return '会话清理未完成，会话已隔离。请检查服务状态，修复后重试；联系管理员时提供执行编号。'
   return '本次执行未成功。请检查文件和服务状态，修复原因后重试；联系管理员时提供执行编号。'
 }

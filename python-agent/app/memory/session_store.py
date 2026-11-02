@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.logging import setup_logger
 from app.core.time import utc_now, parse_utc
 from app.knowledge.generations import generation_store, StaleGeneration
+from app.memory.session_scope import require_active_session, session_deleted
 
 logger = setup_logger("session_store")
 DATA_DIR = settings.session_data_path
@@ -55,17 +56,21 @@ class SessionStore:
             return isinstance(info, dict) and str(info.get("user_id", "")) == str(user_id)
 
     @contextmanager
-    def _changing(self, user_id):
+    def _changing(self, user_id, session_id=None):
         # Serialize the complete read/modify/write across store instances.
         # No model or network call runs under this short account-row lock.
         with generation_store.locked(user_id) as state, self._lock:
             if state.get("deleted"):
                 raise StaleGeneration("账号已删除，拒绝写入会话清单")
-            yield
+            if session_id is not None:
+                require_active_session(state, session_id)
+            yield state
 
     def _save(self, user_id, data):
         """Compatibility entry point: direct writes also obey the fence."""
-        with self._changing(user_id):
+        with self._changing(user_id) as state:
+            for session_id in data:
+                require_active_session(state, session_id)
             self._write(user_id, data)
 
     def _write(self, user_id, data):
@@ -84,7 +89,7 @@ class SessionStore:
                 os.unlink(temporary)
 
     def register_session(self, user_id: str, session_id: str, title: str = "", message_count: int = 0):
-        with self._changing(user_id):
+        with self._changing(user_id, session_id):
             data = self._load(user_id)
             now = utc_now().isoformat()
             if session_id in data:
@@ -101,7 +106,7 @@ class SessionStore:
             self._write(user_id, data)
 
     def update_title(self, user_id: str, session_id: str, title: str):
-        with self._changing(user_id):
+        with self._changing(user_id, session_id):
             data = self._load(user_id)
             if session_id in data:
                 data[session_id]["title"] = title[:50]
@@ -109,7 +114,7 @@ class SessionStore:
                 self._write(user_id, data)
 
     def increment_message_count(self, user_id: str, session_id: str):
-        with self._changing(user_id):
+        with self._changing(user_id, session_id):
             data = self._load(user_id)
             if session_id in data:
                 data[session_id]["message_count"] = data[session_id].get("message_count", 0) + 1
@@ -135,7 +140,8 @@ class SessionStore:
                 self._write(user_id, data)
             sessions = [{"id": sid, "title": info.get("title", "新对话"),
                          "message_count": info.get("message_count", 0),
-                         "last_updated": info.get("last_updated", "")} for sid, info in data.items()]
+                         "last_updated": info.get("last_updated", "")} for sid, info in data.items()
+                        if not session_deleted(state, sid)]
 
             def updated_at(session):
                 try:
@@ -147,11 +153,23 @@ class SessionStore:
             return sessions
 
     def delete_session(self, user_id: str, session_id: str):
-        with self._changing(user_id):
+        with self._changing(user_id, session_id):
             data = self._load(user_id)
             if session_id in data:
                 del data[session_id]
                 self._write(user_id, data)
+
+    def purge_deleted_session(self, user_id: str, session_id: str):
+        """Cleanup only, after the permanent session fence has committed."""
+        with generation_store.locked(user_id) as state, self._lock:
+            if not session_deleted(state, session_id):
+                raise ValueError("会话清理需要持久删除围栏")
+            data = self._load(user_id)
+            if session_id in data:
+                del data[session_id]
+                self._write(user_id, data)
+            if session_id in self._load(user_id):
+                raise OSError("会话清单清理后仍有残留")
 
     def delete_user(self, user_id: str):
         file_path = self._get_file_path(user_id)
@@ -172,7 +190,7 @@ class SessionStore:
 
     def get_session_count(self, user_id: str) -> int:
         with generation_store.locked(user_id) as state, self._lock:
-            return 0 if state.get("deleted") else len(self._load(user_id))
+            return 0 if state.get("deleted") else sum(not session_deleted(state, sid) for sid in self._load(user_id))
 
 
 session_store = SessionStore()

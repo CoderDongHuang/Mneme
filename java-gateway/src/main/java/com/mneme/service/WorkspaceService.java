@@ -199,9 +199,16 @@ public class WorkspaceService {
         if ("memory_candidates".equals(owned.get(0).get("task_type"))) {
             if ("cancelled".equals(owned.get(0).get("status")) || rows("""
                 SELECT m.id FROM user u JOIN chat_session s ON s.user_id=u.id JOIN chat_message m ON m.session_id=s.id
-                WHERE u.id=? AND u.status='active' AND m.id=? AND m.status='completed' FOR UPDATE
+                WHERE u.id=? AND u.status='active' AND s.deletion_status='active' AND m.id=? AND m.status='completed' FOR UPDATE
                 """, userId, owned.get(0).get("aggregate_id")).isEmpty())
                 throw new IllegalArgumentException("来源会话或账号已不可用，不能重试记忆任务");
+        }
+        if ("session_delete".equals(owned.get(0).get("task_type"))) {
+            if ("cancelled".equals(owned.get(0).get("status")) || rows("""
+                SELECT s.id FROM user u JOIN chat_session s ON s.user_id=u.id
+                WHERE u.id=? AND u.status='active' AND s.id=? AND s.deletion_status='delete_pending' FOR UPDATE
+                """, userId, owned.get(0).get("aggregate_id")).isEmpty())
+                throw new IllegalArgumentException("账号或删除中的会话已不可用，不能重试清理任务");
         }
         if (cancellationRedis != null && Boolean.TRUE.equals(cancellationRedis.hasKey("mneme:ingestion:active:" + userId + ":" + taskId))) {
             throw new IllegalArgumentException("上一次解析尚未退出，请稍后重试");

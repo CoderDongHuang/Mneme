@@ -74,7 +74,7 @@ class SessionPersistence:
         return list(dict.fromkeys([self._session_key(session_id, user_id), self._session_key(session_id)]))
 
     def save_messages(self, session_id: str, messages: List[Message], *, user_id="default"):
-        with account_session(user_id) as state:
+        with account_session(user_id, session_id=session_id) as state:
             # Publish a new fence even in memory-only mode: another worker may
             # not treat the old Redis payload as the current conversation.
             revision = advance_revision(state, session_id)
@@ -90,7 +90,7 @@ class SessionPersistence:
                     "session_save", "memory_only", source_session_id=session_id))
 
     def load_messages(self, session_id: str, *, user_id="default") -> Optional[List[Message]]:
-        with account_session(user_id) as state:
+        with account_session(user_id, session_id=session_id) as state:
             revision = session_revision(state, session_id)
             if not self._ensure_connection():
                 return None

@@ -139,7 +139,7 @@ test('opening an attempt cannot silently discard a draft that failed to save', a
   mount(); await choose()
   fireEvent.change(screen.getByRole('textbox', { name: '你的答案' }), { target: { value: '保留编辑' } })
   endpoints.saveQuizDraft.mockRejectedValue(new Error('写入失败'))
-  fireEvent.click(within(history()).getByRole('button', { name: /^80/ }))
+  fireEvent.click(await within(history()).findByRole('button', { name: /^80/ }))
   await screen.findByText('草稿保存失败：写入失败。当前答案已保留，请重试保存后再切换。')
   expect(screen.getByRole('textbox', { name: '你的答案' })).toHaveValue('保留编辑')
   expect(screen.queryByText(/本次原始得分/)).not.toBeInTheDocument()

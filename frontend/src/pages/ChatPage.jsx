@@ -62,6 +62,10 @@ export default function ChatPage({ renderTools, workspace = false }) {
   const [kbMenuOpen, setKbMenuOpen] = useState(false)
   const [sourceDrawer, setSourceDrawer] = useState(null)
   const [error, setError] = useState('')
+  const [deletionTask, setDeletionTask] = useState(null)
+  const [deletingSessions, setDeletingSessions] = useState([])
+  const mounted = useRef(true)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const abortRef = useRef(null)
   const activeRequestRef = useRef(null)
   const [stopBusy, setStopBusy] = useState(false)
@@ -128,7 +132,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
   }
 
   const chooseSession = useCallback(async (session) => {
-    if (abortRef.current) return
+    if (abortRef.current || sessionLocks.current.has(session.id)) return
     const selection = ++selectionRef.current
     setSwitching(true)
     setError('')
@@ -301,12 +305,23 @@ export default function ChatPage({ renderTools, workspace = false }) {
     event.stopPropagation()
     if (abortRef.current || switching || sessionLocks.current.has(session.id)) return
     sessionLocks.current.add(session.id)
+    setDeletingSessions(current => [...current, session.id])
+    setError('')
+    setDeletionTask(null)
     try {
-      await endpoints.deleteSession(session.id)
+      const receipt = await endpoints.deleteSession(session.id)
+      if (!mounted.current) return
+      if (receipt?.accepted !== true || typeof receipt.task_id !== 'string' || !/^task_[a-zA-Z0-9_]+$/.test(receipt.task_id)
+        || !['pending', 'processing', 'retry', 'failed', 'completed'].includes(receipt.status))
+        throw new Error(t('删除结果未确认，请刷新会话与任务中心核对后再操作。'))
       setSessions((current) => current.filter((item) => item.id !== session.id))
       setConversation(current => current.session?.id === session.id ? { session: null, messages: [] } : current)
-    } catch (requestError) { setError(requestError.message) }
-    finally { sessionLocks.current.delete(session.id) }
+      setDeletionTask(receipt)
+    } catch (requestError) { if (mounted.current) setError(requestError.message) }
+    finally {
+      sessionLocks.current.delete(session.id)
+      if (mounted.current) setDeletingSessions(current => current.filter(id => id !== session.id))
+    }
   }
 
   async function resolveMemory(messageId, memory, action) {
@@ -360,7 +375,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
             <div key={session.id} className={`history-item ${activeSession?.id === session.id ? 'active' : ''}`}>
               <button className="session-open" aria-label={t("打开对话：{0}", [session.title || '新对话'])} onClick={() => chooseSession(session)}><strong>{session.title || t("新对话")}</strong><small>{dates.date(session.updatedAt || session.createdAt)}</small></button>
               <button className="rename-session" disabled={streaming || switching} title={t("重命名会话")} aria-label={t("重命名会话：{0}", [session.title])} onClick={() => setRenaming({ id: session.id, title: session.title || t("新对话") })}>✎</button>
-              <button className="delete-session" title={t("删除对话：{0}", [session.title || '新对话'])} aria-label={t("删除对话：{0}", [session.title || '新对话'])} onClick={(event) => removeSession(event, session)}><Trash2 size={15} /></button>
+              <button className="delete-session" disabled={streaming || switching || deletingSessions.includes(session.id)} title={t("删除对话：{0}", [session.title || '新对话'])} aria-label={t("删除对话：{0}", [session.title || '新对话'])} onClick={(event) => removeSession(event, session)}><Trash2 size={15} /></button>
             </div>
           )) : <p className="history-empty">{t("还没有历史对话")}</p>}
         </div>
@@ -428,6 +443,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
             </article>
           ))}
           {error && <div className="chat-error" role="alert">{error}</div>}
+          {deletionTask && <div className="hint-panel" role="status">{t(deletionTask.status === 'completed' ? '会话清理已完成。' : '会话删除已受理，最终清理结果请在任务中心查看。')} <Link to="/tasks">{t('查看清理任务')}</Link></div>}
           <div ref={bottomRef} />
         </div>
 

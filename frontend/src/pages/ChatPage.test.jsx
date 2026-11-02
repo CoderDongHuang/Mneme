@@ -20,6 +20,33 @@ async function open() {
   render(<MemoryRouter><ChatPage /></MemoryRouter>)
   await screen.findByRole('button', { name: '打开对话：会话 A' })
 }
+
+test('session deletion isolates only the accepted session and links to durable cleanup status', async () => {
+  const pending = deferred()
+  endpoints.deleteSession.mockReturnValue(pending.promise)
+  await open()
+  const remove = screen.getByRole('button', { name: '删除对话：会话 A' })
+  fireEvent.click(remove); fireEvent.click(remove)
+  expect(remove).toBeDisabled()
+  expect(endpoints.deleteSession).toHaveBeenCalledTimes(1)
+  expect(screen.getByRole('button', { name: '打开对话：会话 A' })).toBeInTheDocument()
+  await act(async () => pending.resolve({ accepted: true, task_id: 'task_cleanup', status: 'pending' }))
+  expect(screen.queryByRole('button', { name: '打开对话：会话 A' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '打开对话：会话 B' })).toBeInTheDocument()
+  expect(screen.getByText('会话删除已受理，最终清理结果请在任务中心查看。')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '查看清理任务' })).toHaveAttribute('href', '/tasks')
+  expect(screen.queryByText('会话清理已完成。')).not.toBeInTheDocument()
+})
+
+test.each([undefined, { deleted: true }, { accepted: true, task_id: 'task_cleanup', status: 'unknown' }])(
+  'unverifiable session deletion keeps the list and never silently repeats the mutation (%j)', async receipt => {
+    endpoints.deleteSession.mockResolvedValue(receipt)
+    await open(); fireEvent.click(screen.getByRole('button', { name: '删除对话：会话 A' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('删除结果未确认')
+    expect(screen.getByRole('button', { name: '打开对话：会话 A' })).toBeInTheDocument()
+    expect(endpoints.deleteSession).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('link', { name: '查看清理任务' })).not.toBeInTheDocument()
+  })
 function send(text = '测试问题') {
   fireEvent.change(screen.getByRole('textbox', { name: '向忆知提问...' }), { target: { value: text } })
   fireEvent.click(screen.getByRole('button', { name: '发送' }))

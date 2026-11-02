@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app.api import chat
 from app.knowledge.generations import generation_store, StaleGeneration
 from app.memory.session_persistence import SessionPersistence
-from app.memory.session_scope import account_session
+from app.memory.session_scope import account_session, session_deleted, tombstone_session
 from app.memory.session_store import SessionStore
 from app.memory.short_term_memory import ShortTermMemoryManager
 from app.memory.working_memory import WorkingMemoryManager
@@ -242,3 +242,114 @@ def test_history_api_requires_owner_and_does_not_read_default_namespace(caches, 
         assert client.get("/api/v1/session/s").status_code == 422
         assert client.get("/api/v1/session/s?user_id=bob").json()["messages"] == []
         assert client.get("/api/v1/session/s?user_id=alice").json()["messages"][0]["content"] == "alice"
+
+
+def test_single_session_fence_blocks_existing_and_cold_caches_and_manifest(caches):
+    persistence, values, short, working, store = caches
+    for user, sid in [("alice", "deleted"), ("alice", "kept"), ("bob", "deleted")]:
+        store.register_session(user, sid)
+        short.add_message(sid, message(user + sid), user_id=user)
+        working.add_message(sid, message(user + sid), user_id=user)
+    tombstone_session("alice", "deleted")
+    for operation in [lambda: short.get_history("deleted", user_id="alice"),
+                      lambda: ShortTermMemoryManager().get_history("deleted", user_id="alice"),
+                      lambda: working.get_messages("deleted", user_id="alice"),
+                      lambda: working.add_message("deleted", message(), user_id="alice"),
+                      lambda: persistence.load_messages("deleted", user_id="alice"),
+                      lambda: persistence.save_messages("deleted", [message()], user_id="alice"),
+                      lambda: store.register_session("alice", "deleted"),
+                      lambda: store.update_title("alice", "deleted", "late"),
+                      lambda: store.increment_message_count("alice", "deleted"),
+                      lambda: store._save("alice", {"deleted": {}})]:
+        with pytest.raises(StaleGeneration, match="会话已删除"):
+            operation()
+    assert not generation_store.snapshot("alice").get("deleted")
+    assert [s["id"] for s in store.get_sessions("alice")] == ["kept"]
+    assert store.get_session_count("alice") == 1
+    assert [s["id"] for s in working.get_all_sessions("alice")] == ["kept"]
+    short.clear("deleted", user_id="alice")
+    working.clear("deleted", user_id="alice")
+    store.purge_deleted_session("alice", "deleted")
+    assert store.cleanup_session_ids("alice") == ["kept"]
+    assert persistence.count_sessions(["deleted"], user_id="alice") == 0
+    assert len(values) == 2
+    assert short.get_history("kept", user_id="alice")[0].content == "alicekept"
+    assert short.get_history("deleted", user_id="bob")[0].content == "bobdeleted"
+
+
+@pytest.mark.parametrize("fault", ["redis", "silent_redis", "file", "silent_file"])
+def test_single_session_api_retains_scope_after_failure_then_retries(caches, monkeypatch, fault):
+    persistence, values, short, working, store = caches
+    for sid in ["removed", "protected"]:
+        store.register_session("alice", sid)
+        short.add_message(sid, message(sid), user_id="alice")
+    for name, value in [("short_term_memory", short), ("working_memory", working),
+                        ("session_persistence", persistence), ("session_store", store)]:
+        monkeypatch.setattr(chat, name, value)
+    app = FastAPI()
+    app.include_router(chat.router)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        with monkeypatch.context() as failure:
+            if fault == "redis":
+                failure.setattr(persistence._redis, "delete", Mock(side_effect=OSError("offline")))
+            elif fault == "silent_redis":
+                failure.setattr(persistence._redis, "delete", lambda _: 0)
+            elif fault == "file":
+                failure.setattr(store, "_write", Mock(side_effect=OSError("disk")))
+            else:
+                failure.setattr(store, "_write", lambda *args: None)
+            assert client.delete("/api/v1/session/removed?user_id=alice").status_code == 500
+        state = generation_store.snapshot("alice")
+        assert session_deleted(state, "removed") and not state.get("deleted")
+        assert set(store.cleanup_session_ids("alice")) == {"removed", "protected"}
+        with pytest.raises(StaleGeneration):
+            ShortTermMemoryManager().add_message("removed", message("late"), user_id="alice")
+        persistence._available = True
+        assert client.delete("/api/v1/session/removed?user_id=alice").json() == {"deleted": True, "session_id": "removed"}
+        assert client.delete("/api/v1/session/removed?user_id=alice").status_code == 200
+    assert store.cleanup_session_ids("alice") == ["protected"]
+    assert len(values) == 1
+
+
+def test_single_session_tombstone_invalidates_summary_during_model_call(caches, monkeypatch):
+    _, _, short, _, _ = caches
+    for i in range(20):
+        short.add_message("s", message(str(i)), user_id="alice")
+    entered, release = Event(), Event()
+
+    def model(_):
+        entered.set()
+        assert release.wait(5)
+        return SimpleNamespace(content="obsolete summary")
+
+    monkeypatch.setattr("app.memory.short_term_memory.llm", SimpleNamespace(invoke=model))
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        result = pool.submit(short.summarize, "s", user_id="alice")
+        try:
+            assert entered.wait(5)
+            tombstone_session("alice", "s")
+            short.clear("s", user_id="alice")
+        finally:
+            release.set()
+        with pytest.raises(StaleGeneration, match="会话已删除"):
+            result.result(5)
+
+
+@pytest.mark.parametrize("corrupt", [[], {"anything": False}, {"anything": "true"}])
+def test_corrupt_session_tombstones_fail_closed(caches, corrupt):
+    _, _, short, _, _ = caches
+    short.add_message("s", message(), user_id="alice")
+    with generation_store.locked("alice") as state:
+        state["deleted_sessions"] = corrupt
+    with pytest.raises(ValueError, match="围栏损坏"):
+        short.get_history("s", user_id="alice")
+    with pytest.raises(ValueError, match="围栏损坏"):
+        tombstone_session("alice", "s")
+
+
+def test_single_session_cleanup_requires_committed_tombstone(caches):
+    _, _, _, _, store = caches
+    store.register_session("alice", "s")
+    with pytest.raises(ValueError, match="需要持久删除围栏"):
+        store.purge_deleted_session("alice", "s")
+    assert store.cleanup_session_ids("alice") == ["s"]
