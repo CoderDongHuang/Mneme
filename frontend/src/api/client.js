@@ -232,18 +232,18 @@ export const endpoints = {
   createBranch: (body) => api('/workspace/branches', { method: 'POST', body: JSON.stringify(body) }),
   compareBranch: (id) => api(`/workspace/branches/${id}/compare`),
   importData: (body) => api('/workspace/import', { method: 'POST', body: JSON.stringify(body) }),
-  previewArchive: (file, scope = 'all') => {
+  previewArchive: (file, scope = 'all', options = {}) => {
     const form = new FormData()
     form.append('archive', file)
     form.append('scope', scope)
-    return api('/workspace/import/archive/preview', { method: 'POST', body: form })
+    return api('/workspace/import/archive/preview', { method: 'POST', body: form, signal: options.signal })
   },
-  importArchive: (file, scope = 'all', sha256) => {
+  importArchive: (file, scope = 'all', sha256, options = {}) => {
     const form = new FormData()
     form.append('archive', file)
     form.append('scope', scope)
     if (sha256) form.append('sha256', sha256)
-    return api('/workspace/import/archive', { method: 'POST', body: form })
+    return api('/workspace/import/archive', { method: 'POST', body: form, signal: options.signal })
   },
 }
 
@@ -304,10 +304,11 @@ export async function downloadWorkspaceExport() {
   URL.revokeObjectURL(url)
 }
 
-export async function downloadWorkspaceArchive() {
-  const response = await fetch(`${API_BASE}/workspace/export/archive`, { credentials: 'include' })
+export async function downloadWorkspaceArchive({ signal } = {}) {
+  const response = await fetch(`${API_BASE}/workspace/export/archive`, { credentials: 'include', signal })
   if (!response.ok) throw new ApiError('归档导出失败', response.status)
   const blob = await response.blob()
+  signal?.throwIfAborted()
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url

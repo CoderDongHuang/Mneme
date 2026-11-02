@@ -1,7 +1,7 @@
 import { useFormatters } from '../hooks/useFormatters'
 import { useDateFormatter } from '../hooks/useDateFormatter'
 import { t, useI18n } from '../i18n'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Archive, Download, FileCheck2, ShieldCheck } from 'lucide-react'
 import { downloadWorkspaceArchive } from '../api/client'
@@ -11,7 +11,7 @@ import RecoveryDrill from '../components/RecoveryDrill'
 import PersonalRecovery from './PersonalRecovery'
 import '../styles/centers.css'
 
-export default function RecoveryPage() {
+function RecoveryView() {
   const dates = useDateFormatter()
   const fmt = useFormatters()
   useI18n()
@@ -20,14 +20,21 @@ export default function RecoveryPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [downloads, setDownloads] = useState([])
-  const lock = useRef(false)
+  const lock = useRef(false), request = useRef(null), lifetime = useRef(null)
+  useEffect(() => {
+    const owner = new AbortController(); lifetime.current = owner
+    return () => { owner.abort(); request.current?.abort() }
+  }, [])
   async function backup() {
     if (lock.current) return
     lock.current = true; setBusy(true); setError('')
+    const controller = new AbortController(), owner = lifetime.current
+    request.current = controller
+    const current = () => !owner.signal.aborted && !controller.signal.aborted
     try {
-      const result = await downloadWorkspaceArchive()
-      setDownloads(items => [{ at: new Date().toISOString(), bytes: result.bytes }, ...items])
-    } catch (e) { setError(e.message) } finally { lock.current = false; setBusy(false) }
+      const result = await downloadWorkspaceArchive({ signal: controller.signal })
+      if (current()) setDownloads(items => [{ at: new Date().toISOString(), bytes: result.bytes }, ...items])
+    } catch (e) { if (current()) setError(e.message) } finally { lock.current = false; if (current()) setBusy(false) }
   }
   return <div className="standard-page account-page recovery-page">
     <PageHeader title={t('备份与恢复')} description={t('数据备份、恢复与导出管理')} />
@@ -47,4 +54,9 @@ export default function RecoveryPage() {
       </aside>
     </div>
   </div>
+}
+
+export default function RecoveryPage() {
+  const { session } = useAuth()
+  return <RecoveryView key={session?.userId ?? 'anonymous'} />
 }
