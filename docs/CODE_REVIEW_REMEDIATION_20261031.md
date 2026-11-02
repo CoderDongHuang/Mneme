@@ -504,3 +504,5 @@ PR #83 最终结果：最新提交 fd2f80044572a51a6be4549163b7836b700efaea 全�
 普通用户及错误管理员凭证真实返回 403，有效管理员实际 GET 返回未配置执行器 400 并正确展示；之后仅明确历史 GET、只读预览 POST 夹具验证失败、恢复、缓存过期、归档竞态与锁定迟到。未调用真实归档校验或创建恢复任务，未夹具化恢复非 GET 计数为零。最终独立读回 QA 用户零、223 个删除任务均 completed、部署前端全部文件哈希匹配，Gateway/Agent 健康均 200。
 
 证据 artifacts/site-recovery-{unit-final,lint-final,build-final,image-final,deploy-final,real-final,readback-final}.log、site-recovery-browser-final 与 site-recovery-drill-regression.log；范围与升级回退见 docs/SITE_RECOVERY_READ_STATES.md。无新依赖、配置或迁移，真实回归加入完整栈 CI。客户端取消不撤销已发宿主机任务；本项不宣称生产整站恢复演练完成，不关闭个人恢复向导或整个 P3-03。独立 PR 最终 CI 与合并结果后续补记。
+
+PR #88 首次整栈 CI 暴露测试环境判断错误：CI 已配置执行器地址和凭证，但该阶段未启动 worker，真实返回不可用而非未配置。依据 Gateway 环境区分准确错误，仍拒绝任意 400 并阻止实际恢复写请求；重新回查 P3-03/P2-14，本地未配置状态桌面/手机 2 项通过（15.5 秒，无整项重试），定向 ESLint 通过，八张安全截图复核。证据 artifacts/pr88-fixed-real.log、pr88-fixed-browser。已配置不可用分支由同一真实整栈 CI 再验，不宣称本地启动了执行器。
