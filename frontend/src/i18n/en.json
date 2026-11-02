@@ -1268,5 +1268,8 @@
   "已回滚": "Rolled back",
   "创建检查点": "Creating checkpoint",
   "应用归档": "Applying archive",
-  "回滚失败，服务已停止": "Rollback failed; services stopped"
+  "回滚失败，服务已停止": "Rollback failed; services stopped",
+  "个人归档响应格式不正确，请重新校验。": "The personal archive response is invalid. Validate the archive again.",
+  "个人恢复结果未确认：{0}。请先到资料库、会话或学习页面核实，重复导入可能产生副本。": "Personal restore outcome is unconfirmed: {0}. Check your library, conversations or learning data first; importing again may create duplicates.",
+  "已核实结果，重新选择归档": "Outcome checked; select an archive again"
 }

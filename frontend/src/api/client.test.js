@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, createTraceparent, endpoints, openNotificationStream, streamChat } from './client'
+import { api, createTraceparent, downloadWorkspaceArchive, endpoints, openNotificationStream, streamChat } from './client'
 import citationExamples from '../../../contracts/chat-source.examples.json'
 
 describe('api client', () => {
@@ -13,6 +13,30 @@ describe('api client', () => {
   })
   it('creates valid W3C trace context for gateway propagation', () => {
     expect(createTraceparent()).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/)
+  })
+  it('passes cancellation to personal preview and import without changing multipart contract', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ code: 200, data: {} }) }))
+    const controller = new AbortController(), file = new File(['zip'], 'archive.zip')
+    await endpoints.previewArchive(file, 'knowledge', { signal: controller.signal })
+    await endpoints.importArchive(file, 'knowledge', 'a'.repeat(64), { signal: controller.signal })
+    for (const [, options] of fetch.mock.calls) {
+      expect(options.signal).toBe(controller.signal)
+      expect(options.body.get('archive')).toBe(file)
+      expect(options.body.get('scope')).toBe('knowledge')
+      expect(options.headers['Content-Type']).toBeUndefined()
+    }
+    expect(fetch.mock.calls[1][1].body.get('sha256')).toBe('a'.repeat(64))
+  })
+  it('never starts a download after an aborted body read, even if fetch ignores cancellation', async () => {
+    const controller = new AbortController(), click = vi.spyOn(HTMLAnchorElement.prototype, 'click')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, blob: async () => {
+      controller.abort(); return new Blob(['archive'])
+    } }))
+    try {
+      await expect(downloadWorkspaceArchive({ signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' })
+      expect(fetch.mock.calls[0][1].signal).toBe(controller.signal)
+      expect(click).not.toHaveBeenCalled()
+    } finally { click.mockRestore() }
   })
   it('passes an independent abort signal and receipt id with multipart uploads', async () => {
     const controller = new AbortController()

@@ -505,4 +505,15 @@ PR #83 最终结果：最新提交 fd2f80044572a51a6be4549163b7836b700efaea 全�
 
 证据 artifacts/site-recovery-{unit-final,lint-final,build-final,image-final,deploy-final,real-final,readback-final}.log、site-recovery-browser-final 与 site-recovery-drill-regression.log；范围与升级回退见 docs/SITE_RECOVERY_READ_STATES.md。无新依赖、配置或迁移，真实回归加入完整栈 CI。客户端取消不撤销已发宿主机任务；本项不宣称生产整站恢复演练完成，不关闭个人恢复向导或整个 P3-03。独立 PR 最终 CI 与合并结果后续补记。
 
+PR #84 最终结果：最新提交 595c5571e18570d6bba5840ababd90127ba35248 全部九项 CI 通过（整栈 25 分 53 秒），已独立合并，提交 0a4b3863185af27256442cad882fa97f815f3473。
+
+## 2026-11-02：P3-03 / P2-14 个人恢复请求归属与未知结果保护
+
+对照要求：回查原 P3-03 的失败可重试、处理中和接受不代表完成，以及 P2-14 单一边界拆分。个人校验和提交迁入独立 hook，删除页面重复请求；重新校验先撤销旧通过，切文件/范围取消旧请求并核对归属。校验与结果字段明确验证，提交同步锁且重新检查当前预览及确认语句。未知提交撤销校验、阻止当前挂载重放，用户先核实资料库/会话/学习数据，再明确重置选择。账号改变卸载全部恢复数据；离页取消等待，响应体忽略取消也不能触发迟到下载。无新 CSS，沿用共享状态、日期、大小和反馈组件，中英文同步。
+
+验证：最终全量前端 31 文件 204 项通过，Lint、生产构建及原体积门禁通过。保留原演练测试文件，新增下载测试独立命名；首次沙箱 EPERM、首次真实回归页面未完成卸载的失败日志保留。修正测试等实际 React 卸载而非仅 URL 改变后，桌面/手机两项全部通过，无整项重试，共 40.1 秒。真实下载 ZIP、上传校验、恢复资料库与学习卡、原文件内容读回及 ready 验证通过；第二次真实导入已提交后截断回执，页面显示未知且严格不重放 POST。选择竞态与离页下载取消均通过。原演练和整站恢复桌面/手机四项再回归通过，共 28.5 秒；未创建整站恢复任务。
+
+八张本项截图已逐一复核，无横向溢出。最终独立读回 QA 用户零、231 个删除任务全 completed，所有部署前端文件哈希匹配当前生产构建，Gateway/Agent 健康均 200。证据 artifacts/personal-recovery-{unit-final,lint-final,build-final,image,deploy,real-final,readback-final,prior-regression}.log 与 personal-recovery-browser-final。无依赖、配置或迁移，真实回归加入完整栈 CI；部署回退与明确夹具范围见 docs/PERSONAL_RECOVERY_REQUEST_OWNERSHIP.md。
+
+边界：未知结果防重放只在当前挂载生效，不是服务端持久幂等；离页/刷新/取消无法撤销服务端已接受任务，重新进入仍须检查真实数据。此项不关闭完整 P3-03/P2-14 或整份审查。独立 PR 最终 CI 与合并结果继续补记。
 PR #88 首次整栈 CI 暴露测试环境判断错误：CI 已配置执行器地址和凭证，但该阶段未启动 worker，真实返回不可用而非未配置。依据 Gateway 环境区分准确错误，仍拒绝任意 400 并阻止实际恢复写请求；重新回查 P3-03/P2-14，本地未配置状态桌面/手机 2 项通过（15.5 秒，无整项重试），定向 ESLint 通过，八张安全截图复核。证据 artifacts/pr88-fixed-real.log、pr88-fixed-browser。已配置不可用分支由同一真实整栈 CI 再验，不宣称本地启动了执行器。
