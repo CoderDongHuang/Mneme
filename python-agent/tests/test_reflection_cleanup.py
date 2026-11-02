@@ -25,12 +25,15 @@ def test_deleted_user_rejects_all_state_creating_paths_before_redis():
 
 
 def test_redis_failure_keeps_committed_tombstone_for_new_instance():
+    with generation_store.locked("deleted") as state:
+        state["reflection_deliveries"] = {"a" * 64: {"b" * 64: True}}
     client = Mock()
     client.delete.side_effect = redis.ConnectionError("offline")
     scheduler = module.ReflectionScheduler(redis_client=client)
     with pytest.raises(redis.ConnectionError):
         scheduler.delete_user("deleted")
     assert GenerationStore(generation_store.path).snapshot("deleted")["deleted"]
+    assert "reflection_deliveries" not in GenerationStore(generation_store.path).snapshot("deleted")
     client.reset_mock()
     with pytest.raises(StaleGeneration):
         module.ReflectionScheduler(redis_client=client).record_session("deleted", "s", "turn")

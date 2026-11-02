@@ -15,6 +15,7 @@ from app.memory.memory_store import memory_store
 from app.core.logging import setup_logger, memory_log_fields
 from app.core.config import settings
 from app.knowledge.generations import generation_store, StaleGeneration
+from app.memory.session_scope import require_active_session
 from app.core.metrics import (
     REFLECTION_LEASE_ACQUISITIONS,
     REFLECTION_LEASE_CONTENTIONS,
@@ -48,11 +49,12 @@ return #ARGV - 1
 """
 _RECORD_SCRIPT = """
 if redis.call('exists', KEYS[2]) == 1 then
+  redis.call('persist', KEYS[2])
   return tonumber(redis.call('get', KEYS[1]) or '0')
 end
 local count = redis.call('incr', KEYS[1])
 if redis.call('ttl', KEYS[1]) < 0 then redis.call('expire', KEYS[1], ARGV[1]) end
-redis.call('set', KEYS[2], '1', 'EX', ARGV[1])
+redis.call('set', KEYS[2], '1')
 return count
 """
 _MIGRATE_SCRIPT = """
@@ -175,29 +177,56 @@ class ReflectionScheduler:
         return True
 
     def record_session(self, user_id: str, session_id: str = "", delivery_id: str = "") -> int:
-        """Count a completed turn once within the seven-day delivery window.
+        """Hand an atomic Redis increment to a durable SQL receipt before ack.
 
         Legacy callers without either identity count distinct events. Production
         completion supplies both identities captured before model generation.
+        An uncommitted Redis marker must survive until SQL commits, including
+        when the counter has already been consumed. Never expire it on a retry.
         """
         if bool(session_id) != bool(delivery_id):
             raise ValueError("Both session and delivery identity are required")
         if not delivery_id:
             session_id, delivery_id = "legacy", uuid.uuid4().hex
+        marker = self._delivery_key(user_id, session_id, delivery_id)
+        session_digest = hashlib.sha256(session_id.encode()).hexdigest()
+        delivery_digest = marker.rsplit(":", 1)[1]
         try:
             with generation_store.locked(user_id) as state:
                 if state.get("deleted"):
                     raise StaleGeneration("账号已删除，拒绝反思投递")
-                count = int(self._redis.eval(
-                    _RECORD_SCRIPT, 2, self._counter_key(user_id),
-                    self._delivery_key(user_id, session_id, delivery_id), _COUNTER_TTL_SECONDS,
-                ))
+                require_active_session(state, session_id)
+                receipts = state.setdefault("reflection_deliveries", {})
+                if not isinstance(receipts, dict) or any(
+                    not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{64}", key)
+                    or not isinstance(bucket, dict) or any(
+                        not isinstance(item, str) or not re.fullmatch(r"[0-9a-f]{64}", item)
+                        or value is not True for item, value in bucket.items()
+                    ) for key, bucket in receipts.items()
+                ):
+                    raise ValueError("反思投递回执损坏")
+                bucket = receipts.setdefault(session_digest, {})
+                if delivery_digest in bucket:
+                    count = int(self._redis.get(self._counter_key(user_id)) or 0)
+                else:
+                    count = int(self._redis.eval(
+                        _RECORD_SCRIPT, 2, self._counter_key(user_id), marker, _COUNTER_TTL_SECONDS,
+                    ))
+                    bucket[delivery_digest] = True
             self._redis_available = True
-            return count
         except redis.RedisError:
             self._redis_available = False
             logger.warning("reflection_counter_unavailable operation=record_session")
             raise
+        # This is garbage collection after the SQL transaction committed. A
+        # failed DEL must not turn a successfully recorded delivery into a
+        # failed answer. The next replay (or account deletion) can retry it.
+        try:
+            self._redis.delete(marker)
+        except redis.RedisError:
+            self._redis_available = False
+            logger.warning("reflection_marker_cleanup_unavailable operation=record_session")
+        return count
 
     def check_and_trigger(self, user_id: str) -> bool:
         """Persist the job and its per-user reservation in one Redis operation."""
@@ -380,7 +409,9 @@ class ReflectionScheduler:
         Keep the durable tombstone on Redis failure so retries cannot resurrect
         tasks. Provider calls already in flight are read-only and cannot settle.
         """
-        generation_store.tombstone(user_id)
+        with generation_store.locked(user_id) as state:
+            state["deleted"] = True
+            state.pop("reflection_deliveries", None)
         keys = [self._counter_key(user_id), self._job_key(user_id),
                 self._lease_key(user_id), self._lease_state_key(user_id)]
         self._redis.delete(*keys)

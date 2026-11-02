@@ -56,7 +56,14 @@ def tombstone_session(user_id, session_id):
     # the scope; the canonical ID must never be reused by a new conversation.
     with account_session(user_id, cleanup=True) as state:
         session_deleted(state, session_id)
-        state.setdefault("deleted_sessions", {})[sha256(session_id.encode()).hexdigest()] = True
+        digest = sha256(session_id.encode()).hexdigest()
+        state.setdefault("deleted_sessions", {})[digest] = True
+        receipts = state.get("reflection_deliveries", {})
+        corrupt = not isinstance(receipts, dict)
+        if not corrupt:
+            receipts.pop(digest, None)
+    if corrupt:
+        raise ValueError("反思投递回执损坏")
 
 
 def cache_key(user_id, session_id):

@@ -611,6 +611,20 @@ PR #88 最终结果：最新提交 8ba9ba0cab97f38e4304e73e7066835a8cb0b84b 全�
 十六张安全截图逐一复核。最终独立读回 QA 用户、故障触发器、合成 manifest、临时文件、注入夹具、反思 QA 键及 Stream 均零；377 个账号删除任务全 completed，328 个持久已删账号的会话文件及 scoped Redis 键零。十一份部署 Python 源码 LF 规范化哈希、Gateway JAR 和 48 份前端资源与本次构建一致，Gateway/Agent 健康均 200。证据 artifacts/single-session-{fence-python-first,java-full,frontend-tests-final,eslint,frontend-build,live-sqlite,live-mysql,deploy,real-first,real-final,readback}.log、single-session-browser-final。
 
 V32 增加会话隔离字段，无新依赖；双存储脚本及真实页面测试加入整栈 CI。范围和停写匹配恢复见 docs/SINGLE_SESSION_DELETION_FENCE.md。不删除已确认长期记忆、历史 Trace、备份或供应商在途请求；完整蒸馏/反思后台生命周期仍待 P1-06 整改，不提前关闭整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。
+
+## 2026-11-03：P1-06 / MN-007 反思计数持久投递回执
+
+对照要求：回查原 P1-06 的独立记忆生命周期、故障恢复与后台重试。本项补齐其安全重试前置条件，不关闭完整后台解耦。反思计数按模型调用前固定的会话/投递身份，在持久用户事务中检查账号、会话删除围栏与严格 SQL 摘要回执。Redis Lua 原子计数和无 TTL 交接标记先成功，再提交 SQL，最后回收标记；SQL 回滚后标记仍保留，消费计数后、跨进程或旧标记 TTL 升级重放均不再次计数。已提交回执的标记回收故障只记固定诊断，不推翻成功回执；损坏账本与 Redis 故障明确失败，不降级内存。单会话删除同事务清对应回执桶；账号删除先永久停止写入并清全部回执，再执行可失败、可重试的 Redis 清理。
+
+验证：Python 3.11 全量 952 项通过（143.46 秒，七条上游弃用警告）；最后增加删除回执断言后定向 58 项通过，Ruff、相关 E2E ESLint 与 diff 检查通过。首次只读源码挂载使备份恢复测试无法创建锁文件，改用隔离、可写的 tracked-source 快照后完整重跑；首轮 Ruff 缓存只读与缺 Qdrant 网络的验收环境失败日志均保留，更正环境后通过，未放宽业务断言。SQLite/MySQL 两组真实 Redis/SQL 投递脚本及清理脚本全部通过，包括 32 次并发、独立解释器、实际 SQL 回滚、旧 TTL、坏账本与删除隔离；有密码/无密码 Redis AOF 在 fsync 后 SIGKILL 恢复、同一独立 SQL 卷读回均通过，结束清理测试卷。
+
+停全部应用写入者，保存匹配 SQL、Agent 数据、Redis 数据及旧容器/镜像/配置后部署实际 http://127.0.0.1:3000。候选记忆、账号会话清理、单会话删除桌面/手机六项全通过，无整项重试，共 3.9 分钟；正式完成后新进程读回 SQL 回执，Redis 交接标记为零，消费后重放不增计数。升级前旧标记仍单独播种并精确清理，原五键断言不变。模型输出和指定故障使用隔离 QA 夹具，不冒充外部供应商或生产网络故障。
+
+十六张安全截图逐一复核。最终独立读回 QA 用户、触发器、双后端合成 manifest、临时文件、注入夹具、反思 QA 键与 Stream 均零；387 个账号删除任务全 completed，338 个持久已删账号的 SQL 回执、scoped Redis 键、会话文件以及已删会话回执桶均零。十四份部署 Python 源码 LF 规范化哈希、Gateway JAR 和 48 份前端资源匹配验收构建，两服务健康均 200。证据 artifacts/reflection-durable-{python-accepted,targeted-final,ruff-accepted,eslint,live-sqlite,live-mysql,cleanup-sqlite,cleanup-mysql,aof,build-final,deploy,real,readback}.log 与 reflection-durable-browser。
+
+无新依赖、配置或数据库结构迁移，但新增持久状态协议，不能混跑旧工作器。SQLite 为单主机，多副本需共享 MySQL/Redis；SQL 与 Redis 不具备跨库 ACID，AOF everysec 不承诺断电零丢失；升级前已过期标记无法追溯，未交接且不再重试的孤儿标记自动治理仍属 P2-12。升级、匹配数据回退及完整边界见 docs/REFLECTION_DELIVERY_IDEMPOTENCY.md。双后端脚本、AOF 和真实页面断言纳入原 CI；独立 PR 最终 CI 与合并结果继续补记。
+
+PR #92 最终结果：最新提交 f9fbafb3149f5f4e0255d6811aac4b2650f9870f 全部九项 CI 通过（run 41477429853），已独立合并，提交 4fea584。
 PR #89 最终结果：提交 b9f6ce9ac89035fa08d95e857976713d56f7ce5b 的九项 CI 全部通过（运行 41430838278），已独立合并，提交 cc5eff3416fe7da5d0bfdb51a32208e4f6757feb。
 
 PR #92 最终结果：提交 f9fbafb3149f5f4e0255d6811aac4b2650f9870f 的九项 CI 全部通过（运行 41477429853），已独立合并，提交 4fea584。保留上述缓存围栏的独立验收记录；该项单独发布，不与下一项混合。

@@ -47,11 +47,13 @@ test('账号删除覆盖过期及缺失元数据会话，真实 Redis 与 MySQL 
 from app.memory.session_store import session_store
 from app.memory.session_persistence import session_persistence
 import app.memory.reflection_scheduler as reflection
+from app.knowledge.generations import generation_store
 user,raw_entries,*ids=sys.argv[1:]
 scheduler=reflection.ReflectionScheduler(); client=scheduler._redis
 exact=[scheduler._counter_key(user),scheduler._job_key(user),scheduler._lease_key(user),scheduler._lease_state_key(user)]
 print(json.dumps({'redis':session_persistence.count_sessions(ids,user_id=user),'manifest':session_store.cleanup_session_ids(user),
  'reflection_keys':client.exists(*exact)+len(list(scheduler._delivery_keys(user))),
+ 'reflection_receipts':sum(len(bucket) for bucket in generation_store.snapshot(user).get('reflection_deliveries',{}).values()),
  'reflection_entries':sum(len(batch) for batch in scheduler._user_queue_batches(user)),
  'reflection_pending':sum(len(client.xpending_range(reflection._QUEUE_KEY,reflection._QUEUE_GROUP,identifier,identifier,1)) for identifier in json.loads(raw_entries))}))`, entry.account.userId, JSON.stringify(entry.reflectionIds), ...entry.sessions))
   }
@@ -60,7 +62,7 @@ print(json.dumps({'redis':session_persistence.count_sessions(ids,user_id=user),'
     await expect.poll(() => query(`SELECT status FROM account_deletion_task WHERE user_id=${entry.account.userId} ORDER BY id DESC LIMIT 1;`),
       { timeout: 60000, intervals: [500, 1000, 2000] }).toBe('completed')
     expect(query(`SELECT COUNT(*) FROM user WHERE id=${entry.account.userId}; SELECT COUNT(*) FROM chat_session WHERE user_id=${entry.account.userId};`)).toBe('0\n0')
-    expect(readback(entry)).toEqual({ redis: 0, manifest: [], reflection_keys: 0, reflection_entries: 0, reflection_pending: 0 })
+    expect(readback(entry)).toEqual({ redis: 0, manifest: [], reflection_keys: 0, reflection_receipts: 0, reflection_entries: 0, reflection_pending: 0 })
     expect(sessionProbe('verify', entry.account.userId)).toContain('PASS: session memory fence verify')
     expect(python(`import sys
 from app.knowledge.generations import generation_store,StaleGeneration
@@ -86,7 +88,7 @@ for operation in (lambda:store.register_session(user,'late'),lambda:store._save(
 assert store.get_sessions(user)==[] and store.get_session_count(user)==0
 assert not Path(store._get_file_path(user)).exists()
 print('late-reflection-rejected')`, entry.account.userId)).toBe('late-reflection-rejected')
-    expect(readback(entry)).toEqual({ redis: 0, manifest: [], reflection_keys: 0, reflection_entries: 0, reflection_pending: 0 })
+    expect(readback(entry)).toEqual({ redis: 0, manifest: [], reflection_keys: 0, reflection_receipts: 0, reflection_entries: 0, reflection_pending: 0 })
     entry.verified = true
   }
   try {
@@ -113,6 +115,8 @@ session_store._save(user,{first:{'last_updated':'2000-01-01T00:00:00'}})
 for value in (first,missing): session_persistence._redis.set('mneme:session:'+value,'isolated QA')
 scheduler=reflection.ReflectionScheduler(); client=scheduler._redis
 assert scheduler.record_session(user,first,'qa-turn')==1
+# Include a pre-upgrade marker as well as the new durable SQL receipt.
+client.set(scheduler._delivery_key(user,first,'legacy-qa-turn'),'1',ex=600)
 scheduler._ensure_queue()
 client.set(scheduler._job_key(user),'qa-job')
 client.set(scheduler._lease_key(user),'qa-owner',ex=600)
@@ -123,7 +127,7 @@ for fields in ({'user_id':user,'claimed_count':'1','job_token':'qa-job'},
  identifier=client.xadd(reflection._QUEUE_KEY,fields); entries.append(identifier)
  client.xclaim(reflection._QUEUE_KEY,reflection._QUEUE_GROUP,'qa-cleanup',0,[identifier],force=True)
 print(json.dumps(entries))`, account.userId, ...entry.sessions))
-      expect(readback(entry)).toEqual({ redis: 2, manifest: [entry.sessions[0]], reflection_keys: 5, reflection_entries: 2, reflection_pending: 2 })
+      expect(readback(entry)).toEqual({ redis: 2, manifest: [entry.sessions[0]], reflection_keys: 5, reflection_receipts: 1, reflection_entries: 2, reflection_pending: 2 })
     }
     const [target, protectedUser] = accounts
     expect(sessionProbe('seed', target.account.userId, protectedUser.account.userId)).toContain('PASS: session memory fence seed')
@@ -134,7 +138,7 @@ print(json.dumps(entries))`, account.userId, ...entry.sessions))
     target.queued = true
     await waitDeleted(target)
     await page.context().addCookies(await other.storageState().then(state => state.cookies))
-    expect(readback(protectedUser)).toEqual({ redis: 2, manifest: [protectedUser.sessions[0]], reflection_keys: 5, reflection_entries: 2, reflection_pending: 2 })
+    expect(readback(protectedUser)).toEqual({ redis: 2, manifest: [protectedUser.sessions[0]], reflection_keys: 5, reflection_receipts: 1, reflection_entries: 2, reflection_pending: 2 })
     expect(query(`SELECT COUNT(*) FROM chat_session WHERE user_id=${protectedUser.account.userId};`)).toBe('2')
     await page.goto('/chat')
     const toggle = page.getByRole('button', { name: '切换会话栏' })
