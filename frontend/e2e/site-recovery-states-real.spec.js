@@ -6,7 +6,7 @@ import process from 'node:process'
 test.skip(process.env.MNEME_REAL_E2E !== 'true', '需要真实 Gateway、Agent、MySQL 和管理员配置')
 test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 
-test('整站恢复真实权限和未配置状态，隔离归档校验与锁定迟到响应', async ({ page }, testInfo) => {
+test('整站恢复真实权限和执行器状态，隔离归档校验与锁定迟到响应', async ({ page }, testInfo) => {
   test.setTimeout(180000)
   page.setDefaultTimeout(15000)
   const container = service => execFileSync('docker', ['ps', '--filter', `label=com.docker.compose.service=${service}`, '--format', '{{.ID}}'], { encoding: 'utf8' }).trim()
@@ -15,6 +15,8 @@ test('整站恢复真实权限和未配置状态，隔离归档校验与锁定�
   const env = JSON.parse(execFileSync('docker', ['inspect', '--format', '{{json .Config.Env}}', gateway], { encoding: 'utf8' }))
   const adminToken = env.find(value => value.startsWith('ADMIN_API_TOKEN='))?.slice('ADMIN_API_TOKEN='.length)
   expect(Boolean(adminToken && adminToken.length >= 32)).toBe(true)
+  const setting = name => env.find(value => value.startsWith(`${name}=`))?.slice(name.length + 1) || ''
+  const workerConfigured = Boolean(setting('RECOVERY_WORKER_URL').trim() && setting('RECOVERY_WORKER_TOKEN').length >= 32)
   const sql = query => execFileSync('docker', ['exec', '-i', mysql, 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -B mneme'], { input: query, encoding: 'utf8', timeout: 30000 }).trim()
   const suffix = randomUUID().replaceAll('-', ''), username = `sitestate_${suffix.slice(0, 12)}`
   let account
@@ -66,12 +68,22 @@ test('整站恢复真实权限和未配置状态，隔离归档校验与锁定�
     await unlock(adminToken)
     const response = await actual, result = await response.json()
     if (response.ok()) {
+      expect(workerConfigured).toBe(true)
+      expect(result.code).toBe(200)
       expect(Array.isArray(result.data.jobs) && Array.isArray(result.data.archives)).toBe(true)
       await expect(site()).toHaveAttribute('aria-busy', 'false')
       await expect(site().getByRole('alert')).toHaveCount(0)
     } else {
       expect(response.status()).toBe(400)
-      expect(result.message).toMatch(/^整站恢复执行器未配置/)
+      expect(result.code).toBe(400)
+      if (workerConfigured) {
+        expect([
+          '宿主机恢复执行器不可用或校验超时，请检查服务后刷新任务历史，避免重复提交。',
+          '整站恢复请求被拒绝，请检查归档、确认语句与摘要，或等待现有任务完成。',
+        ]).toContain(result.message)
+      } else {
+        expect(result.message).toBe('整站恢复执行器未配置。请在 Docker 宿主机启动 scripts/recovery_worker.py 并设置恢复服务地址与凭证。')
+      }
       await expect(site().getByText(`整站任务加载失败：${result.message}`, { exact: true })).toBeVisible()
       await expect(site().getByText('暂无整站操作记录。', { exact: true })).toHaveCount(0)
     }
