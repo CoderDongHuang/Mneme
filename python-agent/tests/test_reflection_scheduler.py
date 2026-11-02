@@ -33,23 +33,29 @@ class FakeRedis:
         return True
 
     def eval(self, script, key_count, *args):
-        if key_count == 2 and len(args) == 4:
-            lease, state, token, _ttl = args
-            if lease in self.leases:
+        if script == module._ENQUEUE_SCRIPT:
+            job, lease, counter, queue, threshold, user, at, token = args
+            count = int(self.values.get(counter, 0))
+            if job in self.values or lease in self.leases or count < int(threshold):
+                return 0
+            entry = self.xadd(queue, dict(user_id=user, claimed_count=str(count),
+                                         queued_at=at, job_token=token))
+            self.values[job] = token
+            return entry
+        if script == module._CLAIM_SCRIPT:
+            job, lease, state, job_token, token, _ttl = args
+            if self.values.get(job) != job_token or lease in self.leases:
                 return 0
             takeover = self.states.get(state) == "active"
             self.leases[lease] = token
             self.states[state] = "active"
             return 2 if takeover else 1
-        if key_count == 2:
-            key, state, token = args
-            if self.leases.get(key) == token:
-                del self.leases[key]
-                self.states[state] = "released"
-                return 1
-            return 0
-        counter, lease, state, token, claimed = args
-        if self.leases.get(lease) != token:
+        if script == module._RENEW_SCRIPT:
+            job, lease, job_token, owner, ttl = args
+            return int(self.values.get(job) == job_token and self.leases.get(lease) == owner)
+        assert script == module._COMPLETE_SCRIPT
+        counter, lease, state, job, queue, job_token, token, claimed, group, message_id = args
+        if self.values.get(job) != job_token or self.leases.get(lease) != token:
             return 0
         remaining = int(self.values.get(counter, 0)) - int(claimed)
         if remaining > 0:
@@ -57,7 +63,9 @@ class FakeRedis:
         else:
             self.values.pop(counter, None)
         self.leases.pop(lease, None)
+        self.values.pop(job, None)
         self.states[state] = "completed"
+        self.xack(queue, group, message_id)
         return 1
 
     def xgroup_create(self, *_args, **_kwargs):
@@ -76,18 +84,6 @@ class FakeRedis:
     def xack(self, _key, _group, message_id):
         self.acked.append(message_id)
         return 1
-
-
-class QueueExecutor:
-    def __init__(self):
-        self.jobs = []
-
-    def submit(self, function, *args):
-        self.jobs.append((function, args))
-
-    def run_next(self):
-        function, args = self.jobs.pop(0)
-        return function(*args)
 
 
 def test_idle_queue_wait_fits_within_redis_socket_timeout(monkeypatch):
@@ -110,22 +106,21 @@ def test_reflection_is_persisted_to_stream_before_execution(monkeypatch):
         "settings",
         SimpleNamespace(memory_reflection_every_sessions=1, memory_reflection_lease_seconds=60),
     )
-    scheduler = module.ReflectionScheduler(redis_client=fake, executor=QueueExecutor())
+    scheduler = module.ReflectionScheduler(redis_client=fake)
     scheduler.record_session("u")
     assert scheduler.check_and_trigger("u") is True
 
 
 def test_only_one_node_claims_shared_reflection(monkeypatch):
     fake = FakeRedis()
-    executor = QueueExecutor()
     monkeypatch.setattr(
         module,
         "settings",
         SimpleNamespace(memory_reflection_every_sessions=2, memory_reflection_lease_seconds=60),
     )
     monkeypatch.setattr(module, "run_reflection", lambda user_id: None)
-    first = module.ReflectionScheduler(redis_client=fake, executor=executor)
-    second = module.ReflectionScheduler(redis_client=fake, executor=executor)
+    first = module.ReflectionScheduler(redis_client=fake)
+    second = module.ReflectionScheduler(redis_client=fake)
 
     first.record_session("u")
     second.record_session("u")
@@ -139,7 +134,6 @@ def test_only_one_node_claims_shared_reflection(monkeypatch):
 
 def test_failed_reflection_keeps_count_for_retry(monkeypatch):
     fake = FakeRedis()
-    executor = QueueExecutor()
     monkeypatch.setattr(
         module,
         "settings",
@@ -153,7 +147,7 @@ def test_failed_reflection_keeps_count_for_retry(monkeypatch):
             raise RuntimeError("temporary")
 
     monkeypatch.setattr(module, "run_reflection", fail_once)
-    scheduler = module.ReflectionScheduler(redis_client=fake, executor=executor)
+    scheduler = module.ReflectionScheduler(redis_client=fake)
     scheduler.record_session("u")
     assert scheduler.check_and_trigger("u") is True
     scheduler._run_queued_reflection(*fake.stream[0])
@@ -171,13 +165,19 @@ def test_expired_shared_lease_is_counted_as_takeover(monkeypatch):
         "settings",
         SimpleNamespace(memory_reflection_every_sessions=1, memory_reflection_lease_seconds=60),
     )
-    first = module.ReflectionScheduler(redis_client=fake, executor=QueueExecutor())
+    first = module.ReflectionScheduler(redis_client=fake)
     first.record_session("u")
     assert first.check_and_trigger("u") is True
     fake.leases.clear()
 
-    second = module.ReflectionScheduler(redis_client=fake, executor=QueueExecutor())
-    assert second.check_and_trigger("u") is True
+    second = module.ReflectionScheduler(redis_client=fake)
+    assert second.check_and_trigger("u") is False
+    job = fake.stream[0][1]["job_token"]
+    assert first._claim_shared("u", job, "old")
+    fake.leases.clear()
+    assert second._claim_shared("u", job, "new")
+    assert not first._complete_shared("u", 1, job, "old", b"1-0")
+    assert second._complete_shared("u", 1, job, "new", b"1-0")
 
 
 def test_unavailable_redis_never_acknowledges_in_memory_task(monkeypatch):
@@ -188,7 +188,7 @@ def test_unavailable_redis_never_acknowledges_in_memory_task(monkeypatch):
         raise redis.ConnectionError("offline")
 
     monkeypatch.setattr(fake, "incr", unavailable)
-    monkeypatch.setattr(fake, "get", unavailable)
+    monkeypatch.setattr(fake, "eval", unavailable)
     monkeypatch.setattr(fake, "ping", unavailable)
     with pytest.raises(redis.ConnectionError):
         scheduler.record_session("u")
@@ -216,3 +216,57 @@ def test_failed_enqueue_releases_lease_without_reporting_success(monkeypatch):
         scheduler.check_and_trigger("u")
     assert fake.leases == {}
     assert fake.values[scheduler._counter_key("u")] == 1
+
+
+def test_reclaimed_live_job_does_not_share_owner_or_execute_twice(monkeypatch):
+    fake = FakeRedis()
+    monkeypatch.setattr(module, "settings", SimpleNamespace(
+        memory_reflection_every_sessions=1, memory_reflection_lease_seconds=60))
+    first = module.ReflectionScheduler(redis_client=fake)
+    second = module.ReflectionScheduler(redis_client=fake)
+    first.record_session("u")
+    assert first.check_and_trigger("u")
+    entry = fake.stream[0]
+    calls = []
+
+    def reflect(user):
+        calls.append(user)
+        second._run_queued_reflection(*entry)
+        first.record_session(user)
+
+    monkeypatch.setattr(module, "run_reflection", reflect)
+    first._run_queued_reflection(*entry)
+    assert calls == ["u"]
+    assert fake.acked == [entry[0]]
+    assert fake.values == {first._counter_key("u"): 1}
+    first._run_queued_reflection(*entry)
+    assert calls == ["u"]
+    assert fake.values[first._counter_key("u")] == 1
+
+
+def test_successful_model_does_not_ack_after_losing_lease(monkeypatch):
+    fake = FakeRedis()
+    monkeypatch.setattr(module, "settings", SimpleNamespace(
+        memory_reflection_every_sessions=1, memory_reflection_lease_seconds=60))
+    scheduler = module.ReflectionScheduler(redis_client=fake)
+    scheduler.record_session("u")
+    assert scheduler.check_and_trigger("u")
+    monkeypatch.setattr(module, "run_reflection", lambda _: fake.leases.clear())
+    scheduler._run_queued_reflection(*fake.stream[0])
+    assert fake.acked == []
+    assert fake.values[scheduler._counter_key("u")] == 1
+    assert scheduler._job_key("u") in fake.values
+
+
+def test_reclaim_advances_cursor_past_live_jobs(monkeypatch):
+    scheduler = module.ReflectionScheduler(redis_client=FakeRedis())
+    starts = []
+
+    def reclaim(*_args, **kwargs):
+        starts.append(kwargs["start_id"])
+        return ["20-0" if len(starts) == 1 else "0-0", [], []]
+
+    monkeypatch.setattr(scheduler._redis, "xautoclaim", reclaim)
+    scheduler.reclaim_stale_reflections()
+    scheduler.reclaim_stale_reflections()
+    assert starts == ["0-0", "20-0"]

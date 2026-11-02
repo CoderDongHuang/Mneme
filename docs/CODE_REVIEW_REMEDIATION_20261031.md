@@ -418,3 +418,19 @@ PR #79 最终结果：最新提交 d90596501a333b9a2475646fbd67f0ac463e0258 全�
 验证：最终前端 26 文件 148 项通过，Lint、生产构建及原包大小门禁通过。保留旧容器、配置与停写 SQL 快照后部署实际 http://127.0.0.1:3000，桌面/手机两项全部通过，无整项重试；只 GET 注入 503，后端真实拒绝无密钥启用 400，草稿保留，正式 PUT 保存及独立 GET、刷新读回一致，健康失败不抹掉保存成功。保存期间全部模型字段锁定，无付费模型调用。六张截图逐一复核，无横向溢出；独立 SQL 读回 QA 用户为零、201 个删除任务全部 completed，Gateway/Agent 健康均 200。
 
 过程：保留受限 Vite EPERM、初次 Docker 构建上下文和下拉框标签定位失败；补全明确可访问名称后全量重跑通过。手机截图改为显示实际错误/回执区域后完整重跑，未修改功能断言。证据 artifacts/settings-states-{unit-final,lint-final,build,real-accepted,readback-accepted}.log 与 settings-states-browser-accepted。无迁移，部署回退与取消边界见 docs/SETTINGS_READ_STATES.md；实际回归已加入整栈 CI。其他页面和整个审查保持开放，独立 PR 最终 CI 和合并结果后续补记。
+
+PR #80 最终结果：最新提交 9a9d1b58b65ef716699597bb0453acc0779befa3 全部九项 CI 通过，已独立合并，提交 a769725e0ed55c60d44f7988481d776a8086c981。
+
+## 2026-11-02：P1-06 / MN-007 反思队列所有权与故障接管
+
+对照要求：回查原 P1-06 的独立后台任务可靠性，以及 P2-01 的唯一 owner、心跳和过期提交拒绝原则。本项只处理反思队列，不提前关闭完整 MN-007；账号删除等 Java 队列仍沿用已验收的 V27 协议。
+
+实现：排队 Lua 原子建立稳定任务预约与 Stream 条目；预约和会过期的执行租约分开，等待/失败期间不重复排队。每次执行使用新 owner，比较任务身份和 owner 续约；完成脚本核对所有权并确认 ACK 成功后才原子扣减计数、清理预约及已完成条目。任务期间新增计数和原 TTL 保留；失效 owner、重复投递与重复完成不能扣减或提交。XAUTOCLAIM 保留分页游标，旧协议重复条目在旧租约到期后按当前计数合并迁移。移除未使用线程池。
+
+验证：最终 Python 3.11 Ruff 与全套 825 项通过，七条上游弃用警告；定向十项通过。真实隔离 Redis 的无密码/有密码两组均通过 AUTH、AOF fsync、SIGKILL、重启和 pending 恢复；最终 Lua 协议验证跨两个 TTL 的续约、第二实例独占、崩溃接管、旧 owner 完成拒绝、重复完成、执行中新计数和旧队列迁移，部署内独立脚本再次通过。模型仅在测试进程替换，真实 Redis/Lua/心跳均实际执行，测试用独立 QA Stream 避免线上消费者竞争。两个入口加入整栈 CI。
+
+保留旧容器、配置及停写 SQL 快照后部署真实 http://127.0.0.1:3000，桌面/手机聊天回归两项全部通过，无整项重试。实际 prepare/complete 输入快照、回答保留、候选保存失败、Gateway 重启/网页重试、唯一候选、真实向量确认及刷新均通过；隔离模型夹具的范围不代表整个记忆处理已异步。六张截图逐一目视核验，无横向溢出。独立读回 QA 用户和触发器均零、203 个删除任务全 completed、临时夹具及反思 QA 键/Stream 均零，三个部署源文件规范换行后哈希与仓库一致，Gateway/Agent 健康均 200。
+
+过程：正式镜像构建因 PyPI 连接超时未完成，保留失败日志；核对当前基础镜像锁文件与仓库规范换行 SHA256 一致后，仅复制本次源码形成实际本地验收镜像，没有改动依赖锁或取消哈希校验。CI 继续使用正式 Dockerfile 全新构建。证据 artifacts/reflection-ownership-{targeted,python-final,redis-isolated-final,redis-live,docker-build-final,deploy,real,readback}.log 与 reflection-ownership-browser；协议、停全部旧工作器升级及匹配恢复要求见 docs/REFLECTION_TASK_OWNERSHIP.md。
+
+边界：模型调用不能由 Redis 自动取消，旧执行可能短暂并行但不能完成提交；当前反思仅只读并返回分析，后续新增持久化副作用必须延伸存储 fence。完整 Python 记忆流水线解耦、会话计数投递幂等、账号删除后的反思清理与防复活仍需后续独立修复，不宣称全部完成。无新增依赖或数据库迁移。独立 PR 的最终 CI 与合并结果后续补记。
