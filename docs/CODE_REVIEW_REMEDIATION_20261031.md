@@ -471,3 +471,13 @@ PR #82 最终结果：最新提交 fc7a1f3f047053bb0c5f535768258936c3287512 全�
 验证：Python 3.11 Ruff 与完整 842 项通过，七条上游弃用警告；17 项定向测试及前端 Lint 通过。实际 http://127.0.0.1:3000 桌面/手机两项全部通过，无整项重试，共 1 分 36 秒；仅注入供应商异常，实际执行三处降级和 Trace 存取，临时独立摘要历史保留。服务 stdout/stderr、Trace、JSON/TXT/LOG 测试产物均不含随机私密标记，自动录像与 Trace 关闭，显式六张安全截图逐一复核，无页面横向溢出。原候选失败不覆盖回答、重启后重试、唯一入库、实际向量确认与刷新可读全部继续通过。
 
 保留旧容器、配置与停写 SQL 快照后部署；独立读回 QA 用户、触发器、临时夹具和反思 QA 键/Stream 均零，211 个删除任务全部 completed；五个部署源码换行规范化哈希匹配，Gateway/Agent 健康均 200。无新配置、依赖或迁移。证据 artifacts/provider-log-privacy-{targeted,python-full,frontend-lint,build,deploy,real,readback}.log 与 provider-log-privacy-browser；范围及回退见 docs/MEMORY_PROVIDER_LOG_PRIVACY.md。不将未审查的所有未来日志或整份审查标为完成；独立 PR CI 与合并结果继续补记。
+
+## 2026-11-02：P1-06 / MN-007 反思结果失败不误确认
+
+对照要求：回查原 P1-06 的独立记忆失败与可重试，以及 P2-01 的有效 owner 完成原则。修正非法 JSON 返回空对象导致任务假成功的问题：严格校验响应为字符串、准确三字段对象和字段类型；无记忆正常跳过，无效结果抛固定错误，不携带原文或 JSONDecodeError 上下文。队列保留 pending、预约和计数，租约过期后新 owner 合法重试才能确认；即时建议维持安全降级。
+
+验证：最终 Python 3.11 Ruff 与完整 859 项通过，七条上游弃用警告；37 项定向回归通过。保留首轮测试导入错误日志，修正为 tests 包导入后重跑。隔离无密码/有密码真实 Redis 的 AUTH、AOF fsync、SIGKILL、pending 恢复及完整所有权/去重/清理验收均通过，新增实际解析器无效结果保留任务、过期接管合法完成且重放不再执行。部署内真实 Redis 再验收通过。
+
+保留旧容器、配置和停写 SQL 快照后部署实际 http://127.0.0.1:3000，桌面/手机两项全部通过，无整项重试，共 1 分 24 秒；QA 请求运行实际解析器拒绝及即时建议降级，并继续原回答保存、候选失败、重启、重试、向量确认及刷新。六张截图逐一复核，无页面横向溢出；日志 stdout/stderr、Trace 与文本产物无私密标记。独立读回 QA 用户、触发器、临时夹具与反思键/Stream 均零，213 个删除任务全部 completed，七个部署源码换行规范化哈希一致，Gateway/Agent 健康均 200。
+
+证据 artifacts/reflection-result-{targeted-final,python-full,frontend-lint,redis,live-redis,build,deploy,real,readback}.log 与 reflection-result-browser。无新配置、依赖或迁移，协议、测试夹具范围、长期失败边界及停旧消费者和匹配恢复要求见 docs/REFLECTION_RESULT_VALIDATION.md。此项不代表完整 MN-007 已完成；独立 PR CI 和合并结果继续补记。

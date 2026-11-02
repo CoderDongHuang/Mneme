@@ -15,6 +15,7 @@ from app.memory.short_term_memory import ShortTermMemoryManager as _QaShortManag
 from unittest.mock import patch as _qa_patch, Mock as _QaMock
 import app.agents.nodes as _qa_nodes
 import app.memory.short_term_memory as _qa_stm
+import app.memory.reflection as _qa_reflection_module
 
 _qa_context = _qa_contextvars.ContextVar("memory_outbox_probe", default=False)
 _qa_prepare = prepare_conversation  # noqa: F821 -- injected module globals
@@ -49,6 +50,19 @@ def complete_conversation(request, state, answer):
     with _qa_patch.object(_qa_nodes, "llm", _QaMock(invoke=_QaMock(side_effect=RuntimeError(canary)))):
         assert _qa_nodes.intent_classification_node({**state, "message": canary}) == {"intent": "qa", "confidence": 0.5}
     with _qa_patch.object(_qa_nodes, "run_reflection", side_effect=RuntimeError(canary)):
+        assert _qa_nodes.suggestion_generation_node(state) == {}
+    # Invalid provider JSON must raise in the actual parser, while on-demand
+    # suggestions can still use their existing safe fallback.
+    with (_qa_patch.object(_qa_reflection_module.long_term_memory, "get_preferences", return_value=[{"content": "QA"}]),
+          _qa_patch.object(_qa_reflection_module.long_term_memory, "get_weak_points", return_value=[]),
+          _qa_patch.object(_qa_reflection_module.long_term_memory, "get_progress", return_value=None),
+          _qa_patch.object(_qa_reflection_module, "llm", _QaMock(invoke=_QaMock(return_value=_QaMessage(content=canary))))):
+        try:
+            _qa_reflection_module.run_reflection(request.user_id)
+        except _qa_reflection_module.ReflectionResultError as error:
+            assert canary not in str(error) and error.__context__ is None
+        else:
+            raise AssertionError("Invalid reflection must fail")
         assert _qa_nodes.suggestion_generation_node(state) == {}
     temporary = _QaShortManager()
     temporary._store[request.session_id] = [_QaHistoryMessage(

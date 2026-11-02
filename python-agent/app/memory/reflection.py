@@ -7,6 +7,32 @@ from app.core.logging import setup_logger, memory_log_fields
 
 logger = setup_logger("reflection")
 
+
+class ReflectionResultError(ValueError):
+    """Invalid provider output must not acknowledge durable reflection work."""
+
+
+def _parse_result(content: str) -> dict:
+    if not isinstance(content, str):
+        raise ReflectionResultError("Invalid reflection content type")
+    invalid_json = False
+    try:
+        result = json.loads(content)
+    except json.JSONDecodeError:
+        # JSONDecodeError retains the original document. Do not propagate it or
+        # put provider output in diagnostics, even through the error message.
+        invalid_json = True
+    if invalid_json:
+        raise ReflectionResultError("Invalid reflection JSON")
+    fields = {"implicit_preferences", "priority_weak_points", "next_step_suggestion"}
+    if (not isinstance(result, dict) or set(result) != fields
+            or not isinstance(result["next_step_suggestion"], str)
+            or any(not isinstance(result[field], list)
+                   or any(not isinstance(item, str) for item in result[field])
+                   for field in ("implicit_preferences", "priority_weak_points"))):
+        raise ReflectionResultError("Invalid reflection schema")
+    return result
+
 REFLECTION_PROMPT = """请分析以下用户记忆数据，挖掘隐性偏好和学习模式：
 
 偏好列表：{preferences}
@@ -55,10 +81,6 @@ def run_reflection(user_id: str) -> dict:
         ]
     )
 
-    try:
-        result = json.loads(response.content)
-        logger.info(memory_log_fields("reflect", "completed", user_id=user_id))
-        return result
-    except json.JSONDecodeError:
-        logger.warning("反思结果解析失败")
-        return {}
+    result = _parse_result(response.content)
+    logger.info(memory_log_fields("reflect", "completed", user_id=user_id))
+    return result
