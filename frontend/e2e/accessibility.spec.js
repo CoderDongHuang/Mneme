@@ -200,7 +200,7 @@ test('历史删除按钮可键盘操作且收起后不可聚焦', async ({ page 
   await page.route('**/api/v1/sessions/5', route => {
     expect(route.request().method()).toBe('DELETE')
     sessions = []
-    return route.fulfill(ok({}))
+    return route.fulfill(ok({ accepted: true, task_id: 'task_keyboard_session_5', status: 'pending' }))
   })
   await page.goto('/chat')
   const toggle = page.getByRole('button', { name: '切换会话栏' })
