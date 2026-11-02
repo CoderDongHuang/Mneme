@@ -9,12 +9,14 @@
 """
 
 from datetime import datetime
+from copy import deepcopy
 from typing import List, Optional
 
 from app.core.time import utc_now, parse_utc
 from app.memory.memory_store import memory_store
 from app.core.logging import setup_logger, memory_log_fields
 from app.memory.cache_revision import memory_cache_revision
+from app.knowledge.generations import generation_store
 
 logger = setup_logger("long_term_memory")
 
@@ -45,36 +47,55 @@ class LongTermMemoryManager:
     # ── 缓存辅助 ────────────────────────────────────────────
 
     def _get_cached(self, user_id: str, category: str) -> Optional[tuple]:
-        """获取缓存，若过期返回 None"""
-        bucket = self._cache.get(user_id, {}).get(category)
-        if bucket is None:
-            return None
-        ts, revision, data = bucket
-        if (datetime.now() - ts).total_seconds() > CACHE_TTL_SECONDS:
-            self._cache.get(user_id, {}).pop(category, None)
-            return None
-        if revision != memory_cache_revision.current(user_id):
-            self._cache.get(user_id, {}).pop(category, None)
-            return None
-        return data
+        """Validate shared state even on hits; never expose mutable cache data."""
+        with generation_store.locked(user_id) as state:
+            if state.get("deleted"):
+                self._cache.pop(user_id, None)
+            revision = memory_cache_revision.from_state(state)
+            bucket = self._cache.get(user_id, {}).get(category)
+            if bucket is None:
+                return None
+            ts, cached_revision, data = bucket
+            if ((datetime.now() - ts).total_seconds() > CACHE_TTL_SECONDS
+                    or cached_revision != revision):
+                self._cache.get(user_id, {}).pop(category, None)
+                return None
+            return deepcopy(data)
 
-    def _set_cache(self, user_id: str, category: str, data):
-        """写入缓存"""
-        if user_id not in self._cache:
-            self._cache[user_id] = {}
-        self._cache[user_id][category] = (
-            datetime.now(), memory_cache_revision.current(user_id), data
-        )
+    def _set_cache(self, user_id: str, category: str, data, expected_revision: int):
+        with generation_store.locked(user_id) as state:
+            if state.get("deleted"):
+                self._cache.pop(user_id, None)
+            revision = memory_cache_revision.from_state(state)
+            if revision != expected_revision:
+                return False
+            self._cache.setdefault(user_id, {})[category] = (
+                datetime.now(), revision, deepcopy(data)
+            )
+            return True
+
+    def _read_category(self, user_id: str, category: str, cache_key: str, limit: int):
+        cached = self._get_cached(user_id, cache_key)
+        if cached is not None:
+            return cached
+        for _ in range(3):
+            revision = memory_cache_revision.current(user_id)
+            # Provider/storage work holds no account lock; validate on publish.
+            results = self._store.get_by_category(user_id, category, limit=limit)
+            if self._set_cache(user_id, cache_key, results, revision):
+                return deepcopy(results)
+        raise RuntimeError("记忆正在更新，请重试读取")
 
     def _invalidate_cache(self, user_id: str, category: Optional[str] = None):
         """使缓存失效，category 为 None 时清空该用户全部缓存"""
-        memory_cache_revision.bump(user_id)
-        if user_id not in self._cache:
-            return
-        if category:
-            self._cache[user_id].pop(category, None)
-        else:
-            self._cache.pop(user_id, None)
+        try:
+            memory_cache_revision.bump(user_id)
+        finally:
+            # Evict locally even if shared state or legacy key cleanup fails.
+            if category:
+                self._cache.get(user_id, {}).pop(category, None)
+            else:
+                self._cache.pop(user_id, None)
 
     # ── 语义去重 ────────────────────────────────────────────
 
@@ -122,14 +143,7 @@ class LongTermMemoryManager:
 
     def get_preferences(self, user_id: str) -> List[dict]:
         """获取用户所有偏好（优先从缓存读）"""
-        cached = self._get_cached(user_id, "preferences")
-        if cached is not None:
-            return cached
-        results = self._store.get_by_category(
-            user_id, "preference", limit=MAX_PREFERENCES
-        )
-        self._set_cache(user_id, "preferences", results)
-        return results
+        return self._read_category(user_id, "preference", "preferences", MAX_PREFERENCES)
 
     def remove_preference(self, user_id: str, mem_id: str):
         """删除指定偏好"""
@@ -179,14 +193,7 @@ class LongTermMemoryManager:
 
     def get_weak_points(self, user_id: str) -> List[dict]:
         """获取用户所有薄弱点（优先从缓存读）"""
-        cached = self._get_cached(user_id, "weak_points")
-        if cached is not None:
-            return cached
-        results = self._store.get_by_category(
-            user_id, "weak_point", limit=MAX_WEAK_POINTS
-        )
-        self._set_cache(user_id, "weak_points", results)
-        return results
+        return self._read_category(user_id, "weak_point", "weak_points", MAX_WEAK_POINTS)
 
     def decay_weak_points(self, user_id: str):
         """薄弱点衰减：降低长时间未更新的薄弱点重要性"""
@@ -236,14 +243,8 @@ class LongTermMemoryManager:
 
     def get_progress(self, user_id: str) -> Optional[dict]:
         """获取用户最新学习进度"""
-        cached = self._get_cached(user_id, "progress")
-        if cached is not None:
-            return cached[0] if cached else None
-        results = self._store.get_by_category(user_id, "progress", limit=1)
-        if results:
-            self._set_cache(user_id, "progress", results)
-            return results[0]
-        return None
+        results = self._read_category(user_id, "progress", "progress", 1)
+        return results[0] if results else None
 
     def get_progress_history(self, user_id: str) -> List[dict]:
         """获取用户进度变更历史"""

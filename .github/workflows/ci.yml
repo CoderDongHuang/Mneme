@@ -313,6 +313,12 @@ jobs:
         run: |
           $COMPOSE exec -T python-agent python scripts/check_memory_deletion_fence.py selftest
           $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_memory_deletion_fence.py selftest
+      - name: Verify memory cache deletion fences and shared invalidation on both backends
+        run: |
+          $COMPOSE exec -T python-agent python scripts/check_memory_cache_fence.py selftest
+          $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_memory_cache_fence.py selftest
+          $COMPOSE exec -T python-agent python scripts/cleanup_deleted_memory_revisions.py
+          $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/cleanup_deleted_memory_revisions.py
       - name: Verify Redis authentication and AOF pending-task recovery
         run: python scripts/verify_redis_durability.py
       - name: Verify least privilege deployment roles and startup order
@@ -398,6 +404,12 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/memory-fence-real.spec.js --workers=1 --retries=0
+      - name: Verify memory cache erasure and shared invalidation on desktop and mobile
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/memory-cache-fence-real.spec.js --workers=1 --retries=0
       - name: Verify privacy read retries and durable write receipts on desktop and mobile
         working-directory: frontend
         env:
