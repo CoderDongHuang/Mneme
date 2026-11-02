@@ -516,4 +516,18 @@ PR #84 最终结果：最新提交 595c5571e18570d6bba5840ababd90127ba35248 全�
 八张本项截图已逐一复核，无横向溢出。最终独立读回 QA 用户零、231 个删除任务全 completed，所有部署前端文件哈希匹配当前生产构建，Gateway/Agent 健康均 200。证据 artifacts/personal-recovery-{unit-final,lint-final,build-final,image,deploy,real-final,readback-final,prior-regression}.log 与 personal-recovery-browser-final。无依赖、配置或迁移，真实回归加入完整栈 CI；部署回退与明确夹具范围见 docs/PERSONAL_RECOVERY_REQUEST_OWNERSHIP.md。
 
 边界：未知结果防重放只在当前挂载生效，不是服务端持久幂等；离页/刷新/取消无法撤销服务端已接受任务，重新进入仍须检查真实数据。此项不关闭完整 P3-03/P2-14 或整份审查。独立 PR 最终 CI 与合并结果继续补记。
+
+PR #85 最终结果：最新提交 7123d49fef04863edb08b12fa364a5071c425442 全部九项 CI 通过（整栈 25 分 39 秒），已独立合并，提交 0a68c23095a4c5c28ad9d90744ca381d29aa0ab6。
+
+## 2026-11-02：P1-05 / MN-006 Trace 与隐私策略删除围栏
+
+对照要求：回查原 P1-05 的跨存储删除清单、独立残留读回、失败传播及恢复重试。本项只处理 Trace 和策略存储，不提前关闭长期记忆、会话、缓存或整个 MN-006。实际插入/保存持已有用户数据库锁，账号 tombstone 先永久提交，迟到写入拒绝；策略删除后不恢复默认云授权，manifest 读取失败不允许外部处理，保留 StaleGeneration 契约。删除后独立 COUNT，静默删除或读错向上传播。手动清 Trace 不 tombstone 账号，后续正常日志仍可写。供应商在途请求无法撤回。
+
+验证：Python 3.11 Ruff 及全量 867 项通过，七条上游弃用警告；最终定向 12 项、前端 Lint 和 diff 检查通过。部署内 SQLite 和共享 MySQL 两组真实并发、持久 tombstone、迟到写拒绝、另一用户不受影响、零残留均通过。保留旧容器/配置和停写 SQL 后部署实际 localhost，桌面与手机本项及原隐私页四项全通过，无整项重试，共 29.7 秒。真实注册、并发、网页策略刷新、正式账号删除与新进程迟到写入检查通过；原隐私页实际保存/清 Trace 在只读审计夹具故障下保持正确。等待后台删除的真实存储终态，不把 accepted 当 completed。
+
+十张安全截图逐一复核，无横向溢出。独立 SQL 读回 tracefence 测试用户零、261 个删除任务全部 completed；212 个持久已删除账号的 Trace/策略残留零，合成 manifest 行零，三个部署源码换行规范化哈希一致，Gateway/Agent 健康均 200。首次脚本误限 MySQL 和立即检查后台完成的失败日志保留，修正验收生命周期后完整重跑；没有放宽零残留断言。
+
+证据 artifacts/trace-privacy-{python-accepted,targeted-final,frontend-lint-accepted,live-sqlite,live-mysql,build-accepted,deploy-accepted,real-accepted,readback}.log 与 trace-privacy-browser-accepted。范围、双存储运行、夹具限制、停旧工作器与匹配恢复见 docs/TRACE_PRIVACY_DELETION_FENCE.md。无依赖、配置或数据库迁移，两组存储和实际页面回归均加入整栈 CI。独立 PR 最终 CI 和合并结果继续补记。
 PR #88 首次整栈 CI 暴露测试环境判断错误：CI 已配置执行器地址和凭证，但该阶段未启动 worker，真实返回不可用而非未配置。依据 Gateway 环境区分准确错误，仍拒绝任意 400 并阻止实际恢复写请求；重新回查 P3-03/P2-14，本地未配置状态桌面/手机 2 项通过（15.5 秒，无整项重试），定向 ESLint 通过，八张安全截图复核。证据 artifacts/pr88-fixed-real.log、pr88-fixed-browser。已配置不可用分支由同一真实整栈 CI 再验，不宣称本地启动了执行器。
+
+PR #89 最终结果：提交 b9f6ce9ac89035fa08d95e857976713d56f7ce5b 的九项 CI 全部通过（运行 41430838278），已独立合并，提交 cc5eff3416fe7da5d0bfdb51a32208e4f6757feb。
