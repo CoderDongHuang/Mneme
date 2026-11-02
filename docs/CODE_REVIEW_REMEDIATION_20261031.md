@@ -546,6 +546,8 @@ PR #87 最终结果：最新提交 76b518d04e9ed7a3f7c8cb1812824f2dbc79a840 全�
 范围、单主机/共享目录前提、断电与临时文件留存限制、匹配数据回退见 docs/SESSION_MANIFEST_DELETION_FENCE.md。本项不关闭长期记忆、Redis、短期/工作记忆的迟到写入或整个 MN-006。独立 PR 最终 CI 与合并结果继续补记。
 PR #88 首次整栈 CI 暴露测试环境判断错误：CI 已配置执行器地址和凭证，但该阶段未启动 worker，真实返回不可用而非未配置。依据 Gateway 环境区分准确错误，仍拒绝任意 400 并阻止实际恢复写请求；重新回查 P3-03/P2-14，本地未配置状态桌面/手机 2 项通过（15.5 秒，无整项重试），定向 ESLint 通过，八张安全截图复核。证据 artifacts/pr88-fixed-real.log、pr88-fixed-browser。已配置不可用分支由同一真实整栈 CI 再验，不宣称本地启动了执行器。
 
+PR #88 最终结果：最新提交 8ba9ba0cab97f38e4304e73e7066835a8cb0b84b 全部九项 CI 通过（run 41425001383），已独立合并，提交 e69a9cd805f74142b6b04315cfcaf92b782fc683；CI 的已配置但不可用执行器分支验证通过。
+
 ## 2026-11-02：P1-05 / MN-006 长期记忆与版本删除围栏
 
 对照要求：重新回查原 P1-05 的跨存储清理、异常传播、独立残留读回与故障后重试。长期记忆所有发布和公开版本快照复用持久用户锁，在 tombstone 后拒绝迟到新增、修改、恢复与快照；锁内重新读取最新记录，避免并发字段覆盖，恢复前版本也在实际写入锁内获取。Embedding 在锁外计算，删除不等待供应商返回，显式传向量避免隐式二次请求。元数据不重算向量，过滤恢复输入中的 id/content，读取以真实主键和正文为准。
@@ -559,3 +561,13 @@ PR #88 首次整栈 CI 暴露测试环境判断错误：CI 已配置执行器地
 二十二张安全截图逐一复核，无横向溢出。最终独立 SQL 读回 QA 用户零、319 个删除任务全 completed；270 个持久已删除账号的 Qdrant 向量、SQLite/MySQL 版本残留零，两后端合成 manifest/版本与合成向量零。四份部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。证据 artifacts/memory-fence-{python-final,frontend-lint,live-sqlite,live-mysql,build,deploy,real-final,readback}.log 和 memory-fence-browser-final。
 
 双存储脚本和真实页面回归加入完整栈 CI。供应商在途请求不能撤回；SQLite 单主机、多副本共享 MySQL 与一致 Embedding profile、停旧写入者及匹配数据回退要求见 docs/LONG_TERM_MEMORY_DELETION_FENCE.md。本项不宣称物理擦除，不关闭短期/工作记忆、Redis/内存缓存或整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。
+
+## 2026-11-02：P1-05 / MN-006 记忆缓存删除围栏与共享失效
+
+对照要求：回查原 P1-05 的跨存储清理、失败传播、独立读回和故障后重试，以及 P2-12 缓存生命周期。本项复用用户持久状态保存共享版本；读取损坏或失败明确报错，不降级本地版本。缓存命中及发布均检查 tombstone/版本，锁外存储读取遇到版本变化重新查询，三次持续冲突明确重试；进出缓存深拷贝。删除后不创建新 Redis 版本键，旧键 DEL 后必须 EXISTS 确认；失效失败也清本实例缓存。合并三类相同读取实现，删除旧重复逻辑。
+
+验证：最终 Python 3.11 Ruff 与全量 910 项通过（158.39 秒，七条上游弃用警告）；维护脚本直接执行导入路径修正后单独 Ruff 通过。实际部署 SQLite/MySQL 双后端脚本均通过，覆盖真实存储查询暂停、删除后迟到发布拒绝、另一实例失效和账号隔离。新增幂等升级维护 CLI，扫描准确用户旧键，仅删除有持久 tombstone 的账号，读错或静默删除立即失败，二次扫描独立确认。首轮读回发现 270 个历史已删账号旧键，保留失败记录后真实清理 270 个；另一后端再查为零，没有删除活账号旧键。
+
+停全部写入者并保存匹配 SQL、Agent 数据、旧镜像和容器配置后部署 http://127.0.0.1:3000。最终缓存、长期记忆/版本、记忆状态恢复和会话清理桌面/手机八项全部通过，无整项重试，共 2.1 分钟；实际注册、查询竞态、页面详情、正式 DELETE 和另一账号更新数据读回通过。24 张安全截图逐一复核，无横向溢出。独立 SQL 读回 QA 用户零、351 个删除任务全部 completed；302 个持久已删账号旧 Redis 键、Qdrant 向量及 SQLite/MySQL 版本均零，合成 manifest/向量/版本零。四个部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。
+
+证据 artifacts/cache-fence-{python-final,real-final,readback-first,readback-final,cleanup-sqlite-final,cleanup-mysql-final,build-accepted,deploy-accepted}.log 与 cache-fence-browser-final；双后端脚本、维护 CLI 和真实页面回归加入整栈 CI。无新依赖、配置或数据库迁移，协议、升级维护与匹配恢复见 docs/MEMORY_CACHE_DELETION_FENCE.md。其他进程堆内存只能下次访问时拒读并清除；不把跨库存储写与失效宣称为 ACID，不宣称历史备份/WAL 物理擦除。本项不关闭短期/工作记忆、Redis 会话消息或整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。

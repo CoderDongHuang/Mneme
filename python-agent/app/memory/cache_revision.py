@@ -1,63 +1,76 @@
-import threading
-import time
-
+"""Durable shared revisions. Legacy Redis keys are only removed, never written."""
 import redis
 
 from app.core.config import settings
+from app.knowledge.generations import generation_store, StaleGeneration
 
 
 class MemoryCacheRevision:
     def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._local: dict[str, int] = {}
-        self._available: bool | None = None
-        self._last_failure = 0.0
         self._redis = redis.Redis(
             host=settings.REDIS_HOST,
             port=settings.REDIS_PORT,
             db=settings.REDIS_DB,
             password=settings.REDIS_PASSWORD or None,
-            socket_connect_timeout=0.2,
-            socket_timeout=0.2,
+            socket_connect_timeout=0.35,
+            socket_timeout=0.5,
             decode_responses=True,
         )
 
+    @staticmethod
+    def from_state(state) -> int:
+        if state.get("deleted"):
+            raise StaleGeneration("账号已删除，拒绝读取或发布记忆缓存")
+        revision = state.get("memory_cache_revision", 0)
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+            raise ValueError("记忆缓存版本损坏")
+        return revision
+
     def current(self, user_id: str) -> int:
-        local = self._local.get(user_id, 0)
-        if not self._can_try_remote():
-            return local
-        try:
-            remote = int(self._redis.get(self._key(user_id)) or 0)
-            self._available = True
-            return max(local, remote)
-        except redis.RedisError:
-            self._mark_failure()
-            return local
+        # Never fall back to process-local state after another replica mutates.
+        return self.from_state(generation_store.snapshot(user_id))
 
     def bump(self, user_id: str) -> int:
-        with self._lock:
-            local = self._local.get(user_id, 0) + 1
-            self._local[user_id] = local
-        if not self._can_try_remote():
-            return local
-        try:
-            remote = int(self._redis.incr(self._key(user_id)))
-            self._redis.expire(self._key(user_id), 7 * 24 * 60 * 60)
-            self._available = True
-            return max(local, remote)
-        except redis.RedisError:
-            self._mark_failure()
-            return local
+        with generation_store.locked(user_id) as state:
+            if state.get("deleted"):
+                # Preserve the fence and fail cleanup if independent readback
+                # fails. DEL returning normally is not evidence of erasure.
+                try:
+                    self._redis.delete(self._key(user_id))
+                    if self._redis.exists(self._key(user_id)):
+                        raise RuntimeError("旧记忆缓存版本删除后仍有残留")
+                except Exception:
+                    raise RuntimeError("无法确认旧记忆缓存版本已清理") from None
+                return 0
+            revision = self.from_state(state) + 1
+            state["memory_cache_revision"] = revision
+            return revision
 
-    def _can_try_remote(self) -> bool:
-        return self._available is not False or time.monotonic() - self._last_failure >= 60
-
-    def _mark_failure(self) -> None:
-        self._available = False
-        self._last_failure = time.monotonic()
-
-    def _key(self, user_id: str) -> str:
+    @staticmethod
+    def _key(user_id: str) -> str:
         return f"mneme:memory-revision:{user_id}"
+
+    def cleanup_deleted_revisions(self) -> int:
+        """Upgrade maintenance: only erase keys with a durable tombstone.
+
+        Failure is fatal and safe to retry. Active users and unrelated keys
+        are never removed; bump rechecks the tombstone under the user lock.
+        """
+        prefix = "mneme:memory-revision:"
+        removed = 0
+        for key in self._redis.scan_iter(match=prefix + "*", count=250):
+            user_id = key[len(prefix):]
+            if not user_id or not generation_store.snapshot(user_id).get("deleted"):
+                continue
+            self.bump(user_id)
+            removed += 1
+        # An independent traversal also catches silent SCAN/DEL inconsistencies
+        # visible to the Redis client. SCAN itself requires a trusted backend.
+        for key in self._redis.scan_iter(match=prefix + "*", count=250):
+            user_id = key[len(prefix):]
+            if user_id and generation_store.snapshot(user_id).get("deleted"):
+                raise RuntimeError("已删除账号仍有旧记忆缓存版本，请重试清理")
+        return removed
 
 
 memory_cache_revision = MemoryCacheRevision()
