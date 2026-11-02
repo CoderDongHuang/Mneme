@@ -10,6 +10,11 @@ from app.models.chat import Message as _QaHistoryMessage
 from app.memory import distillation as _qa_distillation
 from app.agents.nodes import memory_write_node as _qa_memory_write
 from app.memory.reflection_scheduler import reflection_scheduler as _qa_reflection
+from app.agents.trace_store import agent_trace_store as _qa_trace
+from app.memory.short_term_memory import ShortTermMemoryManager as _QaShortManager
+from unittest.mock import patch as _qa_patch, Mock as _QaMock
+import app.agents.nodes as _qa_nodes
+import app.memory.short_term_memory as _qa_stm
 
 _qa_context = _qa_contextvars.ContextVar("memory_outbox_probe", default=False)
 _qa_prepare = prepare_conversation  # noqa: F821 -- injected module globals
@@ -37,6 +42,33 @@ def prepare_conversation(request):
 def complete_conversation(request, state, answer):
     if not _qa_context.get():
         return _qa_complete(request, state, answer)
+    scope = _qa_json.loads((_qa_root / "scope.json").read_text())  # noqa: F821
+    canary = scope["privacy_canary"]
+    # Provider exceptions can echo private prompts. Exercise the actual fallback
+    # paths inside this account's HTTP request; only provider failures are injected.
+    with _qa_patch.object(_qa_nodes, "llm", _QaMock(invoke=_QaMock(side_effect=RuntimeError(canary)))):
+        assert _qa_nodes.intent_classification_node({**state, "message": canary}) == {"intent": "qa", "confidence": 0.5}
+    with _qa_patch.object(_qa_nodes, "run_reflection", side_effect=RuntimeError(canary)):
+        assert _qa_nodes.suggestion_generation_node(state) == {}
+    temporary = _QaShortManager()
+    temporary._store[request.session_id] = [_QaHistoryMessage(
+        role="user", content=canary, timestamp=_qa_now().isoformat(), token_count=500) for _ in range(30)]
+    original_history = temporary._store[request.session_id].copy()
+    with _qa_patch.object(_qa_stm, "llm", _QaMock(invoke=_QaMock(side_effect=RuntimeError(canary)))):
+        temporary.summarize(request.session_id)
+    assert temporary._store[request.session_id] == original_history
+    try:
+        with _qa_trace.span(request.user_id, request.session_id, "privacy.provider_failure", {"content": canary}):
+            raise RuntimeError(canary)
+    except RuntimeError:
+        pass
+    rows = _qa_trace.list_session(request.user_id, request.session_id)
+    assert any(row["node"] == "privacy.provider_failure" and row["status"] == "error" for row in rows)
+    assert canary not in _qa_json.dumps(rows)
+    (_qa_root / "privacy-check.json").write_text(_qa_json.dumps({  # noqa: F821
+        "intent_fallback": True, "suggestion_fallback": True, "summary_history_preserved": True,
+        "real_trace_redacted": True,
+    }))
     # Run the actual completion and distillation pipeline. Only provider output
     # is controlled: cache reads, idle detection, IDs and Redis writes are real.
     result = _qa_complete(request, state, answer)

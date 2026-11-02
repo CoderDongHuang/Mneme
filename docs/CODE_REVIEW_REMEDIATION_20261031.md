@@ -461,3 +461,13 @@ PR #81 最终结果：最新提交 3f38a570cf22ad85204989735b9991532f6eb65b 全�
 保留原容器、配置与停写 SQL 快照后部署实际 http://127.0.0.1:3000，桌面/手机两项全部通过，无整项重试。正式注册与删除两个账号，实际读回目标键、队列及已知 PEL 均零；新进程的计数、排队、领取、旧协议迁移、完成均不能复活，另一账号五键、两任务、两会话及网页历史保持。两张截图逐一复核，无横向溢出。独立 SQL 读回 sessionqa 用户与合成 manifest 行为零、209 个删除任务均 completed；六个部署源码换行规范化哈希匹配，QA 键/Stream/SQLite manifest/模型夹具均零，Gateway/Agent 健康均 200。真实已删除用户 tombstone 保留。
 
 过程：修正一条本地验收命令的 PowerShell 变量拼写后，SQLite/MySQL 两组完整重跑通过；早期日志保留。最终证据 artifacts/reflection-cleanup-{python-final,frontend-final,redis-final,live-sqlite-final,live-mysql-final,build,deploy,real,readback}.log 与 reflection-cleanup-browser。范围、只读在途调用限制、单主机/多实例及停旧工作器升级和匹配快照恢复见 docs/REFLECTION_ACCOUNT_CLEANUP.md。不能取消已发出的供应商请求，也不宣称备份物理擦除；最终独立 PR CI 与合并结果后续补记。
+
+PR #82 最终结果：最新提交 fc7a1f3f047053bb0c5f535768258936c3287512 全部九项 CI 通过（整栈 27 分 29 秒），已独立合并，提交 4716697f14eee45770b0d71e3180215bbb4c8f75。
+
+## 2026-11-02：P1-04 / MN-004 供应商异常日志正文隔离
+
+对照要求：再次回查原 P1-04 的元数据日志及 Python/Java/Trace/产物唯一敏感标记扫描。补齐意图识别、实时反思降级、短期摘要三处异常正文输出，统一为异常类型、阶段、结果与哈希身份；历史恢复、摘要成功及冷却也不记录原始会话。失败摘要保留历史且不更新成功冷却，无业务行为变化。
+
+验证：Python 3.11 Ruff 与完整 842 项通过，七条上游弃用警告；17 项定向测试及前端 Lint 通过。实际 http://127.0.0.1:3000 桌面/手机两项全部通过，无整项重试，共 1 分 36 秒；仅注入供应商异常，实际执行三处降级和 Trace 存取，临时独立摘要历史保留。服务 stdout/stderr、Trace、JSON/TXT/LOG 测试产物均不含随机私密标记，自动录像与 Trace 关闭，显式六张安全截图逐一复核，无页面横向溢出。原候选失败不覆盖回答、重启后重试、唯一入库、实际向量确认与刷新可读全部继续通过。
+
+保留旧容器、配置与停写 SQL 快照后部署；独立读回 QA 用户、触发器、临时夹具和反思 QA 键/Stream 均零，211 个删除任务全部 completed；五个部署源码换行规范化哈希匹配，Gateway/Agent 健康均 200。无新配置、依赖或迁移。证据 artifacts/provider-log-privacy-{targeted,python-full,frontend-lint,build,deploy,real,readback}.log 与 provider-log-privacy-browser；范围及回退见 docs/MEMORY_PROVIDER_LOG_PRIVACY.md。不将未审查的所有未来日志或整份审查标为完成；独立 PR CI 与合并结果继续补记。

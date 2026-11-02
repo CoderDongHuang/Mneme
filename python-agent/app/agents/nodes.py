@@ -13,7 +13,7 @@ from app.agents.prompts import (
 from app.agents.trace_store import agent_trace_store
 from app.core.config import settings
 from app.core.time import parse_utc, utc_now
-from app.core.logging import setup_logger
+from app.core.logging import setup_logger, memory_log_fields
 from app.knowledge.vector_store import vector_store
 from app.knowledge.citations import build_evidence_context
 from app.memory.distillation import apply_distilled_entries, distill_conversation
@@ -107,7 +107,9 @@ def intent_classification_node(state: dict) -> dict:
     except json.JSONDecodeError:
         return {"intent": "general", "confidence": 0.0}
     except Exception as error:
-        logger.warning("意图识别调用失败，使用规则降级: %s", error)
+        logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
+            "intent", "fallback", user_id=state.get("user_id", ""),
+            source_session_id=state.get("session_id", "")))
         message = state.get("message", "")
         if any(word in message for word in ("给我建议", "学习建议", "学习计划", "复习计划", "制定计划", "怎么学", "下一步")):
             return {"intent": "suggest", "confidence": 0.55}
@@ -180,7 +182,9 @@ def suggestion_generation_node(state: dict) -> dict:
     try:
         reflection = run_reflection(state["user_id"])
     except Exception as error:
-        logger.warning("实时反思失败，使用已有记忆生成建议: %s", error)
+        logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
+            "suggestion_reflection", "fallback", user_id=state.get("user_id", ""),
+            source_session_id=state.get("session_id", "")))
         reflection = {}
     if reflection:
         extra = json.dumps(reflection, ensure_ascii=False)

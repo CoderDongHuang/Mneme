@@ -15,7 +15,7 @@ from app.core.time import utc_now
 from app.models.chat import Message
 from app.utils.llm import llm
 from app.core.config import settings
-from app.core.logging import setup_logger
+from app.core.logging import setup_logger, memory_log_fields
 from app.memory.session_persistence import session_persistence
 
 logger = setup_logger("short_term_memory")
@@ -52,7 +52,8 @@ class ShortTermMemoryManager:
             restored = session_persistence.load_messages(session_id)
             if restored:
                 self._store[session_id] = restored
-                logger.debug(f"会话 {session_id} 从 Redis 恢复 {len(restored)} 条消息")
+                logger.debug("message_count=%d %s", len(restored), memory_log_fields(
+                    "history_restore", "completed", source_session_id=session_id))
             else:
                 self._store[session_id] = []
         self._store[session_id].append(message)
@@ -66,7 +67,8 @@ class ShortTermMemoryManager:
         restored = session_persistence.load_messages(session_id)
         if restored:
             self._store[session_id] = restored
-            logger.info(f"会话 {session_id} 从 Redis 恢复 {len(restored)} 条消息")
+            logger.info("message_count=%d %s", len(restored), memory_log_fields(
+                "history_restore", "completed", source_session_id=session_id))
             return restored
         return []
 
@@ -93,7 +95,8 @@ class ShortTermMemoryManager:
             remaining = (
                 SUMMARY_COOLDOWN_SECONDS - (datetime.now() - last_time).total_seconds()
             )
-            logger.debug(f"会话 {session_id} 摘要冷却中，剩余 {remaining:.0f}s")
+            logger.debug("remaining_seconds=%.0f %s", remaining, memory_log_fields(
+                "summarize", "cooldown", source_session_id=session_id))
             return False
 
         return True
@@ -125,9 +128,10 @@ class ShortTermMemoryManager:
         to_keep = history[cut_index:]
 
         logger.info(
-            f"会话 {session_id} 摘要压缩: 压缩 {len(to_summarize)} 条早期消息 "
-            f"(tokens={sum(m.token_count for m in to_summarize)}), "
-            f"保留 {len(to_keep)} 条近期消息 (tokens={sum(m.token_count for m in to_keep)})"
+            "summarized_messages=%d summarized_tokens=%d retained_messages=%d retained_tokens=%d %s",
+            len(to_summarize), sum(m.token_count for m in to_summarize),
+            len(to_keep), sum(m.token_count for m in to_keep),
+            memory_log_fields("summarize", "started", source_session_id=session_id),
         )
 
         history_text = "\n".join([f"{m.role}: {m.content}" for m in to_summarize])
@@ -140,8 +144,9 @@ class ShortTermMemoryManager:
                     HumanMessage(content=prompt),
                 ]
             )
-        except Exception as e:
-            logger.error(f"摘要压缩 LLM 调用失败: {e}")
+        except Exception as error:
+            logger.error("error_type=%s %s", type(error).__name__, memory_log_fields(
+                "summarize", "failed", source_session_id=session_id))
             return
 
         summary_msg = Message(
@@ -156,7 +161,8 @@ class ShortTermMemoryManager:
         self._persist(session_id)
 
         new_total = sum(m.token_count for m in self._store[session_id])
-        logger.info(f"会话 {session_id} 摘要完成: 压缩后总 token 数 {new_total}")
+        logger.info("token_count=%d %s", new_total, memory_log_fields(
+            "summarize", "completed", source_session_id=session_id))
 
 
 short_term_memory = ShortTermMemoryManager()
