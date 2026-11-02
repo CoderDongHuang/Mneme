@@ -10,6 +10,7 @@
 
 import uuid
 import json
+from contextlib import contextmanager
 from typing import List, Optional, Dict
 
 from app.core.time import utc_now
@@ -17,6 +18,7 @@ from app.knowledge.qdrant_store import VectorClient, InvalidCollectionException
 
 from app.core.config import settings
 from app.core.errors import MemoryIndexConflict
+from app.knowledge.generations import generation_store, StaleGeneration
 from app.core.privacy import require_cloud_processing
 from app.utils.embedding import embeddings
 from app.core.logging import setup_logger, memory_log_fields
@@ -91,109 +93,120 @@ class MemoryVectorStore:
         mem_id = f"mem_{user_id}_{uuid.uuid4().hex[:8]}"
         now = utc_now().isoformat()
 
-        self._collection.add(
-            documents=[content],
-            metadatas=[
-                {
-                    "user_id": user_id,
-                    "category": category,
-                    "topic": topic or "",
-                    "importance": importance,
-                    "created_at": now,
-                    "updated_at": now,
-                    "source_session_id": source_session_id,
-                    "evidence_hashes": json.dumps(evidence_hashes or []),
-                }
-            ],
-            ids=[mem_id],
-        )
+        # Provider calls must never hold a database lock. Deletion may complete
+        # while this call is in flight; re-check the durable fence before publish.
+        vectors = embeddings([content])
+        with generation_store.locked(user_id) as state:
+            self._require_active(state)
+            self._require_embedding_profile()
+            self._collection.add(
+                documents=[content], embeddings=vectors,
+                metadatas=[
+                    {
+                        "user_id": user_id,
+                        "category": category,
+                        "topic": topic or "",
+                        "importance": importance,
+                        "created_at": now,
+                        "updated_at": now,
+                        "source_session_id": source_session_id,
+                        "evidence_hashes": json.dumps(evidence_hashes or []),
+                    }
+                ],
+                ids=[mem_id],
+            )
         logger.debug(memory_log_fields("write", "stored", user_id=user_id, memory_id=mem_id,
                      category=category, content=content, source_session_id=source_session_id))
         return mem_id
 
-    def update_importance(self, mem_id: str, new_importance: float):
-        """更新记忆的重要性分数"""
-        current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
-        if not current.get("ids"):
+    @staticmethod
+    def _require_active(state):
+        if state.get("deleted"):
+            raise StaleGeneration("账号已删除，拒绝修改长期记忆")
+
+    @contextmanager
+    def _editing(self, mem_id):
+        # The first read discovers the owner only. All editable fields must be
+        # re-read under the shared user lock to avoid stale metadata overwrites.
+        initial = self.get_memory(mem_id)
+        if not initial:
+            yield None
             return
-        memory_version_store.snapshot(self._memory_from_result(mem_id, current), "importance")
-        metadata = dict((current.get("metadatas") or [{}])[0] or {})
-        metadata["importance"] = max(0.0, min(float(new_importance), 1.0))
-        metadata["updated_at"] = utc_now().isoformat()
-        self._collection.update(ids=[mem_id], metadatas=[metadata])
+        user_id = str(initial["user_id"])
+        with generation_store.locked(user_id) as state:
+            self._require_active(state)
+            current = self.get_memory(mem_id)
+            if current and str(current.get("user_id")) != user_id:
+                raise ValueError("记忆所有者发生变化")
+            yield current
+
+    def _update_fields(self, mem_id, changes, action):
+        with self._editing(mem_id) as current:
+            if not current:
+                return False
+            memory_version_store._snapshot_locked(current, action)
+            metadata = {**changes, "updated_at": utc_now().isoformat()}
+            self._collection.update(ids=[mem_id], metadatas=[metadata])
+            return True
+
+    def update_importance(self, mem_id: str, new_importance: float):
+        return self._update_fields(mem_id, {"importance": max(0.0, min(float(new_importance), 1.0))}, "importance")
 
     def update_memory_topic(self, mem_id: str, new_topic: str):
-        """更新记忆的 topic 字段"""
-        current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
-        if not current.get("ids"):
-            return
-        memory_version_store.snapshot(self._memory_from_result(mem_id, current), "topic")
-        metadata = dict((current.get("metadatas") or [{}])[0] or {})
-        metadata["topic"] = new_topic
-        metadata["updated_at"] = utc_now().isoformat()
-        self._collection.update(ids=[mem_id], metadatas=[metadata])
+        return self._update_fields(mem_id, {"topic": new_topic}, "topic")
 
-    def update_memory(
-        self, mem_id: str, content: str | None = None, topic: str | None = None
-    ):
-        """Update editable memory fields while preserving ownership metadata."""
-        self._require_embedding_profile()
-        current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
-        if not current.get("ids"):
+    def update_memory(self, mem_id: str, content: str | None = None, topic: str | None = None):
+        initial = self.get_memory(mem_id)
+        if not initial:
             return False
-        require_cloud_processing(str((current.get("metadatas") or [{}])[0].get("user_id", "")))
-        memory_version_store.snapshot(self._memory_from_result(mem_id, current), "update")
-        metadata = dict((current.get("metadatas") or [{}])[0] or {})
-        if topic is not None:
-            metadata["topic"] = topic
-        metadata["updated_at"] = utc_now().isoformat()
-        document = (
-            content if content is not None else (current.get("documents") or [""])[0]
-        )
-        self._collection.update(
-            ids=[mem_id], documents=[document], metadatas=[metadata]
-        )
-        return True
+        vectors = None
+        if content is not None:
+            require_cloud_processing(str(initial["user_id"]))
+            self._require_embedding_profile()
+            vectors = embeddings([content])
+        with self._editing(mem_id) as current:
+            if not current:
+                return False
+            if str(current.get("user_id")) != str(initial["user_id"]):
+                raise ValueError("记忆所有者发生变化")
+            if content is not None:
+                self._require_embedding_profile()
+            memory_version_store._snapshot_locked(current, "update")
+            metadata = {"updated_at": utc_now().isoformat()}
+            if topic is not None:
+                metadata["topic"] = topic
+            fields = {} if content is None else {"documents": [content], "embeddings": vectors}
+            self._collection.update(ids=[mem_id], metadatas=[metadata], **fields)
+            return True
 
     def set_frozen(self, mem_id: str, frozen: bool):
-        current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
-        if not current.get("ids"):
-            return False
-        memory_version_store.snapshot(
-            self._memory_from_result(mem_id, current),
-            "freeze" if frozen else "unfreeze",
-        )
-        metadata = dict((current.get("metadatas") or [{}])[0] or {})
-        metadata["frozen"] = bool(frozen)
-        metadata["updated_at"] = utc_now().isoformat()
-        self._collection.update(ids=[mem_id], metadatas=[metadata])
-        return True
+        return self._update_fields(mem_id, {"frozen": bool(frozen)}, "freeze" if frozen else "unfreeze")
 
     def update_metadata(self, mem_id: str, changes: dict):
-        allowed = {"status", "confirmed", "tags"}
-        if not changes.keys() <= allowed:
+        if not changes.keys() <= {"status", "confirmed", "tags"}:
             raise ValueError("不可修改的元数据")
-        current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
-        if not current.get("ids"):
-            return False
-        memory_version_store.snapshot(self._memory_from_result(mem_id, current), "metadata")
-        metadata = dict((current.get("metadatas") or [{}])[0] or {})
-        metadata.update(changes)
-        metadata["updated_at"] = utc_now().isoformat()
-        self._collection.update(ids=[mem_id], metadatas=[metadata])
-        return True
+        return self._update_fields(mem_id, changes, "metadata")
 
-    def restore_memory(self, memory_id: str, content: str, metadata: dict):
+    def restore_memory(self, memory_id: str, content: str, metadata: dict, *, snapshot_current=False):
+        user_id = str(metadata.get("user_id", ""))
+        if not user_id:
+            raise ValueError("记忆缺少所有者")
+        require_cloud_processing(user_id)
         self._require_embedding_profile()
-        require_cloud_processing(str(metadata.get("user_id", "")))
-        metadata = dict(metadata)
-        metadata["updated_at"] = utc_now().isoformat()
-        self._collection.upsert(
-            ids=[memory_id],
-            documents=[content],
-            metadatas=[metadata],
-        )
-        return self.get_memory(memory_id)
+        vectors = embeddings([content])
+        with generation_store.locked(user_id) as state:
+            self._require_active(state)
+            self._require_embedding_profile()
+            current = self.get_memory(memory_id)
+            if current and str(current.get("user_id")) != user_id:
+                raise ValueError("不能恢复其他用户的记忆")
+            if snapshot_current and current:
+                memory_version_store._snapshot_locked(current, "restore")
+            metadata = {key: value for key, value in metadata.items() if key not in {"id", "content"}}
+            metadata["updated_at"] = utc_now().isoformat()
+            self._collection.upsert(ids=[memory_id], documents=[content],
+                                    metadatas=[metadata], embeddings=vectors)
+            return self.get_memory(memory_id)
 
     def get_memory(self, mem_id: str):
         result = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
@@ -201,9 +214,9 @@ class MemoryVectorStore:
             return None
         metadata = (result.get("metadatas") or [{}])[0] or {}
         return {
+            **metadata,
             "id": mem_id,
             "content": (result.get("documents") or [""])[0],
-            **metadata,
         }
 
     def list_all(self, user_id: str):
@@ -215,9 +228,9 @@ class MemoryVectorStore:
             metadata = (result.get("metadatas") or [{}])[index] or {}
             entries.append(
                 {
+                    **metadata,
                     "id": mem_id,
                     "content": (result.get("documents") or [""])[index],
-                    **metadata,
                 }
             )
         entries.sort(
@@ -227,25 +240,26 @@ class MemoryVectorStore:
         return entries
 
     def delete_memory(self, mem_id: str):
-        """删除单条记忆"""
-        memory_version_store.snapshot(self.get_memory(mem_id), "delete")
-        self._collection.delete(ids=[mem_id])
+        with self._editing(mem_id) as current:
+            if not current:
+                return
+            memory_version_store._snapshot_locked(current, "delete")
+            self._collection.delete(ids=[mem_id])
+            if self.get_memory(mem_id) is not None:
+                raise RuntimeError("记忆删除后仍有残留")
         logger.debug(memory_log_fields("delete", "deleted", memory_id=mem_id))
 
     def delete_user_memories(self, user_id: str):
-        """删除某用户所有长期记忆"""
-        for memory in self.list_all(user_id):
-            memory_version_store.snapshot(memory, "delete_user")
-        self._collection.delete(where={"user_id": user_id})
+        # Ordinary memory clearing must not tombstone a live account. Account
+        # deletion has already committed its fence before entering this stage.
+        with generation_store.locked(user_id) as state:
+            if not state.get("deleted"):
+                for memory in self.list_all(user_id):
+                    memory_version_store._snapshot_locked(memory, "delete_user")
+            self._collection.delete(where={"user_id": user_id})
+            if self.count_user_memories(user_id) != 0:
+                raise RuntimeError("长期记忆删除后仍有残留")
         logger.info(memory_log_fields("delete_user", "deleted", user_id=user_id))
-
-    def _memory_from_result(self, mem_id: str, result: dict):
-        metadata = dict((result.get("metadatas") or [{}])[0] or {})
-        return {
-            "id": mem_id,
-            "content": (result.get("documents") or [""])[0],
-            **metadata,
-        }
 
     # ── 读操作 ──────────────────────────────────────────────
 
@@ -353,11 +367,8 @@ class MemoryVectorStore:
 
     def count_user_memories(self, user_id: str) -> int:
         """统计某用户的记忆总数"""
-        try:
-            result = self._collection.get(where={"user_id": user_id})
-            return len(result.get("ids", []))
-        except Exception:
-            return 0
+        result = self._collection.get(where={"user_id": user_id})
+        return len(result["ids"])
 
     def list_users(self) -> List[str]:
         """列出所有拥有记忆的用户 ID（用于批量维护任务）"""

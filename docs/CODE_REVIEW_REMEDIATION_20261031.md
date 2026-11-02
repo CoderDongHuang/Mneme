@@ -546,4 +546,17 @@ PR #87 最终结果：最新提交 76b518d04e9ed7a3f7c8cb1812824f2dbc79a840 全�
 范围、单主机/共享目录前提、断电与临时文件留存限制、匹配数据回退见 docs/SESSION_MANIFEST_DELETION_FENCE.md。本项不关闭长期记忆、Redis、短期/工作记忆的迟到写入或整个 MN-006。独立 PR 最终 CI 与合并结果继续补记。
 PR #88 首次整栈 CI 暴露测试环境判断错误：CI 已配置执行器地址和凭证，但该阶段未启动 worker，真实返回不可用而非未配置。依据 Gateway 环境区分准确错误，仍拒绝任意 400 并阻止实际恢复写请求；重新回查 P3-03/P2-14，本地未配置状态桌面/手机 2 项通过（15.5 秒，无整项重试），定向 ESLint 通过，八张安全截图复核。证据 artifacts/pr88-fixed-real.log、pr88-fixed-browser。已配置不可用分支由同一真实整栈 CI 再验，不宣称本地启动了执行器。
 
+## 2026-11-02：P1-05 / MN-006 长期记忆与版本删除围栏
+
+对照要求：重新回查原 P1-05 的跨存储清理、异常传播、独立残留读回与故障后重试。长期记忆所有发布和公开版本快照复用持久用户锁，在 tombstone 后拒绝迟到新增、修改、恢复与快照；锁内重新读取最新记录，避免并发字段覆盖，恢复前版本也在实际写入锁内获取。Embedding 在锁外计算，删除不等待供应商返回，显式传向量避免隐式二次请求。元数据不重算向量，过滤恢复输入中的 id/content，读取以真实主键和正文为准。
+
+版本号在 SQLite BEGIN IMMEDIATE 内分配；MySQL 明确 commit 后释放命名锁，异常先 rollback 再释放。Qdrant/版本删除后分别独立读回，不再把计数错误当零；普通清记忆不 tombstone 活账号，仍保留恢复版本。跨库不是 ACID，向量写失败可能留下有效的修改前快照，不自动重放非幂等业务。
+
+验证：Python 3.11 Ruff 和全量 891 项通过，七条上游弃用警告；前端全量 Lint 与 diff 检查通过。真实部署的 SQLite、共享 MySQL 两组 Qdrant/配置供应商测试全部通过，包括供应商结果暂停时删除完成、迟到新增/更新/恢复拒绝、32 并发版本唯一及并发字段保留；合成身份最后清理。无新依赖、配置或迁移。
+
+保存匹配的停写 SQL/Agent 数据和旧容器后部署实际 http://127.0.0.1:3000；本项、既有记忆状态/历史恢复、会话删除和 Trace/隐私围栏桌面/手机共八项通过，无整项重试，共 1.9 分钟。本项三账号真实注册、记忆/版本写入、并发竞态、另一账号 35 份完整版本和正式 DELETE 后新进程读回通过。首次移动端测试未适配加载后的“历史版本 (35)”标题，保留 7 通过/1 失败记录，修正 summary 定位后八项完整重跑；未放宽内容、版本数及零残留断言。
+
+二十二张安全截图逐一复核，无横向溢出。最终独立 SQL 读回 QA 用户零、319 个删除任务全 completed；270 个持久已删除账号的 Qdrant 向量、SQLite/MySQL 版本残留零，两后端合成 manifest/版本与合成向量零。四份部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。证据 artifacts/memory-fence-{python-final,frontend-lint,live-sqlite,live-mysql,build,deploy,real-final,readback}.log 和 memory-fence-browser-final。
+
+双存储脚本和真实页面回归加入完整栈 CI。供应商在途请求不能撤回；SQLite 单主机、多副本共享 MySQL 与一致 Embedding profile、停旧写入者及匹配数据回退要求见 docs/LONG_TERM_MEMORY_DELETION_FENCE.md。本项不宣称物理擦除，不关闭短期/工作记忆、Redis/内存缓存或整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。
 PR #89 最终结果：提交 b9f6ce9ac89035fa08d95e857976713d56f7ce5b 的九项 CI 全部通过（运行 41430838278），已独立合并，提交 cc5eff3416fe7da5d0bfdb51a32208e4f6757feb。

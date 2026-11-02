@@ -96,10 +96,8 @@ async def restore_memory(memory_id: str, request: MemoryRestoreRequest):
     )
     if version is None:
         raise HTTPException(status_code=404, detail="记忆版本不存在")
-    if current:
-        memory_version_store.snapshot(current, "restore")
     restored = memory_store.restore_memory(
-        memory_id, version["content"], version["metadata"]
+        memory_id, version["content"], version["metadata"], snapshot_current=True
     )
     long_term_memory._invalidate_cache(request.user_id)
     return {"status": "restored", "version": version["version"], "memory": restored}
