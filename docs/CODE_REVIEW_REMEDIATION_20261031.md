@@ -571,3 +571,15 @@ PR #88 最终结果：最新提交 8ba9ba0cab97f38e4304e73e7066835a8cb0b84b 全�
 停全部写入者并保存匹配 SQL、Agent 数据、旧镜像和容器配置后部署 http://127.0.0.1:3000。最终缓存、长期记忆/版本、记忆状态恢复和会话清理桌面/手机八项全部通过，无整项重试，共 2.1 分钟；实际注册、查询竞态、页面详情、正式 DELETE 和另一账号更新数据读回通过。24 张安全截图逐一复核，无横向溢出。独立 SQL 读回 QA 用户零、351 个删除任务全部 completed；302 个持久已删账号旧 Redis 键、Qdrant 向量及 SQLite/MySQL 版本均零，合成 manifest/向量/版本零。四个部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。
 
 证据 artifacts/cache-fence-{python-final,real-final,readback-first,readback-final,cleanup-sqlite-final,cleanup-mysql-final,build-accepted,deploy-accepted}.log 与 cache-fence-browser-final；双后端脚本、维护 CLI 和真实页面回归加入整栈 CI。无新依赖、配置或数据库迁移，协议、升级维护与匹配恢复见 docs/MEMORY_CACHE_DELETION_FENCE.md。其他进程堆内存只能下次访问时拒读并清除；不把跨库存储写与失效宣称为 ACID，不宣称历史备份/WAL 物理擦除。本项不关闭短期/工作记忆、Redis 会话消息或整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。
+
+## 2026-11-02：P1-04 / MN-004 Redis 会话异常诊断去正文
+
+对照要求：重新回查原 P1-04 的元数据日志、异常可定位和敏感唯一标记扫描。连接不再输出服务地址，保存/恢复/删除使用操作、结果、异常类型、会话哈希和 trace_id；不记录 Redis 或 Pydantic 可能携带的消息与异常文本。删除和残留读回抛固定异常且抑制原异常链，防止上层 logger.exception 再次泄漏；删除失败仍传播，恢复后可以重试，不误报清理成功。原连接/保存/恢复降级及连接重试策略保留。
+
+验证：Python 3.11 Ruff 与完整 917 项通过（130.30 秒，七条上游弃用警告），新增六类故障和删除恢复重试，分别检查 JSON 日志、直接 traceback、上层异常日志及 trace_id；前端定向 ESLint、故障夹具 Ruff 通过。保留首轮测试 Message 缺 timestamp 的失败记录，修正有效测试数据后完整重跑。
+
+停全部应用写入者并保存匹配 SQL、Agent 数据、旧容器与配置后部署实际 http://127.0.0.1:3000。候选记忆与会话清理桌面/手机四项全部通过，无整项重试，共 2.6 分钟。正式请求中独立临时 SessionPersistence 对象运行六类实际错误处理；仅 Redis 客户端为夹具，不中断共享 Redis，不存放私密标记。原回答保存、候选失败、真实重启、网页重试、向量确认和刷新均通过。两服务 stdout/stderr、实际 Trace 和文本产物不含唯一标记；没有把该夹具宣称为生产网络断开。
+
+八张安全截图逐一复核，无页面横向溢出。独立读回本项 QA 用户、SQL 故障触发器、临时夹具、反思 QA 键与 Stream 均零；357 个账号删除任务全部 completed，六个部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。首次读回仅误估截图为十张，保留失败日志，依据两测试实际截图调用确认应为八张后重跑；未放宽存储或隐私断言。
+
+证据 artifacts/session-redis-privacy-{python-final,eslint,fixture-lint,build,deploy,real,readback-first,readback-final}.log 与 session-redis-privacy-browser。无依赖、配置、存储协议或迁移变化，范围与匹配恢复见 docs/SESSION_REDIS_LOG_PRIVACY.md；真实测试沿用既有整栈 CI 步骤。本项不关闭短期/工作记忆并发、Redis 会话迟到写入或整个删除审查。独立 PR 最终 CI 与合并结果继续补记。

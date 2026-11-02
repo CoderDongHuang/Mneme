@@ -16,7 +16,7 @@ from typing import List, Optional
 from app.core.time import utc_now
 from app.models.chat import Message
 from app.core.config import settings
-from app.core.logging import setup_logger
+from app.core.logging import setup_logger, memory_log_fields
 
 logger = setup_logger("session_persistence")
 
@@ -46,12 +46,11 @@ class SessionPersistence:
             )
             self._redis.ping()
             self._available = True
-            logger.info(
-                f"Redis 会话持久化已启用: {settings.REDIS_HOST}:{settings.REDIS_PORT}"
-            )
-        except Exception as e:
+            logger.info(memory_log_fields("session_connect", "ready"))
+        except Exception as error:
             self._available = False
-            logger.warning(f"Redis 不可用 ({e})，会话消息仅存在内存中")
+            logger.warning("error_type=%s %s", type(error).__name__,
+                           memory_log_fields("session_connect", "memory_only"))
 
     def _ensure_connection(self) -> bool:
         if self._available:
@@ -84,9 +83,10 @@ class SessionPersistence:
                 timedelta(hours=settings.SESSION_TTL_HOURS),
                 data,
             )
-        except Exception as e:
+        except Exception as error:
             self._available = False
-            logger.warning(f"Redis 会话保存失败: {e}")
+            logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
+                "session_save", "memory_only", source_session_id=session_id))
 
     def load_messages(self, session_id: str) -> Optional[List[Message]]:
         if not self._ensure_connection():
@@ -105,9 +105,10 @@ class SessionPersistence:
                 )
                 for m in raw_list
             ]
-        except Exception as e:
+        except Exception as error:
             self._available = False
-            logger.warning(f"Redis 会话恢复失败: {e}")
+            logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
+                "session_load", "unavailable", source_session_id=session_id))
             return None
 
     def delete_session(self, session_id: str):
@@ -121,7 +122,9 @@ class SessionPersistence:
                 raise RuntimeError("Redis 会话删除后仍有残留")
         except Exception as error:
             self._available = False
-            raise RuntimeError("Redis 会话删除失败") from error
+            logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
+                "session_delete", "failed", source_session_id=session_id))
+            raise RuntimeError("Redis 会话删除失败") from None
 
     def count_sessions(self, session_ids: list[str]) -> int:
         if not session_ids:
@@ -132,7 +135,9 @@ class SessionPersistence:
             return self._redis.exists(*(self._session_key(session_id) for session_id in session_ids))
         except Exception as error:
             self._available = False
-            raise RuntimeError("Redis 会话读回失败") from error
+            logger.warning("error_type=%s session_count=%d %s", type(error).__name__, len(session_ids),
+                           memory_log_fields("session_count", "failed"))
+            raise RuntimeError("Redis 会话读回失败") from None
 
     @property
     def available(self) -> bool:

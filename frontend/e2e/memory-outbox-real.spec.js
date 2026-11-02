@@ -90,7 +90,7 @@ DELIMITER ;`)
     expect(JSON.parse(python("import sys\nfrom pathlib import Path\nprint((Path(sys.argv[1])/'snapshot-check.json').read_text())", folder)))
       .toEqual({ snapshot_frozen: true, candidate_stable: true, actual_completion: true, reflection_delivery_recorded: true })
     expect(JSON.parse(python("import sys\nfrom pathlib import Path\nprint((Path(sys.argv[1])/'privacy-check.json').read_text())", folder)))
-      .toEqual({ intent_fallback: true, suggestion_fallback: true, summary_history_preserved: true, real_trace_redacted: true })
+      .toEqual({ intent_fallback: true, suggestion_fallback: true, summary_history_preserved: true, real_trace_redacted: true, redis_session_diagnostics_redacted: true })
     await expect.poll(async () => (await memoryTask())?.status, { timeout: 45_000, intervals: [1000] }).toBe('failed')
     const failed = await memoryTask(); taskId = failed.task_id
     expect(failed.attempt_count).toBe(failed.max_attempts)
