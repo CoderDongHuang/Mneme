@@ -571,3 +571,6 @@ PR #88 最终结果：最新提交 8ba9ba0cab97f38e4304e73e7066835a8cb0b84b 全�
 停全部写入者并保存匹配 SQL、Agent 数据、旧镜像和容器配置后部署 http://127.0.0.1:3000。最终缓存、长期记忆/版本、记忆状态恢复和会话清理桌面/手机八项全部通过，无整项重试，共 2.1 分钟；实际注册、查询竞态、页面详情、正式 DELETE 和另一账号更新数据读回通过。24 张安全截图逐一复核，无横向溢出。独立 SQL 读回 QA 用户零、351 个删除任务全部 completed；302 个持久已删账号旧 Redis 键、Qdrant 向量及 SQLite/MySQL 版本均零，合成 manifest/向量/版本零。四个部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。
 
 证据 artifacts/cache-fence-{python-final,real-final,readback-first,readback-final,cleanup-sqlite-final,cleanup-mysql-final,build-accepted,deploy-accepted}.log 与 cache-fence-browser-final；双后端脚本、维护 CLI 和真实页面回归加入整栈 CI。无新依赖、配置或数据库迁移，协议、升级维护与匹配恢复见 docs/MEMORY_CACHE_DELETION_FENCE.md。其他进程堆内存只能下次访问时拒读并清除；不把跨库存储写与失效宣称为 ACID，不宣称历史备份/WAL 物理擦除。本项不关闭短期/工作记忆、Redis 会话消息或整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。
+PR #89 最终结果：提交 b9f6ce9ac89035fa08d95e857976713d56f7ce5b 的九项 CI 全部通过（运行 41430838278），已独立合并，提交 cc5eff3416fe7da5d0bfdb51a32208e4f6757feb。
+
+PR #92 最终结果：提交 f9fbafb3149f5f4e0255d6811aac4b2650f9870f 的九项 CI 全部通过（运行 41477429853），已独立合并，提交 4fea584。保留上述缓存围栏的独立验收记录；该项单独发布，不与下一项混合。
