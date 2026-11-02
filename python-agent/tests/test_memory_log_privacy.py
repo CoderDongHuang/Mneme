@@ -3,6 +3,8 @@ import asyncio
 import io
 import json
 import logging
+import time
+import traceback
 from dataclasses import replace
 from datetime import datetime, timedelta
 from unittest.mock import Mock
@@ -17,6 +19,7 @@ from app.memory.memory_store import MemoryVectorStore
 from app.models.chat import MemoryConfirmRequest, Message
 import app.agents.nodes as nodes
 import app.memory.short_term_memory as stm_module
+import app.memory.session_persistence as persistence_module
 
 
 @pytest.fixture
@@ -26,6 +29,7 @@ def diagnostics():
     handler.setFormatter(JsonFormatter())
     loggers = [logging.getLogger(name) for name in (
         "long_term_memory", "memory_api", "memory_store", "distillation", "nodes", "short_term_memory",
+        "session_persistence",
     )]
     previous = [(logger, logger.level) for logger in loggers]
     for logger in loggers:
@@ -153,3 +157,60 @@ def test_history_restore_summary_success_and_cooldown_hash_session(diagnostics, 
     output = diagnostics.getvalue()
     assert session not in output and body not in output
     assert log_identifier(session) in output and '"cooldown"' in output.replace('\\"', '"')
+
+
+@pytest.mark.parametrize("stage", ["connect", "save", "load", "malformed", "delete", "count"])
+def test_redis_session_failures_keep_body_and_identity_out_of_diagnostics(diagnostics, monkeypatch, stage):
+    body, session = "PRIVATE_REDIS_CANARY", "PRIVATE_REDIS_SESSION"
+    backend = Mock()
+    operation = {"connect": "ping", "save": "setex", "load": "get", "delete": "delete", "count": "exists"}
+    if stage != "malformed":
+        getattr(backend, operation[stage]).side_effect = RuntimeError(body + session)
+    else:
+        # Pydantic validation errors can echo field inputs, even when Redis GET succeeded.
+        backend.get.return_value = json.dumps([{"role": "user", "content": {"private": body}}])
+    monkeypatch.setattr(persistence_module.redis, "Redis", Mock(return_value=backend))
+    if stage == "connect":
+        persistence = persistence_module.SessionPersistence()
+    else:
+        persistence = object.__new__(persistence_module.SessionPersistence)
+        persistence._available = True
+        persistence._last_attempt = time.monotonic()
+        persistence._redis = backend
+        if stage == "save":
+            persistence.save_messages(session, [Message(role="user", content=body, timestamp="2026-11-02T00:00:00Z")])
+        elif stage in {"load", "malformed"}:
+            assert persistence.load_messages(session) is None
+        else:
+            with pytest.raises(RuntimeError) as raised:
+                if stage == "delete":
+                    persistence.delete_session(session)
+                else:
+                    persistence.count_sessions([session])
+            assert raised.value.__suppress_context__ and raised.value.__cause__ is None
+            assert body not in "".join(traceback.format_exception(raised.value))
+            # An upstream exception logger must also be safe.
+            logging.getLogger("session_persistence").error(
+                "cleanup failed", exc_info=(type(raised.value), raised.value, raised.value.__traceback__))
+    assert not persistence.available
+    output = diagnostics.getvalue()
+    assert body not in output and session not in output
+    assert "privacy-request-trace" in output
+    assert ("ValidationError" if stage == "malformed" else "RuntimeError") in output
+    if stage not in {"connect", "count"}:
+        assert log_identifier(session) in output
+
+
+def test_redis_session_cleanup_can_retry_after_sanitized_failure(diagnostics):
+    persistence = object.__new__(persistence_module.SessionPersistence)
+    persistence._available = True
+    persistence._last_attempt = time.monotonic()
+    persistence._redis = Mock(delete=Mock(side_effect=RuntimeError("PRIVATE_REDIS_CANARY")))
+    with pytest.raises(RuntimeError, match="Redis 会话删除失败"):
+        persistence.delete_session("PRIVATE_SESSION")
+    persistence._available = True
+    persistence._redis.delete.side_effect = None
+    persistence._redis.exists.return_value = 0
+    persistence.delete_session("PRIVATE_SESSION")
+    assert persistence.available
+    assert persistence._redis.delete.call_count == 2

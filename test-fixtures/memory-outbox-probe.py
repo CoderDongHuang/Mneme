@@ -16,6 +16,9 @@ from unittest.mock import patch as _qa_patch, Mock as _QaMock
 import app.agents.nodes as _qa_nodes
 import app.memory.short_term_memory as _qa_stm
 import app.memory.reflection as _qa_reflection_module
+import app.memory.session_persistence as _qa_persistence
+import traceback as _qa_traceback
+import time as _qa_time
 
 _qa_context = _qa_contextvars.ContextVar("memory_outbox_probe", default=False)
 _qa_prepare = prepare_conversation  # noqa: F821 -- injected module globals
@@ -45,6 +48,40 @@ def complete_conversation(request, state, answer):
         return _qa_complete(request, state, answer)
     scope = _qa_json.loads((_qa_root / "scope.json").read_text())  # noqa: F821
     canary = scope["privacy_canary"]
+    # Exercise actual persistence error handlers, without interrupting the
+    # service's real Redis client or storing private canaries in Redis.
+    for stage in ("connect", "save", "load", "malformed", "delete", "count"):
+        backend = _QaMock()
+        if stage == "malformed":
+            backend.get.return_value = _qa_json.dumps([{"role": "user", "content": {"private": canary}}])
+        else:
+            operation = {"connect": "ping", "save": "setex", "load": "get", "delete": "delete", "count": "exists"}[stage]
+            getattr(backend, operation).side_effect = RuntimeError(canary)
+        with _qa_patch.object(_qa_persistence.redis, "Redis", return_value=backend):
+            if stage == "connect":
+                persistence = _qa_persistence.SessionPersistence()
+            else:
+                persistence = object.__new__(_qa_persistence.SessionPersistence)
+                persistence._redis, persistence._available = backend, True
+                persistence._last_attempt = _qa_time.monotonic()
+                if stage == "save":
+                    persistence.save_messages(canary, [_QaHistoryMessage(
+                        role="user", content=canary, timestamp=_qa_now().isoformat())])
+                elif stage in {"load", "malformed"}:
+                    assert persistence.load_messages(canary) is None
+                else:
+                    try:
+                        if stage == "delete":
+                            persistence.delete_session(canary)
+                        else:
+                            persistence.count_sessions([canary])
+                    except RuntimeError as error:
+                        assert error.__suppress_context__ and error.__cause__ is None
+                        assert canary not in "".join(_qa_traceback.format_exception(error))
+                        _qa_persistence.logger.exception("QA session cleanup failed; retry required")
+                    else:
+                        raise AssertionError("Session cleanup must fail, never claim erasure")
+            assert not persistence.available
     # Provider exceptions can echo private prompts. Exercise the actual fallback
     # paths inside this account's HTTP request; only provider failures are injected.
     with _qa_patch.object(_qa_nodes, "llm", _QaMock(invoke=_QaMock(side_effect=RuntimeError(canary)))):
@@ -82,6 +119,7 @@ def complete_conversation(request, state, answer):
     (_qa_root / "privacy-check.json").write_text(_qa_json.dumps({  # noqa: F821
         "intent_fallback": True, "suggestion_fallback": True, "summary_history_preserved": True,
         "real_trace_redacted": True,
+        "redis_session_diagnostics_redacted": True,
     }))
     # Run the actual completion and distillation pipeline. Only provider output
     # is controlled: cache reads, idle detection, IDs and Redis writes are real.
