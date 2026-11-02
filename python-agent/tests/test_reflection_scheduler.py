@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+from contextlib import contextmanager
+from hashlib import sha256
 import pytest
 import redis
 
@@ -24,6 +26,12 @@ class FakeRedis:
     def expire(self, key, seconds):
         return True
 
+    def delete(self, *keys):
+        for key in keys:
+            self.values.pop(key, None)
+            self.deliveries.pop(key, None)
+        return len(keys)
+
     def get(self, key):
         return self.leases.get(key, self.states.get(key, self.values.get(key)))
 
@@ -35,10 +43,10 @@ class FakeRedis:
 
     def eval(self, script, key_count, *args):
         if script == module._RECORD_SCRIPT:
-            counter, delivery, ttl = args
+            counter, delivery, _ttl = args
             if delivery not in self.deliveries:
                 self.incr(counter)
-                self.deliveries[delivery] = ttl
+            self.deliveries[delivery] = -1
             return int(self.values.get(counter, 0))
         if script == module._ENQUEUE_SCRIPT:
             job, lease, counter, queue, threshold, user, at, token = args
@@ -126,8 +134,10 @@ def test_delivery_identity_is_user_session_and_turn_scoped():
     assert scheduler.record_session("other-user", "session", "turn") == 1
     assert scheduler.record_session("u", "session", "other-turn") == 3
     assert scheduler._delivery_key("u", "a:b", "c") != scheduler._delivery_key("u", "a", "b:c")
-    assert all(ttl == 604800 for ttl in fake.deliveries.values())
-    assert all("session" not in key and "turn" not in key for key in fake.deliveries)
+    assert not fake.deliveries
+    receipts = module.generation_store.snapshot("u")["reflection_deliveries"]
+    assert len(receipts) == 2
+    assert "session" not in str(receipts) and "turn" not in str(receipts)
 
 
 @pytest.mark.parametrize("session,delivery", [("session", ""), ("", "turn")])
@@ -152,6 +162,96 @@ def test_retry_after_lost_record_response_does_not_count_again(monkeypatch):
         scheduler.record_session("u", "session", "turn")
     monkeypatch.setattr(fake, "eval", evaluate)
     assert scheduler.record_session("u", "session", "turn") == 1
+
+
+def test_sql_commit_failure_keeps_nonexpiring_marker_after_consumption(monkeypatch):
+    fake = FakeRedis()
+    scheduler = module.ReflectionScheduler(redis_client=fake)
+    locked = module.generation_store.locked
+
+    @contextmanager
+    def fail_commit(user):
+        with locked(user) as state:
+            yield state
+            raise RuntimeError("SQL commit failed")
+
+    monkeypatch.setattr(module.generation_store, "locked", fail_commit)
+    with pytest.raises(RuntimeError, match="SQL commit failed"):
+        scheduler.record_session("u", "session", "turn")
+    marker = scheduler._delivery_key("u", "session", "turn")
+    assert fake.deliveries[marker] == -1
+    assert not module.generation_store.snapshot("u")
+    # Even a consumed/expired counter cannot resurrect this pending delivery.
+    fake.values.clear()
+    monkeypatch.setattr(module.generation_store, "locked", locked)
+    assert module.ReflectionScheduler(redis_client=fake).record_session("u", "session", "turn") == 0
+    assert not fake.values and not fake.deliveries
+    assert module.generation_store.snapshot("u")["reflection_deliveries"]
+
+
+def test_sql_receipt_survives_missing_redis_marker_and_counter():
+    fake = FakeRedis()
+    scheduler = module.ReflectionScheduler(redis_client=fake)
+    assert scheduler.record_session("u", "session", "turn") == 1
+    fake.values.clear()
+    fake.deliveries.clear()
+    assert module.ReflectionScheduler(redis_client=fake).record_session("u", "session", "turn") == 0
+    assert not fake.values and not fake.deliveries
+
+
+def test_committed_receipt_survives_marker_cleanup_failure(monkeypatch, caplog):
+    fake = FakeRedis()
+    scheduler = module.ReflectionScheduler(redis_client=fake)
+    delete = fake.delete
+
+    def fail_delete(*_keys):
+        raise redis.ConnectionError("private-message-marker")
+
+    monkeypatch.setattr(fake, "delete", fail_delete)
+    assert scheduler.record_session("u", "session", "turn") == 1
+    assert not scheduler._redis_available
+    assert "private-message-marker" not in caplog.text
+    assert len(fake.deliveries) == 1
+    monkeypatch.setattr(fake, "delete", delete)
+    assert scheduler.record_session("u", "session", "turn") == 1
+    assert not fake.deliveries
+
+
+@pytest.mark.parametrize("receipts", [[], {"bad": {}}, {"a" * 64: []},
+                                    {"a" * 64: {"b" * 64: 1}},
+                                    {"a" * 64: {"bad": True}}])
+def test_corrupt_receipts_fail_before_redis_mutation(receipts):
+    fake = FakeRedis()
+    with module.generation_store.locked("u") as state:
+        state["reflection_deliveries"] = receipts
+    with pytest.raises(ValueError, match="反思投递回执损坏"):
+        module.ReflectionScheduler(redis_client=fake).record_session("u", "session", "turn")
+    assert not fake.values and not fake.deliveries
+
+
+def test_session_deletion_retires_receipts_without_reopening_delivery():
+    from app.memory.session_scope import tombstone_session
+
+    fake = FakeRedis()
+    scheduler = module.ReflectionScheduler(redis_client=fake)
+    scheduler.record_session("u", "session", "turn")
+    scheduler.record_session("u", "other-session", "turn")
+    tombstone_session("u", "session")
+    receipts = module.generation_store.snapshot("u")["reflection_deliveries"]
+    assert list(receipts) == [sha256(b"other-session").hexdigest()]
+    with pytest.raises(module.StaleGeneration):
+        scheduler.record_session("u", "session", "turn")
+    assert scheduler.record_session("u", "other-session", "turn") == 2
+
+
+def test_corrupt_receipts_do_not_rollback_session_tombstone():
+    from app.memory.session_scope import tombstone_session, session_deleted
+
+    with module.generation_store.locked("u") as state:
+        state["reflection_deliveries"] = []
+    with pytest.raises(ValueError, match="反思投递回执损坏"):
+        tombstone_session("u", "session")
+    assert session_deleted(module.generation_store.snapshot("u"), "session")
 
 
 def test_reflection_is_persisted_to_stream_before_execution(monkeypatch):

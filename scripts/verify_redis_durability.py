@@ -18,7 +18,7 @@ def probe(phase):
         "MEMORY_VERSION_STORE_PATH": "/tmp/redis-qa-memory.sqlite3",
         "AGENT_TRACE_STORE_PATH": "/tmp/redis-qa-traces.sqlite3",
         "SESSION_DATA_PATH": "/tmp/redis-qa-sessions",
-        "INDEX_GENERATION_PATH": "/tmp/redis-qa-generations.sqlite3",
+        "INDEX_GENERATION_PATH": "/qa-state/generations.sqlite3",
         "MNEME_OFFLINE_EMBEDDINGS": "true", "AUXILIARY_STORE_BACKEND": "sqlite",
     })
     import sys
@@ -83,6 +83,7 @@ def verify(image):
         server = services["redis"]
         suffix = uuid.uuid4().hex[:10]
         name, network, volume = (f"mneme-redis-qa-{suffix}{tail}" for tail in ("", "-net", "-data"))
+        sql_volume = f"mneme-redis-qa-{suffix}-sql"
         run("docker", "network", "create", network)
         try:
             run("docker", "run", "-d", "--name", name, "--network", network,
@@ -101,6 +102,7 @@ def verify(image):
             for phase in ("enqueue", "recover"):
                 run("docker", "run", "--rm", "--network", network,
                     "-e", f"REDIS_HOST={name}", "-e", f"REDIS_PASSWORD={password}",
+                    "-v", f"{sql_volume}:/qa-state",
                     "-v", f"{root.as_posix()}:/repo", "--entrypoint", "python", image,
                     "/repo/scripts/verify_redis_durability.py", "--probe", phase)
                 if phase == "enqueue":
@@ -111,6 +113,7 @@ def verify(image):
         finally:
             run("docker", "rm", "-f", name, check=False)
             run("docker", "volume", "rm", volume, check=False)
+            run("docker", "volume", "rm", sql_volume, check=False)
             run("docker", "network", "rm", network, check=False)
     print(json.dumps({"isolated": True, "results": results}, indent=2))
 

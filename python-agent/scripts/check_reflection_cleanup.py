@@ -95,6 +95,8 @@ def check():
             executing.result(5)
         assert not first._complete_shared(user, 1, values["job_token"], owner, identifier)
         assert residual(user) == (0, [], [])
+        assert "reflection_deliveries" not in generation_store.snapshot(user)
+        assert generation_store.snapshot(other)["reflection_deliveries"]
         assert all(residual(who) == protected[who] for who in protected)
         pending = client.xpending_range(module._QUEUE_KEY, module._QUEUE_GROUP, "-", "+", 1000)
         for entry in pending:

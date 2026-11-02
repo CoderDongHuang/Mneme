@@ -135,8 +135,15 @@ def complete_conversation(request, state, answer):
     assert len(state["memory_input"]["history"]) == 3
     assert any(m.content == "Later turn must not be distilled" for m in _qa_short.get_history(request.session_id, user_id=request.user_id))
     marker = _qa_reflection._delivery_key(request.user_id, request.session_id, state["memory_input"]["delivery_id"])
-    assert _qa_reflection._redis.exists(marker) == 1
-    assert _qa_reflection._redis.ttl(marker) > 0
+    from hashlib import sha256
+    from app.knowledge.generations import generation_store
+    receipts = generation_store.snapshot(request.user_id)["reflection_deliveries"]
+    assert receipts[sha256(request.session_id.encode()).hexdigest()][marker.rsplit(":", 1)[1]] is True
+    assert _qa_reflection._redis.exists(marker) == 0
+    counter = _qa_reflection._counter_key(request.user_id)
+    before = _qa_reflection._redis.get(counter)
+    _qa_reflection.record_session(request.user_id, request.session_id, state["memory_input"]["delivery_id"])
+    assert _qa_reflection._redis.get(counter) == before
     (_qa_root / "snapshot-check.json").write_text(_qa_json.dumps({  # noqa: F821
         "snapshot_frozen": True, "candidate_stable": True, "actual_completion": True,
         "reflection_delivery_recorded": True,
