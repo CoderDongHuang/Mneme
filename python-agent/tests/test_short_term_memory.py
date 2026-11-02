@@ -25,15 +25,15 @@ from datetime import datetime, timedelta
 def isolate_session_persistence(monkeypatch):
     """Keep unit tests independent from any running development Redis."""
     monkeypatch.setattr(
-        stm_module.session_persistence, "load_messages", lambda _session_id: []
+        stm_module.session_persistence, "load_messages", lambda _session_id, **kw: []
     )
     monkeypatch.setattr(
         stm_module.session_persistence,
         "save_messages",
-        lambda _session_id, _messages: None,
+        lambda _session_id, _messages, **kw: None,
     )
     monkeypatch.setattr(
-        stm_module.session_persistence, "delete_session", lambda _session_id: None
+        stm_module.session_persistence, "delete_session", lambda _session_id, **kw: None
     )
 
 

@@ -17,6 +17,7 @@ import app.agents.nodes as _qa_nodes
 import app.memory.short_term_memory as _qa_stm
 import app.memory.reflection as _qa_reflection_module
 import app.memory.session_persistence as _qa_persistence
+from app.memory.session_scope import account_session as _qa_account, cache_key as _qa_key, session_revision as _qa_revision
 import traceback as _qa_traceback
 import time as _qa_time
 
@@ -29,14 +30,14 @@ _qa_seeded = set()
 
 
 def prepare_conversation(request):
-    scope = _qa_json.loads((_qa_root / "scope.json").read_text())  # noqa: F821
+    scope = _qa_json.loads((_qa_root / "scope.json").read_text(encoding="utf-8"))  # noqa: F821
     matches = str(request.user_id) == scope["user"] and str(request.session_id) == scope["session"]
     _qa_context.set(matches)
     if matches and request.session_id not in _qa_seeded:
         _qa_seeded.add(request.session_id)
         for role, content in [("user", "Historical snapshot preference"), ("assistant", "Prior snapshot answer")]:
             _qa_short.add_message(request.session_id, _QaHistoryMessage(
-                role=role, content=content, timestamp=(_qa_now() - _QaDelta(minutes=20)).isoformat(), token_count=5))
+                role=role, content=content, timestamp=(_qa_now() - _QaDelta(minutes=20)).isoformat(), token_count=5), user_id=request.user_id)
     state = _qa_prepare(request)
     if matches:
         state["intent"] = "general"
@@ -46,11 +47,12 @@ def prepare_conversation(request):
 def complete_conversation(request, state, answer):
     if not _qa_context.get():
         return _qa_complete(request, state, answer)
-    scope = _qa_json.loads((_qa_root / "scope.json").read_text())  # noqa: F821
+    scope = _qa_json.loads((_qa_root / "scope.json").read_text(encoding="utf-8"))  # noqa: F821
     canary = scope["privacy_canary"]
     # Exercise actual persistence error handlers, without interrupting the
     # service's real Redis client or storing private canaries in Redis.
     for stage in ("connect", "save", "load", "malformed", "delete", "count"):
+        probe_session = "privacy-fault-" + stage
         backend = _QaMock()
         if stage == "malformed":
             backend.get.return_value = _qa_json.dumps([{"role": "user", "content": {"private": canary}}])
@@ -65,16 +67,16 @@ def complete_conversation(request, state, answer):
                 persistence._redis, persistence._available = backend, True
                 persistence._last_attempt = _qa_time.monotonic()
                 if stage == "save":
-                    persistence.save_messages(canary, [_QaHistoryMessage(
-                        role="user", content=canary, timestamp=_qa_now().isoformat())])
+                    persistence.save_messages(probe_session, [_QaHistoryMessage(
+                        role="user", content=canary, timestamp=_qa_now().isoformat())], user_id=request.user_id)
                 elif stage in {"load", "malformed"}:
-                    assert persistence.load_messages(canary) is None
+                    assert persistence.load_messages(probe_session, user_id=request.user_id) is None
                 else:
                     try:
                         if stage == "delete":
-                            persistence.delete_session(canary)
+                            persistence.delete_session(probe_session, user_id=request.user_id)
                         else:
-                            persistence.count_sessions([canary])
+                            persistence.count_sessions([probe_session], user_id=request.user_id)
                     except RuntimeError as error:
                         assert error.__suppress_context__ and error.__cause__ is None
                         assert canary not in "".join(_qa_traceback.format_exception(error))
@@ -102,12 +104,16 @@ def complete_conversation(request, state, answer):
             raise AssertionError("Invalid reflection must fail")
         assert _qa_nodes.suggestion_generation_node(state) == {}
     temporary = _QaShortManager()
-    temporary._store[request.session_id] = [_QaHistoryMessage(
+    temporary_key = _qa_key(request.user_id, request.session_id)
+    temporary._store[temporary_key] = [_QaHistoryMessage(
         role="user", content=canary, timestamp=_qa_now().isoformat(), token_count=500) for _ in range(30)]
-    original_history = temporary._store[request.session_id].copy()
+    with _qa_account(request.user_id) as account:
+        temporary._revisions[temporary_key] = _qa_revision(account, request.session_id)
+    original_history = temporary._store[temporary_key].copy()
     with _qa_patch.object(_qa_stm, "llm", _QaMock(invoke=_QaMock(side_effect=RuntimeError(canary)))):
-        temporary.summarize(request.session_id)
-    assert temporary._store[request.session_id] == original_history
+        temporary.summarize(request.session_id, user_id=request.user_id)
+        _qa_stm.llm.invoke.assert_called_once()
+    assert temporary._store[temporary_key] == original_history
     try:
         with _qa_trace.span(request.user_id, request.session_id, "privacy.provider_failure", {"content": canary}):
             raise RuntimeError(canary)
@@ -127,7 +133,7 @@ def complete_conversation(request, state, answer):
     repeated = _qa_memory_write(state)
     assert result["pending_memories"] == repeated["pending_memories"]
     assert len(state["memory_input"]["history"]) == 3
-    assert any(m.content == "Later turn must not be distilled" for m in _qa_short.get_history(request.session_id))
+    assert any(m.content == "Later turn must not be distilled" for m in _qa_short.get_history(request.session_id, user_id=request.user_id))
     marker = _qa_reflection._delivery_key(request.user_id, request.session_id, state["memory_input"]["delivery_id"])
     assert _qa_reflection._redis.exists(marker) == 1
     assert _qa_reflection._redis.ttl(marker) > 0
@@ -166,7 +172,7 @@ class _QaProvider:
         async def controlled():
             scope = _qa_json.loads((_qa_root / "scope.json").read_text())  # noqa: F821
             _qa_short.add_message(scope["session"], _QaHistoryMessage(
-                role="user", content="Later turn must not be distilled", timestamp=_qa_now().isoformat(), token_count=8))
+                role="user", content="Later turn must not be distilled", timestamp=_qa_now().isoformat(), token_count=8), user_id=scope["user"])
             yield _QaChunk(content="Candidate memory QA verified answer")
         return controlled()
 

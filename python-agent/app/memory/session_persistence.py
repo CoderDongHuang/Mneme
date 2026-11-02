@@ -10,6 +10,7 @@
 import json
 import redis
 import time
+from hashlib import sha256
 from datetime import timedelta
 from typing import List, Optional
 
@@ -17,6 +18,7 @@ from app.core.time import utc_now
 from app.models.chat import Message
 from app.core.config import settings
 from app.core.logging import setup_logger, memory_log_fields
+from app.memory.session_scope import account_session, advance_revision, session_revision
 
 logger = setup_logger("session_persistence")
 
@@ -59,85 +61,114 @@ class SessionPersistence:
             self._init_redis()
         return self._available
 
-    def _session_key(self, session_id: str) -> str:
-        return f"{SESSION_KEY_PREFIX}{session_id}"
+    @staticmethod
+    def _user_prefix(user_id):
+        return f"{SESSION_KEY_PREFIX}v2:{sha256(str(user_id).encode()).hexdigest()}:"
 
-    def save_messages(self, session_id: str, messages: List[Message]):
-        if not self._ensure_connection():
-            return
-        try:
-            data = json.dumps(
-                [
-                    {
-                        "role": m.role,
-                        "content": m.content,
-                        "timestamp": m.timestamp,
-                        "token_count": m.token_count,
-                    }
-                    for m in messages
-                ],
-                ensure_ascii=False,
-            )
-            self._redis.setex(
-                self._session_key(session_id),
-                timedelta(hours=settings.SESSION_TTL_HOURS),
-                data,
-            )
-        except Exception as error:
-            self._available = False
-            logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
-                "session_save", "memory_only", source_session_id=session_id))
+    def _session_key(self, session_id: str, user_id="default") -> str:
+        if str(user_id) == "default":
+            return f"{SESSION_KEY_PREFIX}{session_id}"
+        return self._user_prefix(user_id) + sha256(session_id.encode()).hexdigest()
 
-    def load_messages(self, session_id: str) -> Optional[List[Message]]:
-        if not self._ensure_connection():
-            return None
-        try:
-            data = self._redis.get(self._session_key(session_id))
-            if not data:
+    def _cleanup_keys(self, session_id, user_id):
+        return list(dict.fromkeys([self._session_key(session_id, user_id), self._session_key(session_id)]))
+
+    def save_messages(self, session_id: str, messages: List[Message], *, user_id="default"):
+        with account_session(user_id) as state:
+            # Publish a new fence even in memory-only mode: another worker may
+            # not treat the old Redis payload as the current conversation.
+            revision = advance_revision(state, session_id)
+            if not self._ensure_connection():
+                return
+            try:
+                data = json.dumps({"revision": revision, "messages": [m.model_dump() for m in messages]}, ensure_ascii=False)
+                self._redis.setex(self._session_key(session_id, user_id),
+                                  timedelta(hours=settings.SESSION_TTL_HOURS), data)
+            except Exception as error:
+                self._available = False
+                logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
+                    "session_save", "memory_only", source_session_id=session_id))
+
+    def load_messages(self, session_id: str, *, user_id="default") -> Optional[List[Message]]:
+        with account_session(user_id) as state:
+            revision = session_revision(state, session_id)
+            if not self._ensure_connection():
                 return None
-            raw_list = json.loads(data)
-            return [
-                Message(
-                    role=m["role"],
-                    content=m["content"],
-                    timestamp=m.get("timestamp", utc_now().isoformat()),
-                    token_count=m.get("token_count", len(m["content"]) // 4),
-                )
-                for m in raw_list
-            ]
-        except Exception as error:
-            self._available = False
-            logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
-                "session_load", "unavailable", source_session_id=session_id))
-            return None
+            try:
+                data = self._redis.get(self._session_key(session_id, user_id))
+                if not data and not revision and str(user_id) != "default":
+                    # Legacy IDs are globally canonical Gateway IDs. Never
+                    # guess ownership or read an unregistered user's old key.
+                    from app.memory.session_store import session_store
+                    if session_store.owns_legacy_cache(user_id, session_id):
+                        data = self._redis.get(self._session_key(session_id))
+                if not data:
+                    return None
+                payload = json.loads(data)
+                if isinstance(payload, dict):
+                    if payload.get("revision") != revision:
+                        return None
+                    raw_list = payload["messages"]
+                elif isinstance(payload, list) and not revision:
+                    raw_list = payload
+                else:
+                    return None
+                return [Message(role=m["role"], content=m["content"],
+                                timestamp=m.get("timestamp", utc_now().isoformat()),
+                                token_count=m.get("token_count", len(m["content"]) // 4)) for m in raw_list]
+            except Exception as error:
+                self._available = False
+                logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
+                    "session_load", "unavailable", source_session_id=session_id))
+                return None
 
-    def delete_session(self, session_id: str):
-        if not self._ensure_connection():
-            raise RuntimeError("Redis 不可用，无法确认会话数据已删除")
-        try:
-            self._redis.delete(self._session_key(session_id))
-            # DEL returning normally is not proof (a proxy/fault can no-op).
-            # Do not acknowledge erasure while the original key is still there.
-            if self.count_sessions([session_id]) != 0:
-                raise RuntimeError("Redis 会话删除后仍有残留")
-        except Exception as error:
-            self._available = False
-            logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
-                "session_delete", "failed", source_session_id=session_id))
-            raise RuntimeError("Redis 会话删除失败") from None
+    def delete_session(self, session_id: str, *, user_id="default"):
+        with account_session(user_id, cleanup=True) as state:
+            advance_revision(state, session_id)
+            if not self._ensure_connection():
+                raise RuntimeError("Redis 不可用，无法确认会话数据已删除")
+            try:
+                for key in self._cleanup_keys(session_id, user_id):
+                    self._redis.delete(key)
+                if self.count_sessions([session_id], user_id=user_id) != 0:
+                    raise RuntimeError("Redis 会话删除后仍有残留")
+            except Exception as error:
+                self._available = False
+                logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
+                    "session_delete", "failed", source_session_id=session_id))
+                raise RuntimeError("Redis 会话删除失败") from None
 
-    def count_sessions(self, session_ids: list[str]) -> int:
+    def count_sessions(self, session_ids: list[str], *, user_id="default") -> int:
         if not session_ids:
             return 0
         if not self._ensure_connection():
             raise RuntimeError("Redis 不可用，无法核验会话残留")
         try:
-            return self._redis.exists(*(self._session_key(session_id) for session_id in session_ids))
+            keys = list(dict.fromkeys(key for sid in session_ids for key in self._cleanup_keys(sid, user_id)))
+            return self._redis.exists(*keys)
         except Exception as error:
             self._available = False
             logger.warning("error_type=%s session_count=%d %s", type(error).__name__, len(session_ids),
                            memory_log_fields("session_count", "failed"))
             raise RuntimeError("Redis 会话读回失败") from None
+
+    def delete_user_sessions(self, user_id):
+        """Erase scoped orphans too; legacy IDs use the canonical batch API."""
+        with account_session(user_id, cleanup=True) as state:
+            if not state.get("deleted"):
+                raise RuntimeError("账号未停止写入，拒绝整批清理会话缓存")
+            if not self._ensure_connection():
+                raise RuntimeError("Redis 不可用，无法核验会话残留")
+            try:
+                prefix = self._user_prefix(user_id)
+                for key in self._redis.scan_iter(match=prefix + "*", count=200):
+                    self._redis.delete(key)
+                if next(iter(self._redis.scan_iter(match=prefix + "*", count=200)), None) is not None:
+                    raise RuntimeError("Redis 账号会话删除后仍有残留")
+            except Exception as error:
+                self._available = False
+                logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields("session_user_delete", "failed"))
+                raise RuntimeError("Redis 账号会话删除失败") from None
 
     @property
     def available(self) -> bool:

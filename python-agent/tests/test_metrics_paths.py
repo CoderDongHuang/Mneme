@@ -18,7 +18,7 @@ def test_metrics_bound_unmatched_paths():
 
 def test_http_metrics_use_template_for_dynamic_session_path():
     with TestClient(app) as client:
-        assert client.get("/api/v1/session/dynamic-session-id").status_code == 200
+        assert client.get("/api/v1/session/dynamic-session-id?user_id=metrics-test").status_code == 200
         metrics = client.get("/metrics").text
     assert 'path="/api/v1/session/{session_id}"' in metrics
     assert "dynamic-session-id" not in metrics

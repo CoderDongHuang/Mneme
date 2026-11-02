@@ -58,7 +58,7 @@ def _memory_context(user_id: str, session_id: str, include_history: bool = True)
             "进度：" + (progress.get("topic") or progress.get("content", ""))
         )
     if include_history:
-        history = short_term_memory.get_history(session_id)[-6:]
+        history = short_term_memory.get_history(session_id, user_id=user_id)[-6:]
         if history:
             sections.append(
                 "近期对话：\n"
@@ -211,8 +211,8 @@ def build_llm_prompt(state: dict) -> str:
 
 def llm_reasoning_node(state: dict) -> dict:
     response = llm.invoke([HumanMessage(content=build_llm_prompt(state))])
-    if short_term_memory.should_summarize(state["session_id"]):
-        short_term_memory.summarize(state["session_id"])
+    if short_term_memory.should_summarize(state["session_id"], user_id=state["user_id"]):
+        short_term_memory.summarize(state["session_id"], user_id=state["user_id"])
     return {"answer": str(response.content)}
 
 
@@ -226,7 +226,7 @@ def memory_write_node(state: dict) -> dict:
     memory_input = state.get("memory_input")
     history = (
         [Message.model_validate(message) for message in memory_input["history"]]
-        if memory_input is not None else short_term_memory.get_history(session_id)
+        if memory_input is not None else short_term_memory.get_history(session_id, user_id=user_id)
     )
     if len(history) < 2:
         return {"memory_entries_to_write": []}

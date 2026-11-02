@@ -20,13 +20,13 @@ def prepare_conversation(request: ChatRequest) -> dict:
         timestamp=utc_now().isoformat(),
         token_count=max(1, len(request.message) // 4),
     )
-    working_memory.add_message(request.session_id, user_message)
-    short_term_memory.add_message(request.session_id, user_message)
     session_store.register_session(
         request.user_id,
         request.session_id,
         title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
     )
+    working_memory.add_message(request.session_id, user_message, user_id=request.user_id)
+    short_term_memory.add_message(request.session_id, user_message, user_id=request.user_id)
     state = {
         "user_id": request.user_id,
         "session_id": request.session_id,
@@ -36,7 +36,7 @@ def prepare_conversation(request: ChatRequest) -> dict:
         # Freeze the input before model generation. A delayed completion must
         # never distill a later turn or use its execution time as the idle gap.
         "memory_input": {
-            "history": [message.model_dump() for message in short_term_memory.get_history(request.session_id)],
+            "history": [message.model_dump() for message in short_term_memory.get_history(request.session_id, user_id=request.user_id)],
             "reference_time": user_message.timestamp,
             "delivery_id": request.request_id or uuid.uuid4().hex,
         },
@@ -67,8 +67,8 @@ def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dic
         timestamp=utc_now().isoformat(),
         token_count=max(1, len(answer) // 4),
     )
-    working_memory.add_message(request.session_id, assistant_message)
-    short_term_memory.add_message(request.session_id, assistant_message)
+    working_memory.add_message(request.session_id, assistant_message, user_id=request.user_id)
+    short_term_memory.add_message(request.session_id, assistant_message, user_id=request.user_id)
     session_store.increment_message_count(request.user_id, request.session_id)
 
     memory_input = state.get("memory_input") or {}
@@ -82,10 +82,10 @@ def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dic
     reflection_scheduler.check_and_trigger(request.user_id)
 
     session_summary = None
-    if short_term_memory.should_summarize(request.session_id):
+    if short_term_memory.should_summarize(request.session_id, user_id=request.user_id):
         with agent_trace_store.span(request.user_id, request.session_id, "summarize"):
-            short_term_memory.summarize(request.session_id)
-        for message in short_term_memory.get_history(request.session_id):
+            short_term_memory.summarize(request.session_id, user_id=request.user_id)
+        for message in short_term_memory.get_history(request.session_id, user_id=request.user_id):
             if message.role == "system" and message.content.startswith("[历史摘要]"):
                 session_summary = message.content
                 break

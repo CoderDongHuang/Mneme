@@ -138,7 +138,10 @@ def test_account_cleanup_endpoints_remove_versions_and_traces(monkeypatch):
     monkeypatch.setattr(memory_api.memory_version_store, "delete_user", lambda user_id: memory_calls.append(user_id) or 2)
     monkeypatch.setattr(chat_api.session_store, "cleanup_session_ids", lambda user_id: [])
     monkeypatch.setattr(chat_api.session_store, "delete_user", lambda user_id: None)
-    monkeypatch.setattr(chat_api.reflection_scheduler, "delete_user", lambda user_id: {"keys": 0, "queue_entries": 0})
+    from app.knowledge.generations import generation_store
+    monkeypatch.setattr(chat_api.reflection_scheduler, "delete_user", lambda user_id: (
+        generation_store.tombstone(user_id), {"keys": 0, "queue_entries": 0})[1])
+    monkeypatch.setattr(chat_api.session_persistence, "delete_user_sessions", lambda user_id: None)
     monkeypatch.setattr(chat_api.agent_trace_store, "delete_user", lambda user_id: trace_calls.append(user_id) or 3)
 
     memory_result = asyncio.run(memory_api.delete_user_memories("u1"))

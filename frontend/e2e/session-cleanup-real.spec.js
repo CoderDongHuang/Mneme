@@ -14,6 +14,10 @@ test('账号删除覆盖过期及缺失元数据会话，真实 Redis 与 MySQL 
     return ids[0]
   }
   const agent = container('python-agent'), mysql = container('mysql')
+  function sessionProbe(mode, ...users) {
+    return execFileSync('docker', ['exec', agent, 'python', 'scripts/check_session_memory_fence.py', mode, ...users.map(String)],
+      { encoding: 'utf8', timeout: 90000 }).trim().split('\n').at(-1)
+  }
   function python(code, ...args) {
     return execFileSync('docker', ['exec', '-i', agent, 'python', '-', ...args.map(String)], { input: code, encoding: 'utf8', timeout: 20000 }).trim().split('\n').at(-1)
   }
@@ -46,7 +50,7 @@ import app.memory.reflection_scheduler as reflection
 user,raw_entries,*ids=sys.argv[1:]
 scheduler=reflection.ReflectionScheduler(); client=scheduler._redis
 exact=[scheduler._counter_key(user),scheduler._job_key(user),scheduler._lease_key(user),scheduler._lease_state_key(user)]
-print(json.dumps({'redis':session_persistence.count_sessions(ids),'manifest':session_store.cleanup_session_ids(user),
+print(json.dumps({'redis':session_persistence.count_sessions(ids,user_id=user),'manifest':session_store.cleanup_session_ids(user),
  'reflection_keys':client.exists(*exact)+len(list(scheduler._delivery_keys(user))),
  'reflection_entries':sum(len(batch) for batch in scheduler._user_queue_batches(user)),
  'reflection_pending':sum(len(client.xpending_range(reflection._QUEUE_KEY,reflection._QUEUE_GROUP,identifier,identifier,1)) for identifier in json.loads(raw_entries))}))`, entry.account.userId, JSON.stringify(entry.reflectionIds), ...entry.sessions))
@@ -57,6 +61,7 @@ print(json.dumps({'redis':session_persistence.count_sessions(ids),'manifest':ses
       { timeout: 60000, intervals: [500, 1000, 2000] }).toBe('completed')
     expect(query(`SELECT COUNT(*) FROM user WHERE id=${entry.account.userId}; SELECT COUNT(*) FROM chat_session WHERE user_id=${entry.account.userId};`)).toBe('0\n0')
     expect(readback(entry)).toEqual({ redis: 0, manifest: [], reflection_keys: 0, reflection_entries: 0, reflection_pending: 0 })
+    expect(sessionProbe('verify', entry.account.userId)).toContain('PASS: session memory fence verify')
     expect(python(`import sys
 from app.knowledge.generations import generation_store,StaleGeneration
 from app.memory.reflection_scheduler import ReflectionScheduler
@@ -121,6 +126,8 @@ print(json.dumps(entries))`, account.userId, ...entry.sessions))
       expect(readback(entry)).toEqual({ redis: 2, manifest: [entry.sessions[0]], reflection_keys: 5, reflection_entries: 2, reflection_pending: 2 })
     }
     const [target, protectedUser] = accounts
+    expect(sessionProbe('seed', target.account.userId, protectedUser.account.userId)).toContain('PASS: session memory fence seed')
+    expect(sessionProbe('race', target.account.userId, protectedUser.account.userId)).toContain('PASS: session memory fence race')
     await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), protectedUser.account)
     // Use the protected tenant's real page after deleting the first account.
     await api(target.client, 'delete', '/profile/account')
@@ -135,7 +142,7 @@ print(json.dumps(entries))`, account.userId, ...entry.sessions))
     await expect(page.getByRole('button', { name: /打开对话：Session cleanup QA/ })).toHaveCount(2)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('protected-session-history.png'), fullPage: true, animations: 'disabled' })
-    await testInfo.attach('session-cleanup.json', { body: JSON.stringify({ expired_and_missing_manifest: true, redis_readback_zero: true, mysql_readback_zero: true, reflection_keys_stream_and_pending_zero: true, durable_late_reflection_rejected: true, durable_late_manifest_rejected: true, protected_tenant_sessions: 2 }), contentType: 'application/json' })
+    await testInfo.attach('session-cleanup.json', { body: JSON.stringify({ expired_and_missing_manifest: true, redis_readback_zero: true, mysql_readback_zero: true, reflection_keys_stream_and_pending_zero: true, durable_late_reflection_rejected: true, durable_late_manifest_rejected: true, scoped_cache_late_write_rejected: true, stale_summary_discarded: true, scoped_orphan_cache_erased: true, protected_tenant_sessions: 2 }), contentType: 'application/json' })
   } finally {
     for (const entry of accounts) {
       if (!entry.queued) { await api(entry.client, 'delete', '/profile/account'); entry.queued = true }
