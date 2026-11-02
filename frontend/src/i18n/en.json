@@ -733,7 +733,7 @@
   "已尝试": "Attempted",
   "关联文档": "Related document",
   "无文档 / 资料库任务": "No document / Library task",
-  "需要处理": "Action needed",
+  "需要处理": "Action required",
   "检查文件格式与服务状态；修复原因后重试。重试前的错误仍保留在下方阶段记录中。": "Check file format and service health, then retry after fixing the cause. Previous errors remain in stage history below.",
   "重试任务": "Retry task",
   "请求取消": "Request cancellation",
@@ -1239,5 +1239,16 @@
   "模型配置加载失败：{0}": "Could not load model settings: {0}",
   "服务状态加载失败：{0}": "Could not load service status: {0}",
   "模型配置响应格式不正确": "Invalid model settings response",
-  "服务状态响应格式不正确": "Invalid service status response"
+  "服务状态响应格式不正确": "Invalid service status response",
+  "恢复演练响应格式不正确，请重试。": "Invalid recovery drill response. Please retry.",
+  "演练提交未确认：{0}。请先刷新历史核实，避免重复提交。": "Drill submission unconfirmed: {0}. Refresh history to verify before submitting again.",
+  "正在提交演练": "Submitting drill",
+  "演练历史": "Drill history",
+  "正在读取演练历史": "Loading drill history",
+  "演练历史加载失败：{0}": "Failed to load drill history: {0}",
+  "已有演练历史可能不是最新状态。": "Cached drill history may be out of date.",
+  "演练报告": "Drill report",
+  "正在读取演练报告": "Loading drill report",
+  "演练报告加载失败：{0}": "Failed to load drill report: {0}",
+  "中性结果": "Neutral result"
 }
