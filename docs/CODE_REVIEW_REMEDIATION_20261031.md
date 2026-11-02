@@ -529,3 +529,5 @@ PR #85 最终结果：最新提交 7123d49fef04863edb08b12fa364a5071c425442 全�
 
 证据 artifacts/trace-privacy-{python-accepted,targeted-final,frontend-lint-accepted,live-sqlite,live-mysql,build-accepted,deploy-accepted,real-accepted,readback}.log 与 trace-privacy-browser-accepted。范围、双存储运行、夹具限制、停旧工作器与匹配恢复见 docs/TRACE_PRIVACY_DELETION_FENCE.md。无依赖、配置或数据库迁移，两组存储和实际页面回归均加入整栈 CI。独立 PR 最终 CI 和合并结果继续补记。
 PR #88 首次整栈 CI 暴露测试环境判断错误：CI 已配置执行器地址和凭证，但该阶段未启动 worker，真实返回不可用而非未配置。依据 Gateway 环境区分准确错误，仍拒绝任意 400 并阻止实际恢复写请求；重新回查 P3-03/P2-14，本地未配置状态桌面/手机 2 项通过（15.5 秒，无整项重试），定向 ESLint 通过，八张安全截图复核。证据 artifacts/pr88-fixed-real.log、pr88-fixed-browser。已配置不可用分支由同一真实整栈 CI 再验，不宣称本地启动了执行器。
+
+PR #89 最终结果：提交 b9f6ce9ac89035fa08d95e857976713d56f7ce5b 的九项 CI 全部通过（运行 41430838278），已独立合并，提交 cc5eff3416fe7da5d0bfdb51a32208e4f6757feb。
