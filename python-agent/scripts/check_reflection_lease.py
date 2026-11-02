@@ -10,10 +10,13 @@ import time
 import uuid
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app.memory.reflection_scheduler as module  # noqa: E402
+import app.memory.reflection as reflection  # noqa: E402
 from reflection_qa import remove_probe_users  # noqa: E402
 
 
@@ -31,7 +34,7 @@ def check():
     keys = [first._counter_key(user), first._lease_key(user),
             first._lease_state_key(user), first._job_key(user)]
     keys.extend(first._delivery_key(user, "qa-session", turn)
-                for turn in ("initial", "during", "legacy-1", "legacy-2"))
+                for turn in ("initial", "during", "legacy-1", "legacy-2", "invalid-result"))
     entries, workers = [], []
     release = threading.Event()
     # Make the real Redis TTL short for the timing regression; production still
@@ -120,10 +123,40 @@ def check():
         second._run_queued_reflection(identifier, values)
         assert calls == [user, user]
         assert not client.exists(first._counter_key(user), first._job_key(user))
+
+        # Execute the actual parser against faulty provider output. A real PEL
+        # entry and counter must survive, then settle once under a new owner.
+        first.record_session(user, "qa-session", "invalid-result")
+        assert first.check_and_trigger(user)
+        identifier, values = entry()
+        module.run_reflection = reflection.run_reflection
+        valid = {"implicit_preferences": [], "priority_weak_points": [],
+                 "next_step_suggestion": "Review basics"}
+        with (patch.object(reflection, "require_cloud_processing"),
+              patch.object(reflection.long_term_memory, "get_preferences", return_value=[{"content": "QA"}]),
+              patch.object(reflection.long_term_memory, "get_weak_points", return_value=[]),
+              patch.object(reflection.long_term_memory, "get_progress", return_value=None),
+              patch.object(reflection.llm, "invoke", side_effect=[
+                  SimpleNamespace(content="invalid provider JSON"),
+                  SimpleNamespace(content=json.dumps(valid))]) as provider):
+            first._run_queued_reflection(identifier, values)
+            assert client.get(first._counter_key(user)) == "1"
+            assert client.exists(first._job_key(user), first._lease_key(user)) == 2
+            assert client.xpending_range(module._QUEUE_KEY, module._QUEUE_GROUP,
+                                         identifier, identifier, 1)
+            time.sleep(1.2)
+            second.reclaim_stale_reflections(min_idle_ms=1)
+            assert not client.exists(first._counter_key(user), first._job_key(user))
+            assert not client.xrange(module._QUEUE_KEY, identifier, identifier)
+            assert not client.xpending_range(module._QUEUE_KEY, module._QUEUE_GROUP,
+                                             identifier, identifier, 1)
+            second._run_queued_reflection(identifier, values)
+            assert provider.call_count == 2
         print(json.dumps({"real_redis": True, "heartbeat_past_ttl": "passed",
                           "live_owner_exclusion": "passed", "stale_completion": "rejected",
                           "crash_takeover": "passed", "duplicate_delivery": "passed",
-                          "new_sessions_preserved": "passed", "legacy_migration": "passed"}))
+                          "new_sessions_preserved": "passed", "legacy_migration": "passed",
+                          "invalid_result_pending": "passed", "valid_retry_once": "passed"}))
     finally:
         release.set()
         for worker in workers:
