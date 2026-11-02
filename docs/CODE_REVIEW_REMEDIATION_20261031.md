@@ -625,3 +625,15 @@ V32 增加会话隔离字段，无新依赖；双存储脚本及真实页面测�
 无新依赖、配置或数据库结构迁移，但新增持久状态协议，不能混跑旧工作器。SQLite 为单主机，多副本需共享 MySQL/Redis；SQL 与 Redis 不具备跨库 ACID，AOF everysec 不承诺断电零丢失；升级前已过期标记无法追溯，未交接且不再重试的孤儿标记自动治理仍属 P2-12。升级、匹配数据回退及完整边界见 docs/REFLECTION_DELIVERY_IDEMPOTENCY.md。双后端脚本、AOF 和真实页面断言纳入原 CI；独立 PR 最终 CI 与合并结果继续补记。
 
 PR #92 最终结果：最新提交 f9fbafb3149f5f4e0255d6811aac4b2650f9870f 全部九项 CI 通过（run 41477429853），已独立合并，提交 4fea584。
+
+## 2026-11-03：P3-07 管理员基础设施真实业务诊断
+
+对照要求：逐项回查原 P3-07 的 SMTP 发信、Redis AUTH/PING、当前 MySQL 运行账号权限、Qdrant 读写、对象上传下载和备份密钥可用性。新增六个显式触发的受保护检查，将配置、连接认证、业务操作和清理读回分别展示；刷新状态不触发写入或发信。MySQL 专用 UUID 行 CRUD、Redis 唯一短期键、每个 Qdrant 分片合成集合、当前对象存储对象或本地文件均在 finally 清理并独立读回。SMTP 只发给当前管理员已验证邮箱，跨实例限流。当前备份密钥通过主机执行器实际加解密、签名及篡改拒绝，KMS 模式验证 wrap/unwrap；与备份恢复共用互斥锁，不创建任务。固定错误代码及远端字段白名单防止返回底层异常和密钥。
+
+验证：Java 全量 230 项通过，无失败、错误或跳过，package 成功；Python 3.11 Ruff 和全量 966 项通过（177.68 秒，七条上游弃用警告），新增十项覆盖真实本地 Qdrant 双分片、HTTP 客户端、并发互斥、时限、密钥与主机 HTTP 路由。前端全量 32 文件 213 项通过，Lint、构建和包体门禁通过。Java 实际 MySQL、Redis、RustFS 和 SMTP 测试覆盖运行权限不足、认证、读写、投递与零残留。首次实际回归发现固定版本 QdrantClient 不支持上下文管理，改为独立诊断客户端 try/finally close，并以真实 HTTP 服务验证关闭，业务客户端不受影响。
+
+停全部写入者并保存匹配 SQL、Redis、Agent 数据和原容器/镜像/配置后部署 http://127.0.0.1:3000。最终桌面/手机的业务诊断、运维和恢复读取六项全部通过，无整项重试，共 54.2 秒。通过真实注册、管理员权限拒绝、本人邮箱验证、Mailpit 实际收信、发送限流及 SQL/Redis/Qdrant 清理读回。保留初次鉴权预期、测试容器误选及独立 Redis CLI 配置不匹配的失败证据；修正真实测试配置后完整重跑，没有放宽业务或零残留断言。
+
+十四张安全截图逐一复核，外层页面无横向溢出，手机诊断表可局部横向滚动。独立 SQL 读回 QA 用户、诊断表行零，413 个账号删除任务全部 completed；364 个持久已删除账号的反思回执、会话文件和 scoped Redis 键零，Redis/Qdrant/本地文件诊断资源零。三份部署 Python 源码 LF 哈希、Gateway JAR 和 48 份前端资源匹配验收构建，两服务健康均 200。证据 artifacts/infrastructure-{java-full,java-package,python-accepted,python-http-accepted,real-accepted-final,readback-final}.log 以及 infrastructure-browser-accepted-final。
+
+V33 新增专用诊断表，无新依赖；真实页面回归加入完整栈 CI。实际本机采用本地对象存储，S3 路径由真实 RustFS 测试验证；本机主机执行器未配置，明确显示未配置，不冒充备份密钥成功。此检查仅验证当前密钥，不证明历史归档或实际灾备成功。强制结束后的孤立资源治理仍属 P2-12；范围、受限客户端、升级和匹配回退见 docs/INFRASTRUCTURE_BUSINESS_DIAGNOSTICS.md。独立 PR 最终 CI 与合并结果继续补记。

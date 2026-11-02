@@ -41,6 +41,18 @@ public class PasswordResetDelivery {
     public void sendVerification(String email, String token) {
         deliver(email, "Mneme 邮箱验证", "你的邮箱验证验证码为：" + token + "。验证码 15 分钟内有效，请登录 Mneme 在个人资料中验证。若非本人操作请忽略。");
     }
+    public void checkConnection() {
+        requireConfigured();
+        if (!(sender.getIfAvailable() instanceof org.springframework.mail.javamail.JavaMailSenderImpl configuredSender))
+            throw new MailDeliveryException("邮件连接诊断不可用");
+        try { configuredSender.testConnection(); }
+        catch (Exception ignored) { throw new MailDeliveryException("邮件连接诊断失败"); }
+    }
+    public void sendDiagnostic(String email) {
+        deliver(email, "Mneme 服务诊断 / Service diagnostic",
+            "这是你在 Mneme 管理员运维页主动发送的测试邮件。收到此邮件可确认当前邮箱的最终收信；无需回复。\n"
+            + "This is the test email you requested from Mneme operations. No reply is needed.");
+    }
     private void deliver(String email, String subject, String body) {
         requireConfigured();
         JavaMailSender mailer = sender.getIfAvailable();

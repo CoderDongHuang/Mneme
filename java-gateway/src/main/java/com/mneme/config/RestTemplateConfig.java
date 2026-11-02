@@ -100,4 +100,21 @@ public class RestTemplateConfig {
         });
         return client;
     }
+
+    @Bean("diagnosticHttp")
+    public RestTemplate diagnosticHttp(InternalServiceTokenProvider tokens) {
+        // Qdrant probes cover all configured shards; KMS wrap/unwrap each have
+        // their own 30-second subprocess bound. No retry after an unknown result.
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(3));
+        factory.setReadTimeout(Duration.ofSeconds(75));
+        var client = new RestTemplate(factory);
+        client.getInterceptors().add((request, body, execution) -> {
+            if (pythonAgentUrl != null && sameOrigin(request.getURI(), java.net.URI.create(pythonAgentUrl)))
+                request.getHeaders().set("X-Internal-Service-Token", tokens.current());
+            request.getHeaders().setContentLength(body.length);
+            return execution.execute(request, body);
+        });
+        return client;
+    }
 }

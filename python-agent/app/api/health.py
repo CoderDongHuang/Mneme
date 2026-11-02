@@ -79,3 +79,11 @@ async def config_status() -> dict:
 @router.post("/health/providers/check")
 async def provider_check() -> dict:
     return await check_providers()
+
+
+@router.post("/health/storage/check")
+def storage_check() -> dict:
+    # Protected by the normal internal-service token middleware. A synchronous
+    # route runs in FastAPI's thread pool, not on the ASGI event loop.
+    from app.core.storage_diagnostics import check_storage
+    return check_storage()

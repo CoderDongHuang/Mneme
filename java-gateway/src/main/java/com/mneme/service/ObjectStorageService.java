@@ -29,6 +29,7 @@ public class ObjectStorageService {
     private final Path cacheRoot;
     private final String bucket;
     private final MinioClient minio;
+    private final MinioClient diagnosticMinio;
 
     public ObjectStorageService(
         @Value("${mneme.storage-backend:local}") String backend,
@@ -47,9 +48,14 @@ public class ObjectStorageService {
                 throw new IllegalStateException("S3 对象存储需要 endpoint、access key 和 secret key");
             }
             this.minio = MinioClient.builder().endpoint(endpoint).credentials(accessKey, secretKey).build();
+            this.diagnosticMinio = MinioClient.builder().endpoint(endpoint).credentials(accessKey, secretKey)
+                .httpClient(new okhttp3.OkHttpClient.Builder().connectTimeout(java.time.Duration.ofSeconds(3))
+                    .readTimeout(java.time.Duration.ofSeconds(5)).writeTimeout(java.time.Duration.ofSeconds(5))
+                    .callTimeout(java.time.Duration.ofSeconds(8)).build()).build();
             ensureBucket();
         } else if ("local".equals(this.backend)) {
             this.minio = null;
+            this.diagnosticMinio = null;
         } else {
             throw new IllegalStateException("不支持的存储后端: " + backend);
         }
@@ -115,6 +121,60 @@ public class ObjectStorageService {
     }
 
     public String backend() { return backend; }
+
+    public java.util.Map<String, Object> diagnose() {
+        var result = new DiagnosticResult(true);
+        byte[] payload = "Mneme synthetic storage diagnostic".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String key = ".mneme-diagnostics/" + java.util.UUID.randomUUID();
+        Path temporary = null;
+        boolean attempted = false, connected = false;
+        try {
+            if (diagnosticMinio == null) {
+                result.stage("connection", "not_applicable");
+                // Uses the configured file volume, not the host's unrelated temp directory.
+                checkedLocal(root.toString(), false);
+                Files.createDirectories(root);
+                temporary = Files.createTempFile(checkedLocal(root.toString(), false), ".mneme-diagnostic-", ".tmp");
+                attempted = true;
+                Files.write(temporary, payload);
+                if (!java.util.Arrays.equals(payload, Files.readAllBytes(temporary))) throw new IllegalStateException();
+            } else {
+                if (!diagnosticMinio.bucketExists(BucketExistsArgs.builder().bucket(bucket).build())) throw new IllegalStateException();
+                connected = true;
+                result.stage("connection", "passed");
+                attempted = true;
+                diagnosticMinio.putObject(PutObjectArgs.builder().bucket(bucket).object(key)
+                    .stream(new java.io.ByteArrayInputStream(payload), payload.length, -1).build());
+                try (var input = diagnosticMinio.getObject(GetObjectArgs.builder().bucket(bucket).object(key).build())) {
+                    if (!java.util.Arrays.equals(payload, input.readNBytes(payload.length + 1))) throw new IllegalStateException();
+                }
+            }
+            result.stage("operation", "passed").code("OK");
+        } catch (Exception ignored) {
+            boolean connectionFailure = diagnosticMinio != null && !connected;
+            result.stage(connectionFailure ? "connection" : "operation", "failed")
+                .code(connectionFailure ? "CONNECTION_FAILED" : "OPERATION_FAILED");
+        } finally {
+            if (attempted) {
+                try {
+                    if (diagnosticMinio == null) {
+                        Files.deleteIfExists(temporary);
+                        if (Files.exists(temporary, LinkOption.NOFOLLOW_LINKS)) throw new IllegalStateException();
+                    } else {
+                        diagnosticMinio.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(key).build());
+                        try {
+                            diagnosticMinio.statObject(StatObjectArgs.builder().bucket(bucket).object(key).build());
+                            throw new IllegalStateException();
+                        } catch (ErrorResponseException missing) {
+                            if (!"NoSuchKey".equals(missing.errorResponse().code())) throw missing;
+                        }
+                    }
+                    result.stage("cleanup", "passed");
+                } catch (Exception ignored) { result.stage("cleanup", "failed").code("CLEANUP_FAILED"); }
+            }
+        }
+        return result.finish();
+    }
 
     public long countLocation(String location) throws Exception {
         if (!location.startsWith("s3://")) return countPath(checkedLocal(location, false));

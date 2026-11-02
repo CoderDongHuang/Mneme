@@ -47,6 +47,23 @@ class ObjectStorageReadbackTest {
     @TempDir Path root;
     String endpoint() { return "http://" + S3.getHost() + ":" + S3.getMappedPort(9000); }
     ObjectStorageService storage() { return new ObjectStorageService("s3", root.toString(), endpoint(), ACCESS, SECRET, "mneme"); }
+    @Test void diagnosticUploadsDownloadsAndIndependentlyVerifiesCleanup() throws Exception {
+        var storage = storage();
+        assertThat(storage.diagnose()).containsEntry("connection", "passed").containsEntry("operation", "passed")
+            .containsEntry("cleanup", "passed").containsEntry("code", "OK");
+        var client = MinioClient.builder().endpoint(endpoint()).credentials(ACCESS, SECRET).build();
+        assertThat(client.listObjects(io.minio.ListObjectsArgs.builder().bucket("mneme").prefix(".mneme-diagnostics/").recursive(true).build()).iterator().hasNext()).isFalse();
+        var forbidden = MinioClient.builder().endpoint(endpoint()).credentials(ACCESS, "wrong-test-secret").build();
+        ReflectionTestUtils.setField(storage, "diagnosticMinio", forbidden);
+        assertThat(storage.diagnose()).containsEntry("connection", "failed").containsEntry("operation", "not_run");
+    }
+
+    @Test void localDiagnosticUsesConfiguredVolumeAndLeavesNoFiles() throws Exception {
+        var storage = new ObjectStorageService("local", root.toString(), "", "", "", "mneme");
+        Files.writeString(root.resolve("keep.txt"), "retained original");
+        assertThat(storage.diagnose()).containsEntry("connection", "not_applicable").containsEntry("operation", "passed").containsEntry("cleanup", "passed");
+        try (var files = Files.list(root)) { assertThat(files.map(path -> path.getFileName().toString()).toList()).containsExactly("keep.txt"); }
+    }
     String put(ObjectStorageService storage, long user, long kb, String name) throws Exception {
         var path = root.resolve(name); Files.writeString(path, "isolated QA object");
         return storage.persist(path, user, kb, name);
