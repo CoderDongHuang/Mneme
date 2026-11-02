@@ -71,7 +71,14 @@ def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dic
     short_term_memory.add_message(request.session_id, assistant_message)
     session_store.increment_message_count(request.user_id, request.session_id)
 
-    reflection_scheduler.record_session(request.user_id)
+    memory_input = state.get("memory_input") or {}
+    delivery_id = memory_input.get("delivery_id") or request.request_id
+    if not delivery_id:
+        # Retain an identity even for a legacy direct completion retried with
+        # the same state. Never derive it from mutable answer/message content.
+        delivery_id = uuid.uuid4().hex
+        state["memory_input"] = {**memory_input, "delivery_id": delivery_id}
+    reflection_scheduler.record_session(request.user_id, request.session_id, delivery_id)
     reflection_scheduler.check_and_trigger(request.user_id)
 
     session_summary = None

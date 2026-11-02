@@ -91,3 +91,27 @@ def test_legacy_call_without_delivery_id_never_coalesces_unrelated_candidates():
     entries = [{"category": "preference", "content": "diagrams", "confidence": .7}]
     first = apply_distilled_entries("owner", entries)
     assert first[0]["temp_id"] != apply_distilled_entries("owner", entries)[0]["temp_id"]
+
+
+@pytest.mark.parametrize("request_id,captured_id", [("request-turn", "captured-turn"), ("request-turn", ""), ("", "")])
+def test_completion_passes_stable_turn_identity_to_reflection(monkeypatch, request_id, captured_id):
+    monkeypatch.setattr(runtime, "require_cloud_processing", lambda _: None)
+    monkeypatch.setattr(runtime, "memory_write_node", lambda _: {})
+    monkeypatch.setattr(runtime, "working_memory", SimpleNamespace(add_message=lambda *args: None))
+    monkeypatch.setattr(runtime, "short_term_memory", SimpleNamespace(
+        add_message=lambda *args: None, should_summarize=lambda _: False))
+    monkeypatch.setattr(runtime, "session_store", SimpleNamespace(increment_message_count=lambda *args: None))
+    monkeypatch.setattr(runtime.agent_trace_store, "record", lambda *args, **kw: None)
+    record = Mock()
+    monkeypatch.setattr(runtime, "reflection_scheduler", SimpleNamespace(
+        record_session=record, check_and_trigger=lambda _: None))
+    request = ChatRequest(user_id="owner", session_id="session", request_id=request_id, message="question")
+    captured = {"memory_input": {"delivery_id": captured_id}} if captured_id else {}
+    runtime.complete_conversation(request, captured, "answer")
+    runtime.complete_conversation(request, captured, "answer")
+    first, second = [call.args for call in record.call_args_list]
+    assert first == second
+    assert first[:2] == ("owner", "session")
+    expected_id = captured_id or request_id or captured["memory_input"]["delivery_id"]
+    assert first[2] == expected_id
+    assert first[2]

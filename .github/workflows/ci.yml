@@ -293,6 +293,8 @@ jobs:
         run: $COMPOSE exec -T python-agent python scripts/check_ingestion_lease.py
       - name: Verify reflection owner renewal and stale completion rejection
         run: $COMPOSE exec -T python-agent python scripts/check_reflection_lease.py
+      - name: Verify atomic reflection delivery replay and counter retention
+        run: $COMPOSE exec -T python-agent python scripts/check_reflection_delivery.py
       - name: Verify durable generation fencing with shared MySQL
         run: $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_index_generation.py
       - name: Verify Redis authentication and AOF pending-task recovery

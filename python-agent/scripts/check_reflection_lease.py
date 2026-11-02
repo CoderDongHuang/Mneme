@@ -29,6 +29,8 @@ def check():
     module.settings = replace(module.settings, memory_reflection_every_sessions=1)
     keys = [first._counter_key(user), first._lease_key(user),
             first._lease_state_key(user), first._job_key(user)]
+    keys.extend(first._delivery_key(user, "qa-session", turn)
+                for turn in ("initial", "during", "legacy-1", "legacy-2"))
     entries, workers = [], []
     release = threading.Event()
     # Make the real Redis TTL short for the timing regression; production still
@@ -47,7 +49,7 @@ def check():
         return identifier, values
 
     try:
-        assert first.record_session(user) == 1
+        assert first.record_session(user, "qa-session", "initial") == 1
         assert first.check_and_trigger(user)
         assert not second.check_and_trigger(user)
         identifier, values = entry()
@@ -70,7 +72,7 @@ def check():
         assert client.get(first._lease_key(user)) == owner
         second._run_queued_reflection(identifier, values)
         assert calls == [user], "A live owner must never share execution"
-        assert first.record_session(user) == 2
+        assert first.record_session(user, "qa-session", "during") == 2
         release.set()
         worker.join(5)
         assert not worker.is_alive()
@@ -97,8 +99,8 @@ def check():
         assert not client.exists(first._counter_key(user), first._job_key(user))
 
         # Legacy duplicate queue entries are coalesced without losing counts.
-        first.record_session(user)
-        first.record_session(user)
+        first.record_session(user, "qa-session", "legacy-1")
+        first.record_session(user, "qa-session", "legacy-2")
         legacy = [client.xadd(module._QUEUE_KEY, {"user_id": user, "claimed_count": "1"})
                   for _ in range(2)]
         entries.extend(legacy)

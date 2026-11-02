@@ -434,3 +434,15 @@ PR #80 最终结果：最新提交 9a9d1b58b65ef716699597bb0453acc0779befa3 全�
 过程：正式镜像构建因 PyPI 连接超时未完成，保留失败日志；核对当前基础镜像锁文件与仓库规范换行 SHA256 一致后，仅复制本次源码形成实际本地验收镜像，没有改动依赖锁或取消哈希校验。CI 继续使用正式 Dockerfile 全新构建。证据 artifacts/reflection-ownership-{targeted,python-final,redis-isolated-final,redis-live,docker-build-final,deploy,real,readback}.log 与 reflection-ownership-browser；协议、停全部旧工作器升级及匹配恢复要求见 docs/REFLECTION_TASK_OWNERSHIP.md。
 
 边界：模型调用不能由 Redis 自动取消，旧执行可能短暂并行但不能完成提交；当前反思仅只读并返回分析，后续新增持久化副作用必须延伸存储 fence。完整 Python 记忆流水线解耦、会话计数投递幂等、账号删除后的反思清理与防复活仍需后续独立修复，不宣称全部完成。无新增依赖或数据库迁移。独立 PR 的最终 CI 与合并结果后续补记。
+
+## 2026-11-02：P1-06 / MN-007 反思计数原子投递去重
+
+对照要求：再次回查原 P1-06 的独立记忆生命周期、失败重试及实际验收，以及 P2-01 所有权原则。本项只修复同一回答重试时重复增加反思计数，不能据此盲重试整个 complete，也不将完整后台记忆解耦提前关闭。
+
+实现：complete 使用模型调用前固定的 delivery_id，按用户、会话和回答身份去重；Redis Lua 原子检查标记、递增计数、修复旧无 TTL 计数并保存七天标记。消费后重放不重新创建计数，已有计数和标记的到期时间不被重试延长；跨用户、会话或回答保持隔离。只提供一半身份立即拒绝，旧双缺参调用仍计为不同事件；旧直接 complete 在同一 state 固定随机身份。身份键不含正文或原始会话/请求 ID。真实夹具增加正式 complete 后对应投递标记和 TTL 读回，不以单元模拟替代真实调用。
+
+验证：Python 3.11 Ruff 及全量 833 项通过，七条上游弃用警告；定向 25 项、前端 Lint 通过。有/无密码两组真实隔离 Redis 通过 AUTH、AOF fsync、SIGKILL、pending 恢复与消费后重放；八线程跨两实例 32 次同身份投递只计一次，TTL 修复与保留检查通过。实际部署内独立检查再次全部通过。
+
+保留原容器、配置及停写 SQL 快照后部署真实 http://127.0.0.1:3000，桌面/手机两项全部通过，无整项重试：回答保留、候选入库故障、Gateway 重启、网页手动重试、唯一候选、真实向量确认、刷新及同请求重放均通过，正式 complete 的反思投递标记存在且 TTL 有效。六张截图已逐一复核，无页面横向溢出。独立读回 QA 用户及触发器为零、205 个删除任务均 completed、临时夹具及两类反思 QA 键/Stream 为零；五个部署源码规范换行后哈希匹配，Gateway/Agent 健康均 200。
+
+本地镜像沿用依赖未改且锁文件哈希一致的已验收基础镜像，仅复制本次源码；正式 CI 继续使用标准 Dockerfile 全构建。证据 artifacts/reflection-delivery-{targeted,python-full,frontend-lint,redis-isolated,redis-live,build,deploy,real,readback}.log 与 reflection-delivery-browser。范围、七天去重窗口和匹配快照回退见 docs/REFLECTION_DELIVERY_IDEMPOTENCY.md；无新依赖、配置或迁移。没有 request_id 的新 HTTP 请求无法跨请求去重，账号删除反思清理与在途防复活仍待独立修复。独立 PR 最终 CI 与合并结果继续补记。

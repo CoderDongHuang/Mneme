@@ -2,6 +2,8 @@ import threading
 import uuid
 import socket
 import time
+import hashlib
+import json
 
 import redis
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -30,6 +32,17 @@ _QUEUE_GROUP = "mneme-reflection-workers"
 _QUEUE_CONSUMER_PREFIX = "worker-"
 _QUEUE_BLOCK_MS = 1000
 _QUEUE_SOCKET_TIMEOUT_SECONDS = 2
+_DELIVERY_PREFIX = "mneme:reflection:delivery:"
+_COUNTER_TTL_SECONDS = 7 * 24 * 60 * 60
+_RECORD_SCRIPT = """
+if redis.call('exists', KEYS[2]) == 1 then
+  return tonumber(redis.call('get', KEYS[1]) or '0')
+end
+local count = redis.call('incr', KEYS[1])
+if redis.call('ttl', KEYS[1]) < 0 then redis.call('expire', KEYS[1], ARGV[1]) end
+redis.call('set', KEYS[2], '1', 'EX', ARGV[1])
+return count
+"""
 _MIGRATE_SCRIPT = """
 if redis.call('exists', KEYS[2]) == 1 then return 0 end
 if #redis.call('xrange', KEYS[4], ARGV[2], ARGV[2]) == 0 then return 0 end
@@ -113,6 +126,10 @@ class ReflectionScheduler:
     def _job_key(self, user_id: str) -> str:
         return f"{_JOB_PREFIX}{user_id}"
 
+    def _delivery_key(self, user_id: str, session_id: str, delivery_id: str) -> str:
+        scope = json.dumps([session_id, delivery_id], ensure_ascii=True, separators=(",", ":"))
+        return f"{_DELIVERY_PREFIX}{user_id}:{hashlib.sha256(scope.encode()).hexdigest()}"
+
     def _lease_seconds(self) -> int:
         return max(60, settings.memory_reflection_lease_seconds)
 
@@ -144,12 +161,21 @@ class ReflectionScheduler:
             REFLECTION_LEASE_TAKEOVERS.inc()
         return True
 
-    def record_session(self, user_id: str) -> int:
-        """Reliable task state must never silently fall back to process memory."""
+    def record_session(self, user_id: str, session_id: str = "", delivery_id: str = "") -> int:
+        """Count a completed turn once within the seven-day delivery window.
+
+        Legacy callers without either identity count distinct events. Production
+        completion supplies both identities captured before model generation.
+        """
+        if bool(session_id) != bool(delivery_id):
+            raise ValueError("Both session and delivery identity are required")
+        if not delivery_id:
+            session_id, delivery_id = "legacy", uuid.uuid4().hex
         try:
-            count = int(self._redis.incr(self._counter_key(user_id)))
-            if count == 1:
-                self._redis.expire(self._counter_key(user_id), 7 * 24 * 60 * 60)
+            count = int(self._redis.eval(
+                _RECORD_SCRIPT, 2, self._counter_key(user_id),
+                self._delivery_key(user_id, session_id, delivery_id), _COUNTER_TTL_SECONDS,
+            ))
             self._redis_available = True
             return count
         except redis.RedisError:

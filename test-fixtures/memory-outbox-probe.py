@@ -9,6 +9,7 @@ from app.memory.short_term_memory import short_term_memory as _qa_short
 from app.models.chat import Message as _QaHistoryMessage
 from app.memory import distillation as _qa_distillation
 from app.agents.nodes import memory_write_node as _qa_memory_write
+from app.memory.reflection_scheduler import reflection_scheduler as _qa_reflection
 
 _qa_context = _qa_contextvars.ContextVar("memory_outbox_probe", default=False)
 _qa_prepare = prepare_conversation  # noqa: F821 -- injected module globals
@@ -43,8 +44,12 @@ def complete_conversation(request, state, answer):
     assert result["pending_memories"] == repeated["pending_memories"]
     assert len(state["memory_input"]["history"]) == 3
     assert any(m.content == "Later turn must not be distilled" for m in _qa_short.get_history(request.session_id))
+    marker = _qa_reflection._delivery_key(request.user_id, request.session_id, state["memory_input"]["delivery_id"])
+    assert _qa_reflection._redis.exists(marker) == 1
+    assert _qa_reflection._redis.ttl(marker) > 0
     (_qa_root / "snapshot-check.json").write_text(_qa_json.dumps({  # noqa: F821
         "snapshot_frozen": True, "candidate_stable": True, "actual_completion": True,
+        "reflection_delivery_recorded": True,
     }))
     return result
 
