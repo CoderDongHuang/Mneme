@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.knowledge.generations import generation_store, StaleGeneration
 from app.storage.mysql import connection as mysql_connection
 from app.storage.mysql import require_tables
 
@@ -15,7 +16,7 @@ class MemoryVersionStore:
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, timeout=60)
         connection.row_factory = sqlite3.Row
         return connection
 
@@ -53,6 +54,15 @@ class MemoryVersionStore:
         self.prune(settings.memory_version_retention_days)
 
     def snapshot(self, memory: dict[str, Any] | None, action: str) -> int | None:
+        if not memory or not memory.get("id") or not memory.get("user_id"):
+            return None
+        with generation_store.locked(str(memory["user_id"])) as state:
+            if state.get("deleted"):
+                raise StaleGeneration("账号已删除，拒绝保存记忆版本")
+            return self._snapshot_locked(memory, action)
+
+    def _snapshot_locked(self, memory: dict[str, Any] | None, action: str) -> int | None:
+        """Caller must hold the active owner's generation lock through commit."""
         if not memory:
             return None
         memory_id = str(memory.get("id", ""))
@@ -76,12 +86,19 @@ class MemoryVersionStore:
                     cursor.execute("SELECT COALESCE(MAX(version), 0) FROM memory_version WHERE memory_id=%s", (memory_id,))
                     version = int(cursor.fetchone()[0]) + 1
                     cursor.execute("INSERT INTO memory_version(memory_id,user_id,version,action,content,metadata_json) VALUES(%s,%s,%s,%s,%s,%s)", (memory_id, user_id, version, action, str(memory.get("content", "")), json.dumps(metadata, ensure_ascii=False, sort_keys=True)))
+                    # Named locks are connection scoped, not transaction scoped.
+                    # Publish the new MAX before allowing another writer in.
+                    connection.commit()
                     return version
+                except BaseException:
+                    connection.rollback()
+                    raise
                 finally:
                     cursor.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
                     cursor.fetchone()
                     cursor.close()
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             current = connection.execute(
                 "SELECT COALESCE(MAX(version), 0) FROM memory_version WHERE memory_id=?",
                 (memory_id,),
@@ -198,6 +215,25 @@ class MemoryVersionStore:
             return cursor.rowcount
 
     def delete_user(self, user_id: str) -> int:
+        with generation_store.locked(user_id):
+            count = self._delete_user(user_id)
+            if self.count_user(user_id) != 0:
+                raise RuntimeError("记忆版本删除后仍有残留")
+            return count
+
+    def count_user(self, user_id: str) -> int:
+        if self.shared:
+            with mysql_connection() as connection:
+                cursor = connection.cursor()
+                try:
+                    cursor.execute("SELECT COUNT(*) FROM memory_version WHERE user_id=%s", (str(user_id),))
+                    return int(cursor.fetchone()[0])
+                finally:
+                    cursor.close()
+        with self._connect() as connection:
+            return int(connection.execute("SELECT COUNT(*) FROM memory_version WHERE user_id=?", (str(user_id),)).fetchone()[0])
+
+    def _delete_user(self, user_id: str) -> int:
         if self.shared:
             with mysql_connection() as connection:
                 cursor = connection.cursor()

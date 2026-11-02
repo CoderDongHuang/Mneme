@@ -170,6 +170,12 @@ class StrictConnection:
     def cursor(self):
         return StrictCursor()
 
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
 
 @contextmanager
 def strict_connection():
@@ -187,3 +193,41 @@ def test_named_lock_results_are_consumed_before_cursor_close(monkeypatch):
     ToolRegistry()._consume_quota("knowledge.retrieve", "u1", 1)
     store = MemoryVersionStore.__new__(MemoryVersionStore)
     assert store.snapshot({"id": "m1", "user_id": "u1", "content": "fact"}, "create") == 1
+
+
+@pytest.mark.parametrize('failed', [False, True])
+def test_memory_version_named_lock_held_until_commit_or_rollback(monkeypatch, failed):
+    events = []
+
+    class Cursor(StrictCursor):
+        def execute(self, statement, parameters=()):
+            if 'RELEASE_LOCK' in statement:
+                events.append('release')
+            super().execute(statement, parameters)
+
+    class Connection(StrictConnection):
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            events.append('commit')
+            if failed:
+                raise OSError('commit failed')
+
+        def rollback(self):
+            events.append('rollback')
+
+    @contextmanager
+    def opened():
+        yield Connection()
+
+    monkeypatch.setattr(version_store_module, 'mysql_connection', opened)
+    monkeypatch.setattr(version_store_module, 'settings', SimpleNamespace(auxiliary_store_backend='mysql'))
+    store = MemoryVersionStore.__new__(MemoryVersionStore)
+    if failed:
+        with pytest.raises(OSError):
+            store.snapshot({'id': 'memory', 'user_id': 'user', 'content': 'original'}, 'edit')
+        assert events == ['commit', 'rollback', 'release']
+    else:
+        assert store.snapshot({'id': 'memory', 'user_id': 'user', 'content': 'original'}, 'edit') == 1
+        assert events == ['commit', 'release']
