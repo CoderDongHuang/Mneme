@@ -1,6 +1,8 @@
 # Build from the repository root, including the canonical license only.
 **
 !LICENSE
+!contracts/
+!contracts/**
 !frontend/
 !frontend/**
 frontend/node_modules

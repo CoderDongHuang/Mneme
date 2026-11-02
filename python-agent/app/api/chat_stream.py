@@ -13,6 +13,7 @@ from app.core.logging import setup_logger
 from app.knowledge.citations import select_citations, NO_EVIDENCE_ANSWER
 from app.knowledge.grounding import verify_evidence_answer
 from app.models.chat import ChatRequest
+from app.models.chat_stream import validate_event
 from app.knowledge.source_payload import citation_sources
 from app.utils.llm import llm
 from app.utils.async_stream import closing_async_iterator
@@ -52,6 +53,7 @@ class ClosingStreamingResponse(StreamingResponse):
 
 
 def _event(event: str, payload: dict) -> str:
+    validate_event(event, payload, agent=True)
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 

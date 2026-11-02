@@ -24,6 +24,7 @@ function answerFailure(message) {
     CLIENT_DISCONNECTED: '连接已中断，请重试', MODEL_TIMEOUT: '模型响应超时，请重试',
     MODEL_ERROR: '模型生成失败，请重试', GROUNDING_FAILED: '引用核验失败，请重试',
     MEMORY_FAILED: '记忆处理失败，请重试',
+    INVALID_CHAT_EVENT: '回答流格式异常，请重试',
   }
   return message.error || t(Object.hasOwn(labels, message.errorCode) ? labels[message.errorCode] : '回答未完成，请重试')
 }

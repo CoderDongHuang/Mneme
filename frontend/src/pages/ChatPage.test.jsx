@@ -190,6 +190,7 @@ test('server stopped event has the same confirmed stopped terminal state', async
 test.each([
   ['CLIENT_DISCONNECTED', '连接已中断'], ['MODEL_TIMEOUT', '模型响应超时'],
   ['GROUNDING_FAILED', '引用核验失败'], ['MODEL_ERROR', '模型生成失败'],
+  ['INVALID_CHAT_EVENT', '回答流格式异常'],
 ])('reloaded %s history retains its failure reason and partial answer', async (errorCode, label) => {
   endpoints.sessionMessages.mockResolvedValue([
     { id: 1, role: 'user', content: '问题' },
