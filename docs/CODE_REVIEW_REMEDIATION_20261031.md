@@ -637,3 +637,10 @@ PR #92 最终结果：最新提交 f9fbafb3149f5f4e0255d6811aac4b2650f9870f 全�
 十四张安全截图逐一复核，外层页面无横向溢出，手机诊断表可局部横向滚动。独立 SQL 读回 QA 用户、诊断表行零，413 个账号删除任务全部 completed；364 个持久已删除账号的反思回执、会话文件和 scoped Redis 键零，Redis/Qdrant/本地文件诊断资源零。三份部署 Python 源码 LF 哈希、Gateway JAR 和 48 份前端资源匹配验收构建，两服务健康均 200。证据 artifacts/infrastructure-{java-full,java-package,python-accepted,python-http-accepted,real-accepted-final,readback-final}.log 以及 infrastructure-browser-accepted-final。
 
 V33 新增专用诊断表，无新依赖；真实页面回归加入完整栈 CI。实际本机采用本地对象存储，S3 路径由真实 RustFS 测试验证；本机主机执行器未配置，明确显示未配置，不冒充备份密钥成功。此检查仅验证当前密钥，不证明历史归档或实际灾备成功。强制结束后的孤立资源治理仍属 P2-12；范围、受限客户端、升级和匹配回退见 docs/INFRASTRUCTURE_BUSINESS_DIAGNOSTICS.md。独立 PR 最终 CI 与合并结果继续补记。
+PR #89 最终结果：提交 b9f6ce9ac89035fa08d95e857976713d56f7ce5b 的九项 CI 全部通过（运行 41430838278），已独立合并，提交 cc5eff3416fe7da5d0bfdb51a32208e4f6757feb。
+
+PR #92 最终结果：提交 f9fbafb3149f5f4e0255d6811aac4b2650f9870f 的九项 CI 全部通过（运行 41477429853），已独立合并，提交 4fea584。保留上述缓存围栏的独立验收记录；该项单独发布，不与下一项混合。
+
+PR #93 首轮 CI（41483589966）在 Redis 停机注入时发现测试仍期待旧检查点。`current_step` 表示最后完成的阶段；缓存围栏使 Redis 断开时必须在记忆清理内失败，因此准确检查点应为 retry / knowledge_cleanup。已改为严格校验这一组合，没有放宽最终四种故障的跨存储零残留断言；新增四组接受/拒绝回归，相关 10 项测试全部通过。修正提交将重新执行完整 CI；通过前不合并。
+
+PR #93 最终结果：精确提交 fa29cbfd9ef52c734453c5a18c6df2f1235ce7ee 的九项 CI 全部通过（运行 41501416743），已独立合并，提交 2bdfdc10d548fc713c61e3b3fd48734284768f04。
