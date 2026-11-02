@@ -305,6 +305,10 @@ jobs:
         run: |
           $COMPOSE exec -T python-agent python scripts/check_trace_privacy_fence.py selftest
           $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_trace_privacy_fence.py selftest
+      - name: Verify atomic session manifests and late-write deletion fences
+        run: |
+          $COMPOSE exec -T python-agent python scripts/check_session_manifest_fence.py
+          $COMPOSE exec -T -e AUXILIARY_STORE_BACKEND=mysql python-agent python scripts/check_session_manifest_fence.py
       - name: Verify Redis authentication and AOF pending-task recovery
         run: python scripts/verify_redis_durability.py
       - name: Verify least privilege deployment roles and startup order
