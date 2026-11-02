@@ -4,6 +4,7 @@ import { t, useI18n } from '../i18n'
 import { useState } from 'react'
 import { Activity, HardDrive, RefreshCw, Server, Timer } from 'lucide-react'
 import { useOperationsData } from '../features/operations/useOperationsData'
+import InfrastructureDiagnostics from '../features/operations/InfrastructureDiagnostics'
 import LoadingState from '../components/LoadingState'
 import AdminAccess from '../components/AdminAccess'
 import CleanupChecklist from '../components/CleanupChecklist'
@@ -70,6 +71,7 @@ function OperationsContent({ token, onLock }) {
       </div>
     </>}
     {auditPanel}
+    <InfrastructureDiagnostics token={token} />
     {data && <>
       <div className="operations-grid">
         <section className="account-card"><h2>{t('邮件服务')}</h2><p role="status">{t(({ configured: '邮件服务已配置', not_configured: '邮件服务未配置' })[data.mail?.status] || '数据不可用，请刷新运维状态重试。')}</p><p>{t('最近投递：')}{t(({ not_attempted: '尚未尝试', smtp_accepted: 'SMTP 已接收', failed: '投递失败' })[data.mail?.last_delivery?.status] || '未知')}</p><p className="muted">{t('配置状态与最近投递仅代表当前网关实例；SMTP 接收不保证邮件已到达收件箱。')}</p></section>

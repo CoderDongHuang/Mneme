@@ -157,6 +157,18 @@ def handler(executor, token):
             try:
                 if self.command == "GET" and self.path == "/site":
                     return self.respond(200, executor.history())
+                if self.command == "POST" and self.path == "/site/keys/check":
+                    try:
+                        from .backup_key_diagnostics import check_keys
+                    except ImportError:
+                        from backup_key_diagnostics import check_keys
+                    if not executor.lock.acquire(blocking=False):
+                        return self.respond(200, {"configuration": "present", "connection": "not_checked",
+                            "operation": "not_run", "cleanup": "not_required", "code": "BUSY"})
+                    try:
+                        return self.respond(200, check_keys())
+                    finally:
+                        executor.lock.release()
                 if self.command == "POST" and self.path in {"/site/preview", "/site/jobs"}:
                     length = int(self.headers.get("Content-Length", "0"))
                     if not 0 < length <= 8192:

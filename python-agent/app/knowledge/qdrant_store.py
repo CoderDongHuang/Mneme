@@ -10,6 +10,7 @@ import math
 import threading
 import uuid
 import os
+from contextlib import contextmanager
 from pathlib import Path
 
 from qdrant_client import QdrantClient, models
@@ -77,6 +78,7 @@ class VectorClient:
         if bool(url) == bool(path):
             raise ValueError("Specify exactly one Qdrant URL or local path")
         self.dimension = dimension
+        self._diagnostic_options = {"url": url, "api_key": api_key or None} if url else None
         if url:
             self.raw = QdrantClient(url=url, api_key=api_key or None, timeout=30)
         else:
@@ -93,6 +95,18 @@ class VectorClient:
             if any((root / "chroma.sqlite3").exists() or any(root.glob("*/chroma.sqlite3")) for root in (legacy, Path("/data/chroma"))):
                 if not self.raw.collection_exists("mneme_legacy_migration_receipt"):
                     raise RuntimeError("检测到旧 Chroma 数据；请先停写并运行 migrate_vector_store.py，不允许静默切换为空索引")
+
+    @contextmanager
+    def diagnostic_client(self):
+        # Do not mutate the business client's timeout or reopen a locked local path.
+        if self._diagnostic_options is None:
+            yield self.raw
+        else:
+            probe = QdrantClient(**self._diagnostic_options, timeout=2, check_compatibility=False)
+            try:
+                yield probe
+            finally:
+                probe.close()
 
     def heartbeat(self):
         self.raw.get_collections()
