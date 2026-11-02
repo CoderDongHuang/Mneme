@@ -1,194 +1,168 @@
+"""Atomic session metadata with durable per-account deletion fencing.
+
+Files remain a single-host cache. Replicas require shared storage as well as
+the MySQL account lock; the lock alone does not replicate local files.
 """
-会话元数据持久化存储
-
-将 session 基本信息（标题、消息数、最后更新时间）持久化到 JSON 文件，
-服务重启后历史对话列表不丢失。
-
-设计：
-- 每个用户的会话元数据存储在一个 JSON 文件中
-- 线程安全：使用 threading.Lock 保护写操作
-- 自动清理：删除过期会话（默认 30 天无活动）
-"""
-
 import json
 import os
+import tempfile
 import threading
+from contextlib import contextmanager
 from datetime import timedelta
-from typing import List, Dict
 
-from app.core.time import utc_now, parse_utc
-from app.core.logging import setup_logger
 from app.core.config import settings
+from app.core.logging import setup_logger
+from app.core.time import utc_now, parse_utc
+from app.knowledge.generations import generation_store, StaleGeneration
 
 logger = setup_logger("session_store")
-
-# 数据文件路径
 DATA_DIR = settings.session_data_path
-SESSION_TTL_DAYS = 30  # 会话保留天数
+SESSION_TTL_DAYS = 30
 
 
 class SessionStore:
-    """会话元数据持久化存储"""
-
     def __init__(self, data_dir: str = DATA_DIR):
         self._data_dir = data_dir
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         os.makedirs(self._data_dir, exist_ok=True)
 
     def _get_file_path(self, user_id: str) -> str:
-        """获取用户会话文件路径"""
         safe_name = user_id.replace("/", "_").replace("\\", "_")
         return os.path.join(self._data_dir, f"{safe_name}.json")
 
-    def _load(self, user_id: str) -> Dict[str, Dict]:
-        """从 JSON 文件加载用户会话数据"""
-        file_path = self._get_file_path(user_id)
-        if not os.path.exists(file_path):
-            return {}
+    def _load(self, user_id):
+        # Corruption is not empty: overwriting could lose the cleanup scope.
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            logger.warning(f"会话文件损坏，重新创建: {file_path}, error={e}")
+            with open(self._get_file_path(user_id), encoding="utf-8") as handle:
+                data = json.load(handle)
+        except FileNotFoundError:
             return {}
+        if not isinstance(data, dict) or any(
+            not isinstance(key, str) or not key or len(key) > 128 or not isinstance(value, dict)
+            for key, value in data.items()
+        ):
+            raise ValueError("会话清理清单损坏，无法确认范围")
+        return data
 
-    def _save(self, user_id: str, data: Dict[str, Dict]):
-        """保存用户会话数据到 JSON 文件"""
-        file_path = self._get_file_path(user_id)
-        with self._lock:
-            try:
-                with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-            except IOError as e:
-                logger.error(f"会话数据写入失败: {file_path}, error={e}")
+    @contextmanager
+    def _changing(self, user_id):
+        # Serialize the complete read/modify/write across store instances.
+        # No model or network call runs under this short account-row lock.
+        with generation_store.locked(user_id) as state, self._lock:
+            if state.get("deleted"):
+                raise StaleGeneration("账号已删除，拒绝写入会话清单")
+            yield
 
-    def register_session(
-        self, user_id: str, session_id: str, title: str = "", message_count: int = 0
-    ):
-        """注册或更新会话。首次注册时自动生成标题。"""
-        data = self._load(user_id)
+    def _save(self, user_id, data):
+        """Compatibility entry point: direct writes also obey the fence."""
+        with self._changing(user_id):
+            self._write(user_id, data)
 
-        now = utc_now().isoformat()
-        if session_id in data:
-            # 更新已有会话
-            existing = data[session_id]
-            existing["message_count"] = (
-                message_count or existing.get("message_count", 0) + 1
-            )
-            existing["last_updated"] = now
-            if title and existing.get("title", "").startswith("新对话"):
-                existing["title"] = title
-        else:
-            # 新建会话
-            data[session_id] = {
-                "user_id": user_id,
-                "title": title or "新对话",
-                "message_count": max(message_count, 1),
-                "created_at": now,
-                "last_updated": now,
-            }
+    def _write(self, user_id, data):
+        """Atomic publication; failed writes preserve the previous manifest."""
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self._data_dir,
+                                             prefix=".session-", suffix=".tmp", delete=False) as handle:
+                temporary = handle.name
+                json.dump(data, handle, ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self._get_file_path(user_id))
+        finally:
+            if temporary is not None and os.path.exists(temporary):
+                os.unlink(temporary)
 
-        self._save(user_id, data)
+    def register_session(self, user_id: str, session_id: str, title: str = "", message_count: int = 0):
+        with self._changing(user_id):
+            data = self._load(user_id)
+            now = utc_now().isoformat()
+            if session_id in data:
+                existing = data[session_id]
+                existing["message_count"] = message_count or existing.get("message_count", 0) + 1
+                existing["last_updated"] = now
+                if title and existing.get("title", "").startswith("新对话"):
+                    existing["title"] = title
+            else:
+                data[session_id] = {
+                    "user_id": user_id, "title": title or "新对话",
+                    "message_count": max(message_count, 1), "created_at": now, "last_updated": now,
+                }
+            self._write(user_id, data)
 
     def update_title(self, user_id: str, session_id: str, title: str):
-        """更新会话标题（如用第一条用户消息做标题）"""
-        data = self._load(user_id)
-        if session_id in data:
-            data[session_id]["title"] = title[:50]
-            data[session_id]["last_updated"] = utc_now().isoformat()
-            self._save(user_id, data)
+        with self._changing(user_id):
+            data = self._load(user_id)
+            if session_id in data:
+                data[session_id]["title"] = title[:50]
+                data[session_id]["last_updated"] = utc_now().isoformat()
+                self._write(user_id, data)
 
     def increment_message_count(self, user_id: str, session_id: str):
-        """消息计数 +1"""
-        data = self._load(user_id)
-        if session_id in data:
-            data[session_id]["message_count"] = (
-                data[session_id].get("message_count", 0) + 1
-            )
-            data[session_id]["last_updated"] = utc_now().isoformat()
-            self._save(user_id, data)
+        with self._changing(user_id):
+            data = self._load(user_id)
+            if session_id in data:
+                data[session_id]["message_count"] = data[session_id].get("message_count", 0) + 1
+                data[session_id]["last_updated"] = utc_now().isoformat()
+                self._write(user_id, data)
 
-    def get_sessions(self, user_id: str) -> List[Dict]:
-        """获取用户所有会话列表（按时间倒序）"""
-        data = self._load(user_id)
+    def get_sessions(self, user_id: str) -> list[dict]:
+        with generation_store.locked(user_id) as state, self._lock:
+            if state.get("deleted"):
+                return []
+            data = self._load(user_id)
+            cutoff = utc_now() - timedelta(days=SESSION_TTL_DAYS)
+            expired = []
+            for sid, info in data.items():
+                try:
+                    if parse_utc(info.get("last_updated", "")) < cutoff:
+                        expired.append(sid)
+                except (ValueError, TypeError):
+                    pass
+            for sid in expired:
+                del data[sid]
+            if expired:
+                self._write(user_id, data)
+            sessions = [{"id": sid, "title": info.get("title", "新对话"),
+                         "message_count": info.get("message_count", 0),
+                         "last_updated": info.get("last_updated", "")} for sid, info in data.items()]
 
-        # 清理过期会话
-        cutoff = utc_now() - timedelta(days=SESSION_TTL_DAYS)
-        expired = []
-        for sid, info in data.items():
-            try:
-                last_updated = parse_utc(info.get("last_updated", ""))
-                if last_updated < cutoff:
-                    expired.append(sid)
-            except (ValueError, TypeError):
-                pass
+            def updated_at(session):
+                try:
+                    return parse_utc(session["last_updated"]).timestamp()
+                except (ValueError, TypeError):
+                    return float("-inf")
 
-        for sid in expired:
-            logger.info(f"清理过期会话: {sid}")
-            del data[sid]
-
-        if expired:
-            self._save(user_id, data)
-
-        sessions = [
-            {
-                "id": sid,
-                "title": info.get("title", "新对话"),
-                "message_count": info.get("message_count", 0),
-                "last_updated": info.get("last_updated", ""),
-            }
-            for sid, info in data.items()
-        ]
-        def updated_at(session):
-            try:
-                return parse_utc(session["last_updated"]).timestamp()
-            except (ValueError, TypeError):
-                return float("-inf")
-        sessions.sort(key=updated_at, reverse=True)
-        return sessions
+            sessions.sort(key=updated_at, reverse=True)
+            return sessions
 
     def delete_session(self, user_id: str, session_id: str):
-        """删除指定会话"""
-        data = self._load(user_id)
-        if session_id in data:
-            del data[session_id]
-            self._save(user_id, data)
-            logger.info(f"会话已删除: {session_id}")
+        with self._changing(user_id):
+            data = self._load(user_id)
+            if session_id in data:
+                del data[session_id]
+                self._write(user_id, data)
 
     def delete_user(self, user_id: str):
         file_path = self._get_file_path(user_id)
-        with self._lock:
+        with generation_store.locked(user_id), self._lock:
             try:
                 if os.path.exists(file_path):
                     os.unlink(file_path)
                 if os.path.lexists(file_path):
                     raise OSError("用户会话文件删除后仍有残留")
             except OSError as error:
-                logger.error("用户会话文件删除失败: %s", error)
+                logger.error("用户会话文件删除失败: %s", type(error).__name__)
                 raise
 
     def cleanup_session_ids(self, user_id: str) -> list[str]:
-        """Read the unpruned manifest strictly: corruption is not an empty list.
-
-        get_sessions is a UI/TTL operation and can discard expired entries.
-        Deletion must enumerate them before any cleanup changes the manifest.
-        """
-        try:
-            with open(self._get_file_path(user_id), "r", encoding="utf-8") as handle:
-                data = json.load(handle)
-        except FileNotFoundError:
-            return []
-        if not isinstance(data, dict) or any(
-            not isinstance(key, str) or not key or len(key) > 128 or not isinstance(value, dict)
-            for key, value in data.items()
-        ):
-            raise ValueError("会话清理清单损坏，无法确认删除范围")
-        return list(data)
+        """Raw strict enumeration, including expired sessions, after tombstone."""
+        with generation_store.locked(user_id), self._lock:
+            return list(self._load(user_id))
 
     def get_session_count(self, user_id: str) -> int:
-        """获取用户会话数量"""
-        return len(self._load(user_id))
+        with generation_store.locked(user_id) as state, self._lock:
+            return 0 if state.get("deleted") else len(self._load(user_id))
 
 
-# 全局单例
 session_store = SessionStore()

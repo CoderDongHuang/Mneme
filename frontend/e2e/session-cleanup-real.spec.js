@@ -69,6 +69,17 @@ assert not scheduler.check_and_trigger(user)
 assert not scheduler._claim_shared(user,'qa-job','late-owner')
 scheduler._run_queued_reflection('1-0',{'user_id':user,'claimed_count':'1'})
 assert not scheduler._complete_shared(user,1,'qa-job','qa-owner','1-0')
+from app.memory.session_store import SessionStore
+from pathlib import Path
+store=SessionStore()
+for operation in (lambda:store.register_session(user,'late'),lambda:store._save(user,{'late':{}}),
+                  lambda:store.update_title(user,'late','late'),lambda:store.increment_message_count(user,'late'),
+                  lambda:store.delete_session(user,'late')):
+    try: operation()
+    except StaleGeneration: pass
+    else: raise AssertionError('Deleted session manifest was mutated')
+assert store.get_sessions(user)==[] and store.get_session_count(user)==0
+assert not Path(store._get_file_path(user)).exists()
 print('late-reflection-rejected')`, entry.account.userId)).toBe('late-reflection-rejected')
     expect(readback(entry)).toEqual({ redis: 0, manifest: [], reflection_keys: 0, reflection_entries: 0, reflection_pending: 0 })
     entry.verified = true
@@ -124,7 +135,7 @@ print(json.dumps(entries))`, account.userId, ...entry.sessions))
     await expect(page.getByRole('button', { name: /打开对话：Session cleanup QA/ })).toHaveCount(2)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('protected-session-history.png'), fullPage: true, animations: 'disabled' })
-    await testInfo.attach('session-cleanup.json', { body: JSON.stringify({ expired_and_missing_manifest: true, redis_readback_zero: true, mysql_readback_zero: true, reflection_keys_stream_and_pending_zero: true, durable_late_reflection_rejected: true, protected_tenant_sessions: 2 }), contentType: 'application/json' })
+    await testInfo.attach('session-cleanup.json', { body: JSON.stringify({ expired_and_missing_manifest: true, redis_readback_zero: true, mysql_readback_zero: true, reflection_keys_stream_and_pending_zero: true, durable_late_reflection_rejected: true, durable_late_manifest_rejected: true, protected_tenant_sessions: 2 }), contentType: 'application/json' })
   } finally {
     for (const entry of accounts) {
       if (!entry.queued) { await api(entry.client, 'delete', '/profile/account'); entry.queued = true }

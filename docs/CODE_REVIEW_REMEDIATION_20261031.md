@@ -528,3 +528,19 @@ PR #85 最终结果：最新提交 7123d49fef04863edb08b12fa364a5071c425442 全�
 十张安全截图逐一复核，无横向溢出。独立 SQL 读回 tracefence 测试用户零、261 个删除任务全部 completed；212 个持久已删除账号的 Trace/策略残留零，合成 manifest 行零，三个部署源码换行规范化哈希一致，Gateway/Agent 健康均 200。首次脚本误限 MySQL 和立即检查后台完成的失败日志保留，修正验收生命周期后完整重跑；没有放宽零残留断言。
 
 证据 artifacts/trace-privacy-{python-accepted,targeted-final,frontend-lint-accepted,live-sqlite,live-mysql,build-accepted,deploy-accepted,real-accepted,readback}.log 与 trace-privacy-browser-accepted。范围、双存储运行、夹具限制、停旧工作器与匹配恢复见 docs/TRACE_PRIVACY_DELETION_FENCE.md。无依赖、配置或数据库迁移，两组存储和实际页面回归均加入整栈 CI。独立 PR 最终 CI 和合并结果继续补记。
+
+PR #86 最终结果：最新提交 5e931522849f0d450af9064b4ab26ff47be92ce5 全部九项 CI 通过（整栈 26 分 02 秒），已独立合并，提交 32fd22dfbbbd2dfdc24d0e55b4d73b353ca0e91a。
+
+PR #87 最终结果：最新提交 76b518d04e9ed7a3f7c8cb1812824f2dbc79a840 全部九项 CI 通过，已独立合并，提交 9bf85aaadd6c733a93304ed79329ff415b8768e5。
+
+## 2026-11-02：P1-05 / MN-006 会话清单原子发布与删除围栏
+
+对照要求：重新回查原 P1-05 的清理范围、故障传播、恢复重试与独立读回。用户持久锁覆盖完整 JSON 读取、修改和发布，修复多实例并发丢注册/计数；账号 tombstone 后拒绝注册、标题、计数、单会话删除及兼容保存，读取不复活。清理仍可枚举 tombstone 前条目并幂等删文件。损坏与 I/O 错误不当空；临时文件 fsync 后原子 replace，失败保留旧内容并清临时文件，unlink 后独立核对。没有新增依赖、迁移或配置。
+
+真实共享 MySQL 八线程测试复现初始化 INSERT IGNORE 与后续 FOR UPDATE 升级死锁，改为保持原状态的排他 no-op upsert，保留已有 tombstone，不重放业务体。首次失败日志保留；修正后 SQLite/MySQL 两组实际 32 次并发注册、32 次计数、发布中删除、五种迟到修改和另一用户隔离全部通过。Python 3.11 Ruff、全量 877 项通过，七条上游弃用警告；前端 Lint 与 diff 检查通过。
+
+保留旧容器、配置，停全部应用写入者后保存匹配 SQL 和 Agent /app/data，再部署实际 http://127.0.0.1:3000。桌面/手机会话清理、Trace/隐私围栏及原隐私页六项全部通过，无整项重试，共 1 分 42 秒；账号任务 completed 后以新进程重放五类元数据修改均拒绝，另一用户网页会话不变。十二张安全截图逐一复核，无横向溢出。
+
+最终独立 SQL 读回测试用户零、279 个删除任务全 completed；230 个持久已删除账号会话文件零，SQLite/MySQL 合成 manifest、合成会话文件和临时文件均零，三个部署文件 LF 规范化哈希一致，Gateway/Agent 健康均 200。双存储脚本和真实回归加入整栈 CI。证据 artifacts/session-manifest-{python-accepted,frontend-lint,live-sqlite-final,live-mysql-final,build-final,deploy-final,real-final,readback}.log 与 session-manifest-browser-final。
+
+范围、单主机/共享目录前提、断电与临时文件留存限制、匹配数据回退见 docs/SESSION_MANIFEST_DELETION_FENCE.md。本项不关闭长期记忆、Redis、短期/工作记忆的迟到写入或整个 MN-006。独立 PR 最终 CI 与合并结果继续补记。

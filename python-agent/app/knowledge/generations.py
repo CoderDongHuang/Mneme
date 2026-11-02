@@ -35,7 +35,12 @@ class GenerationStore:
             with mysql_connection() as connection:
                 cursor = connection.cursor()
                 try:
-                    cursor.execute("INSERT IGNORE INTO knowledge_index_state(user_id,state_json) VALUES(%s,%s)", (str(user_id), "{}"))
+                    # INSERT IGNORE takes a shared duplicate-key lock. Concurrent
+                    # callers then deadlock while upgrading at SELECT FOR UPDATE.
+                    # A no-op upsert takes the exclusive record lock immediately
+                    # and preserves an existing tombstone without replaying work.
+                    cursor.execute("INSERT INTO knowledge_index_state(user_id,state_json) VALUES(%s,%s) "
+                                   "ON DUPLICATE KEY UPDATE state_json=knowledge_index_state.state_json", (str(user_id), "{}"))
                     cursor.execute("SELECT state_json FROM knowledge_index_state WHERE user_id=%s FOR UPDATE", (str(user_id),))
                     state = json.loads(cursor.fetchone()[0])
                     yield state
