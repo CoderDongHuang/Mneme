@@ -69,14 +69,14 @@ class ShortTermMemoryManager:
         self._revisions[key] = session_revision(state, session_id)
 
     def add_message(self, session_id: str, message: Message, *, user_id="default") -> List[Message]:
-        with account_session(user_id) as state, self._lock:
+        with account_session(user_id, session_id=session_id) as state, self._lock:
             history = self._history(session_id, user_id, state)
             history.append(message.model_copy(deep=True))
             self._persist(session_id, user_id, state)
             return self._copy(history)
 
     def get_history(self, session_id: str, *, user_id="default") -> List[Message]:
-        with account_session(user_id) as state, self._lock:
+        with account_session(user_id, session_id=session_id) as state, self._lock:
             return self._copy(self._history(session_id, user_id, state))
 
     def clear(self, session_id: str, *, user_id="default"):
@@ -97,7 +97,7 @@ class ShortTermMemoryManager:
 
     def should_summarize(self, session_id: str, *, user_id="default") -> bool:
         """判断是否需要摘要压缩。"""
-        with account_session(user_id) as state, self._lock:
+        with account_session(user_id, session_id=session_id) as state, self._lock:
             history = self._copy(self._history(session_id, user_id, state))
             last_time = self._last_summary_time.get(cache_key(user_id, session_id))
         if len(history) <= KEEP_RECENT_COUNT:
@@ -122,7 +122,7 @@ class ShortTermMemoryManager:
 
     def summarize(self, session_id: str, *, user_id="default"):
         """执行增量摘要压缩。"""
-        with account_session(user_id) as state, self._lock:
+        with account_session(user_id, session_id=session_id) as state, self._lock:
             history = self._copy(self._history(session_id, user_id, state))
             revision = session_revision(state, session_id)
         if not history or len(history) <= KEEP_RECENT_COUNT:
@@ -179,7 +179,7 @@ class ShortTermMemoryManager:
 
         # The model runs outside all locks. A newer turn, another worker,
         # clear or account deletion invalidates this captured result.
-        with account_session(user_id) as state, self._lock:
+        with account_session(user_id, session_id=session_id) as state, self._lock:
             current = self._history(session_id, user_id, state)
             if session_revision(state, session_id) != revision or current != history:
                 logger.info(memory_log_fields("summarize", "stale", source_session_id=session_id))

@@ -131,6 +131,8 @@ public class ProcessingTaskService {
                 deleteKnowledgeBase(task, lease);
             } else if ("memory_candidates".equals(task.getTaskType())) {
                 storeMemoryCandidates(task, lease);
+            } else if ("session_delete".equals(task.getTaskType())) {
+                deleteSession(task, lease);
             } else {
                 throw new IllegalArgumentException("未知任务类型: " + task.getTaskType());
             }
@@ -156,7 +158,7 @@ public class ProcessingTaskService {
             var messages = users.isEmpty() || !"active".equals(users.get(0).get("status")) ? List.<Map<String, Object>>of()
                 : jdbc.queryForList("""
                     SELECT m.session_id FROM chat_session s JOIN chat_message m ON m.session_id=s.id
-                    WHERE s.user_id=? AND m.id=? AND m.role='assistant' AND m.status='completed' FOR UPDATE
+                    WHERE s.user_id=? AND s.deletion_status='active' AND m.id=? AND m.role='assistant' AND m.status='completed' FOR UPDATE
                     """, task.getUserId(), task.getAggregateId());
             if (messages.isEmpty()) {
                 jdbc.update("UPDATE processing_task SET payload=JSON_ARRAY(),error_code=NULL WHERE id=?", task.getId());
@@ -172,6 +174,48 @@ public class ProcessingTaskService {
                     task.getAggregateId(), candidates);
             } catch (Exception error) { throw new IllegalStateException("候选记忆保存失败", error); }
             jdbc.update("UPDATE processing_task SET payload=JSON_ARRAY() WHERE id=?", task.getId());
+            completeLocked(task, lease);
+            return null;
+        });
+    }
+
+    private void deleteSession(ProcessingTask task, TaskLeaseService.Lease lease) {
+        // No SQL transaction spans network IO. Agent commits a permanent fence
+        // before cache cleanup, so a lost lease or response is safe to replay.
+        var receipt = restTemplate.exchange(pythonAgentUrl + "/api/v1/session/" + task.getAggregateId()
+            + "?user_id=" + task.getUserId(), org.springframework.http.HttpMethod.DELETE, null, Map.class).getBody();
+        if (receipt == null || !Boolean.TRUE.equals(receipt.get("deleted"))
+            || !String.valueOf(task.getAggregateId()).equals(receipt.get("session_id")))
+            throw new IllegalStateException("会话缓存清理未通过核验");
+        lease.write(row -> {
+            jdbc.queryForList("SELECT id FROM user WHERE id=? FOR UPDATE", Long.class, task.getUserId());
+            var sessions = jdbc.queryForList("SELECT deletion_status FROM chat_session WHERE id=? AND user_id=? FOR UPDATE",
+                task.getAggregateId(), task.getUserId());
+            if (!sessions.isEmpty() && !"delete_pending".equals(sessions.get(0).get("deletion_status")))
+                throw new IllegalStateException("会话未进入删除状态");
+            jdbc.update("""
+                DELETE t FROM processing_task t JOIN chat_message m ON m.id=t.aggregate_id
+                JOIN chat_session s ON s.id=m.session_id
+                WHERE t.task_type='memory_candidates' AND t.user_id=? AND s.id=? AND s.user_id=?
+                """, task.getUserId(), task.getAggregateId(), task.getUserId());
+            Long candidates = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM processing_task t JOIN chat_message m ON m.id=t.aggregate_id
+                WHERE t.task_type='memory_candidates' AND t.user_id=? AND m.session_id=?
+                """, Long.class, task.getUserId(), task.getAggregateId());
+            if (candidates == null || candidates != 0) throw new IllegalStateException("会话候选任务仍有残留");
+            jdbc.update("DELETE FROM pending_memory WHERE user_id=? AND session_id=?", task.getUserId(), task.getAggregateId());
+            jdbc.update("DELETE m FROM chat_message m JOIN chat_session s ON s.id=m.session_id WHERE s.id=? AND s.user_id=?",
+                task.getAggregateId(), task.getUserId());
+            jdbc.update("DELETE FROM chat_session WHERE id=? AND user_id=? AND deletion_status='delete_pending'",
+                task.getAggregateId(), task.getUserId());
+            Long remaining = jdbc.queryForObject("SELECT COUNT(*) FROM chat_session WHERE id=? AND user_id=?", Long.class,
+                task.getAggregateId(), task.getUserId());
+            if (remaining == null || remaining != 0) throw new IllegalStateException("会话清理后仍有残留");
+            Long messages = jdbc.queryForObject("SELECT COUNT(*) FROM chat_message WHERE session_id=?", Long.class, task.getAggregateId());
+            Long pending = jdbc.queryForObject("SELECT COUNT(*) FROM pending_memory WHERE user_id=? AND session_id=?", Long.class,
+                task.getUserId(), task.getAggregateId());
+            if (messages == null || messages != 0 || pending == null || pending != 0)
+                throw new IllegalStateException("会话消息或候选记忆仍有残留");
             completeLocked(task, lease);
             return null;
         });
@@ -433,6 +477,7 @@ public class ProcessingTaskService {
     private void retryOrFailLocked(ProcessingTask task, TaskLeaseService.Lease lease, Exception error) {
         // SQL exceptions may embed bound memory text; persist only a fixed diagnosis.
         if ("memory_candidates".equals(task.getTaskType())) error = new IllegalStateException("候选记忆保存失败，请重试任务");
+        if ("session_delete".equals(task.getTaskType())) error = new IllegalStateException("会话清理未完成，请修复服务后重试任务");
         int attempts = (task.getAttemptCount() == null ? 0 : task.getAttemptCount()) + 1;
         int maxAttempts = task.getMaxAttempts() == null ? 3 : task.getMaxAttempts();
         boolean exhausted = attempts >= maxAttempts;

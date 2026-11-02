@@ -42,12 +42,13 @@ public class ChatSessionService {
     public List<ChatSession> listSessions(Long userId) {
         return sessionMapper.selectList(new LambdaQueryWrapper<ChatSession>()
             .eq(ChatSession::getUserId, userId)
+            .eq(ChatSession::getDeletionStatus, "active")
             .orderByDesc(ChatSession::getUpdatedAt));
     }
 
     public ChatSession getOwnedSession(Long userId, Long sessionId) {
         ChatSession session = sessionMapper.selectById(sessionId);
-        if (session == null || !userId.equals(session.getUserId())) {
+        if (session == null || !userId.equals(session.getUserId()) || !"active".equals(session.getDeletionStatus())) {
             throw new IllegalArgumentException("会话不存在");
         }
         return session;
@@ -69,7 +70,7 @@ public class ChatSessionService {
     public ChatMessage appendMessage(
         Long userId, Long sessionId, String requestId, String role, String content, String status
     ) {
-        ChatSession session = getOwnedSession(userId, sessionId);
+        ChatSession session = lockActiveSession(userId, sessionId);
         if (requestId != null) {
             ChatMessage existing = messageMapper.selectOne(new LambdaQueryWrapper<ChatMessage>()
                 .eq(ChatMessage::getSessionId, sessionId)
@@ -94,7 +95,7 @@ public class ChatSessionService {
     @Transactional
     public Exchange prepareExchange(Long userId, Long sessionId, String requestId, String content) {
         List<Long> locked = jdbc.queryForList(
-            "SELECT id FROM chat_session WHERE id=? AND user_id=? FOR UPDATE",
+            "SELECT id FROM chat_session WHERE id=? AND user_id=? AND deletion_status='active' FOR UPDATE",
             Long.class,
             sessionId,
             userId
@@ -162,11 +163,12 @@ public class ChatSessionService {
 
     public record Exchange(ChatMessage userMessage, ChatMessage assistantMessage, boolean completed) { }
 
+    @Transactional
     public ChatSession renameSession(Long userId, Long sessionId, String title) {
         if (title == null || title.isBlank() || title.trim().length() > 120) {
             throw new IllegalArgumentException("标题不能为空，最多 120 个字符");
         }
-        ChatSession session = getOwnedSession(userId, sessionId);
+        ChatSession session = lockActiveSession(userId, sessionId);
         session.setTitle(title.trim());
         sessionMapper.updateById(session);
         return session;
@@ -218,7 +220,7 @@ public class ChatSessionService {
 
     @Transactional
     public String stopAnswer(Long userId, Long sessionId, String requestId, long generation) {
-        if (jdbc.queryForList("SELECT id FROM chat_session WHERE id=? AND user_id=? FOR UPDATE",
+        if (jdbc.queryForList("SELECT id FROM chat_session WHERE id=? AND user_id=? AND deletion_status='active' FOR UPDATE",
             Long.class, sessionId, userId).isEmpty()) throw new IllegalArgumentException("会话不存在");
         var candidates = jdbc.query("SELECT id,answer_generation FROM chat_message"
             + " WHERE session_id=? AND request_id=? AND role='assistant' FOR UPDATE", (row, index) -> {
@@ -239,13 +241,30 @@ public class ChatSessionService {
     }
 
     @Transactional
-    public void deleteSession(Long userId, Long sessionId) {
-        getOwnedSession(userId, sessionId);
-        jdbc.update("""
-            DELETE t FROM processing_task t JOIN chat_message m ON m.id=t.aggregate_id
-            WHERE t.task_type='memory_candidates' AND t.user_id=? AND m.session_id=?
-            """, userId, sessionId);
-        messageMapper.delete(new LambdaQueryWrapper<ChatMessage>().eq(ChatMessage::getSessionId, sessionId));
-        sessionMapper.deleteById(sessionId);
+    public java.util.Map<String, Object> deleteSession(Long userId, Long sessionId) {
+        if (jdbc.queryForList("SELECT id FROM user WHERE id=? AND status='active' FOR UPDATE", Long.class, userId).isEmpty())
+            throw new IllegalArgumentException("账号不可用");
+        // The task is the durable receipt, also after the canonical row is gone.
+        var existing = jdbc.queryForList("SELECT task_id,status FROM processing_task WHERE task_type='session_delete' AND user_id=? AND aggregate_id=?",
+            userId, sessionId);
+        if (!existing.isEmpty()) return deletionReceipt(existing.get(0));
+        if (jdbc.queryForList("SELECT id FROM chat_session WHERE id=? AND user_id=? FOR UPDATE", Long.class, sessionId, userId).isEmpty())
+            throw new IllegalArgumentException("会话不存在");
+        String taskId = "task_" + java.util.UUID.randomUUID().toString().replace("-", "");
+        jdbc.update("UPDATE chat_session SET deletion_status='delete_pending' WHERE id=? AND user_id=?", sessionId, userId);
+        jdbc.update("UPDATE chat_message SET status='stopped',error_code='SESSION_DELETING' WHERE session_id=? AND status='processing'", sessionId);
+        jdbc.update("INSERT INTO processing_task(task_id,task_type,user_id,aggregate_id,idempotency_key,payload) VALUES(?,'session_delete',?,?,?,JSON_OBJECT())",
+            taskId, userId, sessionId, "session-delete:" + sessionId);
+        return deletionReceipt(java.util.Map.of("task_id", taskId, "status", "pending"));
+    }
+
+    private java.util.Map<String, Object> deletionReceipt(java.util.Map<String, Object> task) {
+        return java.util.Map.of("accepted", true, "task_id", task.get("task_id"), "status", task.get("status"));
+    }
+
+    private ChatSession lockActiveSession(Long userId, Long sessionId) {
+        if (jdbc.queryForList("SELECT id FROM chat_session WHERE id=? AND user_id=? AND deletion_status='active' FOR UPDATE",
+            Long.class, sessionId, userId).isEmpty()) throw new IllegalArgumentException("会话不存在");
+        return getOwnedSession(userId, sessionId);
     }
 }

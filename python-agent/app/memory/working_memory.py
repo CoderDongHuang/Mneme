@@ -2,7 +2,7 @@ from typing import List
 from threading import RLock
 from app.models.chat import Message
 from app.core.config import settings
-from app.memory.session_scope import account_session, cache_key
+from app.memory.session_scope import account_session, cache_key, session_deleted
 
 
 class WorkingMemoryManager:
@@ -11,7 +11,7 @@ class WorkingMemoryManager:
         self._lock = RLock()
 
     def add_message(self, session_id: str, message: Message, *, user_id="default") -> List[Message]:
-        with account_session(user_id), self._lock:
+        with account_session(user_id, session_id=session_id), self._lock:
             key = cache_key(user_id, session_id)
             history = self._store.setdefault(key, [])
             history.append(message.model_copy(deep=True))
@@ -21,7 +21,7 @@ class WorkingMemoryManager:
             return [item.model_copy(deep=True) for item in self._store[key]]
 
     def get_messages(self, session_id: str, *, user_id="default") -> List[Message]:
-        with account_session(user_id), self._lock:
+        with account_session(user_id, session_id=session_id), self._lock:
             return [item.model_copy(deep=True) for item in self._store.get(cache_key(user_id, session_id), [])]
 
     def clear(self, session_id: str, *, user_id="default"):
@@ -36,10 +36,11 @@ class WorkingMemoryManager:
 
     def get_all_sessions(self, user_id: str = "default") -> List[dict]:
         """获取所有会话列表（返回摘要信息）"""
-        with account_session(user_id), self._lock:
+        with account_session(user_id) as state, self._lock:
             owned = [(key[1] if isinstance(key, tuple) else key, messages)
                      for key, messages in self._store.items()
-                     if (key[0] if isinstance(key, tuple) else "default") == str(user_id)]
+                     if (key[0] if isinstance(key, tuple) else "default") == str(user_id)
+                     and not session_deleted(state, key[1] if isinstance(key, tuple) else key)]
             return self._session_summaries(owned)
 
     @staticmethod

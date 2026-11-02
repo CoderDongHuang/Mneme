@@ -11,6 +11,7 @@ public class ChatSession {
     private Long id;
     private Long userId;
     private String title;
+    private String deletionStatus = "active";
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -20,6 +21,8 @@ public class ChatSession {
     public void setUserId(Long userId) { this.userId = userId; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
+    public String getDeletionStatus() { return deletionStatus; }
+    public void setDeletionStatus(String deletionStatus) { this.deletionStatus = deletionStatus; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

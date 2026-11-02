@@ -8,6 +8,7 @@ from app.memory.session_store import session_store
 from app.memory.short_term_memory import short_term_memory
 from app.memory.working_memory import working_memory
 from app.memory.session_persistence import session_persistence
+from app.memory.session_scope import tombstone_session
 from app.memory.reflection_scheduler import reflection_scheduler
 from app.agents.trace_store import agent_trace_store
 from langchain_core.messages import HumanMessage
@@ -52,9 +53,12 @@ async def get_session(session_id: str, user_id: str):
 
 @router.delete("/session/{session_id}")
 async def delete_session(session_id: str, user_id: str):
-    session_store.delete_session(user_id, session_id)
+    tombstone_session(user_id, session_id)
     short_term_memory.clear(session_id, user_id=user_id)
     working_memory.clear(session_id, user_id=user_id)
+    if session_persistence.count_sessions([session_id], user_id=user_id) != 0:
+        raise RuntimeError("Redis 会话清理后仍有残留")
+    session_store.purge_deleted_session(user_id, session_id)
     return {"deleted": True, "session_id": session_id}
 
 

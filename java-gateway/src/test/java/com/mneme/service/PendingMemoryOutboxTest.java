@@ -86,7 +86,8 @@ class PendingMemoryOutboxTest {
         return task();
     }
     ProcessingTask task() { return template.getMapper(ProcessingTaskMapper.class).selectOne(
-        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProcessingTask>().eq(ProcessingTask::getUserId, user)); }
+        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProcessingTask>()
+            .eq(ProcessingTask::getUserId, user).eq(ProcessingTask::getTaskType, "memory_candidates")); }
     String answerState() { return jdbc.queryForObject("SELECT status FROM chat_message WHERE id=?", String.class, message); }
     long count() { return jdbc.queryForObject("SELECT COUNT(*) FROM pending_memory WHERE user_id=?", Long.class, user); }
     void execute(ProcessingTask task, TaskLeaseService.Lease lease) { ReflectionTestUtils.invokeMethod(worker(), "execute", task, lease); }
@@ -180,7 +181,9 @@ class PendingMemoryOutboxTest {
         try (var lease = leases.claim(TaskLeaseService.Queue.PROCESSING, task.getId(), false)) {
             sessions.deleteSession(user, session); execute(task, lease);
         }
-        assertThat(task()).isNull(); assertThat(count()).isZero();
+        assertThat(task().getStatus()).isEqualTo("cancelled");
+        assertThat(task().getPayload()).isEqualTo("[]"); assertThat(count()).isZero();
+        assertThat(jdbc.queryForObject("SELECT deletion_status FROM chat_session WHERE id=?", String.class, session)).isEqualTo("delete_pending");
     }
 
     @Test void concurrentSessionDeletionAndWorkerLeaveNoTaskOrLateCandidate() throws Exception {
@@ -191,9 +194,9 @@ class PendingMemoryOutboxTest {
             var write = pool.submit(() -> { start.await(); worker().poll(); return true; });
             start.countDown(); deletion.get(10, TimeUnit.SECONDS); write.get(10, TimeUnit.SECONDS);
         } finally { pool.shutdownNow(); }
-        assertThat(task()).isNull();
-        // Candidates committed before deletion retain their established SET NULL
-        // semantics; candidates cannot be created by a worker after the deletion.
+        assertThat(jdbc.queryForObject("SELECT deletion_status FROM chat_session WHERE id=?", String.class, session)).isEqualTo("delete_pending");
+        // Before cleanup finishes the durable task is retained, but a worker
+        // cannot create candidates after the session has been isolated.
         long before = count(); worker().poll(); assertThat(count()).isEqualTo(before);
     }
 

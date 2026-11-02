@@ -597,3 +597,17 @@ PR #88 最终结果：最新提交 8ba9ba0cab97f38e4304e73e7066835a8cb0b84b 全�
 八张安全截图逐一复核，无横向溢出。独立 SQL 读回 QA 用户、故障触发器、MySQL/SQLite 合成 manifest 均零，363 个账号删除任务全部 completed；314 个持久已删账号的会话文件和 scoped Redis 键零。临时会话文件、注入夹具、反思 QA 键与 Stream 均零，十份部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。证据 artifacts/session-memory-fence-{python-final,eslint,fixture-lint,live-sqlite,live-mysql,build,deploy,real,readback}.log 与 session-memory-fence-browser。
 
 无新依赖、配置或数据库结构迁移，Redis 载荷与用户状态增加版本协议，必须停旧工作器、保留匹配数据和镜像。双存储脚本和真实页面检查加入整栈 CI，范围与回退见 docs/SESSION_MEMORY_ACCOUNT_FENCE.md。工作记忆仍是实例内窗口；本项不关闭 Java 单会话删除清理、缓存/版本历史留存、物理擦除或整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。
+
+## 2026-11-03：P1-05 / MN-006 单会话可靠删除与独立完成回执
+
+对照要求：回查原 P1-05 的跨存储清单、失败传播、独立读回和故障恢复重试，以及 P3-03 的受理不等于完成。Gateway 短事务将归属会话隔离为 delete_pending、停止正在生成的消息，并提交幂等 session_delete 任务；读写和候选保存拒绝被隔离会话。Agent 先独立提交永久会话围栏，再清短期/工作记忆、Redis 消息和 manifest，独立读回为零才返回精确回执。Gateway 严格核验后在有效租约事务中删除候选任务、待确认记忆、消息和会话，独立 COUNT 为零才 complete；故障回滚且保留同一任务供页面重试，不能取消并重新开放会话。
+
+前端同步防重复删除，只在有效 accepted 回执后移除列表条目，明确最终结果在任务中心查看；未知结果提示先核实，不自动重发。任务页覆盖删除失败、隔离和重试，其他会话可用。沿用共享反馈与状态组件，中英文同步。
+
+验证：Python 3.11 Ruff、完整 942 项通过（146.10 秒，七条上游弃用警告）；实际 SQLite/MySQL 两组 Redis/数据库并发脚本通过，包括持久围栏、失败后重试、冷进程拒读、另一账号/会话保护和模型已调用后的迟到摘要拒绝。Java 完整 test/package 218 项通过，无失败、错误或跳过；真实 MySQL 测试覆盖幂等、隔离、错误回执、远程失败、SQL 故障回滚和租约接管。首次测试容器缺触发器权限，按测试需要启用 log-bin-trust-function-creators，未改生产权限。前端最终 31 文件 209 项通过，Lint、构建与包体门禁通过；首轮并发负载下旧测试超时日志保留，没有放宽断言或超时。
+
+停三应用写入者并保存匹配 SQL、Agent data、旧镜像与容器配置后，部署实际 http://127.0.0.1:3000。最终单会话、账号会话清理、候选记忆入库桌面/手机六项全部通过，无整项重试，共 4.0 分钟；正式页面删除、指定 QA 会话的 SQL 故障、任务失败、网页重试、完成回执和独立零残留检查通过。首轮手机测试误点模态框后的 inert 背景，按真实交互改为先关闭详情再刷新；为 finally 单独预留清理预算。首轮遗留两个明确 QA 账号已通过持久账号删除 Saga 补清理，未裸删业务数据。
+
+十六张安全截图逐一复核。最终独立读回 QA 用户、故障触发器、合成 manifest、临时文件、注入夹具、反思 QA 键及 Stream 均零；377 个账号删除任务全 completed，328 个持久已删账号的会话文件及 scoped Redis 键零。十一份部署 Python 源码 LF 规范化哈希、Gateway JAR 和 48 份前端资源与本次构建一致，Gateway/Agent 健康均 200。证据 artifacts/single-session-{fence-python-first,java-full,frontend-tests-final,eslint,frontend-build,live-sqlite,live-mysql,deploy,real-first,real-final,readback}.log、single-session-browser-final。
+
+V32 增加会话隔离字段，无新依赖；双存储脚本及真实页面测试加入整栈 CI。范围和停写匹配恢复见 docs/SINGLE_SESSION_DELETION_FENCE.md。不删除已确认长期记忆、历史 Trace、备份或供应商在途请求；完整蒸馏/反思后台生命周期仍待 P1-06 整改，不提前关闭整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。
