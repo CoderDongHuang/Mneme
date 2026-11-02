@@ -559,3 +559,4 @@ PR #88 首次整栈 CI 暴露测试环境判断错误：CI 已配置执行器地
 二十二张安全截图逐一复核，无横向溢出。最终独立 SQL 读回 QA 用户零、319 个删除任务全 completed；270 个持久已删除账号的 Qdrant 向量、SQLite/MySQL 版本残留零，两后端合成 manifest/版本与合成向量零。四份部署源码 LF 规范化哈希一致，Gateway/Agent 健康均 200。证据 artifacts/memory-fence-{python-final,frontend-lint,live-sqlite,live-mysql,build,deploy,real-final,readback}.log 和 memory-fence-browser-final。
 
 双存储脚本和真实页面回归加入完整栈 CI。供应商在途请求不能撤回；SQLite 单主机、多副本共享 MySQL 与一致 Embedding profile、停旧写入者及匹配数据回退要求见 docs/LONG_TERM_MEMORY_DELETION_FENCE.md。本项不宣称物理擦除，不关闭短期/工作记忆、Redis/内存缓存或整个 MN-006/P2-12。独立 PR 最终 CI 与合并结果继续补记。
+PR #89 最终结果：提交 b9f6ce9ac89035fa08d95e857976713d56f7ce5b 的九项 CI 全部通过（运行 41430838278），已独立合并，提交 cc5eff3416fe7da5d0bfdb51a32208e4f6757feb。
