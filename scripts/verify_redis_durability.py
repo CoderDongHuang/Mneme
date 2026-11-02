@@ -18,6 +18,7 @@ def probe(phase):
         "MEMORY_VERSION_STORE_PATH": "/tmp/redis-qa-memory.sqlite3",
         "AGENT_TRACE_STORE_PATH": "/tmp/redis-qa-traces.sqlite3",
         "SESSION_DATA_PATH": "/tmp/redis-qa-sessions",
+        "INDEX_GENERATION_PATH": "/tmp/redis-qa-generations.sqlite3",
         "MNEME_OFFLINE_EMBEDDINGS": "true", "AUXILIARY_STORE_BACKEND": "sqlite",
     })
     import sys
@@ -55,6 +56,8 @@ def probe(phase):
         check()
         from check_reflection_delivery import check as check_delivery
         check_delivery()
+        from check_reflection_cleanup import check as check_cleanup
+        check_cleanup()
 
 
 def run(*args, env=None, check=True):

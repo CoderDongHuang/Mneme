@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.memory.reflection_scheduler import ReflectionScheduler  # noqa: E402
+from reflection_qa import remove_probe_users  # noqa: E402
 
 
 def check():
@@ -56,6 +57,7 @@ def check():
     finally:
         client.delete(*keys)
         assert not client.exists(*keys)
+        remove_probe_users(user, other)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from app.memory.session_store import session_store
 from app.memory.short_term_memory import short_term_memory
 from app.memory.working_memory import working_memory
 from app.memory.session_persistence import session_persistence
+from app.memory.reflection_scheduler import reflection_scheduler
 from app.agents.trace_store import agent_trace_store
 from langchain_core.messages import HumanMessage
 from app.core.logging import setup_logger
@@ -59,6 +60,7 @@ async def delete_session(session_id: str, user_id: str = "default"):
 
 @router.delete("/admin/user/{user_id}")
 async def delete_user_sessions(user_id: str):
+    reflection = reflection_scheduler.delete_user(user_id)
     session_ids = session_store.cleanup_session_ids(user_id)
     for session_id in session_ids:
         short_term_memory.clear(session_id)
@@ -70,7 +72,7 @@ async def delete_user_sessions(user_id: str):
             raise RuntimeError("Redis 会话清理后仍有残留")
     # Keep the cleanup manifest until all preceding stages have succeeded.
     session_store.delete_user(user_id)
-    return {"status": "deleted", "user_id": user_id, "traces": traces}
+    return {"status": "deleted", "user_id": user_id, "traces": traces, "reflection": reflection}
 
 
 class SessionCacheCleanup(BaseModel):
