@@ -23,7 +23,7 @@ Java 普通响应采用 `{ "code": 200, "message": "success", "data": ... }`。
 - `POST /sessions`：创建会话。
 - `GET /sessions`：按更新时间倒序查询。
 - `GET /sessions/{id}/messages`：读取消息。
-- `DELETE /sessions/{id}`：隔离归属会话并持久化清理任务，返回 `{accepted: true, task_id, status}`，不代表清理已完成。相同请求返回同一任务回执；在任务中心查看 `session_delete` 终态并重试失败。Agent 缓存核验和 SQL 消息、待确认记忆清理全部通过后任务才为 `completed`，详见 [单会话删除](SINGLE_SESSION_DELETION_FENCE.md)。
+- `DELETE /sessions/{id}`：隔离归属会话并持久化清理任务，返回 `{accepted: true, task_id, status}`，不代表清理已完成。相同请求返回同一任务回执；在任务中心查看 `session_delete` 终态并重试失败。Agent 缓存核验和 SQL 消息、待确认记忆清理全部通过后任务才为 `completed`，详见 [单会话删除](DELETION_PROTOCOLS.md#single-session-deletion-fence)。
 
 ## 对话
 
@@ -111,3 +111,25 @@ SSE 事件：
 - `POST /admin/secrets/internal-token/rotate`：管理员先更新 Python 接受令牌，再无停机切换 Java 出站令牌；请求体为 `new_token`。
 
 Python 内部接口 `POST /api/v1/agent/tools/{tool}/approve` 同时要求内部服务令牌与 `X-Admin-Api-Token`，为指定用户签发有时限的高风险工具审批令牌。工具执行仍会独立检查 scope、共享日配额和隔离级别；审批令牌不能替代这些检查。
+
+<a id="citation-contract"></a>
+## 跨端引用契约
+
+`python-agent/app/models/chat.py` 的 Source 为同步与 SSE 引用模型，通过同一 citation_sources 边界生成。运行 `python python-agent/scripts/export_chat_contract.py` 导出 schema、示例和前端类型；加 `--check` 检测漂移，不手改生成文件。Python、Java、浏览器共同消费示例，检查空值、字段完整性和逐字节帧。
+坐标为 [left, top, right, bottom] 四个 0–1 有限数，顺序有效，否则降为 null，保留正文和其他来源字段。兼容旧 CSV 坐标；空片段不改变引用编号。`citation-contract-real.spec.js` 验证真实 PDF、持久引用、重放及旧坐标，故障注入仅限该测试账号。
+
+<a id="stream-contract"></a>
+## SSE 契约维护
+
+规范来自 `python-agent/app/models/chat_stream.py`。用锁定的 Python 3.11 / Pydantic 环境运行 `python python-agent/scripts/export_stream_contract.py`（或 `--check`），生成 contracts schema、Java classpath 副本与前端类型。新增 schema 约束必须先更新各端有界验证器及跨语言用例，不手改生成文件。
+公开事件为 start/meta/token/memory/done/error/stopped；Agent 只发送 meta/token/memory/done/error，执行权和停止回执由 Gateway 产生。成功 done 必须带非负答案长度或 ok:true。引用页码/排名满足 Java 32 位整数范围，generation/长度满足 JS 安全整数；1.0 可作整数，布尔和数字字符串不可以。
+Agent 序列化前、Gateway 累积/保存/转发前、浏览器回调前均验证。未知事件、坏 JSON、无效 payload 不得忽略后又判成功；固定 INVALID_CHAT_EVENT 不带原 payload/解析异常。Gateway 保存合法部分及失败状态并关闭上游；浏览器取消并释放 reader。持久化后 done、代次围栏及主动停止仍独立验证。
+跨端用例 `contracts/chat-stream.cases.json` 必须按原始 JSON 读取，保留自有 __proto__ 键。真实 `chat-contract-real.spec.js` 需要真实 E2E 和显式故障开关，限定合成账号，finally 恢复模块原字节并删账号，日志不得含私密 canary。前端构建上下文需包含 contracts。三端匹配部署，停旧写入者；回退恢复匹配数据、镜像和配置。
+**2026-11-03：PR #99 已合并，桌面和手机真实回归均通过。** 以上仅是 SSE/引用契约；其他 REST 契约、完整记忆解耦和物理留存仍未完成。
+
+<a id="upload-cancellation"></a>
+## 上传取消与回执
+
+每次上传使用独立 UUID 与 AbortController，回执、文档、版本、解析任务在同一事务提交，提交/取消共用用户行锁。取消先取得锁会持久化 cancelled，拒绝迟到上传；提交先完成则返回 submitted 及文档/任务，后续到任务中心取消解析。响应丢失以同一编号核实，核实失败显示待确认，不自动重传。同编号重放返回原文档，主动重试用新编号；账号及原知识库范围不可变。
+切库不改变批次目标；离页或换账号取消等待项，已发请求仍属旧账号，不向新页面回调。刷新后未决项显示待确认，核实可确认提交或建立取消回执。Servlet 清理 multipart 临时文件，复制/事务失败清除部分业务文件；已提交文件不因断网删除。
+回执不含正文/文件名，随账号级联删除；已取消编号不能复用。代理必须允许独立取消请求，旧无编号客户端不支持本协议。验证迟到请求、并发/事务失败、租户隔离、真实限速中止与响应丢失后的读回。

@@ -320,8 +320,11 @@ def deletion_drill(args: argparse.Namespace) -> None:
     compose(args.compose_file, "stop", "redis")
     operation = enqueue_db(args.compose_file, redis_user["user_id"])
     retry = wait_task(args.compose_file, operation, {"retry"}, timeout=150)
-    if retry[1] != "memory_cleanup":
-        raise VerificationError(f"Redis failure occurred at unexpected step: {retry}")
+    # current_step stores the last COMPLETED step, not the failed step.
+    # Memory cleanup now verifies erasure of the legacy Redis revision key;
+    # an outage must stop there, before memory_cleanup is checkpointed.
+    if retry != ("retry", "knowledge_cleanup"):
+        raise VerificationError(f"Redis failure occurred at unexpected checkpoint: {retry}")
     compose(args.compose_file, "start", "redis")
     wait_task(args.compose_file, operation, {"completed"})
     assert_deleted(args.compose_file, redis_user, operation)
