@@ -44,14 +44,6 @@ python scripts/demo.py clean --confirm-delete-demo-data
 
 端口冲突、无 Docker、测试与清理见 [完整离线演示指南](docs/DEMO.md)。需要真实模型时按后文 Docker 自部署配置独立实例；演示索引不能直接冒充云端模型索引。
 
-## 界面预览
-
-![登录界面](docs/images/mneme-auth.png)
-![资料与引用](docs/images/mneme-rag-chat.png)
-![知识库与原文预览](docs/images/mneme-knowledge.png)
-
-截图来自真实本地服务与合成验收资料。登录、个人资料、备份恢复、管理员运维及法律页已统一为暖白与青绿主题；页面对应、实际数据边界与本轮测试见 [统一界面验收记录](docs/UNIFIED_UI_ACCEPTANCE_20261030.md)，此前核心页面的实现记录见 [参考图还原记录](docs/FRONTEND_REFERENCE_20261030.md)。离线演示截图由 `Offline demo clean install` CI 产物保存。
-
 ## 功能概览
 
 - **账号与工作区**：注册、登录、资料库、对话历史、个人资料和学习工作台。
@@ -59,7 +51,7 @@ python scripts/demo.py clean --confirm-delete-demo-data
 - **复杂文档解析**：PDF 版面块排序、中英文 OCR、独立表格提取，可选 Qwen-VL；逐页文本/表格/chunk 预览与 OCR 区域置信度叠加，部分成功和取消重试可追踪。
 - **可追溯回答**：保留文档名、页码、章节、原文、文件 SHA-256 和解析器版本；引用核验后展示，并按 hash 打开对应历史版本。
 - **联合检索筛选**：知识库、指定文档、标签和导入日期共同限定范围；聊天与检索调试均可使用。
-- **回归证据**：[路线图对照](docs/ROADMAP_COVERAGE.md)与[实际运行验收](docs/ACCEPTANCE_2026-10-29.md)，包含已通过和未达标项。
+- **整改进度与证据**：[当前状态](docs/PROJECT_STATUS.md)及[已合并 PR 索引](docs/CODE_REVIEW_REMEDIATION_20261031.md)。历史结果不代替当前待办验收。
 - **Agent 决策链**：LangGraph 编排意图识别、条件检索、个性化推理和记忆回写。
 - **三级记忆**：工作记忆、短期会话记忆、长期偏好/薄弱点/进度记忆。
 - **记忆质量控制**：高置信度自动写入，中置信度由用户确认，低置信度丢弃。
@@ -180,19 +172,16 @@ CI 会分别执行 Python、Java 和前端检查，并使用 mock API 验证关�
 
 ## 文档索引
 
-- [架构设计说明书](架构设计说明书.md)
 - [Docker 自部署指南](docs/SELF_HOSTING.md)
-- [项目设计与实现博客](docs/MNEME_PROJECT_BLOG.md)
 - [接口契约](docs/api.md)
 - [文档解析与 RAG](docs/rag.md)
 - [前端设计](docs/frontend.md)
 - [测试说明](docs/testing.md)
 - [配置获取与参数说明](docs/SELF_HOSTING.md#2-配置与获取方式)
 - [ADR：服务与数据边界](docs/adr/0001-service-and-data-boundaries.md)
-- [项目审计与迭代路线图](docs/PROJECT_AUDIT_AND_ROADMAP.md)
 - [当前项目状态与已知边界](docs/PROJECT_STATUS.md)
 
-`全阶段开发步骤.md` 和 `调试问题记录.md` 是历史过程记录，不代表当前实现状态。
+`调试问题记录.md` 是用户提供的需求材料；当前完成状态以审查清单和项目状态为准。历史开发教程、重复博客和截图已清理，可从 Git 历史追溯。
 
 ## 使用边界
 
@@ -205,7 +194,7 @@ CI 会分别执行 Python、Java 和前端检查，并使用 mock API 验证关�
 
 ## 路线图与贡献
 
-通用工程与 Mneme 第一章见 [路线图落实记录](docs/ROADMAP_COVERAGE.md)；最新全界面、个人模型、独立复习/测验与双层恢复验收见 [界面整改记录](docs/FRONTEND_REVIEW_20261029.md)。升级前阅读 [发布说明](docs/RELEASE_NOTES_2026-10-29.md)、[迁移流程](docs/rollout.md) 和 [宿主机灾备配置](docs/HOST_RECOVERY.md)。优先完善真实资料评测与恢复可靠性；暂不扩张为公网多租户 SaaS。
+当前整改进度与未完成事项见 [项目状态](docs/PROJECT_STATUS.md)，历史变更与验证见 [PR 索引](docs/CODE_REVIEW_REMEDIATION_20261031.md)。升级前阅读 [迁移流程](docs/rollout.md) 和 [宿主机灾备配置](docs/HOST_RECOVERY.md)。优先完善真实资料评测与恢复可靠性；暂不扩张为公网多租户 SaaS。
 
 提交问题请使用 [Bug / 功能建议模板](https://github.com/CoderDongHuang/Mneme/issues/new/choose)，附环境、复现步骤和脱敏日志。提交代码请先阅读 [开发指南](docs/development.md)，为实际行为增加回归，说明迁移及兼容性；MIT 仅覆盖本仓库代码，第三方依赖和模型仍遵守各自许可证与服务条款。
 

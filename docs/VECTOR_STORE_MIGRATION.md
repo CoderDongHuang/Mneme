@@ -55,4 +55,4 @@ Demo 使用同一 Compose 项目及原 `.env`；先停止写入，保留并只�
 
 - [Qdrant 1.20.0 官方发布](https://github.com/qdrant/qdrant/releases/tag/v1.20.0)
 - [Chroma 未合并修复提案 #7602](https://github.com/chroma-core/chroma/pull/7602)：不能视为官方已修复版本。
-- [安全策略](SECURITY_RESPONSE_POLICY.md)与[本轮验收](ACCEPTANCE_2026-10-29.md)。
+- [安全策略](SECURITY_RESPONSE_POLICY.md)与[本轮验收](PROJECT_STATUS.md)。

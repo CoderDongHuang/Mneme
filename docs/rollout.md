@@ -1,6 +1,6 @@
 # 升级、验收与回退
 
-本页适用于当前 Beta 自部署版本。历史 V3 迁移步骤已经过期；数据库以 `java-gateway/src/main/resources/db/migration` 中的 Flyway 迁移为准，当前最高版本为 V24（用户偏好与模型、测验草稿与反馈、会话引用和提交幂等）。
+本页适用于当前 Beta 自部署版本。数据库版本以目标提交中 `java-gateway/src/main/resources/db/migration` 的 Flyway 文件与实际迁移历史为准，不以旧文档中的版本数量判断升级完成。
 
 本次升级前固定 `MODEL_CONFIG_ENCRYPTION_KEY` 并保存到安全的部署密钥中。旧回答没有保存的引用不会补造。管理员网页整站恢复需按 [宿主机执行器](HOST_RECOVERY.md) 配置独立凭证、网络与进程守护；不能将容器内启动脚本当作可停止自身容器的执行器。
 

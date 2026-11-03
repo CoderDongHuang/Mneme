@@ -1,8 +1,8 @@
 # 测试说明
 
-2026-10-30 的布局、原文件名传递和实际页面回归见 [参考图还原记录](FRONTEND_REFERENCE_20261030.md)。`real-stack.spec.js` 验证引用显示原上传文件名，并保存宽屏和窄屏对话截图；`report-stack.spec.js` 按参考图尺寸保存有数据的记忆、复习、测验、PDF 预览、任务、设置和分析页面。`accessibility.spec.js` 同时检查参考页面的浅色和暗色主题。执行这些脚本前请按下文区分真实服务与 mock 预览环境。
+2026-10-30 的布局、原文件名传递和实际页面回归见 [参考图还原记录](PROJECT_STATUS.md)。`real-stack.spec.js` 验证引用显示原上传文件名，并保存宽屏和窄屏对话截图；`report-stack.spec.js` 按参考图尺寸保存有数据的记忆、复习、测验、PDF 预览、任务、设置和分析页面。`accessibility.spec.js` 同时检查参考页面的浅色和暗色主题。执行这些脚本前请按下文区分真实服务与 mock 预览环境。
 
-10 月 29 日上一批界面整改的验收与本地证据见 [FRONTEND_REVIEW_20261029](FRONTEND_REVIEW_20261029.md)。完整栈启动后，在 frontend 目录设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/report-stack.spec.js --project=桌面端 --retries=0`：覆盖个人模型隔离、双语偏好、个人归档向导、240 组页面布局以及实际复习和测验草稿。它直接访问运行服务；认证和法律页面也保存截图。普通浏览器回归中这些真实栈测试会明确跳过，不能把跳过当成功。
+10 月 29 日上一批界面整改的验收与本地证据见 [FRONTEND_REVIEW_20261029](PROJECT_STATUS.md)。完整栈启动后，在 frontend 目录设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/report-stack.spec.js --project=桌面端 --retries=0`：覆盖个人模型隔离、双语偏好、个人归档向导、240 组页面布局以及实际复习和测验草稿。它直接访问运行服务；认证和法律页面也保存截图。普通浏览器回归中这些真实栈测试会明确跳过，不能把跳过当成功。
 
 管理员真实整站恢复由 `scripts/verify_site_recovery.py --confirm-disposable-stack` 验证，必须使用可丢弃栈；会备份、删除测试账号、实际恢复并验证登录/文档/向量/引用。配置和完整命令见 [HOST_RECOVERY](HOST_RECOVERY.md)。GitHub CI 保留该报告、恢复日志和回滚检查点信息。
 
@@ -85,7 +85,7 @@ npm run test:e2e:real
 
 外部模型模式会把 `test-fixtures/rag-fixture.txt` 的虚构内容发送给配置的 Embedding 和 LLM 供应商，并产生调用费用。
 
-同一真实 URL 的扩展回归：`npx playwright test e2e/roadmap-stack.spec.js --retries=0`，同时运行桌面与移动端。它覆盖八种格式、联合筛选、历史版本、跨用户隔离、测验/复习导出、损坏 PDF、扫描 OCR、运行中取消重试、标签/空结果/切库和供应商 UI。完整测验需要真实模型；确定性 CI 仅运行 `--grep '真实解析异常|真实界面交互'`。不要把性能基线与故障注入、多个浏览器同时运行；保留失败日志后在固定资源条件下复核。当前验收见 [最终回归记录](ACCEPTANCE_2026-10-29.md)。
+同一真实 URL 的扩展回归：`npx playwright test e2e/roadmap-stack.spec.js --retries=0`，同时运行桌面与移动端。它覆盖八种格式、联合筛选、历史版本、跨用户隔离、测验/复习导出、损坏 PDF、扫描 OCR、运行中取消重试、标签/空结果/切库和供应商 UI。完整测验需要真实模型；确定性 CI 仅运行 `--grep '真实解析异常|真实界面交互'`。不要把性能基线与故障注入、多个浏览器同时运行；保留失败日志后在固定资源条件下复核。当前验收见 [最终回归记录](PROJECT_STATUS.md)。
 
 ## 跨存储删除与恢复演练
 

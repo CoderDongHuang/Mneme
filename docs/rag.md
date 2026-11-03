@@ -94,15 +94,19 @@ python python-agent/scripts/evaluate_rag.py --input-cost-per-million 0.15
 
 真实模型裁判对 expected_answer_points 逐项语义评分，保留 index/matched/reason 与 coverage（scoring version 1）。要点缺失、重复索引或无理由拒绝通过。比较报告额外检查模型配置、QA/核验摘要与评分版本；瞬时熔断计数不参与版本一致性判断。小样本裁判仍非人工质量保证。
 
-2026-10-28 最终离线 110 题 P95=13.88ms、Recall@K=1.0、MRR=0.9556，四组共 140 题均通过原门禁，见 [回归记录](ACCEPTANCE_2026-10-28.md)。报告记录 retrieval 开关、provider/model/min_score；比较脚本拒绝配置不一致。云 embedding/重排报告不得与离线 embedding 基线直接比较；失败实验一并保留。
 
-2026-10-29 更换 Qdrant 后，四组 140 题再次通过原门禁；110 题 P95=5.47ms、Recall@K=1.0、MRR=0.9556。结果仅为本轮环境测量，不将不同运行条件下的耗时差异宣称为数据库普遍性能提升。原始 JSON 见 [release-evidence-2026-10-29](../python-agent/evaluation/release-evidence-2026-10-29/)，当前验收见 [回归记录](ACCEPTANCE_2026-10-29.md)。
 
 
 ## 2026-10-28 无答案与云端延迟
 
 `RETRIEVER_FOCUS_GATE_ENABLED=true` 默认启用保守的中文具体名词过滤，使用 jieba 词性，仅处理含“的/是否/有没有”的问句，排除抽象词。正文必须支持提取到的具体名词；文件名、章节标题不能代替正文证据。含少量价格/作者/地点等字段同义表达，可设为 false 独立对比。它是有限的词法启发式，可能误拒答，不覆盖所有中文同义、复杂指代或英文无答案场景。新增 holdout 为单一合成短文的 14 题，不能当作广泛真实资料准确率。
 
-多条查询改写使用一次批量 embedding 和一次批量向量查询，保留各查询的通道排名。原离线 `rag_thresholds.json` 的 P95 ≤ 250ms 保持不变。真实云 embedding 曾测得 2257.86ms，批量后 915.23ms，仍未达到 250ms；这两份失败报告保留。另设 `rag_cloud_thresholds.json` 的 P95 ≤ 3000ms，质量门限相同，这是本轮新定的云接口工程预算。独立复测为 704.57ms，8 个真实模型样本含 2 个无答案题均通过，不能称为通过离线 250ms 门槛。
+多条查询改写使用一次批量 embedding 和一次批量向量查询，保留各查询的通道排名。原离线 `rag_thresholds.json` 的 P95 ≤ 250ms 保持不变。历史云 embedding 实验未达到该门槛。旧评测报告已清理，历史依据从 Git 查看；当前结果须重新运行评测，不能引用旧数值作为本次验证。另设 `rag_cloud_thresholds.json` 的 P95 ≤ 3000ms，质量门限相同，属于云接口工程预算，不能等同于通过离线 250ms 门槛。
 
 提交基线 `target_domain_rag_v2.json` 仅覆盖 schema 4 的离线检索；与真实模型候选比较时仅比较检索，不伪造历史模型基线。真实模型趋势须在相同数据集、模型、Prompt、检索源码和依赖摘要下重新 bootstrap。
+
+<a id="embedding-timeout"></a>
+## 嵌入请求时限
+
+DashScope embedding 通过已有 aiohttp 访问同一 REST 模型接口，保留输入、代理环境与向量空间。asyncio.timeout + ClientTimeout 对多地址连接、响应和完整正文设置十秒总时限，拒绝重定向；失败保留旧索引、返回可重试错误，不用本地哈希向量替代，不自动重试确认写入。SDK 的 timeout 不能作为等价网络总时限。
+同步 Qdrant 回调无运行循环时创建循环，否则在自有线程运行并等待退出；超时取消真实请求、关闭会话/循环并加入线程，不仅中止 Future 等待。调用方仍可能阻塞至返回/超时，操作系统和 DNS 清理不具备硬实时保证。`tests/test_embedding.py` 的本地 HTTP 验证使用正式十秒时限，覆盖慢正文、延迟、线程退出与不切换向量空间。无数据库迁移；部署结束在途请求并保留匹配数据/镜像/配置。完整后台记忆生命周期仍待验收。
