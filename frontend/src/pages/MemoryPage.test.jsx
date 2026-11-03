@@ -22,6 +22,18 @@ function metric(name) { return within(document.querySelector('.reference-metrics
 function detail() { return screen.getByRole('complementary', { name: '记忆详情' }) }
 function openHistory() { fireEvent.click(within(detail()).getByText(/^历史版本/)) }
 
+test('a failed manual write retains its draft and a stable accessible content name', async () => {
+  endpoints.writeMemory.mockRejectedValueOnce(new Error('长期记忆暂时无法读取，请稍后重试'))
+  mount()
+  fireEvent.click(await screen.findByRole('button', { name: '添加记忆' }))
+  const dialog = screen.getByRole('dialog', { name: '添加学习记忆' })
+  fireEvent.change(within(dialog).getByLabelText('内容', { exact: true }), { target: { value: '保留我的草稿' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: '保存记忆' }))
+  await within(dialog).findByRole('alert')
+  expect(within(dialog).getByRole('textbox', { name: '内容', exact: true })).toHaveValue('保留我的草稿')
+  expect(within(dialog).getByRole('button', { name: '保存记忆' })).toBeEnabled()
+})
+
 test('initial failure never invents zero metrics, empty records or a version count; retry recovers a real empty result', async () => {
   endpoints.managedMemories.mockRejectedValueOnce(new Error('offline'))
   endpoints.pendingMemories.mockRejectedValueOnce(new Error('offline'))

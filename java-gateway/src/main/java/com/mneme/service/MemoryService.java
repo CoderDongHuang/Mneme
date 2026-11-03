@@ -4,6 +4,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import com.mneme.exception.RequestInProgressException;
 import com.mneme.dto.internal.MemoryContracts;
 
@@ -54,6 +57,9 @@ public class MemoryService {
             response = restTemplate.postForObject(pythonAgentUrl + path, body, responseType);
         } catch (HttpClientErrorException.Conflict exception) {
             throw new RequestInProgressException("长期记忆索引需要迁移，请联系管理员重建索引；仍可查看、导出或删除记忆");
+        } catch (HttpServerErrorException.ServiceUnavailable exception) {
+            // Preserve retryable failure without retaining private provider bodies.
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "长期记忆暂时无法读取，请稍后重试");
         }
         if (response == null) {
             throw new IllegalStateException("Python Agent 返回空响应");

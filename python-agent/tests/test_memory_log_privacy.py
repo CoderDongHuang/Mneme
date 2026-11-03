@@ -90,7 +90,11 @@ def test_memory_operations_do_not_log_canaries(diagnostics, monkeypatch):
 def test_store_failures_do_not_echo_provider_body(diagnostics):
     store = object.__new__(MemoryVectorStore)
     store._collection = Mock(get=Mock(side_effect=RuntimeError("PRIVATE_PROVIDER_BODY")))
-    assert store.get_by_category("PRIVATE_USER", "preference") == []
+    from app.core.errors import MemoryReadUnavailable
+    with pytest.raises(MemoryReadUnavailable) as error:
+        store.get_by_category("PRIVATE_USER", "preference")
+    assert "PRIVATE_PROVIDER_BODY" not in str(error.value)
+    assert error.value.__suppress_context__
     output = diagnostics.getvalue()
     assert "PRIVATE_PROVIDER_BODY" not in output and "PRIVATE_USER" not in output
     assert "RuntimeError" in output and "read_category" in output
