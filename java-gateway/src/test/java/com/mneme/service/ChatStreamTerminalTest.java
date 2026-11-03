@@ -23,8 +23,28 @@ import static org.mockito.Mockito.*;
 class ChatStreamTerminalTest {
     private static String withCandidates() {
         return "event: token\ndata: {\"content\":\"answer\"}\n\n"
-            + "event: memory\ndata: {\"pending\":[{\"temp_id\":\"m1\",\"content\":\"private candidate\"}]}\n\n"
+            + "event: memory\ndata: {\"pending\":[{\"temp_id\":\"m1\",\"content\":\"private candidate\",\"category\":\"preference\",\"confidence\":0.8}]}\n\n"
             + "event: done\ndata: {\"ok\":true}\n\n";
+    }
+
+    @Test void invalidUpstreamPayloadNeverCommitsOrPublishesDone() throws Exception {
+        for (String frame : new String[]{
+            "event: token\ndata: {\"content\":123}\n\n",
+            "event: token\ndata: not-json-private\n\n",
+            "event: done\ndata: {\"ok\":true} {\"private\":\"secret\"}\n\n",
+            "event: meta\ndata: {\"sources\":null}\n\n",
+            "event: memory\ndata: {\"pending\":[{\"content\":\"private\"}]}\n\n",
+            "event: done\ndata: {}\n\n",
+            "event: unknown\ndata: {\"content\":\"private\"}\n\n"}) {
+            try (var fixture = new Fixture(frame + success(), false)) {
+                var output = new ByteArrayOutputStream(); fixture.run(output);
+                assertThat(output.toString(StandardCharsets.UTF_8)).contains("event: error", "INVALID_CHAT_EVENT")
+                    .doesNotContain("event: done", "private", "123");
+                verify(fixture.sessions, never()).finishAnswer(anyLong(), anyLong(), anyString(), anyString());
+                verify(fixture.sessions, never()).finishAnswer(anyLong(), anyLong(), anyString(), anyString(), anyList());
+                verify(fixture.sessions).failMessage(2L, 3L, "", "INVALID_CHAT_EVENT");
+            }
+        }
     }
 
     @Test void candidatesAreHandedOffBeforePublishingQueuedWithoutExposingUnstoredItems() throws Exception {

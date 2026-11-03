@@ -649,3 +649,23 @@ PR #93 最终结果：精确提交 fa29cbfd9ef52c734453c5a18c6df2f1235ce7ee 的�
 - 回查 P3-05 与单会话删除要求：键盘验收的 DELETE 模拟响应改为真实协议的 accepted/task_id/status 回执，保留删除后消失及收起后 inert 的断言。
 - 测验草稿保护测试等待异步作答记录出现后操作，保留保存失败时不得丢失草稿的断言。
 - 本地回归：QuizPage 11 项通过；生产构建和体积预算通过；桌面/移动键盘删除 2 项通过。原 CI 失败日志保留，重新等待 GitHub 全套检查。
+
+## 2026-11-03：独立 PR 合并结果补记
+
+PR #94：精确提交 bd0ea2f649aff95fa894417500aa6d2031181ba5 的九项 CI 全部通过（41507638010），合并提交 d8186bc6635fda91b664eededa5f1248dcd75463。
+PR #95：精确提交 7991fff933437fd3e109f314d50be83b17f56cd7 的九项 CI 全部通过（41509483761），合并提交 399a68ade968d602c5c9647ac79515d9b1e3c9fd。
+PR #96：精确提交 3b9a797f0a5df6c442c0cfd82862c5f39cf699f8 的九项 CI 全部通过（41510954757），合并提交 3306765c8787b5fd8882ce839cbbb1ddcfadf8a6。
+PR #97：精确提交 28846d7f7236855c3f8aa6c6bc81dee7603bcecc 的九项 CI 全部通过（41511114030），合并提交 a217b001d8f8983773fc21f189e288350d18a464。
+PR #98：精确提交 7fd7dab53ce7b1b923d8147f68a01e0c816dfea6 的九项 CI 全部通过（41511235609），合并提交 96cbc17c3b96bdea43114fb0a9e35428dbd12cfc。以上五项均逐项合并，包括完整栈与真实整站恢复检查。
+
+## 2026-11-03：P3-06 SSE 共享协议及三端严格校验
+
+对照要求：重新回查原 P3-06 的 schema 生成、关键字段、可空值、枚举和 SSE event/payload 共享测试。Python Pydantic 为唯一来源，导出仓库 schema、Gateway classpath schema 和 TypeScript 声明；CI 检查生成漂移及递归不支持的 schema 词汇。53 组同一 JSON 用例由 Python、Java、React 分别消费，包含数值边界、整数 1.0、布尔/字符串拒绝、未知字段、own __proto__/constructor、嵌套来源与候选。Gateway 在累积正文、保存或转发前严格解析，拒绝畸形和尾随 JSON；浏览器在回调及 done 前校验，失败关闭 reader。后续合法 done 不能覆盖协议失败，固定 INVALID_CHAT_EVENT 不携带私密帧或解析异常，保存合法部分回答及刷新后的失败原因。
+
+验证：Python 3.11 正式测试环境全量 1021 项通过，Ruff 通过（七条上游弃用警告）；新增导出词汇边界后定向 60 项和 Ruff 通过。Java 全量 233 项无失败/错误/跳过；最后增强严格尾随 JSON 与错误码后聊天相关 37 项和 package 通过。前端最终全量 33 文件 307 项通过，使用 maxWorkers=2 控制资源竞争，未修改原断言与超时；Lint、构建、体积预算和正式前端镜像构建/审计通过。保留早期并行负载导致的原测试超时证据。CI YAML 已解析检查，新真实服务步骤独立执行。
+
+停全部应用写入者并保存匹配 SQL、Redis、Agent data 及旧容器/镜像/配置后部署 http://127.0.0.1:3000。新协议桌面/手机两项通过（41.2 秒），另将完成即落库、主动停止/浏览器断流、候选保存故障/实际重启/网页重试六项完整回归通过（3.5 分钟），均无整项重试。测试只向新 QA 账号注入两种坏上游帧，检查 failed、固定原因、合法正文及五秒内关闭上游，finally 恢复原字节、重启并正式 DELETE。首次页面行为已正确，但 Chromium 在客户端取消后丢弃 CDP 响应体，改为旁路读取同一真实 fetch 响应副本再完整重跑；没有替换请求或帧。隐私 canary 日志扫描通过。
+
+十八张安全截图逐一复核，无页面横向溢出。独立 SQL 读回 QA 用户、故障触发器、合成 manifest 零，423 个账号删除任务全部 completed；374 个持久已删账号反思回执、会话文件及 scoped Redis 键零；测试夹具/目录、会话临时文件和 QA Stream 零。十五份部署 Python 源码 LF 哈希、Gateway JAR 和 48 份前端资源匹配验收构建，两服务健康 200。第一次独立读回误将只用于构建期的导出工具列作运行镜像必须文件；修正为运行代码哈希后完整检查通过，保留失败日志。
+
+证据：artifacts/stream-{python-accepted,python-vocabulary,java-accepted,java-chat-final,front-final-full-bounded,front-lint-accepted,front-final-build,frontend-docker-final,deploy,contract-real-final,regression-real,readback-final}.log，stream-contract-browser-final 与 stream-regression-browser。无新依赖、配置或数据库迁移；本地 Agent/Gateway 采用已锁定依赖的前版镜像复制源码/JAR，前端按正式 Dockerfile 构建，CI 仍全新构建正式三端镜像。生成协议、兼容三端部署及匹配回退见 docs/CHAT_STREAM_CONTRACT.md。本项只关闭 SSE 协议部分，不提前关闭其他 REST 契约、完整后台记忆生命周期（P1-06）或留存清理（P2-12）。独立 PR 最终 CI 和合并结果继续补记。
