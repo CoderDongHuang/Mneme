@@ -9,7 +9,10 @@
 1. 记录当前 Git 提交、容器镜像、配置版本，暂停写入并使用 `scripts/backup_restore.py` 备份 MySQL、Redis、Qdrant 和原文件；另外安全保存备份密钥。按 [备份与恢复](cloud-recovery.md) 完成可恢复性检查。
 2. 阅读目标版本 Release Notes，检查 `.env.example` 中新增配置。先在隔离环境用备份副本演练升级和恢复。
 3. 执行 `docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d --build`。检查 Flyway 迁移成功、Java 和 Python 健康状态以及后台任务无持续失败。
-4. 验证注册、登录、退出、上传和重解析、引用回答、记忆确认、密码重置、账号删除与备份恢复。破坏性演练使用隔离的 CI 栈，不能针对用户的主数据运行。
+4. 执行 `python scripts/check_runtime_mounts.py -f docker-compose.yml -f docker-compose.selfhost.yml`，其他覆盖文件按实际部署顺序追加 `-f`。门禁将有效 Compose 的挂载类型、宿主路径/卷名、目标和读写模式与运行容器的实际 Mounts 比对；非零退出必须先修复，不能继续业务验收。不要仅检查 HostConfig.Binds，它可以为 null 而结构化 Mounts 有效。
+5. 验证注册、登录、退出、上传和重解析、引用回答、记忆确认、密码重置、账号删除与备份恢复。破坏性演练使用隔离的 CI 栈，不能针对用户的主数据运行。
+
+2026-11-04 本地回归曾发现手工重建 Gateway/Agent 漏保留结构化挂载。已停写核对漏挂期间的数据，确认无新增业务记录，将 12 条经 MySQL 已删账号/完成任务核实的 tombstone 合回原 generation 库（保留原字段及最大 revision），恢复原 /data、Agent /app/data、只读测试目录及两个网络。门禁恢复前失败、恢复后通过，并检查健康及部署源码哈希。修复依据是原容器实际 Mounts；禁止用新空目录覆盖原数据，发现新旧数据冲突时必须先逐项对账。该门禁只覆盖挂载，不代替完整升级预检、备份和回退演练。
 
 ## 回退
 

@@ -66,11 +66,12 @@
 | [#98](https://github.com/CoderDongHuang/Mneme/pull/98) | 基础设施业务诊断 |
 | [#99](https://github.com/CoderDongHuang/Mneme/pull/99) | 三端共享 SSE 契约；恢复后桌面和手机真实回归均通过 |
 | [#100](https://github.com/CoderDongHuang/Mneme/pull/100) | 文档精简、历史材料清理与权威进度整理；9 项 CI 全通过 |
+| [#101](https://github.com/CoderDongHuang/Mneme/pull/101) | 长期记忆读取失败安全处理；9 项 CI 全通过 |
+| [#102](https://github.com/CoderDongHuang/Mneme/pull/102) | 分析页窗口、读取与反馈状态；9 项 CI 全通过 |
 
 ## 当前未完成工作
 
-- [长期记忆读取修复](MEMORY_READ_FAILURE.md)：完整验证已通过，待独立发布。恢复后 Python 1035 项、Java 236 项（无跳过）、Ruff、前端测试和构建通过；桌面、手机真实读取故障与恢复回归共 2 项通过。
-- 分析页读取、窗口与反馈状态：[行为约束](FRONTEND_BEHAVIOR.md)。本地定向 13 项、全前端 320 项、Lint/构建及真实桌面/手机 2 项通过，待独立 PR；主项仍未关闭。
+- 账号当前/历史文件与缓存核验子项：Java 242 项、挂载门禁 2 项、Ruff，真实桌面/手机 2 项通过；已恢复原数据挂载并加入独立运行挂载门禁，待本批独立 CI/合并。协议见 [删除核验](DELETION_VERIFICATION.md)。
 - SSE 已合并；其他 REST 契约仍待验收，不能关闭完整 P3-06。
 - P1-05、P1-06、P2-12、P2-14、P3-03、P3-04、P3-05、P3-06 及发布收口仍待完成。
 

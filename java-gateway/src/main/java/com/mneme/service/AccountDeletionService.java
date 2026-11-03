@@ -13,7 +13,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -29,9 +28,8 @@ public class AccountDeletionService {
     private final RestTemplate restTemplate;
     private final OperationLogService operations;
     private final String pythonAgentUrl;
-    private final Path fileRoot;
     private final int maxAttempts;
-    private final ObjectStorageService storage;
+    private final AccountFileCleanup files;
     private final TaskLeaseService leases;
 
     public AccountDeletionService(
@@ -50,9 +48,8 @@ public class AccountDeletionService {
         this.restTemplate = restTemplate;
         this.operations = operations;
         this.pythonAgentUrl = pythonAgentUrl;
-        this.fileRoot = Path.of(fileStoragePath).toAbsolutePath().normalize();
         this.maxAttempts = Math.max(1, maxAttempts);
-        this.storage = storage;
+        this.files = new AccountFileCleanup(jdbc, storage, Path.of(fileStoragePath).toAbsolutePath().normalize());
         this.leases = leases;
     }
 
@@ -116,8 +113,19 @@ public class AccountDeletionService {
                 // Slow HTTP/object operations run outside MySQL transactions; the next
                 // fenced commit refuses their result if another owner took over.
                 if (!"user_delete".equals(step)) runStep(step, userId, user);
+                else {
+                    // Recheck even when resuming an older file/avatar checkpoint. Repeating
+                    // cleanup makes a failed final readback retryable without losing SQL paths.
+                    files.cleanAndVerify(userId);
+                    runStep("avatar_cleanup", userId, user);
+                }
                 lease.write(row -> {
-                    if ("user_delete".equals(step)) users.deleteById(userId);
+                    if ("user_delete".equals(step)) {
+                        users.deleteById(userId);
+                        if (jdbc.queryForObject("SELECT COUNT(*) FROM user WHERE id=?", Long.class, userId) != 0) {
+                            throw new IllegalStateException("账号记录删除未通过读回核验");
+                        }
+                    }
                     jdbc.update("UPDATE account_deletion_task SET current_step=?,error_message=NULL WHERE id=? AND owner_token=? AND lease_fence=?",
                         step, taskId, lease.owner(), lease.fence());
                     operations.record(operationId, userId, "account_delete", userId.toString(),
@@ -161,13 +169,13 @@ public class AccountDeletionService {
             case "knowledge_cleanup" -> restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/admin/user/" + id);
             case "memory_cleanup" -> restTemplate.delete(pythonAgentUrl + "/api/v1/memory/admin/user/" + id);
             case "session_cleanup" -> cleanupSessions(userId);
-            case "file_cleanup" -> {
-                storage.deleteUserPrefix(userId);
-                deleteDirectory(fileRoot.resolve(id).normalize());
-            }
+            case "file_cleanup" -> files.cleanAndVerify(userId);
             case "avatar_cleanup" -> {
                 if (snapshot != null && snapshot.getAvatarPath() != null) {
                     Files.deleteIfExists(Path.of(snapshot.getAvatarPath()));
+                    if (ObjectStorageService.countPath(Path.of(snapshot.getAvatarPath())) != 0) {
+                        throw new IllegalStateException("账号头像清理未通过读回核验");
+                    }
                 }
             }
             default -> throw new IllegalArgumentException("未知删除步骤: " + step);
@@ -196,15 +204,6 @@ public class AccountDeletionService {
 
     private static boolean integerEquals(Object value, long expected) {
         return (value instanceof Integer || value instanceof Long) && ((Number) value).longValue() == expected;
-    }
-
-    private void deleteDirectory(Path directory) throws Exception {
-        if (!directory.startsWith(fileRoot) || !Files.exists(directory)) return;
-        try (var paths = Files.walk(directory)) {
-            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(path);
-            }
-        }
     }
 
     private void recoverAbandoned() {
