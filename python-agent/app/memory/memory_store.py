@@ -17,7 +17,7 @@ from app.core.time import utc_now
 from app.knowledge.qdrant_store import VectorClient, InvalidCollectionException
 
 from app.core.config import settings
-from app.core.errors import MemoryIndexConflict
+from app.core.errors import MemoryIndexConflict, MemoryReadUnavailable
 from app.knowledge.generations import generation_store, StaleGeneration
 from app.core.privacy import require_cloud_processing
 from app.utils.embedding import embeddings
@@ -336,7 +336,7 @@ class MemoryVectorStore:
                 "error_type=%s %s", type(error).__name__,
                 memory_log_fields("read_category", "failed", user_id=user_id, category=category),
             )
-            return []
+            raise MemoryReadUnavailable("长期记忆暂时无法读取，请稍后重试") from None
         entries = []
         ids = results.get("ids", [])
         documents = results.get("documents", [])
@@ -381,8 +381,10 @@ class MemoryVectorStore:
                 if uid:
                     user_ids.add(uid)
             return list(user_ids)
-        except Exception:
-            return []
+        except Exception as error:
+            logger.error("error_type=%s %s", type(error).__name__,
+                         memory_log_fields("list_users", "failed"))
+            raise MemoryReadUnavailable("长期记忆用户清单暂时无法读取，请稍后重试") from None
 
     # ── 语义去重 ────────────────────────────────────────────
 

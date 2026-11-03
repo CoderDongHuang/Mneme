@@ -484,6 +484,13 @@ jobs:
           MNEME_MEMORY_QA_FAULTS: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/memory-outbox-real.spec.js --workers=1 --retries=0
+      - name: Verify memory read outage, unchanged stored records and real form retry
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_MEMORY_QA_FAULTS: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/memory-read-real.spec.js --workers=1 --retries=0
       - name: Verify single-session cleanup isolation, database failure and real manual retry
         working-directory: frontend
         env:
@@ -587,7 +594,7 @@ jobs:
           path: |
             frontend/playwright-report-real/
             frontend/test-results/
-            docs/images/mneme-*.png
+            artifacts/real-stack-images/
             backups/ci/
             backups/worker-acceptance/
             artifacts/operational-trends.json

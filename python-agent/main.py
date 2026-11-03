@@ -14,7 +14,7 @@ from fastapi.responses import Response
 from app.api import agent, chat, chat_stream, health, knowledge, memory, models
 from app.core.user_model import UserModelMiddleware
 from app.core.config import settings
-from app.core.errors import MemoryIndexConflict
+from app.core.errors import MemoryIndexConflict, MemoryReadUnavailable
 from app.core.metrics import INPUT_REJECTIONS
 from app.core.logging import setup_logger
 from app.core.http_metrics import TraceAndLoggingMiddleware, metric_path  # noqa: F401 - compatibility for callers
@@ -199,6 +199,15 @@ async def privacy_exception_handler(request: Request, exc: PermissionError):
 @app.exception_handler(MemoryIndexConflict)
 async def memory_index_conflict_handler(request: Request, exc: MemoryIndexConflict):
     return JSONResponse(status_code=409, content={"code": "MEMORY_INDEX_MIGRATION_REQUIRED", "detail": str(exc)})
+
+
+@app.exception_handler(MemoryReadUnavailable)
+async def memory_read_unavailable_handler(request: Request, exc: MemoryReadUnavailable):
+    # Never serialize/log the storage exception: provider error bodies can
+    # contain document text, credentials or private request context.
+    return JSONResponse(status_code=503, content={
+        "code": "MEMORY_READ_UNAVAILABLE", "detail": "长期记忆暂时无法读取，请稍后重试",
+    })
 
 
 @app.exception_handler(Exception)
