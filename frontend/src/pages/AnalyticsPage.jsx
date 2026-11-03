@@ -1,9 +1,10 @@
 import { useFormatters } from '../hooks/useFormatters'
 import { useDateFormatter } from '../hooks/useDateFormatter'
 import { t, useI18n } from '../i18n'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { RefreshCw, Save, Trash2 } from 'lucide-react'
-import { api } from '../api/client'
+import useAnalyticsData from '../features/analytics/useAnalyticsData'
+import { FeedbackBlock } from '../components/ui'
 import { Link } from 'react-router-dom'
 import '../styles/centers.css'
 
@@ -24,27 +25,19 @@ export default function AnalyticsPage() {
   const dates = useDateFormatter()
   const fmt = useFormatters()
   const [days, setDays] = useState(30)
-  const [data, setData] = useState(null)
-  const [refresh, setRefresh] = useState(0)
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
-  const [busy, setBusy] = useState(false)
+  const reads = useAnalyticsData(days)
+  const { data, loading, fresh, busy, notice } = reads
   const [form, setForm] = useState({ message_id: '', outcome: 'helpful', citation_rating: 'unclear', reason: 'none', note: '' })
-  useEffect(() => {
-    const controller = new AbortController()
-    api(`/analytics?days=${days}`, { signal: controller.signal }).then(result => { setData(result); setError('') }).catch(e => { if (e.name !== 'AbortError') setError(e.message) })
-    return () => controller.abort()
-  }, [days, refresh])
-  async function save(event) {
-    event.preventDefault(); setBusy(true); setNotice('')
-    try { await api('/analytics/feedback', { method: 'PUT', body: JSON.stringify({ ...form, message_id: Number(form.message_id) }) }); setNotice(t("反馈已保存")); setError(''); setRefresh(v => v + 1) } catch (e) { setError(e.message) } finally { setBusy(false) }
+  function save(event) {
+    event.preventDefault()
+    void reads.mutate('/analytics/feedback', { method: 'PUT', body: JSON.stringify({ ...form, message_id: Number(form.message_id) }) }, '反馈已保存')
   }
-  async function remove(id) {
-    setBusy(true)
-    try { await api(`/analytics/feedback/${id}`, { method: 'DELETE' }); setRefresh(v => v + 1); setNotice(t("反馈已删除")); setError('') } catch (e) { setError(e.message) } finally { setBusy(false) }
+  function remove(id) {
+    void reads.mutate(`/analytics/feedback/${id}`, { method: 'DELETE' }, '反馈已删除')
   }
   const field = key => ({ value: form[key], onChange: e => setForm(v => ({ ...v, [key]: e.target.value })) })
   function exportReport() {
+    if (!fresh || busy) return
     const report = { generated_at: new Date().toISOString(), window_days: days, definitions: t("学习指标来自实际测验与复习记录；主题平均分和成功率按窗口内观察计算。前后半窗口样本可能不同，不能推断因果。用户评价与检索信号单独统计，不代表掌握程度。"), data }
     const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }))
     const link = document.createElement('a'); link.href = url; link.download = `mneme-learning-${days}days.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
@@ -52,10 +45,13 @@ export default function AnalyticsPage() {
   const score = v => v == null ? t("暂无样本") : fmt.decimal(v)
   const quality = data?.trace_quality
   return <div className="center-page reference-analytics">
-    <header className="center-head"><h1>{t("学习分析")}</h1><button title={t("刷新学习分析")} aria-label={t("刷新学习分析")} onClick={() => setRefresh(v => v + 1)}><RefreshCw size={18} /></button></header>
-    <div className="center-toolbar"><label>{t("时间窗口")}<select aria-label={t("时间窗口")} value={days} onChange={e => setDays(Number(e.target.value))}>{[7, 30, 90].map(d => <option key={d} value={d}>{d}{t(" 天")}</option>)}</select></label><button disabled={!data} onClick={exportReport}>{t("导出含统计口径的报告")}</button></div>
-    {error && <p role="alert" className="page-error">{error}</p>}{notice && <p role="status">{notice}</p>}
-    {!data && !error && <p role="status">{t("加载中...")}</p>}
+    <header className="center-head"><h1>{t("学习分析")}</h1><button title={t("刷新学习分析")} aria-label={t("刷新学习分析")} disabled={loading || busy} onClick={reads.refresh}><RefreshCw size={18} /></button></header>
+    <div className="center-toolbar"><label>{t("时间窗口")}<select aria-label={t("时间窗口")} disabled={busy} value={days} onChange={e => setDays(Number(e.target.value))}>{[7, 30, 90].map(d => <option key={d} value={d}>{d}{t(" 天")}</option>)}</select></label><button disabled={!fresh || busy} onClick={exportReport}>{t("导出含统计口径的报告")}</button></div>
+    <FeedbackBlock error={reads.error && t('学习分析加载失败：{0}', [t(reads.error)])} onRetry={reads.error ? reads.refresh : undefined} />
+    {loading && <p role="status">{t(data ? '正在刷新学习分析…' : '加载中...')}</p>}
+    {data && !fresh && <p role="status">{t('已有分析可能不是最新状态，刷新成功后可导出报告或修改反馈。')}</p>}
+    <FeedbackBlock error={t(reads.writeError)} />
+    <FeedbackBlock message={t(notice)} />
     {data && <>
       <p className="analysis-definition">{t('学习指标来自实际测验与复习记录。前后窗口样本不同，变化不代表因果。')}</p>
       <MetricCards items={[{label:t('学习记录'),value:data.daily.reduce((sum,row)=>sum+Number(row.observations||0),0)},{label:t('活跃天数'),value:new Set(data.daily.map(row=>String(row.day).slice(0,10))).size},{label:t('知识主题'),value:data.topics.length},{label:t('平均分'),value:(()=>{const n=data.topics.reduce((sum,row)=>sum+Number(row.observations||0),0);return n?fmt.decimal(data.topics.reduce((sum,row)=>sum+Number(row.average_score||0)*Number(row.observations||0),0)/n):'—'})()}]} />
@@ -73,8 +69,8 @@ export default function AnalyticsPage() {
         <label>{t("回答评价")}<select aria-label={t("回答评价")} {...field('outcome')}>{Object.entries(outcomes).map(([key, title]) => <option key={key} value={key}>{t(title)}</option>)}</select></label>
         <label>{t("引用评价")}<select aria-label={t("引用评价")} {...field('citation_rating')}>{Object.entries(citations).map(([key, title]) => <option key={key} value={key}>{t(title)}</option>)}</select></label>
         <label>{t("原因")}<select aria-label={t("原因")} {...field('reason')}>{Object.entries(reasons).map(([key, title]) => <option key={key} value={key}>{t(title)}</option>)}</select></label>
-        <label>{t("备注")}<textarea rows={3} maxLength={1000} {...field('note')} /></label><button disabled={busy || !form.message_id}><Save size={18} />{t("保存反馈")}</button>
-      </form><ul className="center-list">{data.feedback.map(item => <li key={item.id}><div className="center-row"><span>{t("回答 #")}{item.message_id} · {t(outcomes[item.outcome])} · {t(citations[item.citation_rating])} · {t(reasons[item.reason])}</span><button disabled={busy} title={t("删除反馈 {0}", [item.id])} aria-label={t("删除反馈 {0}", [item.id])} onClick={() => remove(item.id)}><Trash2 size={18} /></button></div><p>{item.note}</p></li>)}</ul></section>
+        <label>{t("备注")}<textarea aria-label={t("备注")} rows={3} maxLength={1000} {...field('note')} /></label><button disabled={busy || !fresh || !data.answers.some(answer => String(answer.id) === form.message_id)}><Save size={18} />{t("保存反馈")}</button>
+      </form><ul className="center-list">{data.feedback.map(item => <li key={item.id}><div className="center-row"><span>{t("回答 #")}{item.message_id} · {t(outcomes[item.outcome])} · {t(citations[item.citation_rating])} · {t(reasons[item.reason])}</span><button disabled={busy || !fresh} title={t("删除反馈 {0}", [item.id])} aria-label={t("删除反馈 {0}", [item.id])} onClick={() => remove(item.id)}><Trash2 size={18} /></button></div><p>{item.note}</p></li>)}</ul></section>
     </details></>}
   </div>
 }

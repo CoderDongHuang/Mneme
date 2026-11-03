@@ -1310,5 +1310,11 @@
   "尚未检查": "Not checked yet",
   "发送测试邮件": "Send test email",
   "检查 {0}": "Check {0}",
-  "诊断、备份或恢复正在运行，请稍后检查": "A diagnostic, backup, or restore is running. Please try again later."
+  "诊断、备份或恢复正在运行，请稍后检查": "A diagnostic, backup, or restore is running. Please try again later.",
+  "学习分析响应异常，请重试。": "Invalid learning analytics response. Please retry.",
+  "学习分析加载失败，请重试。": "Could not load learning analytics. Please retry.",
+  "学习分析加载失败：{0}": "Could not load learning analytics: {0}",
+  "正在刷新学习分析…": "Refreshing learning analytics…",
+  "已有分析可能不是最新状态，刷新成功后可导出报告或修改反馈。": "These analytics may be out of date. Refresh successfully before exporting or changing feedback.",
+  "反馈操作未确认，请刷新核实后重试。": "The feedback operation is unconfirmed. Refresh to verify before retrying."
 }

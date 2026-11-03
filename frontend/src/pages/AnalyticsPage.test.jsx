@@ -1,10 +1,19 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import AnalyticsPage from './AnalyticsPage'
 import { api } from '../api/client'
 vi.mock('../api/client', () => ({ api: vi.fn() }))
+
+const empty = (overrides = {}) => ({ topics: [], daily: [], feedback_summary: [], feedback: [], answers: [{ id: 44, excerpt: '回答摘录' }], trace_quality: { status: 'unavailable' }, ...overrides })
+const sample = topic => empty({ topics: [{ topic, observations: 4, average_score: 75, success_rate: .75 }] })
+const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
+const mount = () => render(<MemoryRouter><AnalyticsPage /></MemoryRouter>)
+const exportButton = () => screen.getByRole('button', { name: '导出含统计口径的报告' })
+const refreshButton = () => screen.getByRole('button', { name: '刷新学习分析' })
+beforeEach(() => api.mockReset())
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 test('empty evidence stays empty and feedback references a persisted answer', async () => {
   api.mockResolvedValue({ topics: [], daily: [], feedback_summary: [], feedback: [], trace_quality: { status: 'unavailable' }, answers: [{ id: 44, excerpt: '回答摘录' }] })
   render(<MemoryRouter><AnalyticsPage /></MemoryRouter>)
@@ -17,4 +26,121 @@ test('empty evidence stays empty and feedback references a persisted answer', as
   await user.click(screen.getByRole('button', { name: '保存反馈' }))
   await waitFor(() => expect(api).toHaveBeenCalledWith('/analytics/feedback', { method: 'PUT', body: JSON.stringify({ message_id: 44, outcome: 'refusal', citation_rating: 'unclear', reason: 'no_evidence', note: '' }) }))
   expect(await screen.findByText('反馈已保存')).toBeVisible()
+})
+
+test('initial outage shows a retry without inventing metrics, charts or empty samples', async () => {
+  api.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(empty())
+  mount()
+  expect(await screen.findByRole('alert')).toHaveTextContent('学习分析加载失败：offline')
+  expect(screen.queryByText('学习记录', { exact: true })).not.toBeInTheDocument()
+  expect(screen.queryByText('暂无样本')).not.toBeInTheDocument()
+  expect(exportButton()).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '重试 / Retry' }))
+  await waitFor(() => expect(exportButton()).toBeEnabled())
+  expect(screen.getByText('学习记录', { exact: true })).toBeVisible()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+test('a late request that ignores abort cannot overwrite a newer window', async () => {
+  const old = deferred(), next = deferred()
+  api.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise)
+  mount()
+  fireEvent.change(screen.getByLabelText('时间窗口'), { target: { value: '7' } })
+  expect(exportButton()).toBeDisabled()
+  await act(async () => next.resolve(sample('新窗口主题')))
+  expect(screen.getAllByText('新窗口主题', { exact: true })[0]).toBeVisible()
+  await act(async () => old.resolve(sample('过期主题')))
+  expect(screen.queryByText('过期主题', { exact: true })).not.toBeInTheDocument()
+  expect(exportButton()).toBeEnabled()
+})
+
+test('switching windows hides previous data; refresh failure preserves only same-window data and disables export', async () => {
+  const pending = deferred()
+  api.mockResolvedValueOnce(sample('三十天主题')).mockReturnValueOnce(pending.promise)
+    .mockResolvedValueOnce(sample('七天主题')).mockRejectedValueOnce(new Error('refresh offline'))
+  mount()
+  await screen.findAllByText('三十天主题', { exact: true })
+  fireEvent.change(screen.getByLabelText('时间窗口'), { target: { value: '7' } })
+  expect(screen.queryByText('三十天主题', { exact: true })).not.toBeInTheDocument()
+  expect(exportButton()).toBeDisabled()
+  await act(async () => pending.reject(new Error('window offline')))
+  expect(screen.queryByText('三十天主题', { exact: true })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '重试 / Retry' }))
+  await screen.findAllByText('七天主题', { exact: true })
+  fireEvent.click(refreshButton())
+  await screen.findByText('学习分析加载失败：refresh offline')
+  expect(screen.getAllByText('七天主题', { exact: true })[0]).toBeVisible()
+  expect(screen.getByText(/已有分析可能不是最新状态/)).toBeVisible()
+  expect(exportButton()).toBeDisabled()
+})
+
+test.each(['topics', 'daily', 'feedback_summary', 'answers', 'feedback'])('malformed %s is an explicit error, not empty data or a crashed page', async key => {
+  api.mockResolvedValueOnce(empty({ [key]: {} }))
+  mount()
+  expect(await screen.findByRole('alert')).toHaveTextContent('学习分析响应异常，请重试。')
+  expect(exportButton()).toBeDisabled()
+  expect(screen.queryByText('学习记录', { exact: true })).not.toBeInTheDocument()
+})
+
+test('mismatched server window and invalid rendered cells are rejected', async () => {
+  api.mockResolvedValueOnce(empty({ window_days: 7 })).mockResolvedValueOnce(empty({ topics: [{ topic: {} }] }))
+  mount()
+  await screen.findByRole('alert')
+  fireEvent.click(screen.getByRole('button', { name: '重试 / Retry' }))
+  await waitFor(() => expect(api).toHaveBeenCalledTimes(2))
+  expect(await screen.findByRole('alert')).toHaveTextContent('学习分析响应异常，请重试。')
+  expect(exportButton()).toBeDisabled()
+})
+
+test('save success survives a failed background refresh and retains the feedback draft', async () => {
+  const pending = deferred()
+  api.mockResolvedValueOnce(empty()).mockReturnValueOnce(pending.promise).mockRejectedValueOnce(new Error('refresh failed'))
+  mount()
+  fireEvent.click(await screen.findByText('检索质量与回答反馈'))
+  fireEvent.change(screen.getByLabelText('回答', { exact: true }), { target: { value: '44' } })
+  fireEvent.change(screen.getByLabelText('备注', { exact: true }), { target: { value: '保留反馈草稿' } })
+  const form = screen.getByRole('button', { name: '保存反馈' }).closest('form')
+  fireEvent.submit(form)
+  fireEvent.submit(form)
+  expect(api.mock.calls.filter(([path]) => path === '/analytics/feedback')).toHaveLength(1)
+  await act(async () => pending.resolve({ status: 'saved' }))
+  expect(await screen.findByText('反馈已保存')).toBeVisible()
+  expect(await screen.findByRole('alert')).toHaveTextContent('refresh failed')
+  expect(screen.getByLabelText('备注', { exact: true })).toHaveValue('保留反馈草稿')
+  expect(screen.getByRole('button', { name: '保存反馈' })).toBeDisabled()
+  expect(exportButton()).toBeDisabled()
+})
+
+test('a feedback error survives a successful read refresh and a manual retry works', async () => {
+  api.mockResolvedValueOnce(empty()).mockRejectedValueOnce(new Error('write failed'))
+    .mockResolvedValueOnce(empty()).mockResolvedValueOnce({ status: 'saved' }).mockResolvedValueOnce(empty())
+  mount()
+  fireEvent.click(await screen.findByText('检索质量与回答反馈'))
+  fireEvent.change(screen.getByLabelText('回答', { exact: true }), { target: { value: '44' } })
+  fireEvent.click(screen.getByRole('button', { name: '保存反馈' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('write failed')
+  fireEvent.click(refreshButton())
+  await waitFor(() => expect(exportButton()).toBeEnabled())
+  expect(screen.getByRole('alert')).toHaveTextContent('write failed')
+  fireEvent.click(screen.getByRole('button', { name: '保存反馈' }))
+  expect(await screen.findByText('反馈已保存')).toBeVisible()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+test('export uses the successfully loaded window and its actual data', async () => {
+  let blob
+  const create = vi.fn(value => { blob = value; return 'blob:report' })
+  vi.stubGlobal('URL', class extends URL { static createObjectURL = create; static revokeObjectURL = vi.fn() })
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  api.mockResolvedValueOnce(sample('三十天主题')).mockResolvedValueOnce(empty({ window_days: 7 }))
+  mount()
+  await waitFor(() => expect(exportButton()).toBeEnabled())
+  fireEvent.change(screen.getByLabelText('时间窗口'), { target: { value: '7' } })
+  expect(exportButton()).toBeDisabled()
+  await waitFor(() => expect(exportButton()).toBeEnabled())
+  fireEvent.click(exportButton())
+  expect(click.mock.instances[0].download).toBe('mneme-learning-7days.json')
+  const text = await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsText(blob) })
+  expect(JSON.parse(text)).toMatchObject({ window_days: 7, data: { window_days: 7, topics: [] } })
+  expect(text).not.toContain('三十天主题')
 })
