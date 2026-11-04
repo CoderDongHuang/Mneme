@@ -6,7 +6,7 @@ import { endpoints } from '../api/client'
 
 vi.mock('../api/client', () => ({ endpoints: {
   managedMemories: vi.fn(), pendingMemories: vi.fn(), memoryVersions: vi.fn(),
-  updateManagedMemory: vi.fn(), restoreMemory: vi.fn(), confirmMemory: vi.fn(), writeMemory: vi.fn(),
+  updateManagedMemory: vi.fn(), restoreMemory: vi.fn(), deleteManagedMemory: vi.fn(), confirmMemory: vi.fn(), writeMemory: vi.fn(),
 } }))
 const first = { id: 'a', category: 'preference', topic: '第一条', content: '内容一', status: 'active', tags: [] }
 const second = { ...first, id: 'b', topic: '第二条', content: '内容二' }
@@ -87,7 +87,7 @@ test('version failure is distinct from no history, retries locally and ignores a
 
 test('save receipt survives a failed version refresh and cannot be mistaken for a failed write', async () => {
   endpoints.memoryVersions.mockResolvedValueOnce({ versions: [{ version: 1, content: '原内容' }] }).mockRejectedValueOnce(new Error('offline'))
-  endpoints.updateManagedMemory.mockResolvedValueOnce({ memories: [{ ...first, content: '已保存内容' }, second] })
+  endpoints.updateManagedMemory.mockResolvedValueOnce({ status: 'updated', memory: { ...first, content: '已保存内容', tags: ['保存标签'] } })
   mount()
   fireEvent.click(await screen.findByRole('button', { name: /第一条/ }))
   openHistory()
@@ -99,6 +99,10 @@ test('save receipt survives a failed version refresh and cannot be mistaken for 
   expect(within(detail()).getByText('已有版本记录可能不是最新状态。')).toBeVisible()
   expect(within(detail()).getByRole('button', { name: '恢复此版本' })).toBeDisabled()
   expect(endpoints.updateManagedMemory).toHaveBeenCalledTimes(1)
+  expect(endpoints.managedMemories).toHaveBeenCalledTimes(1)
+  expect(within(detail()).getByLabelText('标签（以逗号分隔）')).toHaveValue('保存标签')
+  expect(screen.getByRole('button', { name: /第二条/ })).toBeVisible()
+  expect(metric('总记忆数')).toHaveTextContent('2')
 })
 
 test('successful confirmation remains visible when refresh fails and the consumed candidate does not reappear', async () => {
@@ -114,6 +118,38 @@ test('successful confirmation remains visible when refresh fails and the consume
   expect(endpoints.confirmMemory).toHaveBeenCalledOnce()
 })
 
+test('restore receipt updates only the selected memory and does not fetch a replacement list', async () => {
+  endpoints.memoryVersions.mockResolvedValue({ versions: [{ version: 1, content: '历史内容' }] })
+  endpoints.restoreMemory.mockResolvedValueOnce({ status: 'restored', version: 3, memory: { ...first, content: '历史内容', tags: ['历史标签'] } })
+  mount()
+  fireEvent.click(await screen.findByRole('button', { name: /第一条/ }))
+  openHistory()
+  fireEvent.click(await within(detail()).findByRole('button', { name: '恢复此版本' }))
+  await within(detail()).findByText('历史版本已恢复')
+  expect(within(detail()).getByLabelText('内容')).toHaveValue('历史内容')
+  expect(within(detail()).getByLabelText('标签（以逗号分隔）')).toHaveValue('历史标签')
+  expect(screen.getByRole('button', { name: /第二条/ })).toBeVisible()
+  expect(metric('总记忆数')).toHaveTextContent('2')
+  expect(endpoints.managedMemories).toHaveBeenCalledTimes(1)
+  expect(endpoints.restoreMemory).toHaveBeenCalledExactlyOnceWith('a', 1)
+})
+
+test('delete receipt removes only the deleted memory without a list refresh', async () => {
+  endpoints.deleteManagedMemory.mockResolvedValueOnce({ status: 'deleted', id: 'a' })
+  mount()
+  fireEvent.click(await screen.findByRole('button', { name: /第一条/ }))
+  fireEvent.click(within(detail()).getByRole('button', { name: '删除记忆' }))
+  const dialog = screen.getByRole('dialog', { name: '删除此记忆' })
+  fireEvent.change(within(dialog).getByRole('textbox', { name: '确认文字 / Confirmation' }), { target: { value: 'DELETE MEMORY' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: '删除记忆' }))
+  await screen.findByText('记忆已删除')
+  expect(screen.queryByRole('button', { name: /第一条/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /第二条/ })).toBeVisible()
+  expect(metric('总记忆数')).toHaveTextContent('1')
+  expect(endpoints.managedMemories).toHaveBeenCalledTimes(1)
+  expect(endpoints.deleteManagedMemory).toHaveBeenCalledExactlyOnceWith('a')
+})
+
 test('an older refresh cannot overwrite a saved record and selection is locked during the write', async () => {
   let finishRefresh, finishSave
   mount()
@@ -124,7 +160,7 @@ test('an older refresh cannot overwrite a saved record and selection is locked d
   fireEvent.change(within(detail()).getByLabelText('内容'), { target: { value: '最新保存内容' } })
   fireEvent.click(within(detail()).getByRole('button', { name: '保存修改' }))
   expect(screen.getByRole('button', { name: /第二条/ })).toBeDisabled()
-  await act(async () => finishSave({ memories: [{ ...first, content: '最新保存内容' }, second] }))
+  await act(async () => finishSave({ status: 'updated', memory: { ...first, content: '最新保存内容' } }))
   await act(async () => finishRefresh({ memories: [first, second] }))
   expect(within(detail()).getByLabelText('内容')).toHaveValue('最新保存内容')
   expect(screen.getByRole('button', { name: /第一条 最新保存内容/ })).toBeVisible()
