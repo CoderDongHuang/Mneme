@@ -55,11 +55,15 @@ export default function MemoryPage() {
   function choose(item) {
     setSelected({ ...item }); setTagText(tags(item.tags).join(', '))
   }
+  function applyMemoryReceipt(memory) {
+    setItems(current => current.map(item => item.id === memory.id ? memory : item))
+    setSelected(memory); setTagText(tags(memory.tags).join(', '))
+    setVersionRevision(value => value + 1)
+  }
   async function update(body) {
     const result = await endpoints.updateManagedMemory(selected.id, body)
-    const list = result.memories || []
-    setItems(list); setSelected(list.find(item => item.id === selected.id) || null); setNotice(t("记忆已保存，检索缓存已更新"))
-    setVersionRevision(value => value + 1)
+    applyMemoryReceipt(result.memory)
+    setNotice(t("记忆已保存，检索缓存已更新"))
   }
   const visible = items.filter(item => (filter === 'all' || (filter === 'confirmed' ? item.confirmed : (item.status || 'active') === filter)) && `${item.content} ${item.topic} ${tags(item.tags).join(' ')}`.toLowerCase().includes(search.toLowerCase()))
   return <div className="standard-page reference-page reference-memory"><PageHeader eyebrow={t("由你决定记住什么")} title={t("学习记忆")} description={t("查看来源、修正推断，管理用于后续学习的个人记忆。")}><button className="primary-button" disabled={reads.loading || busy} onClick={() => setOpen(true)}><Plus size={17} />{t("添加记忆")}</button></PageHeader>
@@ -83,11 +87,10 @@ export default function MemoryPage() {
       <div className="action-row">{!selected.confirmed && <button disabled={busy} onClick={() => act(() => update({ confirmed: true }))}>{t("确认记忆")}</button>}<label>{t("学习状态")}<select disabled={busy} value={selected.status || 'active'} onChange={e => act(() => update({ status: e.target.value }))}>{Object.entries(states).map(([value, text]) => <option key={value} value={value}>{t(text)}</option>)}</select></label><Link className="text-link" to="/review">{t("安排复习 →")}</Link></div><p className="muted">{t("归档或忽略后不再参与记忆检索；原记录保留，可随时恢复为学习中。")}</p>
       <MemoryVersions key={selected.id} memoryId={selected.id} revision={versionRevision} busy={busy} onRestore={version => act(async () => {
         const data = await endpoints.restoreMemory(selected.id, version)
-        const restored = (data.memories || []).find(item => item.id === selected.id) || null
-        setItems(data.memories || []); setSelected(restored); setTagText(tags(restored?.tags).join(', '))
-        setVersionRevision(value => value + 1); setNotice(t("历史版本已恢复"))
+        applyMemoryReceipt(data.memory)
+        setNotice(t("历史版本已恢复"))
       })} />
-      <DangerZone title={t("删除此记忆")} description={t("从记忆检索中移除此条目并清除缓存。版本历史仍按保留策略保存，可用于恢复。")} action={t("删除记忆")} confirmText="DELETE MEMORY" busy={busy} onConfirm={() => run(async () => { const data = await endpoints.deleteManagedMemory(selected.id); setItems(data.memories || []); setSelected(null); setNotice(t("记忆已删除")) })} />
+      <DangerZone title={t("删除此记忆")} description={t("从记忆检索中移除此条目并清除缓存。版本历史仍按保留策略保存，可用于恢复。")} action={t("删除记忆")} confirmText="DELETE MEMORY" busy={busy} onConfirm={() => run(async () => { const data = await endpoints.deleteManagedMemory(selected.id); setItems(current => current.filter(item => item.id !== data.id)); setSelected(null); setNotice(t("记忆已删除")) })} />
     </>}</DetailPane></div>
     <Modal open={open} title={t("添加学习记忆")} busy={busy} onClose={() => setOpen(false)}><form className="form-stack" onSubmit={e => { e.preventDefault(); act(async () => { await endpoints.writeMemory(form); setOpen(false); setForm({ category: 'preference', content: '', topic: '' }); setNotice(t("记忆已添加")); await load() }) }}><FeedbackBlock error={error} /><label>{t("类型")}<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{Object.entries(categories).map(([value, text]) => <option key={value} value={value}>{t(text)}</option>)}</select></label><label>{t("主题")}<input maxLength={200} value={form.topic} onChange={e => setForm({ ...form, topic: e.target.value })} /></label><label>{t("内容")}<textarea aria-label={t("内容")} required maxLength={10000} rows={5} value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} /></label><button disabled={busy} className="primary-button">{t("保存记忆")}</button></form></Modal>
   </div>

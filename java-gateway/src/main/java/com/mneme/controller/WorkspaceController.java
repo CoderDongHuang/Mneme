@@ -101,17 +101,18 @@ public class WorkspaceController {
     @GetMapping("/memories") public Result<Object> memories(@RequestAttribute("userId") Long userId) { return Result.success(restTemplate.getForObject(pythonAgentUrl + "/api/v1/memory/admin/" + userId, Object.class)); }
     @PatchMapping("/memories/{id}") public Result<Object> updateMemory(@RequestAttribute("userId") Long userId, @PathVariable String id, @RequestBody Map<String, Object> body) {
         body.put("user_id", userId.toString());
-        restTemplate.exchange(
+        return Result.success(restTemplate.exchange(
             pythonAgentUrl + "/api/v1/memory/admin/" + id,
             HttpMethod.PATCH,
             new HttpEntity<>(body),
             Object.class
-        );
-        return memories(userId);
+        ).getBody());
     }
     @DeleteMapping("/memories/{id}") public Result<Object> deleteMemory(@RequestAttribute("userId") Long userId, @PathVariable String id) {
-        restTemplate.delete(pythonAgentUrl + "/api/v1/memory/admin/" + id + "?user_id=" + userId);
-        return memories(userId);
+        return Result.success(restTemplate.exchange(
+            pythonAgentUrl + "/api/v1/memory/admin/" + id + "?user_id=" + userId,
+            HttpMethod.DELETE, HttpEntity.EMPTY, Object.class
+        ).getBody());
     }
     @GetMapping("/memories/{id}/versions") public Result<Object> memoryVersions(@RequestAttribute("userId") Long userId, @PathVariable String id) {
         return Result.success(restTemplate.getForObject(
@@ -121,12 +122,11 @@ public class WorkspaceController {
     }
     @PostMapping("/memories/{id}/restore") public Result<Object> restoreMemory(@RequestAttribute("userId") Long userId, @PathVariable String id, @RequestBody Map<String, Object> body) {
         body.put("user_id", userId.toString());
-        restTemplate.postForObject(
+        return Result.success(restTemplate.postForObject(
             pythonAgentUrl + "/api/v1/memory/admin/" + id + "/restore",
             body,
             Object.class
-        );
-        return memories(userId);
+        ));
     }
 
     @GetMapping(value="/export", produces=MediaType.APPLICATION_JSON_VALUE) public ResponseEntity<Map<String, Object>> exportData(@RequestAttribute("userId") Long userId) {
