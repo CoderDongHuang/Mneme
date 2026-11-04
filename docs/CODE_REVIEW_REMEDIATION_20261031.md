@@ -79,6 +79,7 @@
 | [#109](https://github.com/CoderDongHuang/Mneme/pull/109) | 任务中心读取与提交回执边界；当前 HEAD 的 9 项 CI 全通过，不关闭完整 P3-03/P2-14 |
 
 | [#110](https://github.com/CoderDongHuang/Mneme/pull/110) | 普通 Result 共享契约与 null 回执；当前 HEAD 的 9 项 CI 全通过并合并 |
+| [#111](https://github.com/CoderDongHuang/Mneme/pull/111) | 知识库独立读取、慢刷新筛选及预览归属保护；最终 HEAD bb58858 的 9 项 CI 全通过并合并 |
 
 ## 当前未完成工作
 
