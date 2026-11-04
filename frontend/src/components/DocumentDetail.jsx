@@ -10,19 +10,23 @@ import DocumentIndexHealth from './DocumentIndexHealth'
 
 export default function DocumentDetail({ document, onClose, onRepairIndex, indexBusy }) {
   useI18n()
-  const [preview, setPreview] = useState(null)
+  const [read, setRead] = useState(null)
   const [tab, setTab] = useState('original')
   const [page, setPage] = useState(1)
   const [zoom, setZoom] = useState(100)
   const [imageError, setImageError] = useState(false)
-  const [error, setError] = useState('')
   const [retry, setRetry] = useState(0)
   const id = document?.id
   const revision = `${document?.updatedAt || ''}:${document?.status || ''}:${document?.parseReport || ''}`
+  const currentRead = id && read?.id === id && read.revision === revision && read.retry === retry ? read : null
+  const preview = currentRead?.preview || null
+  const error = currentRead?.error || ''
   useEffect(() => {
     let active = true
-    setPreview(null); setError(''); setTab('original'); setPage(1); setZoom(100); setImageError(false)
-    if (id) endpoints.documentPreview(id).then(value => { if (active) setPreview(value) }).catch(e => { if (active) setError(e.message) })
+    setRead(null); setTab('original'); setPage(1); setZoom(100); setImageError(false)
+    if (id) endpoints.documentPreview(id)
+      .then(preview => { if (active) setRead({ id, revision, retry, preview }) })
+      .catch(e => { if (active) setRead({ id, revision, retry, error: e.message }) })
     return () => { active = false }
   }, [id, revision, retry])
   const pages = preview?.parse_report?.pages || []

@@ -1330,5 +1330,20 @@
   "头像文件": "Avatar files",
   "任务读取状态": "Task read status",
   "阶段记录读取状态": "Activity read status",
-  "提交结果未确认，请刷新任务核实后再操作。": "Submission outcome is unconfirmed. Refresh tasks to verify before acting again."
+  "提交结果未确认，请刷新任务核实后再操作。": "Submission outcome is unconfirmed. Refresh tasks to verify before acting again.",
+  "资料库加载失败。已有记录可能不是最新状态，请重试。": "Could not load libraries. Existing records may be out of date. Please retry.",
+  "文档列表加载失败。已有记录可能不是最新状态，请重试。": "Could not load documents. Existing records may be out of date. Please retry.",
+  "最近活动加载失败，请重试；文档状态仍以列表为准。": "Could not load recent activity. Please retry; use the document list for current status.",
+  "资料库读取": "Library loading",
+  "文档读取": "Document loading",
+  "资料库记录可能已过期，刷新成功后可继续操作。": "Library records may be out of date. Refresh successfully before continuing.",
+  "文档记录可能已过期，刷新成功后可继续操作。": "Document records may be out of date. Refresh successfully before continuing.",
+  "正在读取文档列表…": "Loading documents\u2026",
+  "正在读取最近活动…": "Loading recent activity\u2026",
+  "没有符合筛选条件的资料": "No documents match these filters",
+  "请调整搜索或筛选条件。": "Adjust the search or filters.",
+  "应用通知已关闭": "Application notifications are disabled",
+  "资料库不可用": "Libraries unavailable",
+  "删除任务已提交，最终结果请查看任务中心。": "Deletion accepted. Check the task center for the final outcome.",
+  "解析任务已提交，最终结果请查看任务中心。": "Parsing accepted. Check the task center for the final outcome."
 }
