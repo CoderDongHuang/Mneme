@@ -1316,5 +1316,15 @@
   "学习分析加载失败：{0}": "Could not load learning analytics: {0}",
   "正在刷新学习分析…": "Refreshing learning analytics…",
   "已有分析可能不是最新状态，刷新成功后可导出报告或修改反馈。": "These analytics may be out of date. Refresh successfully before exporting or changing feedback.",
-  "反馈操作未确认，请刷新核实后重试。": "The feedback operation is unconfirmed. Refresh to verify before retrying."
+  "反馈操作未确认，请刷新核实后重试。": "The feedback operation is unconfirmed. Refresh to verify before retrying.",
+  "账号写入围栏": "Account write fence",
+  "记忆版本": "Memory versions",
+  "执行记录": "Execution traces",
+  "隐私设置": "Privacy settings",
+  "工具授权与用量": "Tool approvals and usage",
+  "会话清单": "Session manifest",
+  "Redis 会话缓存": "Redis session cache",
+  "反思计数与租约": "Reflection counters and leases",
+  "反思队列任务": "Reflection queue entries",
+  "头像文件": "Avatar files"
 }

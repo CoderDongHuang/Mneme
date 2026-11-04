@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.storage.mysql import connection as mysql_connection
 from app.storage.mysql import require_tables
 
+from app.knowledge.generations import generation_store, StaleGeneration
 from app.knowledge.retriever import retrieve
 from app.memory.memory_store import memory_store
 
@@ -97,17 +98,20 @@ class ToolRegistry:
         token = secrets.token_urlsafe(32)
         ttl = max(60, int(ttl_seconds or settings.agent_tool_approval_ttl_seconds))
         expires_at = datetime.now(timezone.utc).timestamp() + ttl
-        if settings.auxiliary_store_backend == "mysql":
-            with mysql_connection() as connection:
-                cursor = connection.cursor()
-                cursor.execute(
-                    "INSERT INTO agent_tool_approval(token_hash,tool_name,user_id,approved_by,expires_at) VALUES(%s,%s,%s,%s,FROM_UNIXTIME(%s))",
-                    (hashlib.sha256(token.encode()).hexdigest(), tool_name, str(user_id), approved_by, expires_at),
-                )
-                cursor.close()
-        else:
-            with self._lock:
-                self._approvals[token] = (tool_name, str(user_id), expires_at)
+        with generation_store.locked(str(user_id)) as state:
+            if state.get("deleted"):
+                raise StaleGeneration("账号已删除")
+            if settings.auxiliary_store_backend == "mysql":
+                with mysql_connection() as connection:
+                    cursor = connection.cursor()
+                    cursor.execute(
+                        "INSERT INTO agent_tool_approval(token_hash,tool_name,user_id,approved_by,expires_at) VALUES(%s,%s,%s,%s,FROM_UNIXTIME(%s))",
+                        (hashlib.sha256(token.encode()).hexdigest(), tool_name, str(user_id), approved_by, expires_at),
+                    )
+                    cursor.close()
+            else:
+                with self._lock:
+                    self._approvals[token] = (tool_name, str(user_id), expires_at)
         agent_trace_store.record(str(user_id), "tool-approval", f"tool.{tool_name}", "approved", {"approved_by": approved_by, "ttl_seconds": ttl})
         return token
 
@@ -204,6 +208,12 @@ class ToolRegistry:
     def _consume_quota(self, name: str, user_id: str, units: int) -> None:
         if not user_id:
             return
+        with generation_store.locked(str(user_id)) as state:
+            if state.get("deleted"):
+                raise StaleGeneration("账号已删除")
+            self._consume_active_quota(name, user_id, units)
+
+    def _consume_active_quota(self, name: str, user_id: str, units: int) -> None:
         day = datetime.now(timezone.utc).date().isoformat()
         if settings.auxiliary_store_backend == "mysql":
             with mysql_connection() as connection:
@@ -234,6 +244,22 @@ class ToolRegistry:
             if used + units > settings.agent_tool_daily_quota:
                 raise RuntimeError(f"用户工具配额已用尽: {settings.agent_tool_daily_quota}")
             self._usage[key] = (day, used + units)
+
+    def count_user_governance(self, user_id: str) -> int:
+        if settings.auxiliary_store_backend == "mysql":
+            with mysql_connection() as connection:
+                cursor = connection.cursor()
+                try:
+                    total = 0
+                    for table in ("agent_tool_usage", "agent_tool_approval"):
+                        cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE user_id=%s", (str(user_id),))
+                        total += int(cursor.fetchone()[0])
+                    return total
+                finally:
+                    cursor.close()
+        with self._lock:
+            return (sum(key[0] == str(user_id) for key in self._usage)
+                    + sum(value[1] == str(user_id) for value in self._approvals.values()))
 
     def delete_user_governance(self, user_id: str) -> int:
         if settings.auxiliary_store_backend == "mysql":
