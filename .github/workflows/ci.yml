@@ -282,6 +282,8 @@ jobs:
           done
           $COMPOSE ps
           exit 1
+      - name: Verify actual application data mounts against effective Compose
+        run: python scripts/check_runtime_mounts.py -f docker-compose.yml -f docker-compose.selfhost.yml -f docker-compose.ci.yml
       - name: Run real browser workflow
         working-directory: frontend
         env:
@@ -378,6 +380,12 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/session-cleanup-real.spec.js --workers=1 --retries=0
+      - name: Verify account current and historical files, manifest failure and real retry
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/account-files-real.spec.js --workers=1 --retries=0
       - name: Verify email ownership, reset and rebinding on desktop and mobile
         working-directory: frontend
         env:
