@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import process from 'node:process'
+import { setTimeout as delay } from 'node:timers/promises'
 
 test.skip(process.env.MNEME_REAL_E2E !== 'true' || process.env.MNEME_STREAM_QA_FAULTS !== 'true', '需要真实服务与隔离模型流测试')
 test.use({ trace: 'off', screenshot: 'off', video: 'off' })
@@ -16,12 +17,23 @@ test('真实主动停止和无 Token 停止关闭上游，浏览器断流保持�
   // Only the test harness installs/restores the fault hook as root; the service
   // keeps its original identity and receives ownership of its temporary markers.
   const python = (code, ...args) => execFileSync('docker', ['exec', '--user', '0', '-i', agent, 'python', '-', ...args.map(String)], { input: code, encoding: 'utf8', timeout: 30_000 }).trim().split('\n').at(-1)
-  async function api(method, path, body) {
-    const response = await page.request[method]('/api/v1' + path, body === undefined ? {} : { data: body })
-    expect(response.ok(), `${method} ${path}: ${response.status()}`).toBe(true)
-    const result = await response.json()
-    expect(result.code).toBe(200)
-    return result.data
+  async function api(method, path, body, retryLimited = false) {
+    for (let attempt = 0; attempt < (retryLimited ? 3 : 1); attempt++) {
+      const response = await page.request[method]('/api/v1' + path, body === undefined ? {} : { data: body })
+      // Only final account cleanup may wait for the shared service budget.
+      // Stream, stop and immediate history assertions retain their first response.
+      if (retryLimited && response.status() === 429 && attempt < 2) {
+        const seconds = Number(response.headers()['retry-after'])
+        expect(seconds > 0 && seconds <= 60).toBe(true)
+        await delay(seconds * 1000 + 250)
+        continue
+      }
+      expect(response.ok(), `${method} ${path}: ${response.status()}`).toBe(true)
+      const result = await response.json()
+      expect(result.code).toBe(200)
+      return result.data
+    }
+    throw new Error('Rate limit did not recover')
   }
   async function restart() {
     execFileSync('docker', ['restart', agent], { timeout: 30_000, stdio: 'pipe' })
@@ -109,6 +121,10 @@ test('真实主动停止和无 Token 停止关闭上游，浏览器断流保持�
       python(`import sys,shutil\nfrom pathlib import Path\nroot=Path(sys.argv[1]); assert str(root).startswith('/tmp/mneme-stream-qa-')\nmodule=Path('/app/app/api/chat_stream.py')\nif (root/'original').exists():\n original=(root/'original').read_bytes()\n current=module.read_bytes()\n assert current==original or ((root/'suffix').exists() and current==original+(root/'suffix').read_bytes())\n module.write_bytes(original)\n assert module.read_bytes()==original\nshutil.rmtree(root)\nprint('restored')`, folder)
       await restart()
     }
-    if (account) await api('delete', '/profile/account')
+    if (account) {
+      test.setTimeout(testInfo.timeout + 150000)
+      await page.close()
+      await api('delete', '/profile/account', undefined, true)
+    }
   }
 })
