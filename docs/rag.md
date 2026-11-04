@@ -1,5 +1,7 @@
 # 文档解析与 RAG
 
+解析阶段位于 `python-agent/app/knowledge/document_parser.py`，可独立读取文件而不初始化 Qdrant、FTS5、generation 或 Embedding。`ingestion.py` 保留解析函数与格式常量的兼容导出，负责后续分块、版本围栏、Embedding、索引发布及报告编排；本次拆分不改变 parser v3、支持格式、元数据或取消检查。后续边界继续渐进拆分。
+
 ## 处理链路
 
 1. Java 校验用户对知识库的所有权并保存原文件。

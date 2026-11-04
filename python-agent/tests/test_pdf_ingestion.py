@@ -65,12 +65,12 @@ def test_pdf_keeps_extracted_text_when_ocr_is_unavailable(tmp_path, monkeypatch)
 def test_native_page_margins_are_removed_when_ocr_is_used(tmp_path, monkeypatch):
     import pytesseract
     from dataclasses import replace
-    from app.knowledge import ingestion
+    from app.knowledge import document_parser
     from app.core.config import settings
 
     path = tmp_path / "native-with-ocr.pdf"
     _create_layout_pdf(path)
-    monkeypatch.setattr(ingestion, "settings", replace(settings, ocr_enabled=True, pdf_min_text_chars=1000))
+    monkeypatch.setattr(document_parser, "settings", replace(settings, ocr_enabled=True, pdf_min_text_chars=1000))
     monkeypatch.setattr(pytesseract, "image_to_data", lambda *args, **kwargs: {
         "text": ["Mneme"], "conf": [95], "left": [72], "top": [40],
         "width": [60], "height": [15],
