@@ -10,11 +10,23 @@ test('真实完成事件到达时答案引用已落库，立即断流重放及�
   test.setTimeout(240_000)
   let account
   async function api(method, path, body) {
-    const response = await page.request[method]('/api/v1' + path, body === undefined ? {} : { data: body })
-    expect(response.ok(), `${method} ${path}: ${await response.text()}`).toBe(true)
-    const payload = await response.json()
-    expect(payload.code).toBe(200)
-    return payload.data
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await page.request[method]('/api/v1' + path, body === undefined ? {} : { data: body })
+      // The stress case intentionally exhausts the service bucket. Respect its
+      // rejection before retrying setup/cleanup, without relaxing the immediate
+      // history read or either answer stream's persistence assertions below.
+      if (response.status() === 429 && attempt < 2) {
+        const seconds = Number(response.headers()['retry-after'])
+        expect(seconds > 0 && seconds <= 60).toBe(true)
+        await page.waitForTimeout(seconds * 1000 + 250)
+        continue
+      }
+      expect(response.ok(), `${method} ${path}: ${await response.text()}`).toBe(true)
+      const payload = await response.json()
+      expect(payload.code).toBe(200)
+      return payload.data
+    }
+    throw new Error('Rate limit did not recover')
   }
   try {
     const suffix = randomUUID().replaceAll('-', '')
