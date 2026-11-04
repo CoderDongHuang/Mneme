@@ -49,6 +49,19 @@ final class AccountFileCleanup {
         requireZero(storage.countLocation(directory.toString()));
     }
 
+    void readReport(long userId, CleanupReport report) {
+        report.read("files", () -> {
+            long[] count = {0};
+            locations(userId, location -> {
+                try { count[0] = Math.addExact(count[0], storage.countLocation(location)); }
+                catch (Exception error) { throw new IllegalStateException("版本文件无法读取", error); }
+            });
+            return count[0];
+        });
+        report.read("object_prefix", () -> storage.countUserPrefix(userId));
+        report.read("local_directory", () -> storage.countLocation(root.resolve(Long.toString(userId)).toString()));
+    }
+
     private static void requireZero(long count) {
         if (count != 0) throw new IllegalStateException("账号文件清理未通过读回核验");
     }
