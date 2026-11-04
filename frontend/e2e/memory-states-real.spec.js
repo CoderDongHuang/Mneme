@@ -132,6 +132,16 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
     await expect(page.getByRole('alert')).toHaveCount(0)
     expect(writes).toBe(1)
     await screenshot('memory-recovered.png')
+    await page.getByRole('button', { name: /记忆状态回归甲/ }).click()
+    await detail.getByRole('button', { name: '删除记忆', exact: true }).click()
+    const confirmation = page.getByRole('dialog', { name: '删除此记忆', exact: true })
+    await confirmation.getByRole('textbox', { name: '确认文字 / Confirmation', exact: true }).fill('DELETE MEMORY')
+    await browserAction(confirmation.getByRole('button', { name: '删除记忆', exact: true }), 'DELETE', `/workspace/memories/${entry.id}`)
+    await expect(page.getByText('记忆已删除', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /记忆状态回归甲/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /记忆状态回归乙/ })).toBeVisible()
+    await expect(metric('总记忆数')).toHaveText('1')
+    expect((await api('get', '/workspace/memories')).memories.map(item => item.id)).toEqual(original.memories.filter(item => item.id !== entry.id).map(item => item.id))
   } finally {
     if (account) await api('delete', '/profile/account')
   }
