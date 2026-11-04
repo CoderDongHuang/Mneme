@@ -166,9 +166,12 @@ def handler(executor, token):
                         return self.respond(200, {"configuration": "present", "connection": "not_checked",
                             "operation": "not_run", "cleanup": "not_required", "code": "BUSY"})
                     try:
-                        return self.respond(200, check_keys())
+                        result = check_keys()
                     finally:
                         executor.lock.release()
+                    # Completion must release the operation lease before the
+                    # client can observe success or a slow socket blocks send.
+                    return self.respond(200, result)
                 if self.command == "POST" and self.path in {"/site/preview", "/site/jobs"}:
                     length = int(self.headers.get("Content-Length", "0"))
                     if not 0 < length <= 8192:

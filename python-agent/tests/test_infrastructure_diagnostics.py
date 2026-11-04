@@ -204,3 +204,65 @@ def test_real_host_route_requires_auth_is_exclusive_and_never_creates_backup_job
         server.shutdown()
         server.server_close()
         thread.join(timeout=3)
+
+
+@pytest.mark.parametrize('check_fails', [False, True])
+def test_key_check_releases_operation_lock_before_http_response(tmp_path, monkeypatch, check_fails):
+    from concurrent.futures import ThreadPoolExecutor
+
+    executor = recovery_worker.RecoveryExecutor(tmp_path, [])
+    response_started = threading.Event()
+    allow_response = threading.Event()
+    lock_states = []
+    handler = recovery_worker.handler(executor, 'test-token')
+    respond = handler.respond
+
+    def slow_respond(self, code, body):
+        lock_states.append(executor.lock.locked())
+        response_started.set()
+        if not allow_response.wait(3):
+            raise TimeoutError('Test response gate timed out')
+        return respond(self, code, body)
+
+    def check():
+        assert executor.lock.locked()  # Protect the actual key operation.
+        if check_fails:
+            raise RuntimeError('private-provider-error')
+        return {'code': 'OK'}
+
+    monkeypatch.setattr(handler, 'respond', slow_respond)
+    monkeypatch.setattr(keys, 'check_keys', check)
+    server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def request():
+        req = urllib.request.Request(f'http://127.0.0.1:{server.server_port}/site/keys/check',
+                                     data=b'', headers={'Authorization': 'Bearer test-token'})
+        try:
+            with opener.open(req, timeout=5) as response:
+                return response.status, json.load(response)
+        except urllib.error.HTTPError as error:
+            return error.code, json.load(error)
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(request)
+            try:
+                assert response_started.wait(3)
+                assert lock_states == [False]
+                # A blocked response must not keep the backup/restore gate busy.
+                assert executor.lock.acquire(blocking=False)
+                executor.lock.release()
+            finally:
+                allow_response.set()
+            status, body = pending.result(timeout=5)
+        assert status == (500 if check_fails else 200)
+        assert body == ({'message': 'Host recovery service failed'} if check_fails else {'code': 'OK'})
+        assert executor.history()['jobs'] == []
+    finally:
+        allow_response.set()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
