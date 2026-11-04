@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import TasksPage from './TasksPage'
 import { endpoints } from '../api/client'
 import { taskDiagnostics } from '../features/tasks/presentation'
-vi.mock('../api/client', () => ({ endpoints: { tasks: vi.fn(), operations: vi.fn(), cancelTask: vi.fn(), retryTask: vi.fn() }, openNotificationStream: () => ({ close() {} }) }))
+const notifications = vi.hoisted(() => ({ refresh: null }))
+vi.mock('../api/client', () => ({ endpoints: { tasks: vi.fn(), operations: vi.fn(), cancelTask: vi.fn(), retryTask: vi.fn() }, openNotificationStream: refresh => { notifications.refresh = refresh; return { close() {} } } }))
 beforeEach(() => {
   vi.clearAllMocks()
   endpoints.tasks.mockResolvedValue([{ task_id: 't1', task_type: 'document_ingest', file_name: 'test.pdf', status: 'pending', attempt_count: 0, max_attempts: 3 }, { task_id: 't2', task_type: 'document_delete', status: 'pending' }])
@@ -65,7 +66,7 @@ test('initial failures never claim no data or show zero metrics', async () => {
   endpoints.tasks.mockRejectedValue(new Error('offline'))
   endpoints.operations.mockRejectedValue(new Error('offline'))
   render(<TasksPage />)
-  await screen.findByRole('alert')
+  await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2))
   expect(screen.queryByText('暂无符合条件的任务')).not.toBeInTheDocument()
   expect(screen.queryByText('暂无记录')).not.toBeInTheDocument()
   expect(screen.getAllByText('—')).toHaveLength(4)
@@ -76,12 +77,35 @@ test('initial failures never claim no data or show zero metrics', async () => {
   expect(screen.getByText('暂无记录')).toBeInTheDocument()
 })
 
+test('mobile detail keeps independent read recovery accessible inside the modal', async () => {
+  const original = window.matchMedia
+  window.matchMedia = vi.fn(query => ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} }))
+  try {
+    render(<TasksPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /test.pdf/ }))
+    const detail = screen.getByRole('dialog', { name: '任务详情' })
+    endpoints.tasks.mockRejectedValue(new Error('offline'))
+    endpoints.operations.mockRejectedValue(new Error('offline'))
+    act(() => notifications.refresh())
+    await waitFor(() => expect(within(detail).getAllByRole('alert')).toHaveLength(2))
+    expect(within(detail).getByRole('button', { name: '请求取消' })).toBeDisabled()
+    const beforeTasks = endpoints.tasks.mock.calls.length
+    endpoints.operations.mockResolvedValue([])
+    fireEvent.click(within(within(detail).getByRole('region', { name: '阶段记录读取状态' })).getByRole('button'))
+    await waitFor(() => expect(within(detail).getAllByRole('alert')).toHaveLength(1))
+    expect(endpoints.tasks).toHaveBeenCalledTimes(beforeTasks)
+    expect(endpoints.cancelTask).not.toHaveBeenCalled()
+    fireEvent.click(within(detail).getByRole('button', { name: '关闭 / Close' }))
+    expect(screen.getByRole('region', { name: '任务读取状态' })).toHaveTextContent('已有记录可能不是最新状态')
+  } finally { window.matchMedia = original }
+})
+
 test('retry stays pending until server completion; related document and safe diagnostics use canonical fields', async () => {
   const secret = 'http://internal:8001/api?key=secret /srv/files/private.txt'
   const task = { task_id: 't1', task_type: 'document_ingest', aggregate_id: 42, file_name: 'test.pdf', status: 'failed', error_message: secret, payload: secret, attempt_count: 3, max_attempts: 3 }
   endpoints.tasks.mockResolvedValue([task])
   endpoints.operations.mockResolvedValue([{ operation_id: 't1', step: 'retry_or_fail', status: 'failed', error_message: secret, payload_json: secret }])
-  endpoints.retryTask.mockResolvedValue({ status: 'retry' })
+  endpoints.retryTask.mockResolvedValue({ task_id: 't1', status: 'retry' })
   const writeText = vi.fn().mockResolvedValue(undefined)
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
   render(<TasksPage />)
@@ -97,7 +121,7 @@ test('retry stays pending until server completion; related document and safe dia
   expect(writeText.mock.calls[0][0]).not.toMatch(/secret|test.pdf|error_message|payload/)
   endpoints.tasks.mockResolvedValue([{ ...task, status: 'retry' }])
   fireEvent.click(screen.getByRole('button', { name: '重试任务' }))
-  await waitFor(() => expect(endpoints.retryTask).toHaveBeenCalledWith('t1'))
+  await waitFor(() => expect(endpoints.retryTask).toHaveBeenCalledWith('t1', { signal: expect.any(AbortSignal) }))
   await waitFor(() => expect(detail).toHaveTextContent('等待重试'))
   expect(detail).toHaveTextContent('后台将按计划重试')
   expect(detail).not.toHaveTextContent('已完成')
@@ -120,14 +144,14 @@ test('only pending ingestion can be cancelled and server errors remain visible',
   fireEvent.click(screen.getByRole('button', { name: /test.pdf/ }))
   expect(screen.getAllByRole('button', { name: '请求取消' })).toHaveLength(1)
   fireEvent.click(screen.getByRole('button', { name: '请求取消' }))
-  await waitFor(() => expect(endpoints.cancelTask).toHaveBeenCalledWith('t1'))
+  await waitFor(() => expect(endpoints.cancelTask).toHaveBeenCalledWith('t1', { signal: expect.any(AbortSignal) }))
   expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent('任务已领取')
 })
 
 test('memory failures keep answer context and allow task retry without document instructions', async () => {
   endpoints.tasks.mockResolvedValue([{ task_id: 'm1', task_type: 'memory_candidates', aggregate_id: 42, status: 'failed', error_message: 'safe failure', attempt_count: 3, max_attempts: 3 }])
   endpoints.operations.mockResolvedValue([{ operation_id: 'm1', step: 'retry_or_fail', status: 'failed', error_message: 'private-candidate-content' }])
-  endpoints.retryTask.mockResolvedValue({ status: 'retry' })
+  endpoints.retryTask.mockResolvedValue({ task_id: 'm1', status: 'retry' })
   render(<TasksPage />)
   fireEvent.click(await screen.findByRole('button', { name: /候选记忆保存/ }))
   const detail = screen.getByRole('complementary', { name: '任务详情' })
@@ -140,5 +164,5 @@ test('memory failures keep answer context and allow task retry without document 
   expect(document.body).not.toHaveTextContent('private-candidate-content')
   expect(within(detail).queryByRole('button', { name: '请求取消' })).not.toBeInTheDocument()
   fireEvent.click(within(detail).getByRole('button', { name: '重试任务' }))
-  await waitFor(() => expect(endpoints.retryTask).toHaveBeenCalledWith('m1'))
+  await waitFor(() => expect(endpoints.retryTask).toHaveBeenCalledWith('m1', { signal: expect.any(AbortSignal) }))
 })

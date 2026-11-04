@@ -202,10 +202,10 @@ export const endpoints = {
   documentPreview: (id, sha256) => api(`/workspace/documents/${id}/preview${sha256 ? `?sha256=${encodeURIComponent(sha256)}` : ''}`),
   documentTags: (id) => api(`/workspace/documents/${id}/tags`),
   setDocumentTags: (id, tags) => api(`/workspace/documents/${id}/tags`, { method: 'PUT', body: JSON.stringify(tags) }),
-  tasks: () => api('/workspace/tasks'),
-  operations: () => api('/workspace/operations?limit=200'),
-  cancelTask: (id) => api(`/workspace/tasks/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
-  retryTask: (id) => api(`/workspace/tasks/${id}/retry`, { method: 'POST' }),
+  tasks: ({ signal } = {}) => api('/workspace/tasks', { signal }),
+  operations: ({ signal } = {}) => api('/workspace/operations?limit=200', { signal }),
+  cancelTask: (id, { signal } = {}) => api(`/workspace/tasks/${encodeURIComponent(id)}/cancel`, { method: 'POST', signal }),
+  retryTask: (id, { signal } = {}) => api(`/workspace/tasks/${encodeURIComponent(id)}/retry`, { method: 'POST', signal }),
   retrievalDebug: (kbId, query, topK = 6, filters = {}) => {
     const params = new URLSearchParams({ kbId, query, topK })
     ;(filters.selected_document_ids || []).forEach(id => params.append('documentIds', id))
