@@ -403,6 +403,14 @@ class ReflectionScheduler:
             last = entries[-1][0]
             cursor = "(" + (last.decode() if isinstance(last, bytes) else last)
 
+    def count_user_keys(self, user_id: str) -> int:
+        keys = [self._counter_key(user_id), self._job_key(user_id),
+                self._lease_key(user_id), self._lease_state_key(user_id)]
+        return int(self._redis.exists(*keys)) + sum(1 for _ in self._delivery_keys(user_id))
+
+    def count_user_queue(self, user_id: str) -> int:
+        return sum(len(batch) for batch in self._user_queue_batches(user_id))
+
     def delete_user(self, user_id: str) -> dict:
         """Fence first, then remove and independently verify all reflection data.
 

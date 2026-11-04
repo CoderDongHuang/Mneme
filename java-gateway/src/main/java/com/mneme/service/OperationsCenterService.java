@@ -61,7 +61,7 @@ public class OperationsCenterService {
         try {
             result.put("queue", jdbc.queryForList("SELECT task_type,status,COUNT(*) AS total FROM processing_task GROUP BY task_type,status"));
             result.put("sagas", jdbc.queryForList("""
-                SELECT operation_id,user_id,status,current_step,attempt_count,next_attempt_at,completed_at,updated_at
+                SELECT operation_id,user_id,status,current_step,attempt_count,next_attempt_at,completed_at,updated_at,cleanup_report
                 FROM account_deletion_task ORDER BY updated_at DESC LIMIT 100
                 """));
             result.put("deletion_tasks", jdbc.queryForList("""
