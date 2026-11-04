@@ -386,6 +386,12 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/account-files-real.spec.js --workers=1 --retries=0
+      - name: Verify offline SQLite compaction and real service recovery on desktop and mobile
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/sqlite-maintenance-real.spec.js --workers=1 --retries=0
       - name: Verify email ownership, reset and rebinding on desktop and mobile
         working-directory: frontend
         env:
