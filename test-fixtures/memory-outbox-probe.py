@@ -129,6 +129,22 @@ def complete_conversation(request, state, answer):
     }))
     # Run the actual completion and distillation pipeline. Only provider output
     # is controlled: cache reads, idle detection, IDs and Redis writes are real.
+    # First fail actual idle detection/extraction on malformed provider output.
+    # No whole-completion retry is attempted: later side effects are not yet
+    # globally idempotent. The original snapshot alone is safe to extract again.
+    original_input = _qa_json.dumps(state["memory_input"], sort_keys=True)
+    with _qa_patch.object(_qa_distillation, "llm", _QaMock(invoke=_QaMock(return_value=_QaMessage(content=canary)))):
+        try:
+            with _qa_trace.span(request.user_id, request.session_id, "memory.distillation.validation"):
+                _qa_memory_write(state)
+        except _qa_distillation.DistillationResultError as error:
+            assert error.__context__ is None and canary not in "".join(_qa_traceback.format_exception(error))
+        else:
+            raise AssertionError("Invalid distillation must fail, not return empty success")
+    assert _qa_json.dumps(state["memory_input"], sort_keys=True) == original_input
+    rows = _qa_trace.list_session(request.user_id, request.session_id)
+    assert any(row["node"] == "memory.distillation.validation" and row["status"] == "error" for row in rows)
+    assert canary not in _qa_json.dumps(rows)
     result = _qa_complete(request, state, answer)
     repeated = _qa_memory_write(state)
     assert result["pending_memories"] == repeated["pending_memories"]
@@ -147,6 +163,7 @@ def complete_conversation(request, state, answer):
     (_qa_root / "snapshot-check.json").write_text(_qa_json.dumps({  # noqa: F821
         "snapshot_frozen": True, "candidate_stable": True, "actual_completion": True,
         "reflection_delivery_recorded": True,
+        "distillation_failure_visible": True, "distillation_retry_valid": True,
     }))
     return result
 

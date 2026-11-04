@@ -4,17 +4,20 @@
 覆盖：
 - 空对话返回空列表
 - 低置信度记忆被过滤（confidence < 0.6）
-- LLM 返回非法 JSON 时安全降级
+- LLM 返回非法 JSON 或错误字段时明确失败，恢复后可重试
 - is_new=False 的条目被跳过
 - 蒸馏写入的去重统计
 - 已有记忆作为上下文传给 LLM
 """
 
 import json
-from unittest.mock import patch, MagicMock
+import traceback
+from unittest.mock import patch, MagicMock, call
+
+import pytest
 
 import app.memory.distillation as distillation_module
-from app.memory.distillation import distill_conversation, apply_distilled_entries
+from app.memory.distillation import DistillationResultError, distill_conversation, apply_distilled_entries
 
 
 def _mock_llm(return_content: str):
@@ -134,6 +137,7 @@ class TestDistillConversation:
                     {
                         "category": "weak_point",
                         "content": "弱信号2",
+                        "topic": "弱信号",
                         "confidence": 0.5,
                         "is_new": True,
                     },
@@ -188,8 +192,8 @@ class TestDistillConversation:
 
     # ── JSON 解析失败 ────────────────────────────────────
 
-    def test_invalid_json_returns_empty(self):
-        """LLM 返回非法 JSON 时安全降级"""
+    def test_invalid_json_raises(self):
+        """不能把非法 JSON 冒充没有新记忆。"""
         mock = _mock_llm("not a valid json [broken")
         with (
             patch.object(distillation_module, "llm", mock),
@@ -198,10 +202,8 @@ class TestDistillConversation:
                 return_value={},
             ),
         ):
-            result = distill_conversation(
-                "test_user", "sess_1", [{"role": "user", "content": "test"}]
-            )
-        assert result == []
+            with pytest.raises(DistillationResultError):
+                distill_conversation("test_user", "sess_1", [{"role": "user", "content": "test"}])
 
     def test_empty_json_array_returns_empty(self):
         """LLM 认为无可提取信息，返回空数组"""
@@ -243,6 +245,83 @@ class TestDistillConversation:
         prompt_text = str(call_args)
         assert "喜欢图表" in prompt_text
         assert "梯度下降" in prompt_text
+
+
+_VALID_ENTRY = {"category": "preference", "content": "Valid preference", "confidence": 0.7, "is_new": True}
+
+
+@pytest.mark.parametrize("content", [
+    None, [], {}, 1, "not-json-PRIVATE_RESULT", "```json\n[]\n```", "{}", "null", "true", "[null]", "[1]",
+    *[json.dumps([entry]) for entry in (
+        {}, {**_VALID_ENTRY, "category": "unsupported"}, {**_VALID_ENTRY, "category": []},
+        {**_VALID_ENTRY, "content": "  "}, {**_VALID_ENTRY, "content": 5},
+        {**_VALID_ENTRY, "confidence": "0.9"}, {**_VALID_ENTRY, "confidence": True},
+        {**_VALID_ENTRY, "confidence": -0.1}, {**_VALID_ENTRY, "confidence": 1.1},
+        {**_VALID_ENTRY, "confidence": float("nan")}, {**_VALID_ENTRY, "confidence": float("inf")},
+        {**_VALID_ENTRY, "confidence": 10 ** 400},
+        {**_VALID_ENTRY, "is_new": "false"}, {**_VALID_ENTRY, "is_new": 1},
+        {**_VALID_ENTRY, "topic": None}, {**_VALID_ENTRY, "topic": []},
+        {**_VALID_ENTRY, "category": "weak_point"},
+        {**_VALID_ENTRY, "category": "weak_point", "topic": " "},
+        {**_VALID_ENTRY, "source_session_id": "forged"},
+        {key: value for key, value in _VALID_ENTRY.items() if key != "is_new"},
+        {key: value for key, value in _VALID_ENTRY.items() if key != "confidence"},
+    )],
+    '[{"category":"preference","content":"PRIVATE_RESULT","confidence":0.9,"confidence":0.1,"is_new":true}]',
+    json.dumps([_VALID_ENTRY, {**_VALID_ENTRY, "is_new": "false"}]),
+    "[" * 1500 + "]" * 1500,
+])
+def test_invalid_results_fail_whole_batch_without_private_exception(content, monkeypatch):
+    conversation = [{"role": "user", "content": "PRIVATE_RESULT"}]
+    backend = MagicMock(get_all_memories=MagicMock(return_value={}))
+    monkeypatch.setattr(distillation_module, "long_term_memory", backend)
+    monkeypatch.setattr(distillation_module, "llm", _mock_llm(content))
+    with pytest.raises(DistillationResultError) as failure:
+        distill_conversation("test_user", "sess_1", conversation)
+    assert str(failure.value) == "Memory distillation result is invalid"
+    assert "PRIVATE_RESULT" not in "".join(traceback.format_exception(failure.value))
+    assert failure.value.__cause__ is None and failure.value.__context__ is None
+    assert backend.mock_calls == [call.get_all_memories("test_user")]
+
+
+def test_failed_batch_can_retry_same_snapshot_without_partial_writes(monkeypatch):
+    from app.agents.nodes import memory_write_node
+
+    backend = MagicMock(get_all_memories=MagicMock(return_value={}))
+    provider = _mock_llm("")
+    provider.invoke.side_effect = [
+        MagicMock(content=json.dumps([_VALID_ENTRY, {**_VALID_ENTRY, "confidence": False}])),
+        MagicMock(content=json.dumps([_VALID_ENTRY])),
+        MagicMock(content=json.dumps([_VALID_ENTRY])),
+    ]
+    monkeypatch.setattr(distillation_module, "long_term_memory", backend)
+    monkeypatch.setattr(distillation_module, "llm", provider)
+    state = {"user_id": "test_user", "session_id": "sess_1", "memory_input": {
+        "delivery_id": "stable-request", "reference_time": "2026-11-04T01:00:00Z", "history": [
+            {"role": "user", "content": "Historical preference", "timestamp": "2026-11-04T00:00:00Z"},
+            {"role": "user", "content": "Current question", "timestamp": "2026-11-04T01:00:00Z"},
+        ],
+    }}
+    snapshot = json.dumps(state, sort_keys=True)
+    with pytest.raises(DistillationResultError):
+        memory_write_node(state)
+    recovered = memory_write_node(state)
+    assert recovered == memory_write_node(state)
+    assert len(recovered["pending_memories"]) == 1
+    assert recovered["pending_memories"][0]["content"] == _VALID_ENTRY["content"]
+    assert recovered["memory_entries_to_write"][0]["source_session_id"] == "sess_1"
+    assert len(recovered["memory_entries_to_write"][0]["evidence_hashes"]) == 1
+    assert json.dumps(state, sort_keys=True) == snapshot
+    backend.add_preference.assert_not_called()
+    backend.add_weak_point.assert_not_called()
+    backend.update_progress.assert_not_called()
+
+
+@pytest.mark.parametrize("confidence,accepted", [(0, False), (0.59, False), (0.6, True), (1, True)])
+def test_valid_numeric_boundaries(confidence, accepted, monkeypatch):
+    monkeypatch.setattr(distillation_module, "long_term_memory", MagicMock(get_all_memories=MagicMock(return_value={})))
+    monkeypatch.setattr(distillation_module, "llm", _mock_llm(json.dumps([{**_VALID_ENTRY, "confidence": confidence}])))
+    assert bool(distill_conversation("test_user", "sess_1", [{"role": "user", "content": "test"}])) is accepted
 
 
 class TestApplyDistilledEntries:
