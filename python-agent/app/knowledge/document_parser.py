@@ -1,0 +1,459 @@
+"""Structured document parsing, independent of indexing and publication."""
+
+import csv
+import zipfile
+from collections import Counter
+from html.parser import HTMLParser
+from pathlib import Path
+
+from langchain_core.documents import Document
+
+from app.core.config import settings
+from app.core.logging import setup_logger
+from app.knowledge.cancellation import check_cancelled, IngestionCancelled
+
+logger = setup_logger("ingestion")
+PARSER_VERSION = "mneme-structured-v3"
+SUPPORTED_EXTENSIONS = {
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".xlsm",
+    ".csv",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".html",
+    ".htm",
+}
+
+
+class _TextHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        text = data.strip()
+        if text:
+            self.parts.append(text)
+
+
+def _document(content: str, source: str, **metadata: object) -> Document:
+    clean_metadata = {key: value for key, value in metadata.items() if value is not None}
+    return Document(page_content=content, metadata={"source": source, **clean_metadata})
+
+
+def _region(x0: float, y0: float, x1: float, y1: float, width: float, height: float) -> str:
+    if width <= 0 or height <= 0:
+        return ""
+    values = (
+        max(0.0, min(1.0, x0 / width)),
+        max(0.0, min(1.0, y0 / height)),
+        max(0.0, min(1.0, x1 / width)),
+        max(0.0, min(1.0, y1 / height)),
+    )
+    return ",".join(f"{value:.4f}" for value in values)
+
+
+def _parse_pdf(path: Path, source: str) -> list[Document]:
+    import pymupdf
+
+    pdf = pymupdf.open(str(path))
+    documents: list[Document] = []
+    page_lines: list[list[str]] = []
+    page_blocks: list[list[tuple[float, float, float, float, str]]] = []
+    page_sizes: list[tuple[float, float]] = []
+    page_ocr_confidences: list[float | None] = []
+    page_images: list[tuple[int, bytes]] = []
+    warnings: list[dict] = []
+
+    try:
+        for page_index, page in enumerate(pdf, start=1):
+            check_cancelled()
+            blocks = sorted(
+                page.get_text("blocks"),
+                key=lambda block: (round(float(block[1]) / 12), float(block[0])),
+            )
+            page_blocks.append([
+                (float(block[0]), float(block[1]), float(block[2]), float(block[3]), str(block[4]))
+                for block in blocks
+                if str(block[4]).strip()
+            ])
+            page_sizes.append((float(page.rect.width), float(page.rect.height)))
+            lines = [
+                line.strip()
+                for block in blocks
+                for line in str(block[4]).splitlines()
+                if line.strip()
+            ]
+            text = "\n".join(lines).strip()
+            ocr_confidence = None
+            ocr_regions = []
+
+            if len(text) < settings.pdf_min_text_chars and settings.ocr_enabled:
+                try:
+                    import pytesseract
+                    from PIL import Image
+
+                    pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
+                    image = Image.frombytes(
+                        "RGB", [pixmap.width, pixmap.height], pixmap.samples
+                    )
+                    ocr_data = pytesseract.image_to_data(
+                        image, lang=settings.ocr_languages, output_type=pytesseract.Output.DICT
+                    )
+                    confidence_values = [
+                        float(value) for value in ocr_data.get("conf", [])
+                        if str(value).strip() not in {"", "-1"} and float(value) >= 0
+                    ]
+                    ocr_confidence = round(sum(confidence_values) / len(confidence_values) / 100, 4) if confidence_values else None
+                    for index, word in enumerate(ocr_data.get("text", [])):
+                        confidence = float(ocr_data["conf"][index])
+                        if not str(word).strip() or confidence < 0:
+                            continue
+                        left, top = ocr_data["left"][index], ocr_data["top"][index]
+                        ocr_regions.append({"text": str(word), "confidence": round(confidence / 100, 4),
+                                            "region": _region(left, top, left + ocr_data["width"][index],
+                                                              top + ocr_data["height"][index], image.width, image.height)})
+                    ocr_text = pytesseract.image_to_string(image, lang=settings.ocr_languages).strip()
+                    if ocr_text:
+                        text = ocr_text
+                        lines = [
+                            line.strip() for line in text.splitlines() if line.strip()
+                        ]
+                except (ImportError, OSError, RuntimeError) as error:
+                    warnings.append({"page": page_index, "code": "ocr_unavailable"})
+                    logger.warning(
+                        "PDF 第 %s 页 OCR 不可用，保留已提取文本: %s",
+                        page_index,
+                        error,
+                    )
+            if not text:
+                warnings.append({"page": page_index, "code": "no_text"})
+            if ocr_confidence is not None and ocr_confidence < 0.6:
+                warnings.append({"page": page_index, "code": "low_ocr_confidence"})
+            page_lines.append(lines)
+            page_ocr_confidences.append(ocr_confidence)
+            documents.append(_document("", source, chunk_type="page_preview", page_preview={
+                "page": page_index, "text": text, "ocr_regions": ocr_regions,
+                "width": float(page.rect.width), "height": float(page.rect.height),
+                "has_text_layer": bool(blocks), "ocr_confidence_avg": ocr_confidence,
+            }))
+
+            if (
+                settings.multimodal_enabled and not settings.demo_mode
+                and len(page_images) < settings.multimodal_max_images
+                and (page.get_images(full=True) or page.get_drawings())
+            ):
+                rendered = page.get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5), alpha=False)
+                page_images.append((page_index, rendered.tobytes("png")))
+
+    finally:
+        pdf.close()
+
+    edge_lines: Counter[str] = Counter()
+    for blocks, (_, height) in zip(page_blocks, page_sizes):
+        # A short page's first/last lines can be its entire body. Only remove
+        # repeated text physically inside a margin. Short native-text pages may
+        # also use OCR; their original blocks still provide valid coordinates.
+        # Scanned pages have no native text blocks and cannot enter this set.
+        candidates = {
+            line.strip()
+            for _, y0, _, y1, content in blocks
+            if y1 <= height * 0.1 or y0 >= height * 0.9
+            for line in content.splitlines()
+            if 2 <= len(line.strip()) <= 160
+        }
+        edge_lines.update(candidates)
+    repeated = {
+        line
+        for line, count in edge_lines.items()
+        if len(page_lines) >= 3 and count >= max(3, len(page_lines) // 2)
+    }
+
+    for page_index, lines in enumerate(page_lines, start=1):
+        text = "\n".join(line for line in lines if line not in repeated).strip()
+        if not text and lines:
+            text = "\n".join(lines).strip()
+        if text:
+            width, height = page_sizes[page_index - 1]
+            retained = [
+                block for block in page_blocks[page_index - 1]
+                if any(line.strip() and line.strip() not in repeated for line in block[4].splitlines())
+            ]
+            visual_region = "0.0000,0.0000,1.0000,1.0000"
+            if retained and page_ocr_confidences[page_index - 1] is None:
+                visual_region = _region(
+                    min(block[0] for block in retained), min(block[1] for block in retained),
+                    max(block[2] for block in retained), max(block[3] for block in retained),
+                    width, height,
+                )
+            documents.append(
+                _document(
+                    text,
+                    source,
+                    page=page_index,
+                    chunk_type="text",
+                    parser="pymupdf_layout",
+                    ocr_confidence=page_ocr_confidences[page_index - 1],
+                    visual_page=page_index,
+                    visual_region=visual_region,
+                )
+            )
+
+    try:
+        import pdfplumber
+
+        with pdfplumber.open(str(path)) as pdf:
+            for page_index, page in enumerate(pdf.pages, start=1):
+                check_cancelled()
+                for table_index, table in enumerate(
+                    page.find_tables() or [], start=1
+                ):
+                    rows = [
+                        " | ".join("" if cell is None else str(cell) for cell in row)
+                        for row in table.extract()
+                    ]
+                    content = "\n".join(rows).strip()
+                    if content:
+                        documents.append(
+                            _document(
+                                content,
+                                source,
+                                page=page_index,
+                                chunk_type="table",
+                                section=f"第 {page_index} 页表格 {table_index}",
+                                parser="pdfplumber_table",
+                                evidence_type="visual",
+                                visual_page=page_index,
+                                visual_region=_region(*table.bbox, page.width, page.height),
+                            )
+                        )
+    except ImportError:
+        warnings.append({"page": 0, "code": "table_parser_unavailable"})
+        logger.info("未安装 pdfplumber，PDF 表格将按普通文本处理")
+    except IngestionCancelled:
+        raise
+    except Exception as error:
+        warnings.append({"page": 0, "code": "table_parse_failed"})
+        logger.warning("PDF 表格解析失败，继续使用文本结果: %s", error)
+
+    if page_images:
+        from app.knowledge.vision import describe_image
+
+        for image_index, (page_index, image_bytes) in enumerate(page_images, start=1):
+            check_cancelled()
+            try:
+                description = describe_image(
+                    image_bytes, f"{source} 第 {page_index} 页图片 {image_index}"
+                )
+                if description:
+                    documents.append(
+                        _document(
+                            description,
+                            source,
+                            page=page_index,
+                            section=f"第 {page_index} 页图片 {image_index}",
+                            chunk_type="image_vision",
+                            parser=settings.multimodal_model,
+                            evidence_type="visual",
+                            visual_page=page_index,
+                            visual_region="0.0000,0.0000,1.0000,1.0000",
+                        )
+                    )
+            except IngestionCancelled:
+                raise
+            except Exception as error:
+                warnings.append({"page": page_index, "code": "vision_parse_failed"})
+                logger.warning("多模态图片解析失败，保留其他解析结果: %s", error)
+    # Empty sentinels carry diagnostics without becoming searchable evidence.
+    for warning in warnings:
+        documents.append(_document("", source, chunk_type="diagnostic", parse_warning=warning))
+    return sorted(documents, key=lambda item: not bool(item.page_content))
+
+
+def _parse_docx(path: Path, source: str) -> list[Document]:
+    from docx import Document as DocxDocument
+
+    docx = DocxDocument(str(path))
+    output: list[Document] = []
+    section = ""
+    for paragraph in docx.paragraphs:
+        text = paragraph.text.strip()
+        if not text:
+            continue
+        style = paragraph.style.name.lower() if paragraph.style else ""
+        chunk_type = "title" if "heading" in style or "标题" in style else "text"
+        if chunk_type == "title":
+            section = text
+        output.append(_document(text, source, section=section, chunk_type=chunk_type))
+    for index, table in enumerate(docx.tables, start=1):
+        rows = [
+            " | ".join(cell.text.strip() for cell in row.cells) for row in table.rows
+        ]
+        output.append(
+            _document(
+                "\n".join(rows), source, section=f"表格 {index}", chunk_type="table"
+            )
+        )
+    return output
+
+
+def _parse_pptx(path: Path, source: str) -> list[Document]:
+    from pptx import Presentation
+
+    presentation = Presentation(str(path))
+    output: list[Document] = []
+    for slide_index, slide in enumerate(presentation.slides, start=1):
+        title = (
+            slide.shapes.title.text.strip()
+            if slide.shapes.title
+            else f"第 {slide_index} 页"
+        )
+        body: list[str] = []
+        body_regions: list[tuple[float, float, float, float]] = []
+        for shape in slide.shapes:
+            if getattr(shape, "has_table", False):
+                rows = [
+                    " | ".join(cell.text.strip() for cell in row.cells)
+                    for row in shape.table.rows
+                ]
+                output.append(
+                    _document(
+                        "\n".join(rows),
+                        source,
+                        page=slide_index,
+                        section=title,
+                        chunk_type="table",
+                        evidence_type="visual",
+                        visual_page=slide_index,
+                        visual_region=_region(
+                            shape.left, shape.top, shape.left + shape.width,
+                            shape.top + shape.height, presentation.slide_width,
+                            presentation.slide_height,
+                        ),
+                    )
+                )
+            elif (
+                hasattr(shape, "text")
+                and shape.text.strip()
+                and shape is not slide.shapes.title
+            ):
+                body.append(shape.text.strip())
+                body_regions.append((shape.left, shape.top, shape.left + shape.width, shape.top + shape.height))
+        output.append(
+            _document(
+                title, source, page=slide_index, section=title, chunk_type="title"
+            )
+        )
+        if body:
+            output.append(
+                _document(
+                    "\n".join(body),
+                    source,
+                    page=slide_index,
+                    section=title,
+                    chunk_type="text",
+                    visual_page=slide_index,
+                    visual_region=_region(
+                        min(region[0] for region in body_regions),
+                        min(region[1] for region in body_regions),
+                        max(region[2] for region in body_regions),
+                        max(region[3] for region in body_regions),
+                        presentation.slide_width,
+                        presentation.slide_height,
+                    ),
+                )
+            )
+    return output
+
+
+def _parse_workbook(path: Path, source: str) -> list[Document]:
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(str(path), read_only=True, data_only=True)
+    output: list[Document] = []
+    for sheet in workbook.worksheets:
+        rows = []
+        for row in sheet.iter_rows(values_only=True):
+            values = ["" if value is None else str(value) for value in row]
+            if any(values):
+                rows.append(" | ".join(values))
+        if rows:
+            output.append(
+                _document(
+                    "\n".join(rows), source, section=sheet.title, chunk_type="table"
+                )
+            )
+    return output
+
+
+def _parse_csv(path: Path, source: str) -> list[Document]:
+    with path.open("r", encoding="utf-8-sig", newline="") as file:
+        rows = [" | ".join(row) for row in csv.reader(file)]
+    return [_document("\n".join(rows), source, section=path.stem, chunk_type="table")]
+
+
+def _parse_plain(path: Path, source: str) -> list[Document]:
+    content = path.read_text(encoding="utf-8-sig", errors="replace")
+    if path.suffix.lower() in {".html", ".htm"}:
+        parser = _TextHTMLParser()
+        parser.feed(content)
+        content = "\n\n".join(parser.parts)
+    return [_document(content, source, section=path.stem, chunk_type="text")]
+
+
+def _parse_office_images(path: Path, source: str) -> list[Document]:
+    if not settings.multimodal_enabled or settings.demo_mode:
+        return []
+    from app.knowledge.vision import describe_image
+
+    output: list[Document] = []
+    try:
+        with zipfile.ZipFile(path) as archive:
+            media = [
+                name
+                for name in archive.namelist()
+                if "/media/" in name
+                and Path(name).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+            ]
+            for index, name in enumerate(media[: settings.multimodal_max_images], start=1):
+                image_bytes = archive.read(name)
+                if len(image_bytes) < 10_000:
+                    continue
+                description = describe_image(image_bytes, f"{source} 内嵌图片 {index}")
+                if description:
+                    output.append(
+                        _document(
+                            description,
+                            source,
+                            section=f"内嵌图片 {index}",
+                            chunk_type="image_vision",
+                        )
+                    )
+    except (zipfile.BadZipFile, KeyError) as error:
+        logger.warning("Office 内嵌图片读取失败: %s", error)
+    return output
+
+
+def parse_document(file_path: str, source_name: str | None = None) -> list[Document]:
+    path = Path(file_path)
+    extension = path.suffix.lower()
+    if extension not in SUPPORTED_EXTENSIONS:
+        supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
+        raise ValueError(f"不支持的文件格式 {extension}，当前支持: {supported}")
+    source = source_name or path.name
+    parser = {
+        ".pdf": _parse_pdf,
+        ".docx": _parse_docx,
+        ".pptx": _parse_pptx,
+        ".xlsx": _parse_workbook,
+        ".xlsm": _parse_workbook,
+        ".csv": _parse_csv,
+    }.get(extension, _parse_plain)
+    documents = parser(path, source)
+    if extension in {".docx", ".pptx", ".xlsx", ".xlsm"}:
+        documents.extend(_parse_office_images(path, source))
+    return documents
