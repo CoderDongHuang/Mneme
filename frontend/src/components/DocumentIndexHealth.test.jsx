@@ -23,3 +23,11 @@ test('accepted task stays pending and cannot be double-submitted; ready requires
   expect(screen.getByRole('status')).toHaveTextContent('向量与词法索引版本一致')
   expect(screen.queryByRole('button')).not.toBeInTheDocument()
 })
+
+test.each(['null', '[]', '{"vector_index_version":7}', '{"vector_index_version":"abc","lexical_index_version":{}}', '{"vector_index_version":"abc","index_status":[]}'])('invalid report %s cannot crash or offer repair', parseReport => {
+  const repair = vi.fn()
+  render(<DocumentIndexHealth document={{ id: 7, status: 'ready', parseReport }} onRepair={repair} />)
+  expect(screen.getByRole('alert')).toHaveTextContent('解析报告格式无效，请重新解析')
+  expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  expect(repair).not.toHaveBeenCalled()
+})

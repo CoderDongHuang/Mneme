@@ -1,6 +1,8 @@
 import { validChatEvent } from './chatStreamContract'
 import { matchesSchema } from './schemaContract'
 import resultSchema from '../../../contracts/gateway-result.schema.json'
+import { validDocumentPreview } from '../features/knowledge/previewValidation'
+import { t } from '../i18n'
 
 const API_BASE = '/api/v1'
 
@@ -226,7 +228,11 @@ export const endpoints = {
   pendingMemories: (options) => api('/memory/pending', options),
   writeMemory: (body) => api('/memory/write', { method: 'POST', body: JSON.stringify(body) }),
   confirmMemory: (body) => api('/memory/confirm', { method: 'POST', body: JSON.stringify(body) }),
-  documentPreview: (id, sha256) => api(`/workspace/documents/${id}/preview${sha256 ? `?sha256=${encodeURIComponent(sha256)}` : ''}`),
+  documentPreview: async (id, sha256) => {
+    const preview = await api(`/workspace/documents/${id}/preview${sha256 ? `?sha256=${encodeURIComponent(sha256)}` : ''}`)
+    if (!validDocumentPreview(preview, id, sha256)) throw new ApiError(t('文档预览格式无效，请重试或重新解析'), 200, { code: 'INVALID_DOCUMENT_PREVIEW' })
+    return preview
+  },
   documentTags: (id) => api(`/workspace/documents/${id}/tags`),
   setDocumentTags: (id, tags) => api(`/workspace/documents/${id}/tags`, { method: 'PUT', body: JSON.stringify(tags) }),
   tasks: ({ signal } = {}) => api('/workspace/tasks', { signal }),

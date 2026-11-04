@@ -17,6 +17,7 @@ test('知识库独立重试、筛选空状态与真实删除回执不受轮询�
   const username = `kbqa_${suffix.slice(0, 12)}`, password = `KnowledgeQA!${suffix}`
   let account, cleanup, failBases = true, failDocuments = true, failActivity = true, deleteCount = 0
   let holdDocuments = false, releaseDocuments, documentPollHeld = false
+  let invalidIndexReport = true, invalidPreview = true
   const heldDocuments = new Promise(resolve => { releaseDocuments = resolve })
   async function api(method, path, data) {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -53,7 +54,21 @@ test('知识库独立重试、筛选空状态与真实删除回执不受轮询�
     await page.route(`**/api/v1/knowledge/base/${base.id}/documents`, async route => {
       if (failDocuments) return route.abort('failed')
       if (holdDocuments) { documentPollHeld = true; await heldDocuments }
+      if (invalidIndexReport) {
+        const response = await route.fetch(), body = await response.json()
+        expect(body.code).toBe(200)
+        body.data = body.data.map(doc => ({ ...doc, parseReport: 'null' }))
+        return route.fulfill({ response, json: body })
+      }
       await route.continue()
+    })
+    await page.route(`**/api/v1/workspace/documents/${documentId}/preview`, async route => {
+      if (!invalidPreview) return route.continue()
+      const response = await route.fetch(), body = await response.json()
+      expect(body.code).toBe(200)
+      // Corrupt only the browser's copy of a real response, never stored data.
+      body.data.parse_report.pages = [{ page: 1, blocks: [{ content: {} }] }]
+      await route.fulfill({ response, json: body })
     })
     await page.route('**/api/v1/notifications', route => failActivity ? route.abort('failed') : route.continue())
     await page.route(`**/api/v1/knowledge/document/${documentId}`, async route => {
@@ -76,6 +91,21 @@ test('知识库独立重试、筛选空状态与真实删除回执不受轮询�
     failDocuments = false
     await documents.getByRole('button', { name: '重试 / Retry' }).click()
     await expect(page.getByRole('button', { name: 'knowledge-state-qa.txt', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'knowledge-state-qa.txt', exact: true }).click()
+    await expect(page.getByRole('alert').filter({ hasText: '解析报告格式无效，请重新解析' })).toBeVisible()
+    const previewError = page.getByRole('alert').filter({ hasText: '文档预览格式无效，请重试或重新解析' })
+    await expect(previewError).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('knowledge-preview-invalid.png'), fullPage: false })
+    invalidPreview = false
+    await previewError.getByRole('button', { name: '重试 / Retry' }).click()
+    await expect(previewError).toHaveCount(0)
+    await page.getByRole('button', { name: '解析结构', exact: true }).click()
+    await expect(page.getByRole('textbox', { name: '资料标签', exact: true })).toBeVisible()
+    await page.locator('.parse-preview summary').filter({ hasText: '抽取文本' }).first().click()
+    await expect(page.getByText('A knowledge library organizes study documents.', { exact: false }).first()).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('knowledge-preview-recovered.png'), fullPage: false })
+    await page.getByRole('button', { name: '关闭 / Close', exact: true }).click()
+    invalidIndexReport = false
     // Hold an actual poll in flight: filtering must still use the last verified
     // snapshot while writes remain unavailable. Do not rely on a fast GET.
     holdDocuments = true

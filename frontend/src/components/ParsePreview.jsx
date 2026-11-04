@@ -2,10 +2,14 @@ import { useFormatters } from '../hooks/useFormatters'
 import { t, useI18n } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
 import { endpoints } from '../api/client'
+import { validDocumentPreview } from '../features/knowledge/previewValidation'
+import { FeedbackBlock } from './ui'
 import '../styles/parse-preview.css'
 
 export default function ParsePreview({ preview, initialPage }) {
-  return <DocumentPreview key={preview.document.id} preview={preview} initialPage={initialPage} />
+  useI18n()
+  if (!validDocumentPreview(preview)) return <FeedbackBlock error={t('文档预览格式无效，请重试或重新解析')} />
+  return <DocumentPreview key={`${preview.document.id}:${preview.document.sha256 || ''}`} preview={preview} initialPage={initialPage} />
 }
 
 function DocumentPreview({ preview, initialPage }) {
