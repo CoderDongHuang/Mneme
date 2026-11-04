@@ -16,6 +16,8 @@ test('知识库独立重试、筛选空状态与真实删除回执不受轮询�
   const suffix = randomUUID().replaceAll('-', '')
   const username = `kbqa_${suffix.slice(0, 12)}`, password = `KnowledgeQA!${suffix}`
   let account, cleanup, failBases = true, failDocuments = true, failActivity = true, deleteCount = 0
+  let holdDocuments = false, releaseDocuments, documentPollHeld = false
+  const heldDocuments = new Promise(resolve => { releaseDocuments = resolve })
   async function api(method, path, data) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await page.request[method]('/api/v1' + path, { data, timeout: 45000 })
@@ -48,7 +50,11 @@ test('知识库独立重试、筛选空状态与真实删除回执不受轮询�
     // are covered in hook tests, while all successful GETs use actual services.
     await page.route('**/api/v1/notifications/stream', route => route.fulfill({ contentType: 'text/event-stream', body: ': isolated\n\n' }))
     await page.route('**/api/v1/knowledge/base/list', route => failBases ? route.abort('failed') : route.continue())
-    await page.route(`**/api/v1/knowledge/base/${base.id}/documents`, route => failDocuments ? route.abort('failed') : route.continue())
+    await page.route(`**/api/v1/knowledge/base/${base.id}/documents`, async route => {
+      if (failDocuments) return route.abort('failed')
+      if (holdDocuments) { documentPollHeld = true; await heldDocuments }
+      await route.continue()
+    })
     await page.route('**/api/v1/notifications', route => failActivity ? route.abort('failed') : route.continue())
     await page.route(`**/api/v1/knowledge/document/${documentId}`, async route => {
       if (route.request().method() === 'DELETE') { deleteCount++; failDocuments = true }
@@ -70,11 +76,22 @@ test('知识库独立重试、筛选空状态与真实删除回执不受轮询�
     failDocuments = false
     await documents.getByRole('button', { name: '重试 / Retry' }).click()
     await expect(page.getByRole('button', { name: 'knowledge-state-qa.txt', exact: true })).toBeVisible()
+    // Hold an actual poll in flight: filtering must still use the last verified
+    // snapshot while writes remain unavailable. Do not rely on a fast GET.
+    holdDocuments = true
+    await expect.poll(() => documentPollHeld).toBe(true)
+    await expect(documents).toHaveAttribute('aria-busy', 'true')
     const search = page.getByRole('textbox', { name: '筛选文档', exact: true })
     await search.fill('no-match')
+    await expect(search).toHaveValue('no-match')
     await expect(page.getByText('没有符合筛选条件的资料', { exact: true })).toBeVisible()
     await expect(page.getByText('这里还没有资料', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '导入资料', exact: true })).toBeDisabled()
+    await page.screenshot({ path: testInfo.outputPath('knowledge-filter-refresh.png'), fullPage: false })
+    holdDocuments = false
+    releaseDocuments()
     await search.fill('')
+    await expect(documents).toHaveAttribute('aria-busy', 'false')
     failActivity = false
     await activity.getByRole('button', { name: '重试 / Retry' }).click()
     await expect(activity.getByRole('alert')).toHaveCount(0)
@@ -94,7 +111,24 @@ test('知识库独立重试、筛选空状态与真实删除回执不受轮询�
     await expect(page.getByText('这里还没有资料', { exact: true })).toBeVisible()
     await expect(page.getByText('删除任务已提交，最终结果请查看任务中心。', { exact: true })).toBeVisible()
     expect(deleteCount).toBe(1)
+  } catch (error) {
+    // Keep limited synthetic-test state before cleanup closes the page. Never
+    // attach storageState, credentials, service bodies or arbitrary page text.
+    if (!page.isClosed()) {
+      const state = await page.evaluate(() => ({
+        search: document.querySelector('input[aria-label="筛选文档"]')?.value,
+        reads: [...document.querySelectorAll('section[aria-busy]')].map(node => ({
+          label: node.getAttribute('aria-label'), busy: node.getAttribute('aria-busy'),
+          alerts: node.querySelectorAll('[role="alert"]').length,
+        })),
+        rows: document.querySelectorAll('.document-row').length,
+        empty: [...document.querySelectorAll('.documents-empty strong')].map(node => node.textContent),
+      })).catch(() => ({ unavailable: true }))
+      await testInfo.attach('knowledge-read-state', { body: JSON.stringify(state), contentType: 'application/json' })
+    }
+    throw error
   } finally {
+    releaseDocuments()
     test.setTimeout(testInfo.timeout + 90000)
     if (!account && sql(`SELECT COUNT(*) FROM user WHERE username='${username}'`) === '1') account = await api('post', '/auth/login', { username, password })
     if (account) {
