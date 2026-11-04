@@ -9,6 +9,7 @@
 
 import json
 import hashlib
+import math
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.utils.llm import llm
 from app.core.privacy import require_cloud_processing
@@ -16,6 +17,47 @@ from app.memory.long_term_memory import long_term_memory
 from app.core.logging import setup_logger, memory_log_fields
 
 logger = setup_logger("distillation")
+
+
+class DistillationResultError(RuntimeError):
+    """Invalid provider output, with no private response in the exception."""
+
+
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate field")
+        result[key] = value
+    return result
+
+
+def _parse_entries(content) -> list[dict]:
+    entries = None
+    if isinstance(content, str):
+        try:
+            entries = json.loads(content, object_pairs_hook=_unique_object)
+        except (ValueError, RecursionError):
+            pass
+    # Validate the complete batch before filtering or performing any writes.
+    # A valid [] is an intentional no-op; malformed results must remain retryable.
+    required = {"category", "content", "confidence", "is_new"}
+    if not isinstance(entries, list):
+        raise DistillationResultError("Memory distillation result is invalid") from None
+    for entry in entries:
+        if not isinstance(entry, dict) or not required <= entry.keys() or entry.keys() - (required | {"topic"}):
+            raise DistillationResultError("Memory distillation result is invalid") from None
+        category, text, confidence = entry["category"], entry["content"], entry["confidence"]
+        if (
+            not isinstance(category, str) or category not in {"preference", "weak_point", "progress"}
+            or not isinstance(text, str) or not text.strip()
+            or type(confidence) not in (int, float) or not 0 <= confidence <= 1 or not math.isfinite(confidence)
+            or type(entry["is_new"]) is not bool
+            or ("topic" in entry and not isinstance(entry["topic"], str))
+            or (category == "weak_point" and not entry.get("topic", "").strip())
+        ):
+            raise DistillationResultError("Memory distillation result is invalid") from None
+    return entries
 
 DISTILLATION_PROMPT = """请从以下对话中提取关键信息，用于更新用户的长期记忆。
 
@@ -34,6 +76,7 @@ DISTILLATION_PROMPT = """请从以下对话中提取关键信息，用于更新�
 1. 只提取**新出现**的信息，如果某项与已有记忆语义高度重复，跳过不输出
 2. 每条提取的 confidence 要合理评估（0.0-1.0），不确定的信息降低 confidence
 3. 为 weak_point 指定一个简短的 topic（用于后续去重合并）
+4. 每条必须包含 category、content、confidence 和布尔类型 is_new；topic 可选（weak_point 必填），不要添加其他字段
 
 输出 JSON 格式：
 [
@@ -93,15 +136,15 @@ def distill_conversation(user_id: str, session_id: str, conversation: list) -> l
     )
 
     try:
-        entries = json.loads(response.content)
-    except json.JSONDecodeError:
-        logger.warning(memory_log_fields("distill", "invalid_json", user_id=user_id,
-                       source_session_id=session_id, content=str(response.content)))
-        return []
+        entries = _parse_entries(response.content)
+    except DistillationResultError:
+        logger.warning(memory_log_fields("distill", "invalid_result", user_id=user_id,
+                       source_session_id=session_id))
+        raise
 
     # 过滤：只保留置信度 >= 0.6 且 LLM 认为不重复的
     filtered = [
-        e for e in entries if e.get("confidence", 0) >= 0.6 and e.get("is_new", True)
+        e for e in entries if e["confidence"] >= 0.6 and e["is_new"]
     ]
     evidence_hashes = [
         hashlib.sha256(

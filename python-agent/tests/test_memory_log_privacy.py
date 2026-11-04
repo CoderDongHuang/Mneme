@@ -75,7 +75,9 @@ def test_memory_operations_do_not_log_canaries(diagnostics, monkeypatch):
         )))
     monkeypatch.setattr(distillation, "long_term_memory", Mock(get_all_memories=Mock(return_value={})))
     monkeypatch.setattr(distillation, "llm", Mock(invoke=Mock(return_value=Mock(content=body))))
-    assert distillation.distill_conversation(user, session, [{"role": "user", "content": body}]) == []
+    with pytest.raises(distillation.DistillationResultError) as failure:
+        distillation.distill_conversation(user, session, [{"role": "user", "content": body}])
+    assert body not in "".join(traceback.format_exception(failure.value))
     output = diagnostics.getvalue()
     for private in (body, user, session, "private-legacy-memory-4"):
         assert private not in output
