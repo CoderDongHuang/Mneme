@@ -1,15 +1,16 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import KnowledgePage from './KnowledgePage'
-import { endpoints } from '../api/client'
+import { endpoints, openNotificationStream } from '../api/client'
 
 vi.mock('../state/AuthContext', () => ({ useAuth: () => ({ session: { userId: 1 } }) }))
 vi.mock('../api/client', () => ({ endpoints: {
   knowledgeBases: vi.fn(), documents: vi.fn(), notifications: vi.fn(), createKnowledgeBase: vi.fn(),
   deleteKnowledgeBase: vi.fn(), deleteDocument: vi.fn(), documentVersions: vi.fn(),
-}, openNotificationStream: () => ({ close() {} }) }))
+}, openNotificationStream: vi.fn(() => ({ close() {} })) }))
 beforeEach(() => {
   vi.resetAllMocks(); localStorage.clear()
+  openNotificationStream.mockReturnValue({ close() {} })
   endpoints.knowledgeBases.mockResolvedValue([{ id: 1, name: '资料 A' }, { id: 2, name: '资料 B' }])
   endpoints.documents.mockResolvedValue([])
   endpoints.notifications.mockResolvedValue([])
@@ -78,6 +79,24 @@ test('filters distinguish no match from an actually empty library', async () => 
   fireEvent.change(screen.getByRole('textbox', { name: '筛选文档' }), { target: { value: 'absent' } })
   expect(screen.getByText('没有符合筛选条件的资料')).toBeVisible()
   expect(screen.queryByText('这里还没有资料')).not.toBeInTheDocument()
+})
+
+test('a pending refresh keeps filtering the last successful snapshot without enabling writes', async () => {
+  endpoints.documents.mockResolvedValueOnce([{ id: 7, fileName: 'qa.txt', status: 'ready' }])
+  let resolve
+  endpoints.documents.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  render(<KnowledgePage />)
+  await screen.findByRole('button', { name: 'qa.txt' })
+  act(() => openNotificationStream.mock.calls[0][0]())
+  await waitFor(() => expect(resolve).toBeTypeOf('function'))
+  expect(screen.getByRole('region', { name: '文档读取' })).toHaveAttribute('aria-busy', 'true')
+  fireEvent.change(screen.getByRole('textbox', { name: '筛选文档' }), { target: { value: 'absent' } })
+  expect(screen.getByText('没有符合筛选条件的资料')).toBeVisible()
+  expect(screen.queryByText('这里还没有资料')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '导入资料' })).toBeDisabled()
+  await act(async () => resolve([]))
+  expect(screen.getByText('这里还没有资料')).toBeVisible()
+  expect(screen.queryByText('没有符合筛选条件的资料')).not.toBeInTheDocument()
 })
 
 test.each(['null', '[]', '{"warnings":{}}', '{"warnings":[null]}', '{"warnings":[{"code":{}}]}', '{"parser_version":{}}'])(
