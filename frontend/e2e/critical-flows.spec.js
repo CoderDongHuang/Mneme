@@ -33,10 +33,19 @@ test('聊天输入框适配视口并展示资料范围', async ({ page }) => {
   expect(box.width).toBeGreaterThan(page.viewportSize().width < 500 ? 180 : 380)
 })
 
-test('文档列表响应异常时仍能提问并看到错误提示', async ({ page }) => {
+test('文档列表协议异常时仍能提问并看到错误提示', async ({ page }) => {
   await page.route('**/api/v1/knowledge/base/1/documents', route => route.fulfill({
     status: 200, contentType: 'text/html', body: '<html>proxy error</html>',
   }))
+  await page.goto('/chat')
+  await page.locator('summary').filter({ hasText: '检索范围' }).click()
+  await expect(page.getByRole('alert')).toHaveText('服务返回的数据格式异常，请刷新核实后再操作')
+  await expect(page.getByRole('textbox', { name: '向忆知提问...' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '全部资料库', exact: true })).toBeVisible()
+})
+
+test('文档列表数据异常时仍能提问并看到错误提示', async ({ page }) => {
+  await page.route('**/api/v1/knowledge/base/1/documents', route => route.fulfill(ok({ documents: [] })))
   await page.goto('/chat')
   await page.locator('summary').filter({ hasText: '检索范围' }).click()
   await expect(page.getByRole('alert')).toHaveText('文档列表响应异常，请刷新重试')

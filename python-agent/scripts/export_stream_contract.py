@@ -29,6 +29,8 @@ def check_vocabulary(schema):
 
 
 def ts_type(schema):
+    if not schema:
+        return "unknown"
     if "$ref" in schema:
         return schema["$ref"].rsplit("/", 1)[1]
     if "const" in schema:

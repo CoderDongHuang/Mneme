@@ -74,19 +74,22 @@
 | [#105](https://github.com/CoderDongHuang/Mneme/pull/105) | SQLite 五库停写维护与限流测试有界清理；当前 HEAD 的 9 项 CI 全通过，P1-05 关闭 |
 
 | [#106](https://github.com/CoderDongHuang/Mneme/pull/106) | 蒸馏结果严格校验；当前 HEAD 的 9 项 CI 全通过，不关闭完整 P1-06 |
+| [#107](https://github.com/CoderDongHuang/Mneme/pull/107) | 诊断锁在发送响应前释放及停止测试清理；当前 HEAD 的 9 项 CI 全通过 |
+| [#108](https://github.com/CoderDongHuang/Mneme/pull/108) | 文档解析模块边界；当前 HEAD 的 9 项 CI 全通过，不关闭完整 P2-14 |
+| [#109](https://github.com/CoderDongHuang/Mneme/pull/109) | 任务中心读取与提交回执边界；当前 HEAD 的 9 项 CI 全通过，不关闭完整 P3-03/P2-14 |
 
 ## 当前未完成工作
 
-- 任务中心读取/提交回执边界本地验收通过：定向 23 项、前端 337 项、ESLint/构建及 localhost 桌面/手机 2 项通过；worker 完成、QA 账号与任务清零、两端截图核对通过，待 CI/合并。不关闭完整 P3-03/P2-14。
+- 任务中心读取/提交回执边界已合并 #109：定向 23 项、前端 337 项、ESLint/构建及 localhost 桌面/手机 2 项通过；worker 完成、QA 账号与任务清零、两端截图核对通过。不关闭完整 P3-03/P2-14，剩余 8。
 
-- P2-14 文档解析边界本地验收通过：独立解析模块保留 11 个函数/类行为及兼容导出；Linux 全量 1097 项和新增独立进程测试 1 项通过，Windows 定向 25 项加边界 1 项通过（缺 Tesseract 的 OCR 1 项跳过）；localhost 桌面/手机真实多格式、OCR、页图与引用共 4 项通过。Ruff、ESLint、YAML 校验通过，待独立 CI/合并；不关闭完整 P2-14，剩余仍为 9。
+- P2-14 文档解析边界已合并 #108：独立解析模块保留 11 个函数/类行为及兼容导出；Linux 全量 1097 项和新增独立进程测试 1 项通过，Windows 定向 25 项加边界 1 项通过（缺 Tesseract 的 OCR 1 项跳过）；localhost 桌面/手机真实多格式、OCR、页图与引用共 4 项通过。Ruff、ESLint、YAML 校验通过；不关闭完整 P2-14，剩余 8。
 
-- 基础设施诊断锁回归缺陷已修复：发送成功或异常响应前释放操作锁，真实 HTTP 线程阻塞回归、Windows 16 项、Linux 全量 1080 项与 localhost 桌面/手机运维诊断 2 项通过，待独立 CI 与合并。原主项剩余仍为 9。
+- 基础设施诊断锁回归缺陷已合并 #107：发送成功或异常响应前释放操作锁，真实 HTTP 线程阻塞回归、Windows 16 项、Linux 全量 1080 项与 localhost 桌面/手机运维诊断 2 项通过。主项剩余 8。
 
 - P1-06 蒸馏结果校验已通过 Windows 定向 71 项、Linux Python 全量 1077 项和 localhost 桌面/手机 2 项真实回归，#106 当前 HEAD 的 9 项 CI 全通过并合并；完整回答后记忆任务仍未解耦，不关闭主项。
 - 账号汇总 CI 暴露的共享限流饥饿与写入误报已修复：推理/交互/清理核验使用三个固定预算，配置限额保持不变；记忆保存、恢复、删除直接返回提交回执，移除提交后的列表依赖。Linux Python 全量 1066 项、Windows 定向 25 项、Java 全量 250 项无失败/跳过、前端 322 项及 localhost 桌面/手机真实记忆变更和限流聊天 4 项通过。相同 Gateway 网络来源真实耗尽维护预算后交互读取仍为 200；CI 已启用真实限流聊天回归。Ruff、ESLint、构建和 diff 通过，账号报告 #104 的 9 项 CI 已全通过并合并。
 - 账号当前/历史文件与缓存核验已合并 #103；18 项最终汇总核验 #104 已通过 9 项 CI 并合并。SQLite 停写维护 #105 已在当前 HEAD 的 9 项 CI 全通过后合并，并修复真实限流测试设置/清理的有界 Retry-After 等待（localhost 桌面/手机 2 项通过）；P1-05 关闭；当前在线文件回收和备份/介质留存保证分别定义。协议见 [删除核验](DELETION_VERIFICATION.md)。
-- SSE 已合并；其他 REST 契约仍待验收，不能关闭完整 P3-06。
+- 普通 Result 外壳契约本地验收完成，待当前 HEAD 的全部 9 项 CI 通过后合并：共享 23 个正反例、Java 实际序列化与浏览器、生成 TypeScript 漂移门禁；拒绝损坏成功回执，保留 null/falsy 和固定健康裸对象协议。Java 全量 254 项及最终定向 11 项、Python 契约 61 项、前端全量 375 项、Ruff/ESLint/构建通过；最终镜像 localhost 桌面/手机 2 项真实回归（15.2 秒）、截图、账号 SQL 清零和部署参数核对通过。其他业务 data/请求/状态枚举契约仍待验收，不能关闭完整 P3-06，剩余 8。见 [普通响应契约](api.md#result-json-contract)。
 - P1-06、P2-12、P2-14、P3-03、P3-04、P3-05、P3-06 及发布收口仍待完成，共 8 项。
 
 ## 本地材料保留原则

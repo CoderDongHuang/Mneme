@@ -1,0 +1,16 @@
+{
+  "title": "GatewayResult",
+  "description": "Public JSON Result envelope. Health probes and binary downloads have separate contracts. A success may contain null or any other JSON value; errors use HTTP-style codes.",
+  "type": "object",
+  "required": ["code", "data"],
+  "properties": {
+    "code": {
+      "anyOf": [
+        { "const": 200 },
+        { "type": "integer", "minimum": 400, "maximum": 599 }
+      ]
+    },
+    "message": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+    "data": {}
+  }
+}
