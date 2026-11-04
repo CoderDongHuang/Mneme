@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, createTraceparent, downloadWorkspaceArchive, endpoints, openNotificationStream, streamChat } from './client'
 import citationExamples from '../../../contracts/chat-source.examples.json'
+import resultCases from '../../../contracts/gateway-result.cases.json'
+import resultSchema from '../../../contracts/gateway-result.schema.json'
+import { matchesSchema } from './schemaContract'
 
 describe('api client', () => {
   beforeEach(() => {
@@ -61,11 +64,52 @@ describe('api client', () => {
     }))
   })
 
+  it.each(resultCases)('validates the shared REST case: $id', async ({ data, valid }) => {
+    expect(matchesSchema(resultSchema, data)).toBe(valid)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => data }))
+    if (!valid) {
+      await expect(api('/example')).rejects.toMatchObject({ payload: { code: 'INVALID_API_RESPONSE' } })
+    } else if (data.code === 200) {
+      await expect(api('/example')).resolves.toEqual(data.data)
+    } else {
+      await expect(api('/example')).rejects.toMatchObject({ payload: data })
+    }
+  })
+
+  it.each(['/health', '/health/config', '/health/providers/check'])('keeps the bare JSON health contract at %s', async path => {
+    const payload = { status: 'unavailable', configuration: {}, data: null }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => payload }))
+    await expect(api(path)).resolves.toEqual(payload)
+    await expect(api('/profile')).rejects.toMatchObject({ payload: { code: 'INVALID_API_RESPONSE' } })
+  })
+
+  it.each([null, [], 'ok', { code: '200', data: null }])('rejects malformed health JSON without treating it as a result: %j', async payload => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => payload }))
+    await expect(api('/health/config')).rejects.toMatchObject({ payload: { code: 'INVALID_API_RESPONSE' } })
+  })
+
+  it('does not turn a successful HTML proxy response into a successful write', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => { throw new SyntaxError('private proxy body') } }))
+    await expect(api('/example', { method: 'POST' })).rejects.toMatchObject({
+      status: 200, message: '服务返回的数据格式异常，请刷新核实后再操作', payload: { code: 'INVALID_API_RESPONSE' },
+    })
+  })
+
+  it('preserves an abort while reading a response body', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => { throw new DOMException('aborted', 'AbortError') } }))
+    await expect(api('/profile')).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('rejects unknown schema constraints and unresolved references', () => {
+    expect(matchesSchema({ format: 'unknown' }, 'value')).toBe(false)
+    expect(matchesSchema({ $ref: '#/$defs/Missing' }, 'value')).toBe(false)
+  })
+
   it('rejects an application-level error envelope', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ code: 400, message: 'bad request' }),
+      json: async () => ({ code: 400, message: 'bad request', data: null }),
     }))
     await expect(api('/example')).rejects.toMatchObject({ message: 'bad request' })
   })
@@ -92,6 +136,26 @@ describe('api client', () => {
       ok: false, status: 502, json: async () => { throw new SyntaxError('HTML body') },
     }))
     await expect(api('/auth/login')).rejects.toMatchObject({ status: 502, message: '服务暂时不可用，请稍后重试' })
+  })
+
+  it('does not forward structured error details into the UI as a message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 422, json: async () => ({ detail: [{ input: 'private' }] }) }))
+    await expect(api('/profile')).rejects.toMatchObject({ message: '请求失败（HTTP 422），请稍后重试' })
+  })
+
+  it.each([null, { message: { private: 'body' } }, { error: { message: ['private'] } }])('rejects a failed stream handshake with a safe message: %j', async payload => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 502, json: async () => payload }))
+    await expect(streamChat({}, { onEvent: vi.fn() })).rejects.toMatchObject({ status: 502, message: '无法建立流式连接' })
+  })
+
+  it('still signals unauthorized when the HTTP 401 body is not JSON', async () => {
+    const listener = vi.fn()
+    window.addEventListener('mneme:unauthorized', listener)
+    try {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => { throw new SyntaxError('empty') } }))
+      await expect(api('/profile')).rejects.toMatchObject({ status: 401 })
+      expect(listener).toHaveBeenCalledOnce()
+    } finally { window.removeEventListener('mneme:unauthorized', listener) }
   })
 
   it('explains a network outage without exposing the browser fetch error', async () => {

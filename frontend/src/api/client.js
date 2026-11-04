@@ -1,4 +1,6 @@
 import { validChatEvent } from './chatStreamContract'
+import { matchesSchema } from './schemaContract'
+import resultSchema from '../../../contracts/gateway-result.schema.json'
 
 const API_BASE = '/api/v1'
 
@@ -25,14 +27,39 @@ function authHeaders(extra = {}) {
   return { traceparent: createTraceparent(), ...extra }
 }
 
-async function parseResponse(response) {
-  const payload = await response.json().catch(() => null)
-  if (!response.ok || (payload && payload.code && payload.code !== 200)) {
-    const message = payload?.message || payload?.detail || payload?.error?.message || httpErrorMessage(response)
-    if (response.status === 401) window.dispatchEvent(new Event('mneme:unauthorized'))
-    throw new ApiError(message, response.status, payload)
+const rawJsonPaths = new Set(['/health', '/health/config', '/health/providers/check'])
+const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+
+function errorMessage(payload, fallback) {
+  return [payload?.message, payload?.detail, payload?.error?.message]
+    .find(value => typeof value === 'string' && value.trim()) || fallback
+}
+
+function responseError(response, payload) {
+  return new ApiError(errorMessage(payload, httpErrorMessage(response)), response.status, payload)
+}
+
+async function parseResponse(response, path) {
+  if (response.status === 401) window.dispatchEvent(new Event('mneme:unauthorized'))
+  let payload
+  try { payload = await response.json() } catch (error) {
+    if (error?.name === 'AbortError') throw error
+    if (!response.ok) throw responseError(response, null)
+    throw new ApiError('服务返回的数据格式异常，请刷新核实后再操作', response.status, { code: 'INVALID_API_RESPONSE' })
   }
-  return payload?.data ?? payload
+  if (!response.ok) throw responseError(response, payload)
+  if (matchesSchema(resultSchema, payload)) {
+    if (payload.code !== 200) {
+      if (payload.code === 401) window.dispatchEvent(new Event('mneme:unauthorized'))
+      throw responseError(response, payload)
+    }
+    // null is a successful void result, not a signal to return the envelope.
+    return payload.data
+  }
+  // Health probes intentionally return bare objects. Keep this exception tied
+  // to their routes, never to a caller-controlled "skip validation" option.
+  if (rawJsonPaths.has(path.split('?')[0]) && record(payload) && !Object.hasOwn(payload, 'code')) return payload
+  throw new ApiError('服务返回的数据格式异常，请刷新核实后再操作', response.status, { code: 'INVALID_API_RESPONSE' })
 }
 
 function httpErrorMessage(response) {
@@ -63,7 +90,7 @@ export async function api(path, options = {}) {
     if (error?.name === 'AbortError') throw error
     throw new ApiError('无法连接服务，请确认 Mneme 服务已启动后重试', 0, { cause: error?.message })
   }
-  return parseResponse(response)
+  return parseResponse(response, path)
 }
 
 export async function streamChat(payload, { signal, onEvent }) {
@@ -77,7 +104,7 @@ export async function streamChat(payload, { signal, onEvent }) {
   if (!response.ok || !response.body) {
     const error = await response.json().catch(() => ({}))
     if (response.status === 401) window.dispatchEvent(new Event('mneme:unauthorized'))
-    throw new ApiError(error.message || error?.error?.message || '无法建立流式连接', response.status, error)
+    throw new ApiError(errorMessage(error, '无法建立流式连接'), response.status, error)
   }
 
   const reader = response.body.getReader()

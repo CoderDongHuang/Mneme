@@ -8,6 +8,18 @@ Authorization: Bearer <jwt>
 
 Java 普通响应采用 `{ "code": 200, "message": "success", "data": ... }`。
 
+<a id="result-json-contract"></a>
+
+## 普通 JSON 回执契约
+
+`contracts/gateway-result.schema.json` 是普通 Result 外壳的共享来源；Java 实际序列化与浏览器使用同一组正反例核验，Python 生成 `frontend/src/api/generated/gateway-result.d.ts`，CI 以 `--check` 拒绝生成物漂移。成功码为 200，业务错误码为 400–599 的整数；`data` 必须存在，允许 null、false、0、空字符串及空数组，并原样解包。`message` 可省略或为字符串/null，允许增加不破坏现有字段的元数据。
+
+HTTP 成功不代表回执有效。非法 JSON、缺失字段、错误字段类型及非 Result 外壳均显示“服务返回的数据格式异常，请刷新核实后再操作”，不回显原始响应正文、不宣称保存成功、不自动重发写入。服务器可能已提交；刷新读取真实数据后再决定后续操作。HTTP 401 或有效 Result 的 401 仍触发登录失效处理；非字符串错误详情不直接作为界面文案。流式握手的错误响应也遵守字符串消息保护。
+
+仅 `/health`、`/health/config`、`/health/providers/check` 保留现有裸对象协议，按完整路径限定例外，拒绝 null、数组及伪 Result；文件/归档下载和 SSE 分别使用自己的契约。这一外壳校验不替代各业务 `data` 的字段、枚举与状态校验，完整 P3-06 仍未关闭。
+
+`frontend/e2e/rest-result-real.spec.js` 在 localhost 桌面和手机创建隔离账号，真实读取/提交资料后明确破坏 HTTP 200 回执，检查错误显示、一次写入、重新读取真实结果及恢复后成功保存；另核对设置页与健康裸对象。账号通过正式删除流程清理，含注册超时后的定向核实；安全截图验收后清除。无数据库迁移或新依赖，运行镜像保留原环境、挂载、网络与端口，沿用唯一匹配回退组。
+
 ## 认证
 
 - `POST /auth/register`：`{ "username", "password" }`

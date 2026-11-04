@@ -1,5 +1,6 @@
 package com.mneme.dto;
 
+@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)
 public class Result<T> {
     private int code;
     private String message;
