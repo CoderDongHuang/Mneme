@@ -1326,5 +1326,8 @@
   "Redis 会话缓存": "Redis session cache",
   "反思计数与租约": "Reflection counters and leases",
   "反思队列任务": "Reflection queue entries",
-  "头像文件": "Avatar files"
+  "头像文件": "Avatar files",
+  "任务读取状态": "Task read status",
+  "阶段记录读取状态": "Activity read status",
+  "提交结果未确认，请刷新任务核实后再操作。": "Submission outcome is unconfirmed. Refresh tasks to verify before acting again."
 }
