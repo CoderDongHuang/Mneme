@@ -1,6 +1,6 @@
 # 长期记忆读取故障与安全重试
 
-**状态（2026-11-03）：本地验证通过，已推送独立 PR [#101](https://github.com/CoderDongHuang/Mneme/pull/101)，等待完整 CI 后合并。** 恢复后 Python 全套 1035 项、Java 全套 236 项（均无跳过）、Ruff、前端测试和生产构建通过；真实 localhost 桌面、手机故障与恢复回归共 2 项通过。
+**状态（2026-11-04）：独立 PR [#101](https://github.com/CoderDongHuang/Mneme/pull/101) 全部 9 项 CI 通过并已合并。** 恢复后 Python 全套 1035 项、Java 全套 236 项（均无跳过）、Ruff、前端测试和生产构建通过；真实 localhost 桌面、手机故障与恢复回归共 2 项通过。
 
 ## 行为
 

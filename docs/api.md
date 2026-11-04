@@ -89,6 +89,12 @@ SSE 事件：
 - `GET /memory`：读取画像。
 - `POST /memory/write`：手动补充。
 - `POST /memory/confirm`：确认或忽略蒸馏记忆。
+- `GET /workspace/memories`：返回 `{memories: [...]}` 记忆列表。
+- `PATCH /workspace/memories/{id}`：返回 `{status: "updated", memory: {...}}`，包含已保存记录。
+- `POST /workspace/memories/{id}/restore`：返回 `{status: "restored", version, memory: {...}}`。
+- `DELETE /workspace/memories/{id}`：返回 `{status: "deleted", id}`。
+
+以上写接口直接返回 Agent 的提交回执，不依赖提交后的列表刷新；前端按记录 ID 更新或移除对应条目，版本读取失败单独提示。用户归属由 Gateway 的认证上下文覆盖，客户端提供的 `user_id` 不生效。Agent 内部按来源 IP 为推理、交互服务、固定清理/核验路由分别保留限流预算，每类均遵守配置限额，用户 ID 和请求头不能扩张预算。
 
 ## 学习工作台与迁移
 

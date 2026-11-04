@@ -2,6 +2,7 @@ package com.mneme.service;
 
 import com.mneme.entity.User;
 import com.mneme.mapper.UserMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,6 +32,8 @@ public class AccountDeletionService {
     private final int maxAttempts;
     private final AccountFileCleanup files;
     private final TaskLeaseService leases;
+    private final AccountCleanupVerification verification;
+    private static final ObjectMapper REPORT_MAPPER = new ObjectMapper();
 
     public AccountDeletionService(
         UserMapper users,
@@ -51,6 +54,7 @@ public class AccountDeletionService {
         this.maxAttempts = Math.max(1, maxAttempts);
         this.files = new AccountFileCleanup(jdbc, storage, Path.of(fileStoragePath).toAbsolutePath().normalize());
         this.leases = leases;
+        this.verification = new AccountCleanupVerification(jdbc, restTemplate, pythonAgentUrl, files);
     }
 
     @Transactional
@@ -105,19 +109,28 @@ public class AccountDeletionService {
         Long userId = ((Number) task.get("user_id")).longValue();
         int attempts = ((Number) task.get("attempt_count")).intValue();
         String currentStep = String.valueOf(task.get("current_step"));
+        User user = null;
         try {
-            User user = users.selectById(userId);
-            for (int index = Math.max(0, STEPS.indexOf(currentStep) + 1); index < STEPS.size(); index++) {
+            user = users.selectById(userId);
+            // A legacy user_delete checkpoint still needs a current final readback.
+            for (int index = Math.min(STEPS.size() - 1, Math.max(0, STEPS.indexOf(currentStep) + 1)); index < STEPS.size(); index++) {
                 String step = STEPS.get(index);
                 lease.renew();
                 // Slow HTTP/object operations run outside MySQL transactions; the next
                 // fenced commit refuses their result if another owner took over.
                 if (!"user_delete".equals(step)) runStep(step, userId, user);
                 else {
-                    // Recheck even when resuming an older file/avatar checkpoint. Repeating
-                    // cleanup makes a failed final readback retryable without losing SQL paths.
-                    files.cleanAndVerify(userId);
-                    runStep("avatar_cleanup", userId, user);
+                    // Replay all stores at the final boundary, including legacy checkpoints.
+                    // A failed readback must be repairable without discarding SQL manifests.
+                    for (String cleanup : STEPS.subList(1, STEPS.size() - 1)) {
+                        lease.renew();
+                        runStep(cleanup, userId, user);
+                    }
+                }
+                CleanupReport report = "user_delete".equals(step) ? verification.read(userId, user) : null;
+                if (report != null) {
+                    lease.write(row -> { saveReport(lease, report); return null; });
+                    report.requireZeroExcept("mysql_rows");
                 }
                 lease.write(row -> {
                     if ("user_delete".equals(step)) {
@@ -125,28 +138,32 @@ public class AccountDeletionService {
                         if (jdbc.queryForObject("SELECT COUNT(*) FROM user WHERE id=?", Long.class, userId) != 0) {
                             throw new IllegalStateException("账号记录删除未通过读回核验");
                         }
+                        verification.readSql(userId, report);
+                        report.requireZeroExcept(null);
+                        saveReport(lease, report);
                     }
                     jdbc.update("UPDATE account_deletion_task SET current_step=?,error_message=NULL WHERE id=? AND owner_token=? AND lease_fence=?",
                         step, taskId, lease.owner(), lease.fence());
                     operations.record(operationId, userId, "account_delete", userId.toString(),
                         step, "completed", Map.of("attempts", attempts), null);
+                    if ("user_delete".equals(step)) {
+                        jdbc.update("UPDATE account_deletion_task SET completed_at=UTC_TIMESTAMP(6) WHERE id=? AND owner_token=? AND lease_fence=?",
+                            taskId, lease.owner(), lease.fence());
+                        lease.finish("completed", null);
+                    }
                     return null;
                 });
             }
-            lease.write(row -> {
-                jdbc.update("UPDATE account_deletion_task SET completed_at=UTC_TIMESTAMP(6) WHERE id=? AND owner_token=? AND lease_fence=?",
-                    taskId, lease.owner(), lease.fence());
-                lease.finish("completed", null);
-                return null;
-            });
         } catch (TaskLeaseService.LostLease lost) {
             log.info("账号删除执行权已转移: operationId={}", operationId);
         } catch (Exception error) {
+            CleanupReport failureReport = verification.read(userId, user);
             int nextAttempt = attempts + 1;
             boolean exhausted = nextAttempt >= maxAttempts;
             long delay = Math.min(3600, 1L << Math.min(nextAttempt, 10));
             try {
                 lease.write(row -> {
+                    saveReport(lease, failureReport);
                     jdbc.update("UPDATE account_deletion_task SET attempt_count=?,next_attempt_at=TIMESTAMPADD(SECOND,?,UTC_TIMESTAMP(6))"
                         + " WHERE id=? AND owner_token=? AND lease_fence=?", nextAttempt, delay, taskId, lease.owner(), lease.fence());
                     jdbc.update("UPDATE user SET status=? WHERE id=? AND status IN ('deleting','deletion_failed')",
@@ -161,6 +178,11 @@ public class AccountDeletionService {
             }
             log.warn("账号删除任务失败: operationId={}, attempt={}/{}", operationId, nextAttempt, maxAttempts, error);
         }
+    }
+
+    private void saveReport(TaskLeaseService.Lease lease, CleanupReport report) {
+        jdbc.update("UPDATE account_deletion_task SET cleanup_report=? WHERE id=? AND owner_token=? AND lease_fence=?",
+            report.json(REPORT_MAPPER), lease.id(), lease.owner(), lease.fence());
     }
 
     private void runStep(String step, Long userId, User snapshot) throws Exception {

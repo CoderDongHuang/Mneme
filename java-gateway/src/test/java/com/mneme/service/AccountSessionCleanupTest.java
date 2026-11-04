@@ -74,6 +74,7 @@ class AccountSessionCleanupTest {
             return jdbc.queryForObject("SELECT MAX(id) FROM chat_session WHERE user_id=?", String.class, user);
         }
         void healthy() {
+            when(http.getForObject(anyString(), eq(Map.class))).thenReturn(AccountCleanupVerificationTest.healthyAgent());
             when(http.postForObject(anyString(), any(), eq(Map.class))).thenAnswer(call -> {
                 Map<?, ?> request = call.getArgument(1);
                 @SuppressWarnings("unchecked") var ids = (List<String>) request.get("session_ids");
@@ -110,9 +111,9 @@ class AccountSessionCleanupTest {
     @Test void paginatesAuthoritativeManifestAndPreservesOtherTenant() {
         try (var f = new Fixture(2001)) {
             f.run(); f.completed();
-            assertThat(f.batches).extracting(List::size).containsExactly(1000, 1000, 1);
-            assertThat(f.batches.stream().flatMap(List::stream).toList()).isEqualTo(f.ownIds);
-            verify(f.http).delete("http://agent/api/v1/admin/user/" + f.user);
+            assertThat(f.batches).extracting(List::size).containsExactly(1000, 1000, 1, 1000, 1000, 1);
+            assertThat(f.batches.stream().flatMap(List::stream).toList()).isEqualTo(java.util.stream.Stream.concat(f.ownIds.stream(), f.ownIds.stream()).toList());
+            verify(f.http, times(2)).delete("http://agent/api/v1/admin/user/" + f.user);
         }
     }
 
@@ -140,7 +141,7 @@ class AccountSessionCleanupTest {
             f.run(); f.retained();
             verify(f.http, never()).delete(anyString());
             f.healthy(); f.retry(); f.completed();
-            assertThat(f.batches.stream().flatMap(List::stream).toList()).isEqualTo(f.ownIds);
+            assertThat(f.batches.stream().flatMap(List::stream).toList()).isEqualTo(java.util.stream.Stream.concat(f.ownIds.stream(), f.ownIds.stream()).toList());
         }
     }
 
@@ -150,7 +151,7 @@ class AccountSessionCleanupTest {
             f.run(); f.retained();
             doNothing().when(f.http).delete(anyString());
             f.retry(); f.completed();
-            assertThat(f.batches).containsExactly(f.ownIds, f.ownIds);
+            assertThat(f.batches).containsExactly(f.ownIds, f.ownIds, f.ownIds);
         }
     }
 
@@ -158,7 +159,7 @@ class AccountSessionCleanupTest {
         try (var f = new Fixture(0)) {
             f.run(); f.completed();
             verify(f.http, never()).postForObject(anyString(), any(), eq(Map.class));
-            verify(f.http).delete("http://agent/api/v1/admin/user/" + f.user);
+            verify(f.http, times(2)).delete("http://agent/api/v1/admin/user/" + f.user);
         }
     }
 }

@@ -9,7 +9,7 @@ test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 test('隐私读取独立恢复，真实保存和 Trace 删除不被审计读取失败抹去', async ({ page, playwright }, testInfo) => {
   test.setTimeout(180000)
   page.setDefaultTimeout(15000)
-  let account, otherAccount, other, failPolicy = true, failLogs = true, writes = 0
+  let account, otherAccount, other, failPolicy = true, failLogs = true, throttleReload = false, writes = 0
   async function api(client, method, path, data) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await client[method]('/api/v1' + path, data === undefined ? {} : { data })
@@ -79,7 +79,17 @@ else:
     traceFixture('seed', account.userId); traceFixture('seed', otherAccount.userId)
     expect(traceFixture('count', account.userId)).toBe('1')
     await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), account)
-    await page.route('**/api/v1/privacy', route => route.request().method() === 'GET' && failPolicy ? fail(route) : route.continue())
+    await page.route('**/api/v1/privacy', route => {
+      if (route.request().method() === 'GET') {
+        if (failPolicy) return fail(route)
+        if (throttleReload) {
+          throttleReload = false
+          return route.fulfill({ status: 429, headers: { 'Retry-After': '1' }, contentType: 'application/json',
+            body: JSON.stringify({ code: 429, message: '请求过于频繁，请稍后再试' }) })
+        }
+      }
+      return route.continue()
+    })
     await page.route('**/api/v1/workspace/operations?*', route => failLogs ? fail(route) : route.continue())
     page.on('response', response => { if (new URL(response.url()).pathname === '/api/v1/privacy' && response.request().method() === 'PUT' && response.ok()) writes++ })
     await page.goto('/privacy')
@@ -127,7 +137,18 @@ else:
     await expect(history.getByText('privacy_trace_delete', { exact: true })).toBeVisible()
     await shot('privacy-recovered.png')
     expect(writes).toBe(1)
+    throttleReload = true
+    const policyReload = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/privacy' && response.request().method() === 'GET')
     await page.reload()
+    const response = await policyReload
+    if (response.status() === 429) {
+      // The full suite shares a real Agent token bucket. Exercise the visible
+      // retry after backpressure instead of treating a rejected read as data.
+      const seconds = Number(response.headers()['retry-after'])
+      expect(seconds > 0 && seconds <= 60).toBe(true)
+      await page.waitForTimeout(seconds * 1000 + 250)
+      await clickRequest(page.getByRole('alert').filter({ hasText: '隐私策略加载失败：' }).getByRole('button'), 'GET', '/privacy')
+    } else expect(response.status()).toBe(200)
     await expect(page.getByRole('spinbutton', { name: 'Trace 保留天数', exact: true })).toHaveValue(String(days))
     await expect(page.getByRole('checkbox', { name: '允许外部模型处理', exact: true })).not.toBeChecked()
   } finally {

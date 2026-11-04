@@ -1,3 +1,5 @@
+import math
+import re
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -129,9 +131,19 @@ class ChatRequestSizeMiddleware:
         await send({"type": "http.response.body", "body": body})
 
 
-_rate_limit_store: dict[str, dict[str, float]] = defaultdict(
+_rate_limit_store: dict[tuple[str, str], dict[str, float]] = defaultdict(
     lambda: {"tokens": settings.internal_rate_limit_burst, "last": time.monotonic()}
 )
+
+_MAINTENANCE_ROUTES = {
+    "DELETE": re.compile(
+        r"/api/v1/(?:admin/user/[^/]+|session/[^/]+|"
+        r"memory/admin/user/[^/]+|knowledge/admin/(?:user|collections|documents)/[^/]+|"
+        r"knowledge/internal/cancelled-documents/[^/]+)"
+    ),
+    "GET": re.compile(r"/api/v1/(?:admin/user/[^/]+/deletion-report|knowledge/admin/deletion-report)"),
+    "POST": re.compile(r"/api/v1/admin/user/[^/]+/session-cache"),
+}
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -139,7 +151,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in {"/health", "/health/ready", "/docs", "/openapi.json"}:
             return await call_next(request)
         client = request.client.host if request.client else "unknown"
-        bucket = _rate_limit_store[client]
+        # Gateway users share a source IP. Reserve independent capacity for
+        # inference, interactive service calls, and durable cleanup workers.
+        # Match only fixed methods/routes; IDs, query parameters and headers
+        # cannot create new budgets or classify arbitrary routes as maintenance.
+        workload = "inference" if request.url.path in {
+            "/api/v1/chat", "/api/v1/chat/stream", "/api/v1/knowledge/quiz/generate",
+        } else "service"
+        maintenance = _MAINTENANCE_ROUTES.get(request.method)
+        if maintenance is not None and maintenance.fullmatch(request.url.path):
+            workload = "maintenance"
+        bucket = _rate_limit_store[(client, workload)]
         now = time.monotonic()
         bucket["tokens"] = min(
             settings.internal_rate_limit_burst,
@@ -155,7 +177,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                         "message": "请求过于频繁，请稍后再试",
                     }
                 },
-                headers={"Retry-After": "1"},
+                headers={"Retry-After": str(max(1, math.ceil(
+                    (1 - bucket["tokens"]) / settings.internal_rate_limit_per_second,
+                )))},
             )
         bucket["tokens"] -= 1
         return await call_next(request)

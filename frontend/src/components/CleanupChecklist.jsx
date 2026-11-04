@@ -1,7 +1,7 @@
 import { useFormatters } from '../hooks/useFormatters'
 import { t } from '../i18n'
 
-const labels = { qdrant_chunks: '向量片段', qdrant_collections: '向量集合', fts_rows: '词法索引行', files: '文件与缓存', object_prefix: '对象存储前缀', mysql_rows: '数据库记录' }
+const labels = { qdrant_chunks: '向量片段', qdrant_collections: '向量集合', fts_rows: '词法索引行', files: '文件与缓存', object_prefix: '对象存储前缀', mysql_rows: '数据库记录', local_directory: '本地目录', avatars: '头像文件', account_fence: '账号写入围栏', long_term_memories: '长期记忆', memory_versions: '记忆版本', traces: '执行记录', privacy_rows: '隐私设置', tool_governance: '工具授权与用量', session_manifest: '会话清单', redis_scoped_sessions: 'Redis 会话缓存', reflection_keys: '反思计数与租约', reflection_queue_entries: '反思队列任务' }
 export default function CleanupChecklist({ report }) {
   const fmt = useFormatters()
   if (!report) return <span>{t('尚未核验')}</span>
