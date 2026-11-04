@@ -86,6 +86,12 @@ class SessionCacheCleanup(BaseModel):
     session_ids: list[str] = Field(min_length=1, max_length=1000)
 
 
+@router.get("/admin/user/{user_id}/deletion-report")
+async def account_deletion_report(user_id: str):
+    from app.api.account_cleanup import deletion_report
+    return deletion_report(user_id)
+
+
 @router.post("/admin/user/{user_id}/session-cache")
 async def delete_canonical_session_caches(user_id: str, request: SessionCacheCleanup):
     """Internal only: Gateway supplies its authoritative, user-scoped MySQL IDs.

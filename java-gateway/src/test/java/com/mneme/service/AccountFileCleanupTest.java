@@ -76,6 +76,7 @@ class AccountFileCleanupTest {
         final long document, task;
         final Path avatar;
         final UserMapper users = mock(UserMapper.class);
+        final RestTemplate http = mock(RestTemplate.class);
         final TaskLeaseService leases = new TaskLeaseService(jdbc, manager, 30);
         final AccountDeletionService service;
         Fixture(boolean objects, String checkpoint) throws Exception {
@@ -92,7 +93,8 @@ class AccountFileCleanupTest {
             realDelete();
             task = insert("INSERT INTO account_deletion_task(operation_id,user_id,status,current_step,next_attempt_at) VALUES(?,?,'pending',?,UTC_TIMESTAMP())",
                 UUID.randomUUID().toString(), user, checkpoint);
-            service = new AccountDeletionService(users, jdbc, mock(RestTemplate.class), mock(OperationLogService.class),
+            when(http.getForObject(anyString(), eq(java.util.Map.class))).thenReturn(AccountCleanupVerificationTest.healthyAgent());
+            service = new AccountDeletionService(users, jdbc, http, mock(OperationLogService.class),
                 "http://agent", root.toString(), 8, storage, leases);
         }
         long user() { return insert("INSERT INTO user(username,password_hash,status) VALUES(?,'QA','deleting')", UUID.randomUUID().toString()); }
@@ -125,6 +127,9 @@ class AccountFileCleanupTest {
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM user WHERE id=?", Integer.class, user)).isZero();
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_document WHERE id=?", Integer.class, document)).isZero();
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_document_version WHERE document_id=?", Integer.class, document)).isZero();
+            var report = new com.fasterxml.jackson.databind.ObjectMapper().readTree(jdbc.queryForObject("SELECT cleanup_report FROM account_deletion_task WHERE id=?", String.class, task));
+            assertThat(report.get("status").asText()).isEqualTo("verified");
+            report.get("counts").forEach(count -> assertThat(count.asInt()).isZero());
             assertThat(storage.countLocation(current)).isZero(); assertThat(storage.countLocation(history)).isZero();
             assertThat(storage.countUserPrefix(user)).isZero();
             assertThat(Files.exists(root.resolve(Long.toString(user)))).isFalse();
@@ -176,6 +181,44 @@ class AccountFileCleanupTest {
             doReturn(0).when(f.users).deleteById(f.user);
             f.run(); f.retained();
             f.realDelete(); f.retry(); f.completed();
+        }
+    }
+
+
+    @Test void finalAgentResidualReadFailureAndIncompleteReceiptBlockLegacyCheckpointAndRecover() throws Exception {
+        try (var f = new Fixture(false, "user_delete")) {
+            var report = new java.util.LinkedHashMap<>(AccountCleanupVerificationTest.healthyAgent());
+            report.put("tool_governance", 1);
+            when(f.http.getForObject(anyString(), eq(java.util.Map.class))).thenReturn(report);
+            f.run(); f.retained();
+            assertThat(jdbc.queryForObject("SELECT JSON_EXTRACT(cleanup_report,'$.counts.tool_governance') FROM account_deletion_task WHERE id=?", String.class, f.task)).isEqualTo("1");
+            when(f.http.getForObject(anyString(), eq(java.util.Map.class))).thenThrow(new IllegalStateException("private provider error"));
+            f.retry(); f.retained();
+            String failure = jdbc.queryForObject("SELECT cleanup_report FROM account_deletion_task WHERE id=?", String.class, f.task);
+            assertThat(failure).contains("-1").doesNotContain("private provider error");
+            report.remove("tool_governance");
+            when(f.http.getForObject(anyString(), eq(java.util.Map.class))).thenReturn(report);
+            f.retry(); f.retained();
+            verify(f.users, never()).deleteById(f.user);
+            when(f.http.getForObject(anyString(), eq(java.util.Map.class))).thenReturn(AccountCleanupVerificationTest.healthyAgent());
+            f.retry(); f.completed();
+        }
+    }
+
+    @Test void finalSqlReadFailureRollsBackUserAndCascadeDeletionThenRetries() throws Exception {
+        try (var f = new Fixture(false, "avatar_cleanup")) {
+            var reads = spy(jdbc);
+            doAnswer(call -> {
+                if (jdbc.queryForObject("SELECT COUNT(*) FROM user WHERE id=?", Long.class, f.user) == 0)
+                    throw new IllegalStateException("SQL verification unavailable");
+                return call.callRealMethod();
+            }).when(reads).queryForObject(eq("SELECT COUNT(*) FROM user_preference WHERE user_id=?"), eq(Long.class), eq(f.user));
+            var worker = new AccountDeletionService(f.users, reads, f.http, mock(OperationLogService.class),
+                "http://agent", root.toString(), 8, f.storage, f.leases);
+            try (var lease = f.leases.claim(TaskLeaseService.Queue.ACCOUNT_DELETION, f.task, false)) { worker.execute(lease); }
+            f.retained();
+            verify(f.users).deleteById(f.user); // DELETE happened but the transaction rolled it back.
+            f.retry(); f.completed();
         }
     }
 

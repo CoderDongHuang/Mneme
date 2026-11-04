@@ -152,6 +152,11 @@ class SessionPersistence:
                            memory_log_fields("session_count", "failed"))
             raise RuntimeError("Redis 会话读回失败") from None
 
+    def count_user_sessions(self, user_id) -> int:
+        if not self._ensure_connection():
+            raise RuntimeError("Redis 不可用，无法核验会话残留")
+        return sum(1 for _ in self._redis.scan_iter(match=self._user_prefix(user_id) + "*", count=200))
+
     def delete_user_sessions(self, user_id):
         """Erase scoped orphans too; legacy IDs use the canonical batch API."""
         with account_session(user_id, cleanup=True) as state:

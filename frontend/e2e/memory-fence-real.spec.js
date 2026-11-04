@@ -11,6 +11,21 @@ test('长期记忆和版本删除围栏：真实存储竞态、另一账号隔�
   const agent = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=python-agent', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim()
   expect(agent).toMatch(/^[a-f0-9]+$/)
   const accounts = [], clients = []
+  async function readWithRecovery(action, path, retry) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const pending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1' + path && response.request().method() === 'GET')
+      await (attempt ? retry() : action())
+      const response = await pending
+      if (response.status() === 429 && attempt < 2) {
+        const seconds = Number(response.headers()['retry-after'])
+        expect(seconds > 0 && seconds <= 60).toBe(true)
+        await page.waitForTimeout(seconds * 1000 + 250)
+        continue
+      }
+      expect(response.status(), `GET ${path}`).toBe(200)
+      return
+    }
+  }
   async function api(client, method, path, data) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await client[method]('/api/v1' + path, data === undefined ? {} : { data })
@@ -41,7 +56,7 @@ test('长期记忆和版本删除围栏：真实存储竞态、另一账号隔�
     }
     expect(probe('seed')).toContain('PASS: memory fence seed')
     await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), accounts[2])
-    await page.goto('/memory')
+    await readWithRecovery(() => page.goto('/memory'), '/workspace/memories', () => page.getByRole('button', { name: '刷新记忆', exact: true }).click())
     const entry = () => page.getByRole('button', { name: /Memory fence QA/ })
     await expect(entry()).toHaveCount(1)
     await expect(entry()).toBeVisible()
@@ -49,7 +64,7 @@ test('长期记忆和版本删除围栏：真实存储竞态、另一账号隔�
     await shot('memory-fence-before.png')
     expect(probe('race')).toContain('PASS: memory fence race')
     // The independent account must retain its real memory and all versions.
-    await page.reload()
+    await readWithRecovery(() => page.reload(), '/workspace/memories', () => page.getByRole('button', { name: '刷新记忆', exact: true }).click())
     await expect(entry()).toHaveCount(1)
     await expect(entry()).toBeVisible()
     const memories = (await api(page.request, 'get', '/workspace/memories')).memories
@@ -60,10 +75,22 @@ test('长期记忆和版本删除围栏：真实存储竞态、另一账号隔�
     expect(versions).toHaveLength(35)
     expect(new Set(versions.map(item => item.version)).size).toBe(35)
     await shot('memory-fence-other-unaffected.png')
-    await entry().click()
     const detail = page.getByRole(testInfo.project.name === '移动端' ? 'dialog' : 'complementary', { name: '记忆详情', exact: true })
+    let throttleVersions = true
+    const versionsPath = `/workspace/memories/${memories[0].id}/versions`
+    await page.route('**/api/v1' + versionsPath, route => {
+      if (route.request().method() === 'GET' && throttleVersions) {
+        throttleVersions = false
+        return route.fulfill({ status: 429, headers: { 'Retry-After': '1' }, contentType: 'application/json',
+          body: JSON.stringify({ code: 429, message: '请求过于频繁，请稍后再试' }) })
+      }
+      return route.continue()
+    })
+    await readWithRecovery(async () => {
+      await entry().click()
+      await detail.locator('summary').filter({ hasText: /^历史版本/ }).click()
+    }, versionsPath, () => detail.getByRole('region', { name: '记忆历史版本' }).getByRole('button', { name: '重试 / Retry', exact: true }).click())
     await expect(detail.getByRole('textbox', { name: '内容', exact: true })).toHaveValue('Memory fence QA: inspect source evidence before taking study notes.')
-    await detail.locator('summary').filter({ hasText: /^历史版本/ }).click()
     await expect(detail.getByRole('button', { name: '恢复此版本', exact: true })).toHaveCount(35)
     await shot('memory-fence-version-history.png')
   } finally {

@@ -89,16 +89,51 @@ print(json.dumps({'objects':remote,'file_hashes':sorted(hashes)}))
 SELECT COUNT(*) FROM knowledge_document WHERE kb_id=${entry.kb?.id || 0};
 SELECT COUNT(*) FROM knowledge_document_version WHERE document_id=${entry.document?.id || 0};`)
   }
+  function report(entry) {
+    return JSON.parse(query(`SELECT cleanup_report FROM account_deletion_task WHERE user_id=${entry.account.userId} ORDER BY id DESC LIMIT 1;`))
+  }
+  function privacyFault(entry, enable) {
+    expect(String(entry.account.userId)).toMatch(/^\d+$/)
+    execFileSync('docker', ['exec', '-i', agent, 'python', '-c', `
+import json,sys
+from app.core.privacy import privacy_store
+from app.core.config import settings
+args=json.load(sys.stdin); user=args['user']; assert user.isascii() and user.isdecimal()
+assert settings.auxiliary_store_backend=='sqlite', 'This QA fixture requires the isolated SQLite deployment'
+with privacy_store._local() as db:
+ db.execute('DROP TRIGGER IF EXISTS qa_account_privacy_'+user)
+ if args['enable']:
+  db.execute('INSERT OR REPLACE INTO user_privacy VALUES(?,0,1)',(user,))
+  db.execute("CREATE TRIGGER qa_account_privacy_"+user+" BEFORE DELETE ON user_privacy WHEN OLD.user_id='"+user+"' BEGIN SELECT RAISE(IGNORE); END")
+`], { input: JSON.stringify({ user: String(entry.account.userId), enable }), timeout: 15000 })
+  }
+  async function inspectSaga(entry, verified) {
+    const operation = query(`SELECT operation_id FROM account_deletion_task WHERE user_id=${entry.account.userId} ORDER BY id DESC LIMIT 1;`)
+    await page.goto('/operations')
+    await page.getByLabel('管理员凭证').fill(environment.ADMIN_API_TOKEN, { timeout: 15000 })
+    await page.getByRole('button', { name: '验证权限', exact: true }).click()
+    await page.getByText('账号删除 Saga', { exact: true }).click()
+    const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: operation, exact: true }) })
+    const summary = row.getByText(verified ? '清理已核验' : '清理待核验', { exact: true })
+    await expect(summary).toBeVisible()
+    await summary.click()
+    await expect(row.getByText('隐私设置', { exact: true })).toBeVisible()
+    await expect(row.getByText('数据库记录', { exact: true })).toBeVisible()
+  }
   async function deleted(entry) {
     await expect.poll(() => query(`SELECT status FROM account_deletion_task WHERE user_id=${entry.account.userId} ORDER BY id DESC LIMIT 1;`),
       { timeout: 90000, intervals: [500, 1000, 2000] }).toBe('completed')
     expect(counts(entry)).toBe('0\n0\n0')
     expect(storage(entry)).toEqual({ objects: 0, file_hashes: [] })
+    const receipt = report(entry)
+    expect(receipt.status).toBe('verified')
+    expect(Object.keys(receipt.counts)).toHaveLength(18)
+    expect(Object.values(receipt.counts).every(value => value === 0)).toBe(true)
     entry.verified = true
   }
   const other = await playwright.request.newContext({ baseURL: process.env.MNEME_E2E_BASE_URL })
   const accounts = []
-  let brokenVersion, originalHex
+  let brokenVersion, originalHex, privacyBlocked
   function restore() {
     if (!brokenVersion) return
     expect(originalHex).toMatch(/^[0-9A-F]+$/)
@@ -150,10 +185,31 @@ SELECT COUNT(*) FROM knowledge_document_version WHERE document_id=${entry.docume
     query(`UPDATE account_deletion_task SET next_attempt_at=TIMESTAMPADD(HOUR,1,UTC_TIMESTAMP()) WHERE user_id=${target.account.userId} AND status='retry';`)
     expect(query(`SELECT current_step FROM account_deletion_task WHERE user_id=${target.account.userId};`)).toBe('session_cleanup')
     expect(counts(target)).toBe('1\n1\n2')
+    expect(report(target).counts.files).toBe(-1)
     expect(storage(protectedUser)).toEqual(protectedFiles)
     restore()
+    privacyBlocked = target
+    privacyFault(target, true)
+    query(`UPDATE account_deletion_task SET next_attempt_at=UTC_TIMESTAMP() WHERE user_id=${target.account.userId} AND status='retry';`)
+    await expect.poll(() => report(target).counts.privacy_rows, { timeout: 60000 }).toBe(1)
+    await expect.poll(() => query(`SELECT status FROM account_deletion_task WHERE user_id=${target.account.userId};`), { timeout: 60000 }).toBe('retry')
+    query(`UPDATE account_deletion_task SET next_attempt_at=TIMESTAMPADD(HOUR,1,UTC_TIMESTAMP()) WHERE user_id=${target.account.userId} AND status='retry';`)
+    expect(report(target).status).toBe('pending')
+    expect(counts(target)).toBe('1\n1\n2')
+    // Grant only this newly created QA account the real administrator role.
+    // AdminRoute and the gateway both verify the stored role independently.
+    expect(String(protectedUser.account.userId)).toMatch(/^\d+$/)
+    query(`UPDATE user SET role='admin' WHERE id=${protectedUser.account.userId};`)
+    expect((await api(protectedUser.client, 'get', '/profile')).role).toBe('admin')
+    // Inspect the report through the real authenticated administrator page.
+    await page.context().addCookies((await other.storageState()).cookies)
+    await page.evaluate(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), protectedUser.account)
+    await inspectSaga(target, false)
+    privacyFault(target, false)
+    privacyBlocked = undefined
     query(`UPDATE account_deletion_task SET next_attempt_at=UTC_TIMESTAMP() WHERE user_id=${target.account.userId} AND status='retry';`)
     await deleted(target)
+    await inspectSaga(target, true)
     expect(counts(protectedUser)).toBe('1\n1\n1')
     expect(storage(protectedUser)).toEqual(protectedFiles)
     // Check the surviving tenant through its actual authenticated page.
@@ -165,9 +221,11 @@ SELECT COUNT(*) FROM knowledge_document_version WHERE document_id=${entry.docume
     await ready(protectedUser)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await testInfo.attach('account-files-readback.json', { body: JSON.stringify({ invalid_history_blocks_completion: true, sql_manifest_retained: true,
-      restored_manifest_retries: true, mysql_readback_zero: true, current_and_history_files_zero: true, protected_tenant_unchanged: true }), contentType: 'application/json' })
+      restored_manifest_retries: true, privacy_residual_blocks_completion: true, admin_failure_and_success_reports: true,
+      all_18_counts_zero: true, mysql_readback_zero: true, current_and_history_files_zero: true, protected_tenant_unchanged: true }), contentType: 'application/json' })
   } finally {
     restore()
+    if (privacyBlocked) privacyFault(privacyBlocked, false)
     for (const entry of accounts) {
       if (!entry.queued) { await api(entry.client, 'delete', '/profile/account'); entry.queued = true }
       if (!entry.verified) {
