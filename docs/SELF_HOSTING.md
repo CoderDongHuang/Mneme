@@ -185,6 +185,8 @@ docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d --buil
 
 数据库结构由 Flyway 自动迁移。跨大版本升级前应阅读 Release Notes 并保留可恢复备份。
 
+SQLite 磁盘空间维护按 [删除核验：SQLite 停写维护](DELETION_VERIFICATION.md#sqlite-停写维护) 执行。先核验匹配恢复组并停止全部 Gateway/Agent 副本，再运行 `python scripts/maintain_sqlite.py --apply`；脚本从实际容器发现路径，执行独占锁、完整性、逻辑数据不变及 WAL 归零检查，最后由运维恢复服务并验收。不要在线直接删除 WAL 文件。MySQL 辅助后端只维护词法 SQLite，其他留存治理另行处理。
+
 ## 7. 常见问题
 
 ### 页面可以打开，但接口连接失败
