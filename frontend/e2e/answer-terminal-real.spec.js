@@ -41,6 +41,21 @@ test('真实完成事件到达时答案引用已落库，立即断流重放及�
       { timeout: 90_000, intervals: [2000] }).toBe('ready')
     const session = await api('post', '/sessions', { title: 'Answer terminal QA' })
     await page.goto('/chat')
+    if (process.env.MNEME_RATE_LIMIT_QA === 'true') {
+      // Use the real Gateway/Agent connection, not a separate localhost IP or
+      // a mocked 429. Prove that service traffic cannot consume inference tokens.
+      let limited = false
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const response = await page.request.get('/api/v1/privacy')
+        if (response.status() === 429) {
+          expect((await response.json()).code).toBe(429)
+          limited = true
+          break
+        }
+        expect(response.status()).toBe(200)
+      }
+      expect(limited, 'real internal service bucket must be exhausted before chatting').toBe(true)
+    }
     const request = { session_id: String(session.id), request_id: randomUUID(), message: '星桥计划的核心识别码是什么？请引用资料。', knowledge_base_ids: [String(kb.id)] }
     const result = await page.evaluate(async request => {
       async function stream() {
@@ -59,7 +74,7 @@ test('真实完成事件到达时答案引用已落库，立即断流重放及�
               const type = frame.split('\n').find(line => line.startsWith('event:'))?.slice(6).trim()
               if (!type) continue // SSE comments are connection heartbeats, not JSON events.
               const data = JSON.parse(frame.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n'))
-              if (type === 'error') throw new Error('unexpected stream error')
+              if (type === 'error') throw new Error(`unexpected stream error: ${data.code}`)
               if (type === 'token') answer += data.content
               if (type === 'meta') sources = data.sources
               if (type === 'done') {
