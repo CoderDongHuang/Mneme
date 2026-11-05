@@ -4,9 +4,16 @@ import ParsePreview from './ParsePreview'
 import { endpoints } from '../api/client'
 
 vi.mock('../api/client', () => ({ endpoints: { documentTags: vi.fn(), setDocumentTags: vi.fn() } }))
-const preview = id => ({ document: { id, chunk_count: 0 }, parse_report: { pages: [] } })
+const preview = id => ({ document: { id, chunk_count: 0 }, content: '', extension: 'txt', parse_report: { pages: [] } })
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
 beforeEach(() => { vi.resetAllMocks(); localStorage.clear(); endpoints.setDocumentTags.mockResolvedValue([]) })
+
+test('invalid nested preview cannot render tags or start requests', () => {
+  render(<ParsePreview preview={{ document: null }} />)
+  expect(screen.getByRole('alert')).toHaveTextContent('文档预览格式无效')
+  expect(endpoints.documentTags).not.toHaveBeenCalled()
+  expect(screen.queryByRole('button')).not.toBeInTheDocument()
+})
 
 test('late initial tags cannot overwrite user edits or save empty tags', async () => {
   const load = deferred()

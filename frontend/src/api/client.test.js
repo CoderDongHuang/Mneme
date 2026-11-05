@@ -17,6 +17,17 @@ describe('api client', () => {
   it('creates valid W3C trace context for gateway propagation', () => {
     expect(createTraceparent()).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/)
   })
+  it.each([
+    null,
+    { document: { id: 7 }, extension: 'txt', content: 'private', parse_report: null },
+    { document: { id: 8 }, extension: 'txt', content: 'private', parse_report: {} },
+    { document: { id: 7 }, extension: 'txt', content: 'private', parse_report: { pages: [null] } },
+    { document: { id: 7 }, extension: 'txt', content: 'private', parse_report: { pages: [{ page: 1, blocks: [{ content: {} }] }] } },
+    { document: { id: 7 }, extension: 'txt', content: 'private', parse_report: { chunks: [{ content: [] }] } },
+  ])('rejects malformed or mismatched document preview without leaking content: %#', async data => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ code: 200, data }) }))
+    await expect(endpoints.documentPreview(7)).rejects.toMatchObject({ message: '文档预览格式无效，请重试或重新解析' })
+  })
   it('passes cancellation to personal preview and import without changing multipart contract', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ code: 200, data: {} }) }))
     const controller = new AbortController(), file = new File(['zip'], 'archive.zip')

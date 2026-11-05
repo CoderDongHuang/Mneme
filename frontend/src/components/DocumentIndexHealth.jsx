@@ -1,9 +1,14 @@
 import { t, useI18n } from '../i18n'
+import { validIndexReport } from '../features/knowledge/previewValidation'
+import { FeedbackBlock } from './ui'
 
 export default function DocumentIndexHealth({ document, busy, onRepair }) {
   useI18n()
   let report
-  try { report = JSON.parse(document?.parseReport || '{}') } catch { return null }
+  try {
+    report = JSON.parse(document?.parseReport || '{}')
+    if (!validIndexReport(report)) throw new Error('Invalid index report')
+  } catch { return <FeedbackBlock error={t('解析报告格式无效，请重新解析')} /> }
   if (!report.vector_index_version) return null
   const repairing = document.status === 'index_repairing'
   const pending = repairing || report.vector_index_version !== report.lexical_index_version || report.index_status !== 'ready'
