@@ -247,11 +247,11 @@ export const endpoints = {
     if (filters.date_to) params.set('dateTo', filters.date_to)
     return api(`/workspace/retrieval/debug?${params}`)
   },
-  plans: () => api('/workspace/plans'),
+  plans: (options) => api('/workspace/plans', options),
   metrics: () => api('/workspace/metrics'),
   metricHistory: (days = 30) => api(`/workspace/metrics/history?days=${days}`),
   createPlan: (body) => api('/workspace/plans', { method: 'POST', body: JSON.stringify(body) }),
-  reviews: () => api('/workspace/reviews'),
+  reviews: (options) => api('/workspace/reviews', options),
   reviewCard: (id, rating) => api(`/workspace/reviews/${id}`, { method: 'POST', body: JSON.stringify({ rating }) }),
   quizzes: () => api('/workspace/quizzes'),
   generateQuiz: (body) => api('/workspace/quizzes/generate', { method: 'POST', body: JSON.stringify(body) }),

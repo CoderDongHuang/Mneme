@@ -25,7 +25,11 @@ export default function useIndependentRead(read, valid, select = identity) {
       try {
         const value = await read({ signal: controller.signal })
         if (!valid(value)) throw new Error('Invalid collection response')
-        if (mounted.current && generation.current === version) setState({ data: select(value), loading: false, error: false })
+        if (mounted.current && generation.current === version) {
+          const data = select(value)
+          setState({ data, loading: false, error: false })
+          return data
+        }
       } catch {
         if (mounted.current && generation.current === version) setState(old => ({ ...old, loading: false, error: true }))
       } finally { if (flight.current === request) flight.current = null }
