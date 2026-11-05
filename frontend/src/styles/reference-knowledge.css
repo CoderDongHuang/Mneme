@@ -49,6 +49,7 @@
  .document-preview-tabs button[aria-pressed=true] { color:var(--mn-accent); border-bottom-color:var(--mn-accent); background:none; }
  .document-preview-stage { display:flex; height:465px; gap:12px; padding:14px; background:var(--mn-surface-soft); border:1px solid var(--mn-border); border-radius:7px; overflow:hidden; }
  .paper-viewport { flex:1; min-width:0; overflow:auto; }
+ .paper-viewport .document-frame { width:100%; min-height:620px; border:1px solid var(--mn-border); background:var(--mn-surface); }
  .actual-page { display:block; max-width:none; height:auto; margin:auto; box-shadow:0 2px 8px #293d3312; }
  .document-paper { min-height:100%; padding:24px 20px; background:var(--mn-surface); box-shadow:0 2px 8px #293d3312; font-size:100%; }
  .document-paper h3 { margin:0 0 22px; font-size:1em; line-height:1.6; }

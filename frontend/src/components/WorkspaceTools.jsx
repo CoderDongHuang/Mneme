@@ -12,7 +12,7 @@ import StatusBadge from "../components/StatusBadge";
 import "../styles/workspace.css";
 
 const modes = [["reader", "引用阅读", BookMarked], ["debug", "检索调试", Search], ["branch", "分支对比", GitBranch]];
-const roleLabels = { user: "我", assistant: "忆知", system: "系统" };
+const roleLabels = { user: "我", assistant: "Mneme", system: "系统" };
 
 
 export default function WorkspaceTools({ initialMode }) {
@@ -112,12 +112,8 @@ export default function WorkspaceTools({ initialMode }) {
   return (
     <div className="workspace-page">
       <header className="workspace-head">
-        <div>
-          <p className="eyebrow">{t("一体化学习工作台")}</p>
-          <h1>{t("学习工作台")}</h1>
-          <p>{t("阅读原文、核对引用，探索检索结果与对话分支。")}</p>
-        </div>
-        <button onClick={loadAll} title={t("刷新")} disabled={busy}>
+        <p>{t("阅读原文、核对引用，探索检索结果与对话分支。")}</p>
+        <button onClick={loadAll} title={t("刷新")} aria-label={t("刷新")} disabled={busy}>
           <RefreshCw size={18} />
         </button>
       </header>
@@ -128,6 +124,7 @@ export default function WorkspaceTools({ initialMode }) {
             className={mode === id ? "active" : ""}
             onClick={() => setMode(id)}
             aria-label={t(label)}
+            aria-pressed={mode === id}
             title={t(label)}
           >
             <Icon size={17} />
@@ -156,6 +153,7 @@ export default function WorkspaceTools({ initialMode }) {
                   <button
                     key={d.id}
                     className={preview?.document?.id === d.id ? "active" : ""}
+                    aria-pressed={preview?.document?.id === d.id}
                     onClick={() => openDocument(d.id)}
                   >
                     <span>{d.fileName}</span>
@@ -185,15 +183,11 @@ export default function WorkspaceTools({ initialMode }) {
                       </div>
                     )}
                     {preview.extension === "pdf" ? (
-                      <iframe
-                        className="document-frame"
-                        src={documentFileUrl(preview.document.id, previewPage, preview.document.sha256)}
-                        title={t("{0} PDF 预览", [preview.document.file_name])}
-                      />
+                      <a href={documentFileUrl(preview.document.id, previewPage, preview.document.sha256)} target="_blank" rel="noopener noreferrer">{t("打开原文件")}</a>
                     ) : (
                       <pre>{highlight && preview.content.includes(highlight) ? preview.content.split(highlight).map((part, index, parts) => <span key={`${index}-${part.slice(0, 12)}`}>{part}{index < parts.length - 1 && <mark>{highlight}</mark>}</span>) : preview.content}</pre>
                     )}
-                    <ParsePreview key={`${preview.document.id}-${preview.document.sha256 || ''}-${previewPage}`} preview={preview} initialPage={previewPage} />
+                    <ParsePreview key={`${preview.document.id}-${preview.document.sha256 || ''}-${previewPage}`} preview={preview} initialPage={previewPage} defaultExpanded />
                   </>
                 ) : (
                   <div className="studio-empty">
@@ -227,6 +221,7 @@ export default function WorkspaceTools({ initialMode }) {
                 </select>
                 <RetrievalFilters key={kbId} kbIds={kbId ? [kbId] : []} value={retrievalFilters} onChange={setRetrievalFilters} />
                 <input
+                  aria-label={t("输入检索问题")}
                   value={debugQuery}
                   onChange={(e) => setDebugQuery(e.target.value)}
                   placeholder={t("输入检索问题")}
@@ -268,6 +263,7 @@ export default function WorkspaceTools({ initialMode }) {
               <form onSubmit={createBranch}>
                 <h2>{t("从会话创建分支")}</h2>
                 <select
+                  aria-label={t("选择原会话")}
                   value={branchForm.source_session_id}
                   onChange={(e) =>
                     setBranchForm({
@@ -285,6 +281,7 @@ export default function WorkspaceTools({ initialMode }) {
                   ))}
                 </select>
                 <input
+                  aria-label={t("分支名称")}
                   placeholder={t("分支名称")}
                   value={branchForm.label}
                   onChange={(e) =>
@@ -321,7 +318,7 @@ export default function WorkspaceTools({ initialMode }) {
                           <h2>{index ? t("分支回答") : t("原始回答")}</h2>
                           {comparison[side].map((message) => (
                             <article key={message.id}>
-                                <span>{roleLabels[message.role] || message.role}</span>
+                                <span>{t(roleLabels[message.role] || message.role)}</span>
                               <p>{message.content}</p>
                             </article>
                           ))}
