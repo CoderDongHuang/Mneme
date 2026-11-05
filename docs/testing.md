@@ -242,3 +242,5 @@ python scripts/evaluate_rag.py --dataset evaluation/retrieval_holdout_cases.json
 
 
 测验最终服务回归（frontend 目录）：设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/quiz-states-real.spec.js e2e/quiz-read-states-real.spec.js --workers=1 --retries=0`。真实注册与导入后，在 GET/PUT/POST 已到达服务器时损坏业务 data，验证独立重试、草稿保护和提交编号重放；SQL 使用明确 utf8mb4 连接，核对作答/错题卡/学习事件各一次及草稿无重建，finally 正式注销并核验账号/业务表归零。2026-11-05 最终两端 4 项通过（29.8 秒），全前端 537 项及 Lint/构建/体积门禁通过，12 张截图核对后删除。创建未知结果的只读核对与显式解除由组件测试验证，本脚本未调用真实模型生成。
+
+设置最终服务回归（frontend 目录）：设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://localhost:3000`，运行 `npx playwright test e2e/settings-states-real.spec.js e2e/settings-read-states-real.spec.js --workers=1 --retries=0`。真实注册、GET、禁用配置 PUT 与正式注销；在后端成功提交后损坏/丢失回执，验证单次 PUT、只读核对失败/恢复、保留草稿或采用服务端配置、刷新读回及 SQL 账号/配置归零。正常分支保留真实无密钥启用 HTTP 400 验证。无真实密钥/付费调用/磁盘凭据；个人及共享探测非法字段、旧账号迟到请求由组件测试覆盖。最终全前端 553 项、Lint/构建/体积门禁通过，两端 6 项真实验收（39.2 秒）；22 张安全截图核对后删除，临时切换容器已清理。详见 [设置行为与边界](FRONTEND_BEHAVIOR.md#settings-read-states)。

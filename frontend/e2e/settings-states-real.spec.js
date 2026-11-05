@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, request, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
@@ -13,10 +13,10 @@ test('真实模型配置独立读取、后端拒绝无密钥启用、保存锁�
   expect(mysql).toMatch(/^[a-f0-9]+$/)
   const sql = query => execFileSync('docker', ['exec', '-i', mysql, 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -B mneme'], { input: query, encoding: 'utf8', timeout: 30000 }).trim()
   const suffix = randomUUID().replaceAll('-', '')
-  let account, failModel = true, failHealth = true, modelReads = 0, saveCount = 0, releaseSave
-  async function api(method, path, data) {
+  let account, cleanup, failModel = true, failHealth = true, modelReads = 0, saveCount = 0, releaseSave
+  async function api(method, path, data, context = page.request) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const response = await page.request[method]('/api/v1' + path, data === undefined ? {} : { data })
+      const response = await context[method]('/api/v1' + path, data === undefined ? {} : { data })
       if (response.status() === 429 && attempt < 2) {
         const seconds = Number(response.headers()['retry-after'])
         expect(seconds > 0 && seconds <= 60).toBe(true)
@@ -36,6 +36,7 @@ test('真实模型配置独立读取、后端拒绝无密钥启用、保存锁�
   }
   try {
     account = await api('post', '/auth/register', { username: `settingsstate_${suffix.slice(0, 12)}`, password: `Settings!${suffix}` })
+    cleanup = await request.newContext({ baseURL: testInfo.project.use.baseURL, storageState: await page.context().storageState(), timeout: 45000 })
     expect(String(account.userId)).toMatch(/^\d+$/)
     await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), account)
     await page.route('**/api/v1/settings/models', route => {
@@ -46,7 +47,7 @@ test('真实模型配置独立读取、后端拒绝无密钥启用、保存锁�
     await page.route('**/api/v1/health/config', route => failHealth ? failure(route) : route.continue())
     await page.goto('/settings')
     await expect(page.getByText('模型配置加载失败：读取服务暂不可用', { exact: true })).toBeVisible()
-    await expect(page.getByText('服务状态加载失败：读取服务暂不可用', { exact: true })).toBeVisible()
+    await expect(page.getByText('服务状态加载失败，请重试。', { exact: true })).toBeVisible()
     await expect(page.getByLabel('模型名称', { exact: true })).toHaveCount(0)
     await shot('settings-unavailable.png')
     failModel = false
@@ -58,7 +59,7 @@ test('真实模型配置独立读取、后端拒绝无密钥启用、保存锁�
     const before = modelReads
     failHealth = false
     await page.getByRole('button', { name: '刷新状态', exact: true }).click()
-    await expect(page.getByText('服务状态加载失败：读取服务暂不可用', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('服务状态加载失败，请重试。', { exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '刷新状态', exact: true })).toBeEnabled()
     expect(modelReads).toBe(before)
     await expect(name).toHaveValue(draft)
@@ -89,11 +90,11 @@ test('真实模型配置独立读取、后端拒绝无密钥启用、保存锁�
     await expect(page.getByLabel('保存时清除已存密钥（请先关闭个人模型）', { exact: true })).toBeDisabled()
     failHealth = true
     await page.getByRole('button', { name: '刷新状态', exact: true }).click()
-    await expect(page.getByText('服务状态加载失败：读取服务暂不可用', { exact: true })).toBeVisible()
+    await expect(page.getByText('服务状态加载失败，请重试。', { exact: true })).toBeVisible()
     releaseSave()
     expect((await saved).status()).toBe(200)
     await expect(page.getByText('模型配置已保存', { exact: true })).toBeVisible()
-    await expect(page.getByText('服务状态加载失败：读取服务暂不可用', { exact: true })).toBeVisible()
+    await expect(page.getByText('服务状态加载失败，请重试。', { exact: true })).toBeVisible()
     expect(saveCount).toBe(1)
     const readback = await api('get', '/settings/models')
     expect(readback).toMatchObject({ model: draft, enabled: false, hasKey: false })
@@ -104,10 +105,15 @@ test('真实模型配置独立读取、后端拒绝无密钥启用、保存锁�
     await expect(page.getByLabel('API 密钥', { exact: true })).toHaveValue('')
     await expect(page.getByLabel('为我的请求启用个人模型', { exact: true })).not.toBeChecked()
   } finally {
+    test.setTimeout(testInfo.timeout + 90000)
     releaseSave?.()
     if (account) {
-      await api('delete', '/profile/account')
-      await expect.poll(() => sql(`SELECT COUNT(*) FROM user WHERE id=${account.userId}`), { timeout: 30000, intervals: [1000] }).toBe('0')
+      await page.close()
+      try {
+        await api('delete', '/profile/account', undefined, cleanup)
+        await expect.poll(() => sql(`SELECT COUNT(*) FROM user WHERE id=${account.userId}`), { timeout: 60000, intervals: [1000] }).toBe('0')
+        expect(sql(`SELECT COUNT(*) FROM user_model_config WHERE user_id=${account.userId}`)).toBe('0')
+      } finally { await cleanup.dispose() }
     }
   }
 })

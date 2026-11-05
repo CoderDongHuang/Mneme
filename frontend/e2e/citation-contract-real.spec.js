@@ -1,9 +1,10 @@
-import { expect, test } from '@playwright/test'
+import { expect, request, test } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { Buffer } from 'node:buffer'
 import fs from 'node:fs'
 import process from 'node:process'
+import { setTimeout as delay } from 'node:timers/promises'
 
 test.skip(process.env.MNEME_REAL_E2E !== 'true', '需要真实全栈服务')
 test.use({ trace: 'off', screenshot: 'off', video: 'off' })
@@ -11,13 +12,22 @@ test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 test('真实 PDF 同步、SSE、持久引用与重放采用同一数字坐标契约', async ({ page }, testInfo) => {
   test.setTimeout(240_000)
   const schema = JSON.parse(fs.readFileSync('../contracts/chat-source.schema.json', 'utf8'))
-  let account
-  async function api(method, path, data) {
-    const response = await page.request[method]('/api/v1' + path, data === undefined ? {} : { data })
-    expect(response.ok(), `${method} ${path}: HTTP ${response.status()}`).toBe(true)
-    const payload = await response.json()
-    expect(payload.code).toBe(200)
-    return payload.data
+  let account, cleanup
+  async function api(method, path, data, context = page.request) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const response = await context[method]('/api/v1' + path, { ...(data === undefined ? {} : { data }), timeout: 45000 })
+      if (response.status() === 429 && attempt < 4) {
+        const seconds = Number(response.headers()['retry-after'])
+        expect(seconds > 0 && seconds <= 60).toBe(true)
+        await delay(seconds * 1000 + 250)
+        continue
+      }
+      expect(response.ok(), `${method} ${path}: HTTP ${response.status()}`).toBe(true)
+      const payload = await response.json()
+      expect(payload.code).toBe(200)
+      return payload.data
+    }
+    throw new Error('Rate limit did not recover')
   }
   function verifySources(sources, documentId) {
     expect(sources.length).toBeGreaterThan(0)
@@ -48,6 +58,7 @@ test('真实 PDF 同步、SSE、持久引用与重放采用同一数字坐标契
       account = (await response.json()).data
       break
     }
+    cleanup = await request.newContext({ baseURL: testInfo.project.use.baseURL, storageState: await page.context().storageState(), timeout: 45000 })
     await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), account)
     const kb = await api('post', '/knowledge/base', { name: 'Citation contract QA' })
     const upload = await page.request.post('/api/v1/knowledge/document/upload', { multipart: {
@@ -124,6 +135,19 @@ test('真实 PDF 同步、SSE、持久引用与重放采用同一数字坐标契
     await page.screenshot({ path: testInfo.outputPath('citation-contract.png'), fullPage: true, animations: 'disabled' })
     await testInfo.attach('citation-contract.json', { body: JSON.stringify({ numeric_rectangles: true, sync_and_sse: true, persisted_and_replayed: true, legacy_csv_replayed: true, fields: Object.keys(schema.properties) }), contentType: 'application/json' })
   } finally {
-    if (account) await api('delete', '/profile/account')
+    test.setTimeout(testInfo.timeout + 300000)
+    if (account) {
+      cleanup ||= await request.newContext({ baseURL: testInfo.project.use.baseURL, storageState: await page.context().storageState(), timeout: 45000 })
+      await page.close()
+      try {
+        await api('delete', '/profile/account', undefined, cleanup)
+        const mysql = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=mysql', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim()
+        expect(mysql).toMatch(/^[a-f0-9]+$/)
+        expect(String(account.userId)).toMatch(/^\d+$/)
+        await expect.poll(() => execFileSync('docker', ['exec', '-i', mysql, 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot mneme -N'], {
+          input: `SELECT (SELECT COUNT(*) FROM user WHERE id=${account.userId})+(SELECT COUNT(*) FROM auth_session WHERE user_id=${account.userId});`, encoding: 'utf8', timeout: 15000,
+        }).trim(), { timeout: 60000, intervals: [1000, 2000] }).toBe('0')
+      } finally { await cleanup.dispose() }
+    }
   }
 })

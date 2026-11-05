@@ -1,4 +1,13 @@
 {
+  "服务状态加载失败，请重试。": "Could not load service status. Please retry.",
+  "模型保存结果尚未确认，请先核对服务端配置。": "The save result is unconfirmed. Check the server configuration first.",
+  "模型测试响应格式不正确，请核实后再试。": "The model test response is invalid. Verify it before retrying.",
+  "共享服务检测响应格式不正确，请核实后再试。": "The shared service probe response is invalid. Verify it before retrying.",
+  "核对模型配置": "Verify model configuration",
+  "核对已保存模型配置": "Check saved model configuration",
+  "采用服务端配置": "Use server configuration",
+  "保留草稿，继续编辑": "Keep draft and continue editing",
+  "本页保留了你的草稿。刷新或离开不会撤销可能已保存的配置；继续保存可能覆盖服务端配置。": "Your draft is retained on this page. Refreshing or leaving does not undo a possible save. Saving again may overwrite the server configuration.",
   "文档预览格式无效，请重试或重新解析": "Invalid document preview. Retry or parse the document again.",
   "服务返回的数据格式异常，请刷新核实后再操作": "The service returned an invalid response. Refresh to verify the result before taking further action.",
   "模型配置密钥": "Model configuration keys",
