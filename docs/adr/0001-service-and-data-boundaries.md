@@ -10,6 +10,7 @@ Status: accepted
 - Qdrant stores vectors. Redis stores short-term context, shared counters and leases, and a reflection task stream; the stream is recoverable queue state and must be included in backup and recovery planning.
 - Java authenticates users. Calls from Java to Python use `X-Internal-Service-Token`; Python rejects unsigned business calls.
 - Flyway migrations under `java-gateway/src/main/resources/db/migration` are the only executable database schema source. Spring SQL initialization is disabled.
+- `KnowledgeQuotaService` owns tenant quota configuration, active-owner locking and locking reads of knowledge-base counts and retained version sizes. Its public methods require the caller's transaction (`MANDATORY`); allocation checks and catalog writes must commit together. Callers lock the active user before knowledge-base/document rows, then check storage capacity. All retained versions, including inactive versions and pending deletions, remain charged. The boundary preserves the existing API, limits and rejection messages; it does not implement retention or file garbage collection.
 
 ## Consequences
 

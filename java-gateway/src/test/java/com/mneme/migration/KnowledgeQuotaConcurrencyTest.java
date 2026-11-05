@@ -9,6 +9,7 @@ import com.mneme.mapper.KnowledgeBaseMapper;
 import com.mneme.mapper.KnowledgeDocumentMapper;
 import com.mneme.mapper.ProcessingTaskMapper;
 import com.mneme.service.KnowledgeService;
+import com.mneme.service.KnowledgeQuotaService;
 import com.mneme.service.ObjectStorageService;
 import com.mneme.service.WorkspaceService;
 import com.mneme.service.UploadSubmissionService;
@@ -72,6 +73,22 @@ class KnowledgeQuotaConcurrencyTest {
         assertThat(used(user)).isEqualTo(600L * 1024);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM processing_task WHERE user_id=?", Long.class, user)).isEqualTo(1);
         try (var paths = Files.walk(root)) { assertThat(paths.filter(Files::isRegularFile).count()).isEqualTo(1); }
+    }
+
+    @Test void quotaBoundaryRequiresTheCallersTransaction() {
+        long user = user();
+        var quotas = quotas(1);
+        assertThatThrownBy(() -> quotas.lockActiveOwner(user))
+            .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
+        assertThatThrownBy(() -> quotas.requireKnowledgeBaseCapacity(user, 1))
+            .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
+        assertThatThrownBy(() -> quotas.requireStorageCapacity(user, 1))
+            .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
+        new TransactionTemplate(new DataSourceTransactionManager(source)).executeWithoutResult(status -> {
+            quotas.lockActiveOwner(user);
+            quotas.requireKnowledgeBaseCapacity(user, 1);
+            quotas.requireStorageCapacity(user, 1);
+        });
     }
 
     @Test void knowledgeBaseCountIsAtomicAcrossInstancesAndDeletingUsersCannotAllocate() throws Exception {
@@ -324,13 +341,17 @@ class KnowledgeQuotaConcurrencyTest {
         var session = new SqlSessionTemplate(factory.getObject());
         var target = new KnowledgeService(session.getMapper(KnowledgeBaseMapper.class),
             session.getMapper(KnowledgeDocumentMapper.class), tasks == null ? session.getMapper(ProcessingTaskMapper.class) : tasks,
-            new ObjectMapper(), jdbc, new ObjectStorageService("local", root.toString(), "", "", "", "mneme"));
+            new ObjectMapper(), jdbc, new ObjectStorageService("local", root.toString(), "", "", "", "mneme"), quotas(kbLimit));
         ReflectionTestUtils.setField(target, "fileStoragePath", root.toString());
-        ReflectionTestUtils.setField(target, "tenantStorageQuotaMb", 1L);
-        ReflectionTestUtils.setField(target, "tenantKnowledgeBaseQuota", kbLimit);
         var proxy = new ProxyFactory(target);
         proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source), new AnnotationTransactionAttributeSource()));
         return (KnowledgeService) proxy.getProxy();
+    }
+
+    private KnowledgeQuotaService quotas(int kbLimit) {
+        var proxy = new ProxyFactory(new KnowledgeQuotaService(jdbc, 1L, kbLimit));
+        proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source), new AnnotationTransactionAttributeSource()));
+        return (KnowledgeQuotaService) proxy.getProxy();
     }
 
     private long user() {
