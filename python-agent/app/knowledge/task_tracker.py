@@ -11,27 +11,37 @@ import threading
 from typing import Dict, Optional
 
 from app.core.time import utc_now, parse_utc
-from app.core.logging import setup_logger
-
-logger = setup_logger("task_tracker")
+from app.core.config import settings
 
 # 内存存储（生产环境应迁移到 Redis）
 _task_store: Dict[str, dict] = {}
 _lock = threading.Lock()
 
-# 任务 TTL（秒）：1 小时后自动清理
-TASK_TTL_SECONDS = 3600
+# 仅对终态历史计时；运行任务不能因耗时超过留存窗口而消失。
+TASK_TTL_SECONDS = settings.ingestion_task_retention_seconds
+
+
+def _prune_completed(now) -> None:
+    expired = [
+        task_id for task_id, info in _task_store.items()
+        if info.get("status") in {"done", "failed"}
+        and (now - parse_utc(info.get("completed_at") or info["created_at"])).total_seconds() > TASK_TTL_SECONDS
+    ]
+    for task_id in expired:
+        del _task_store[task_id]
 
 
 def create_task() -> str:
     """创建任务记录，返回 task_id"""
     task_id = f"task_{uuid.uuid4().hex[:12]}"
     with _lock:
+        now = utc_now()
+        _prune_completed(now)
         _task_store[task_id] = {
             "status": "processing",
             "chunks": 0,
             "error": None,
-            "created_at": utc_now().isoformat(),
+            "created_at": now.isoformat(),
         }
     return task_id
 
@@ -45,8 +55,12 @@ def update_task(
 ):
     """更新任务状态"""
     with _lock:
+        now = utc_now()
+        _prune_completed(now)
         if task_id in _task_store:
             _task_store[task_id]["status"] = status
+            if status in {"done", "failed"}:
+                _task_store[task_id].setdefault("completed_at", now.isoformat())
             if chunks:
                 _task_store[task_id]["chunks"] = chunks
             if error:
@@ -58,14 +72,6 @@ def update_task(
 def get_task(task_id: str) -> Optional[dict]:
     """查询任务状态"""
     with _lock:
-        # 清理过期任务
-        now = utc_now()
-        expired = []
-        for tid, info in _task_store.items():
-            created = parse_utc(info["created_at"])
-            if (now - created).total_seconds() > TASK_TTL_SECONDS:
-                expired.append(tid)
-        for tid in expired:
-            del _task_store[tid]
-
-        return _task_store.get(task_id)
+        _prune_completed(utc_now())
+        task = _task_store.get(task_id)
+        return dict(task) if task is not None else None

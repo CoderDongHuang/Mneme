@@ -98,6 +98,37 @@ def _quiz_json(content: str) -> list[dict]:
     return [GeneratedQuestion.model_validate(item).model_dump() for item in raw]
 
 
+def _remove_upload(file_path: str) -> bool:
+    try:
+        os.unlink(file_path)
+        return True
+    except FileNotFoundError:
+        return True
+    except OSError:
+        logger.warning("临时上传文件清理失败，需要运维核对")
+        return False
+
+
+def _submit_ingestion(user_id, kb_id, file_path, source_name, document_id=None,
+                      remove_after=True, index_generation=None) -> str:
+    task_id = create_task()
+    try:
+        # The concurrent future owns queued work independently of the HTTP loop.
+        future = executor.submit(_run_ingestion, user_id, kb_id, file_path, task_id,
+                                 source_name, document_id, remove_after, index_generation)
+    except BaseException:
+        update_task(task_id, "failed", error="解析任务未能入队")
+        raise
+
+    def completed(result):
+        if result.cancelled():
+            cleaned = not remove_after or _remove_upload(file_path)
+            update_task(task_id, "failed", error="解析任务在启动前取消" if cleaned else "临时文件清理失败")
+
+    future.add_done_callback(completed)
+    return task_id
+
+
 def _run_ingestion(
     user_id: str,
     kb_id: str,
@@ -108,6 +139,7 @@ def _run_ingestion(
     remove_after: bool = True,
     index_generation: int | None = None,
 ) -> None:
+    status, details = "failed", {}
     try:
         resolved_document_id = ingest_document(
             user_id, kb_id, file_path, source_name=source_name, document_id=document_id,
@@ -117,18 +149,14 @@ def _run_ingestion(
         chunk_count = 0
         if collection is not None:
             chunk_count = len(vector_store.get_document_chunks(user_id, kb_id, resolved_document_id))
-        update_task(
-            task_id, "done", chunks=chunk_count, document_id=resolved_document_id
-        )
+        status, details = "done", {"chunks": chunk_count, "document_id": resolved_document_id}
     except Exception as error:
         logger.exception("文档解析失败: %s", error)
-        update_task(task_id, "failed", error=str(error))
+        details = {"error": str(error)}
     finally:
-        if remove_after:
-            try:
-                os.unlink(file_path)
-            except OSError:
-                pass
+        if remove_after and not _remove_upload(file_path):
+            status, details = "failed", {"error": "临时文件清理失败"}
+        update_task(task_id, status, **details)
 
 
 @router.post("/upload", response_model=IngestionTaskResponse)
@@ -152,20 +180,16 @@ async def upload_file(
         INPUT_REJECTIONS.labels("document_upload", "empty_file").inc()
         raise HTTPException(status_code=400, detail="上传文件为空")
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as temporary:
-        temporary.write(content)
-        temporary_path = temporary.name
-
-    task_id = create_task()
-    asyncio.get_running_loop().run_in_executor(
-        executor,
-        _run_ingestion,
-        user_id,
-        kb_id,
-        temporary_path,
-        task_id,
-        filename,
-    )
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as temporary:
+            temporary_path = temporary.name
+            temporary.write(content)
+        task_id = _submit_ingestion(user_id, kb_id, temporary_path, filename)
+    except BaseException:
+        if temporary_path is not None:
+            _remove_upload(temporary_path)
+        raise
     return IngestionTaskResponse(
         status="processing", task_id=task_id, message="文档正在解析"
     )
@@ -176,14 +200,10 @@ async def ingest(request: DocumentIngestRequest) -> IngestionTaskResponse:
     path = Path(request.file_path).resolve()
     if not path.is_file():
         raise HTTPException(status_code=404, detail="待解析文件不存在")
-    task_id = create_task()
-    asyncio.get_running_loop().run_in_executor(
-        executor,
-        _run_ingestion,
+    task_id = _submit_ingestion(
         request.user_id,
         request.kb_id,
         str(path),
-        task_id,
         request.source_name or path.name,
         request.document_id,
         False,
