@@ -40,7 +40,7 @@ class AccountCleanupVerificationTest {
         var counts = new LinkedHashMap<String, Object>();
         for (String name : List.of("qdrant_chunks", "qdrant_collections", "fts_rows", "account_fence",
             "long_term_memories", "memory_versions", "traces", "privacy_rows", "tool_governance",
-            "session_manifest", "redis_scoped_sessions", "reflection_keys", "reflection_queue_entries")) counts.put(name, 0);
+            "session_manifest", "sql_session_histories", "redis_scoped_sessions", "reflection_keys", "reflection_queue_entries")) counts.put(name, 0);
         return counts;
     }
 

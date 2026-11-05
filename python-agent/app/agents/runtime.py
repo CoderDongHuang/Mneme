@@ -21,14 +21,17 @@ def prepare_conversation(request: ChatRequest) -> dict:
         timestamp=utc_now().isoformat(),
         token_count=max(1, len(request.message) // 4),
     )
+    # Commit history before publishing a new manifest. Existing manifests with
+    # no SQL history must first recover/migrate their legacy Redis contents.
+    history = short_term_memory.add_message(
+        request.session_id, user_message, user_id=request.user_id, delivery_id=delivery_id)
     session_store.register_session(
         request.user_id,
         request.session_id,
         title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
         delivery_id=delivery_id,
     )
-    working_memory.add_message(request.session_id, user_message, user_id=request.user_id)
-    short_term_memory.add_message(request.session_id, user_message, user_id=request.user_id)
+    working_memory.replace_messages(request.session_id, history, user_id=request.user_id)
     state = {
         "user_id": request.user_id,
         "session_id": request.session_id,
@@ -38,7 +41,7 @@ def prepare_conversation(request: ChatRequest) -> dict:
         # Freeze the input before model generation. A delayed completion must
         # never distill a later turn or use its execution time as the idle gap.
         "memory_input": {
-            "history": [message.model_dump() for message in short_term_memory.get_history(request.session_id, user_id=request.user_id)],
+            "history": [message.model_dump() for message in history],
             "reference_time": user_message.timestamp,
             "delivery_id": delivery_id,
         },
@@ -79,8 +82,9 @@ def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dic
         timestamp=utc_now().isoformat(),
         token_count=max(1, len(answer) // 4),
     )
-    working_memory.add_message(request.session_id, assistant_message, user_id=request.user_id)
-    short_term_memory.add_message(request.session_id, assistant_message, user_id=request.user_id)
+    history = short_term_memory.add_message(
+        request.session_id, assistant_message, user_id=request.user_id, delivery_id=delivery_id)
+    working_memory.replace_messages(request.session_id, history, user_id=request.user_id)
     session_store.increment_message_count(request.user_id, request.session_id, delivery_id=delivery_id)
     reflection_scheduler.record_session(request.user_id, request.session_id, delivery_id)
     reflection_scheduler.check_and_trigger(request.user_id)

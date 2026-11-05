@@ -11,7 +11,7 @@ final class AccountCleanupVerification {
     private static final List<String> AGENT_STORES = List.of(
         "qdrant_chunks", "qdrant_collections", "fts_rows", "account_fence",
         "long_term_memories", "memory_versions", "traces", "privacy_rows", "tool_governance",
-        "session_manifest", "redis_scoped_sessions", "reflection_keys", "reflection_queue_entries");
+        "session_manifest", "sql_session_histories", "redis_scoped_sessions", "reflection_keys", "reflection_queue_entries");
     private static final List<String> OWNED_TABLES = List.of(
         "knowledge_base", "chat_session", "processing_task", "pending_memory", "learning_plan",
         "review_card", "knowledge_quiz", "quiz_attempt", "chat_branch", "password_reset_token",

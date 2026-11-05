@@ -70,9 +70,9 @@ def test_legacy_cache_requires_strict_manifest_owner_and_migrates(caches):
     assert short.get_history("11", user_id="alice")[0].content == "old history"
     short.add_message("11", message("new history"), user_id="alice")
     assert [item.content for item in ShortTermMemoryManager().get_history("11", user_id="alice")] == ["old history", "new history"]
-    # Clearing the published v2 key cannot fall back to old legacy text.
+    # Losing the Redis mirror preserves the authoritative migrated SQL history.
     values.pop(persistence._session_key("11", "alice"))
-    assert persistence.load_messages("11", user_id="alice") is None
+    assert [item.content for item in persistence.load_messages("11", user_id="alice")] == ["old history", "new history"]
 
 
 def test_corrupt_legacy_manifest_never_grants_ownership(caches):
@@ -80,8 +80,20 @@ def test_corrupt_legacy_manifest_never_grants_ownership(caches):
     values["mneme:session:11"] = json.dumps([message().model_dump()])
     with open(store._get_file_path("alice"), "w", encoding="utf-8") as handle:
         handle.write("{broken")
-    assert persistence.load_messages("11", user_id="alice") is None
-    assert not persistence.available
+    with pytest.raises(RuntimeError, match="旧会话清单暂不可用"):
+        persistence.load_messages("11", user_id="alice")
+
+
+@pytest.mark.parametrize("payload", [[], 1, {"messages": "invalid"}])
+def test_invalid_legacy_revision_payload_never_becomes_empty_history(caches, payload):
+    from app.memory.session_scope import advance_revision
+    persistence, values, short, _, _ = caches
+    with account_session("alice") as state:
+        advance_revision(state, "11")
+    values[persistence._session_key("11", "alice")] = json.dumps(payload)
+    with pytest.raises(RuntimeError, match="旧会话历史暂不可用"):
+        short.add_message("11", message("new"), user_id="alice", delivery_id="turn")
+    assert "session_histories" not in generation_store.snapshot("alice")
 
 
 def test_independent_workers_serialize_appends_and_reload_shared_revision(caches):
@@ -101,7 +113,7 @@ def test_redis_outage_invalidates_old_payload_in_other_worker(caches):
     persistence._redis.setex.side_effect = OSError("private provider details")
     first.add_message("s", message("memory only"), user_id="alice")
     persistence._available = True
-    assert other.get_history("s", user_id="alice") == []
+    assert [item.content for item in other.get_history("s", user_id="alice")] == ["before outage", "memory only"]
     assert len(first.get_history("s", user_id="alice")) == 2
 
 
@@ -122,7 +134,7 @@ def test_db_rollback_cannot_reuse_an_orphan_redis_revision(caches, monkeypatch):
     persistence._redis.setex.side_effect = OSError("outage")
     persistence.save_messages("s", [message("committed memory-only")], user_id="alice")
     persistence._available = True
-    assert persistence.load_messages("s", user_id="alice") is None
+    assert [item.content for item in persistence.load_messages("s", user_id="alice")] == ["committed memory-only"]
 
 
 def test_tombstone_blocks_all_reads_and_late_writes_after_new_instances(caches):
