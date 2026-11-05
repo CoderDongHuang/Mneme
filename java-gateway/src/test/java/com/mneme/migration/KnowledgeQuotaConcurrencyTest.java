@@ -131,6 +131,36 @@ class KnowledgeQuotaConcurrencyTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_base WHERE user_id=?", Long.class, user)).isEqualTo(1);
     }
 
+    @Test void restoreWaitsForOwnerLockAndRejectsAccountDeletionAfterTheWait() throws Exception {
+        long user = user();
+        var service = service(null, 10);
+        long kb = service.createKb(user, "Restore fencing", "").getId();
+        var document = service.uploadDocument(user, kb, file(512));
+        finish(document);
+        var started = new CountDownLatch(1);
+        var pool = Executors.newSingleThreadExecutor();
+        try {
+            var future = new TransactionTemplate(new DataSourceTransactionManager(source)).execute(status -> {
+                jdbc.queryForObject("SELECT id FROM user WHERE id=? FOR UPDATE", Long.class, user);
+                var waiting = pool.submit(() -> {
+                    started.countDown();
+                    return service.restoreDocumentVersion(user, document.getId(), 1);
+                });
+                try {
+                    assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
+                    assertThatThrownBy(() -> waiting.get(300, TimeUnit.MILLISECONDS))
+                        .isInstanceOf(java.util.concurrent.TimeoutException.class);
+                } catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new IllegalStateException(error); }
+                jdbc.update("UPDATE user SET status='deleting' WHERE id=?", user);
+                return waiting;
+            });
+            assertThatThrownBy(() -> future.get(10, TimeUnit.SECONDS))
+                .hasCauseInstanceOf(IllegalArgumentException.class);
+            assertThat(jdbc.queryForObject("SELECT status FROM knowledge_document WHERE id=?", String.class, document.getId())).isEqualTo("ready");
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM processing_task WHERE user_id=?", Long.class, user)).isEqualTo(1);
+        } finally { pool.shutdownNow(); }
+    }
+
     private WorkspaceService workspace(KnowledgeService knowledge) {
         var target = new WorkspaceService(jdbc, new ObjectMapper(), new RestTemplate());
         ReflectionTestUtils.setField(target, "knowledgeService", knowledge);

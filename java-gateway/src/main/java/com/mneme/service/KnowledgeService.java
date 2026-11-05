@@ -288,7 +288,9 @@ public class KnowledgeService {
         String newLocation = null;
         try {
             Files.createDirectories(directory);
-            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            try (InputStream input = file.getInputStream()) {
+                Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
+            }
             newLocation = storage.persist(target, userId, document.getKbId(), safeName);
             document.setFileName(safeName);
             document.setFilePath(newLocation);
@@ -343,6 +345,7 @@ public class KnowledgeService {
 
     @Transactional
     public KnowledgeDocument restoreDocumentVersion(Long userId, Long documentId, int version) {
+        lockQuotaOwner(userId);
         KnowledgeDocument document = ownedDocument(userId, documentId);
         requireIdleDocument(document);
         List<Map<String, Object>> rows = jdbc.queryForList("""

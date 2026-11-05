@@ -76,18 +76,29 @@ public class ObjectStorageService {
     public Path materialize(String location) {
         if (!location.startsWith("s3://")) return checkedLocal(location, true);
         String key = objectKey(location);
+        Path temporary = null;
         try {
+            checkedLocal(cacheRoot.toString(), false);
             Files.createDirectories(cacheRoot);
             Path target = cachedPath(location);
-            if (!Files.isRegularFile(target)) {
+            if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+                // Each reader owns a staging file. Never publish a partially downloaded
+                // object, including when multiple Gateway instances share this volume.
+                temporary = Files.createTempFile(cacheRoot, ".download-", ".tmp");
                 try (InputStream input = minio.getObject(
                     GetObjectArgs.builder().bucket(bucket).object(key).build())) {
-                    Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(input, temporary, StandardCopyOption.REPLACE_EXISTING);
                 }
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             }
             return target;
         } catch (Exception error) {
             throw new IllegalStateException("对象存储读取失败", error);
+        } finally {
+            if (temporary != null) {
+                try { Files.deleteIfExists(temporary); }
+                catch (java.io.IOException error) { throw new IllegalStateException("对象缓存临时文件清理失败", error); }
+            }
         }
     }
 
