@@ -15,7 +15,7 @@ export function FeedbackBlock({ error, message, onRetry }) {
   useI18n();
   if (!error && !message) return null
   return <div className={`feedback-block ${error ? 'is-error' : 'is-success'}`} role={error ? 'alert' : 'status'}>
-    {error ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}<span>{error || message}</span>{onRetry && <button onClick={onRetry}>{t("重试 / Retry")}</button>}
+    {error ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}<span>{error || message}</span>{onRetry && <button type="button" onClick={onRetry}>{t("重试 / Retry")}</button>}
   </div>
 }
 

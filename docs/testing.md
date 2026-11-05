@@ -239,3 +239,6 @@ python scripts/evaluate_rag.py --dataset evaluation/retrieval_holdout_cases.json
 2026-11-05 会话计数投递子项：Windows 定向 42 项通过；正式 Linux Python 3.11 全量 1145 项无跳过通过；实际 SQLite/MySQL 并发和重放均通过。最终部署 localhost:3000 桌面/手机 memory-outbox-real 共 2 项通过（1.6 分钟），6 张截图已目视核对，实际 manifest 跨解释器重放计数仍为 2。Ruff、ESLint 与 diff 检查通过。首次部署脚本误将 ready 判为 ok 后已纠正并重新部署验收；中断测试遗留账号经正式注销清理。Windows 本机仅有 Python 3.10，全量在 asyncio.timeout（要求 3.11）处失败，不列作本机全量成功；Windows 3.11 全量另由本项 CI 验证。主项剩余 8，尚待本项 PR 当前 HEAD 全部 9 项 CI。
 
 2026-11-05 组合回归：PR #117 首轮 CI 暴露对话测试把会话读取完成当作资料库就绪；已改为等待资料库控件，并用延迟响应固定复现两路读取时序。前端全量 38 文件 491 项、Lint、生产构建与体积门禁通过。Qdrant 正式本地容器已切换官方 apt/libapt 3.0.4 补丁，保留全部配置与数据挂载，所有集合点数前后一致；实际集合恢复超过原 20 秒等待窗口，延长就绪等待后通过。最终 localhost 桌面/手机 Chat、Workspace、memory-outbox 6 项真实回归通过（2.3 分钟），14 张截图已核对；临时账号和故障触发器均为 0，三服务健康为 200。完整主项仍剩余 8；PR #117 仅在最终 HEAD 全部 9 项 CI 成功后合并。
+
+
+测验最终服务回归（frontend 目录）：设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/quiz-states-real.spec.js e2e/quiz-read-states-real.spec.js --workers=1 --retries=0`。真实注册与导入后，在 GET/PUT/POST 已到达服务器时损坏业务 data，验证独立重试、草稿保护和提交编号重放；SQL 使用明确 utf8mb4 连接，核对作答/错题卡/学习事件各一次及草稿无重建，finally 正式注销并核验账号/业务表归零。2026-11-05 最终两端 4 项通过（29.8 秒），全前端 537 项及 Lint/构建/体积门禁通过，12 张截图核对后删除。创建未知结果的只读核对与显式解除由组件测试验证，本脚本未调用真实模型生成。
