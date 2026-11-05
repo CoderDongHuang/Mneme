@@ -475,21 +475,23 @@ public class ProcessingTaskService {
     }
 
     private void retryOrFailLocked(ProcessingTask task, TaskLeaseService.Lease lease, Exception error) {
+        var retry = TaskRetryPolicy.decide(error, task.getAttemptCount() == null ? 0 : task.getAttemptCount(),
+            task.getMaxAttempts() == null ? 3 : task.getMaxAttempts(), 300, java.time.Instant.now());
         // SQL exceptions may embed bound memory text; persist only a fixed diagnosis.
         if ("memory_candidates".equals(task.getTaskType())) error = new IllegalStateException("候选记忆保存失败，请重试任务");
         if ("session_delete".equals(task.getTaskType())) error = new IllegalStateException("会话清理未完成，请修复服务后重试任务");
-        int attempts = (task.getAttemptCount() == null ? 0 : task.getAttemptCount()) + 1;
-        int maxAttempts = task.getMaxAttempts() == null ? 3 : task.getMaxAttempts();
-        boolean exhausted = attempts >= maxAttempts;
+        if (retry.rateLimited()) error = new IllegalStateException(TaskRetryPolicy.RATE_LIMIT_MESSAGE);
+        int attempts = retry.attempts();
+        boolean exhausted = retry.exhausted();
         task.setAttemptCount(attempts);
         task.setStatus(exhausted ? "failed" : "retry");
-        task.setNextAttemptAt(LocalDateTime.now(java.time.ZoneOffset.UTC).plusSeconds(Math.min(300, 1L << Math.min(attempts, 10))));
+        task.setNextAttemptAt(LocalDateTime.now(java.time.ZoneOffset.UTC).plusSeconds(retry.delaySeconds()));
         task.setLockedAt(null);
         task.setLockedBy(null);
-        task.setErrorCode(error.getClass().getSimpleName());
+        task.setErrorCode(retry.rateLimited() ? "RATE_LIMITED" : error.getClass().getSimpleName());
         task.setErrorMessage(error.getMessage());
         jdbc.update("UPDATE processing_task SET attempt_count=?,next_attempt_at=TIMESTAMPADD(SECOND,?,UTC_TIMESTAMP(6)),error_code=?"
-            + " WHERE id=? AND owner_token=? AND lease_fence=?", attempts, Math.min(300, 1L << Math.min(attempts, 10)),
+            + " WHERE id=? AND owner_token=? AND lease_fence=?", attempts, retry.delaySeconds(),
             task.getErrorCode(), task.getId(), lease.owner(), lease.fence());
         lease.finish(task.getStatus(), error.getMessage());
         record(task, "retry_or_fail", task.getStatus(), Map.of("attempts", attempts), error);
@@ -520,7 +522,8 @@ public class ProcessingTaskService {
                 documentMapper.updateById(document);
             }
         }
-        log.warn("任务执行失败: taskId={}, attempt={}/{}", task.getTaskId(), attempts, task.getMaxAttempts(), error);
+        if (retry.rateLimited()) log.info("任务等待限流恢复: taskId={}, delaySeconds={}", task.getTaskId(), retry.delaySeconds());
+        else log.warn("任务执行失败: taskId={}, attempt={}/{}", task.getTaskId(), attempts, task.getMaxAttempts(), error);
         notificationService.publish(task);
     }
 
