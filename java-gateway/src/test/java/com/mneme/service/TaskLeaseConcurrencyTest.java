@@ -249,6 +249,68 @@ class TaskLeaseConcurrencyTest {
         }
     }
 
+    @Test void cancellationDuringSourceFetchFinishesWithoutWaitingForOwnerExpiry() {
+        try (var leases = new TaskLeaseService(jdbc, manager, 300)) {
+            long id = task(TaskLeaseService.Queue.PROCESSING);
+            var task = new ProcessingTask(); task.setId(id); task.setAggregateId(9L);
+            task.setTaskId(jdbc.queryForObject("SELECT task_id FROM processing_task WHERE id=?", String.class, id));
+            task.setUserId(jdbc.queryForObject("SELECT user_id FROM processing_task WHERE id=?", Long.class, id));
+            task.setTaskType("document_ingest"); task.setStatus("processing");
+            task.setPayload("{\"file_path\":\"source.txt\",\"user_id\":\"1\",\"kb_id\":\"2\",\"document_id\":\"doc_9\"}");
+            var http = mock(RestTemplate.class); var storage = mock(ObjectStorageService.class);
+            var documents = mock(KnowledgeDocumentMapper.class);
+            when(storage.materialize("source.txt")).thenAnswer(call -> {
+                jdbc.update("UPDATE processing_task SET status='cancelling' WHERE id=?", id);
+                return root.resolve("source.txt");
+            });
+            var worker = new ProcessingTaskService(mock(ProcessingTaskMapper.class), documents, mock(KnowledgeBaseMapper.class),
+                new ObjectMapper(), http, new SimpleMeterRegistry(), mock(NotificationService.class), jdbc, storage, leases, mock(PendingMemoryService.class));
+            ReflectionTestUtils.setField(worker, "pythonAgentUrl", "http://agent");
+            try (var lease = leases.claim(TaskLeaseService.Queue.PROCESSING, id, false)) {
+                ReflectionTestUtils.invokeMethod(worker, "execute", task, lease);
+                assertThat(state(TaskLeaseService.Queue.PROCESSING, id)).isEqualTo("cancelled");
+                verify(http).delete("http://agent/api/v1/knowledge/internal/cancelled-documents/doc_9?user_id=1&kb_id=2");
+                verify(http, never()).postForObject(anyString(), any(), eq(IngestionResult.class));
+                verifyNoInteractions(documents);
+            }
+        }
+    }
+
+    @Test void activePythonCancellationYieldsOwnerAndSuccessorFinishesWithNewFence() {
+        try (var leases = new TaskLeaseService(jdbc, manager, 300)) {
+            long id = task(TaskLeaseService.Queue.PROCESSING);
+            var task = new ProcessingTask(); task.setId(id); task.setAggregateId(9L);
+            task.setTaskId(jdbc.queryForObject("SELECT task_id FROM processing_task WHERE id=?", String.class, id));
+            task.setUserId(jdbc.queryForObject("SELECT user_id FROM processing_task WHERE id=?", Long.class, id));
+            task.setTaskType("document_ingest");
+            task.setPayload("{\"user_id\":\"1\",\"kb_id\":\"2\",\"document_id\":\"doc_9\"}");
+            var http = mock(RestTemplate.class);
+            var redis = mock(org.springframework.data.redis.core.StringRedisTemplate.class);
+            when(redis.hasKey(anyString())).thenReturn(true);
+            var worker = new ProcessingTaskService(mock(ProcessingTaskMapper.class), mock(KnowledgeDocumentMapper.class),
+                mock(KnowledgeBaseMapper.class), new ObjectMapper(), http, new SimpleMeterRegistry(),
+                mock(NotificationService.class), jdbc, mock(ObjectStorageService.class), leases, mock(PendingMemoryService.class));
+            ReflectionTestUtils.setField(worker, "pythonAgentUrl", "http://agent");
+            ReflectionTestUtils.setField(worker, "cancellationRedis", redis);
+            try (var old = leases.claim(TaskLeaseService.Queue.PROCESSING, id, false)) {
+                jdbc.update("UPDATE processing_task SET status='cancelling' WHERE id=?", id);
+                assertThat((Boolean) ReflectionTestUtils.invokeMethod(worker, "finishCancelled", task, old)).isTrue();
+                assertThat(state(TaskLeaseService.Queue.PROCESSING, id)).isEqualTo("cancelling");
+                verifyNoInteractions(http);
+                when(redis.hasKey(anyString())).thenReturn(false);
+                try (var next = leases.claim(TaskLeaseService.Queue.PROCESSING, id, true)) {
+                    assertThat(next).isNotNull();
+                    assertThat(next.fence()).isEqualTo(old.fence() + 1);
+                    assertThatThrownBy(() -> old.write(row -> { throw new AssertionError("stale owner ran"); }))
+                        .isInstanceOf(TaskLeaseService.LostLease.class);
+                    assertThat((Boolean) ReflectionTestUtils.invokeMethod(worker, "finishCancelled", task, next)).isTrue();
+                    assertThat(state(TaskLeaseService.Queue.PROCESSING, id)).isEqualTo("cancelled");
+                    verify(http, times(1)).delete(anyString());
+                }
+            }
+        }
+    }
+
     private long task(TaskLeaseService.Queue queue) {
         String key = UUID.randomUUID().toString();
         jdbc.update("INSERT INTO user(username,password_hash) VALUES(?,'hash')", "lease_" + key);
