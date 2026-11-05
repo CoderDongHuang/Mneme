@@ -196,7 +196,7 @@ export const endpoints = {
     return api('/profile/avatar', { method: 'POST', body: form })
   },
   avatarUrl: () => `${API_BASE}/profile/avatar`,
-  sessions: () => api('/sessions'),
+  sessions: options => api('/sessions', options),
   createSession: (title = '新对话') => api('/sessions', { method: 'POST', body: JSON.stringify({ title }) }),
   sessionMessages: (id) => api(`/sessions/${id}/messages`),
   deleteSession: (id) => api(`/sessions/${id}`, { method: 'DELETE' }),
