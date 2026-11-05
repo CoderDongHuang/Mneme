@@ -13,6 +13,9 @@ from app.core.privacy import PrivacyStore
 from app.knowledge.generations import generation_store, StaleGeneration
 from app.memory.session_store import SessionStore
 from app.memory.session_persistence import SessionPersistence
+from app.memory import session_history
+from app.memory.session_scope import account_session
+from app.models.chat import Message
 from app.tools.registry import ToolRegistry, ToolSpec
 
 
@@ -22,12 +25,16 @@ def test_tombstone_does_not_hide_raw_privacy_and_expired_session_residuals(tmp_p
     for user in ('target', 'other'):
         privacy.save(user, False, 1)
         sessions._save(user, {'11': {'last_updated': '2000-01-01T00:00:00'}})
+        with account_session(user) as state:
+            session_history.save(state, 'orphan', [Message(role='user', content='retained', timestamp='2000')])
+            state['session_histories'][session_history.session_key('orphan')]['expires_at'] = 1
     monkeypatch.setattr(report, 'privacy_store', privacy)
     monkeypatch.setattr(report, 'session_store', sessions)
     generation_store.tombstone('target')
     counts = report.deletion_report('target')
     assert counts['account_fence'] == 0
     assert counts['privacy_rows'] == counts['session_manifest'] == 1
+    assert counts['sql_session_histories'] == 1  # Raw expiry/tombstone must not conceal an orphan.
     privacy.delete('target')
     sessions.delete_user('target')
     counts = report.deletion_report('target')

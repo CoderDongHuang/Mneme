@@ -36,7 +36,8 @@ test('SQLite 停写维护保留活动索引和删除围栏，恢复后知识库�
     await expect.poll(() => deletionStatus(entry), { timeout: 90000 }).toBe('completed')
     const report = JSON.parse(query(`SELECT cleanup_report FROM account_deletion_task WHERE user_id=${entry.account.userId} ORDER BY id DESC LIMIT 1;`))
     expect(report.status).toBe('verified')
-    expect(Object.keys(report.counts)).toHaveLength(18)
+    expect(Object.keys(report.counts)).toHaveLength(19)
+    expect(report.counts.sql_session_histories).toBe(0)
     expect(Object.values(report.counts).every(value => value === 0)).toBe(true)
     expect(query(`SELECT COUNT(*) FROM user WHERE id=${entry.account.userId};`)).toBe('0')
   }

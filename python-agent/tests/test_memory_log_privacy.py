@@ -127,8 +127,13 @@ def test_provider_fallbacks_never_log_body_or_raw_identity(diagnostics, monkeypa
     monkeypatch.setattr(nodes, "run_reflection", Mock(side_effect=RuntimeError(body)))
     assert nodes.suggestion_generation_node(state) == {}
     manager = stm_module.ShortTermMemoryManager()
-    manager._store[session] = [Message(role="user", content=body, timestamp=datetime.now().isoformat(),
-                                      token_count=500) for _ in range(30)]
+    history = [Message(role="user", content=body, timestamp=datetime.now().isoformat(),
+                       token_count=500) for _ in range(30)]
+    from app.memory.session_scope import account_session
+    from app.memory.session_history import save
+    with account_session() as account:
+        save(account, session, history)
+    manager.get_history(session)
     before = manager._store[session].copy()
     monkeypatch.setattr(stm_module, "llm", failure)
     persist = Mock()
@@ -142,7 +147,7 @@ def test_provider_fallbacks_never_log_body_or_raw_identity(diagnostics, monkeypa
     assert "RuntimeError" in output
     assert log_identifier(user) in output and log_identifier(session) in output
     records = [json.loads(line) for line in output.splitlines()]
-    assert len(records) == 4
+    assert len(records) == 5
     assert all(row["trace_id"] == "privacy-request-trace" and "exception" not in row for row in records)
 
 
@@ -186,7 +191,12 @@ def test_redis_session_failures_keep_body_and_identity_out_of_diagnostics(diagno
         if stage == "save":
             persistence.save_messages(session, [Message(role="user", content=body, timestamp="2026-11-02T00:00:00Z")])
         elif stage in {"load", "malformed"}:
-            assert persistence.load_messages(session) is None
+            if stage == "load":
+                assert persistence.load_messages(session) is None
+            else:
+                with pytest.raises(RuntimeError) as raised:
+                    persistence.load_messages(session)
+                assert body not in "".join(traceback.format_exception(raised.value))
         else:
             with pytest.raises(RuntimeError) as raised:
                 if stage == "delete":

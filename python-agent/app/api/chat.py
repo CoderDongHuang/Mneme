@@ -36,12 +36,10 @@ async def list_sessions(user_id: str = "default"):
 @router.get(
     "/session/{session_id}",
     summary="会话详情",
-    description="获取指定会话的完整消息历史，优先从短期记忆读取，降级到工作记忆",
+    description="获取指定会话的持久消息历史，存储故障时保留可重试错误",
 )
 async def get_session(session_id: str, user_id: str):
     messages = short_term_memory.get_history(session_id, user_id=user_id)
-    if not messages:
-        messages = working_memory.get_messages(session_id, user_id=user_id)
     return {
         "session_id": session_id,
         "messages": [

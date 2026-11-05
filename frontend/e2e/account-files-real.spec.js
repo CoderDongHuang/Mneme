@@ -127,7 +127,8 @@ with privacy_store._local() as db:
     expect(storage(entry)).toEqual({ objects: 0, file_hashes: [] })
     const receipt = report(entry)
     expect(receipt.status).toBe('verified')
-    expect(Object.keys(receipt.counts)).toHaveLength(18)
+    expect(Object.keys(receipt.counts)).toHaveLength(19)
+    expect(receipt.counts.sql_session_histories).toBe(0)
     expect(Object.values(receipt.counts).every(value => value === 0)).toBe(true)
     entry.verified = true
   }
@@ -222,7 +223,7 @@ with privacy_store._local() as db:
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await testInfo.attach('account-files-readback.json', { body: JSON.stringify({ invalid_history_blocks_completion: true, sql_manifest_retained: true,
       restored_manifest_retries: true, privacy_residual_blocks_completion: true, admin_failure_and_success_reports: true,
-      all_18_counts_zero: true, mysql_readback_zero: true, current_and_history_files_zero: true, protected_tenant_unchanged: true }), contentType: 'application/json' })
+      all_19_counts_zero: true, mysql_readback_zero: true, current_and_history_files_zero: true, protected_tenant_unchanged: true }), contentType: 'application/json' })
   } finally {
     restore()
     if (privacyBlocked) privacyFault(privacyBlocked, false)

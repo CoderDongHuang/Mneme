@@ -1,10 +1,6 @@
 """
-会话消息 Redis 持久化层
-
-解决短期记忆在服务重启后丢失的问题：
-- 每次 add_message 时写入 Redis（TTL 24h）
-- get_history 时优先从内存取，内存缺失时从 Redis 恢复
-- Redis 不可用时自动降级为纯内存模式，不影响核心功能
+会话历史以 SQL 为准，Redis 保存可丢弃的镜像（TTL 24h）。
+首次读取旧 Redis 历史时在账号事务中迁移，无法读取旧历史时拒绝覆盖。
 """
 
 import json
@@ -19,6 +15,7 @@ from app.models.chat import Message
 from app.core.config import settings
 from app.core.logging import setup_logger, memory_log_fields
 from app.memory.session_scope import account_session, advance_revision, session_revision
+from app.memory import session_history
 
 logger = setup_logger("session_persistence")
 
@@ -26,7 +23,7 @@ SESSION_KEY_PREFIX = "mneme:session:"
 
 
 class SessionPersistence:
-    """会话消息 Redis 存储，自动降级"""
+    """SQL history with an optional Redis mirror and strict cleanup."""
 
     def __init__(self):
         self._redis = None
@@ -52,7 +49,7 @@ class SessionPersistence:
         except Exception as error:
             self._available = False
             logger.warning("error_type=%s %s", type(error).__name__,
-                           memory_log_fields("session_connect", "memory_only"))
+                           memory_log_fields("session_connect", "sql_only"))
 
     def _ensure_connection(self) -> bool:
         if self._available:
@@ -75,8 +72,7 @@ class SessionPersistence:
 
     def save_messages(self, session_id: str, messages: List[Message], *, user_id="default"):
         with account_session(user_id, session_id=session_id) as state:
-            # Publish a new fence even in memory-only mode: another worker may
-            # not treat the old Redis payload as the current conversation.
+            session_history.save(state, session_id, messages)
             revision = advance_revision(state, session_id)
             if not self._ensure_connection():
                 return
@@ -87,43 +83,62 @@ class SessionPersistence:
             except Exception as error:
                 self._available = False
                 logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
-                    "session_save", "memory_only", source_session_id=session_id))
+                    "session_save", "sql_only", source_session_id=session_id))
 
     def load_messages(self, session_id: str, *, user_id="default") -> Optional[List[Message]]:
         with account_session(user_id, session_id=session_id) as state:
+            durable = session_history.bucket(state, session_id)
+            if durable is not None:
+                return session_history.messages(durable)
             revision = session_revision(state, session_id)
+            from app.memory.session_store import session_store
+            try:
+                legacy_owner = str(user_id) != "default" and session_store.owns_legacy_cache(user_id, session_id)
+            except Exception:
+                raise RuntimeError("旧会话清单暂不可用，请修复后重试") from None
             if not self._ensure_connection():
+                if revision or legacy_owner:
+                    raise RuntimeError("旧会话历史暂不可用，请恢复 Redis 后重试")
                 return None
+            data = None
             try:
                 data = self._redis.get(self._session_key(session_id, user_id))
                 if not data and not revision and str(user_id) != "default":
                     # Legacy IDs are globally canonical Gateway IDs. Never
                     # guess ownership or read an unregistered user's old key.
-                    from app.memory.session_store import session_store
-                    if session_store.owns_legacy_cache(user_id, session_id):
+                    if legacy_owner:
                         data = self._redis.get(self._session_key(session_id))
                 if not data:
+                    if revision:
+                        raise RuntimeError("旧会话历史暂不可用，请恢复 Redis 后重试")
                     return None
                 payload = json.loads(data)
                 if isinstance(payload, dict):
                     if payload.get("revision") != revision:
-                        return None
+                        raise RuntimeError("旧会话历史暂不可用，请恢复 Redis 后重试")
                     raw_list = payload["messages"]
                 elif isinstance(payload, list) and not revision:
                     raw_list = payload
                 else:
-                    return None
-                return [Message(role=m["role"], content=m["content"],
+                    raise ValueError("旧会话历史格式无效")
+                restored = [Message(role=m["role"], content=m["content"],
                                 timestamp=m.get("timestamp", utc_now().isoformat()),
                                 token_count=m.get("token_count", len(m["content"]) // 4)) for m in raw_list]
             except Exception as error:
                 self._available = False
                 logger.warning("error_type=%s %s", type(error).__name__, memory_log_fields(
                     "session_load", "unavailable", source_session_id=session_id))
+                if revision or legacy_owner or data:
+                    raise RuntimeError("旧会话历史暂不可用，请恢复 Redis 后重试") from None
                 return None
+            # Outside the Redis exception handler: a failed SQL commit must
+            # propagate, never be mislabeled as successful cache degradation.
+            session_history.save(state, session_id, restored)
+            return restored
 
     def delete_session(self, session_id: str, *, user_id="default"):
         with account_session(user_id, cleanup=True) as state:
+            session_history.clear(state, session_id)
             advance_revision(state, session_id)
             if not self._ensure_connection():
                 raise RuntimeError("Redis 不可用，无法确认会话数据已删除")
@@ -162,6 +177,7 @@ class SessionPersistence:
         with account_session(user_id, cleanup=True) as state:
             if not state.get("deleted"):
                 raise RuntimeError("账号未停止写入，拒绝整批清理会话缓存")
+            state.pop("session_histories", None)
             if not self._ensure_connection():
                 raise RuntimeError("Redis 不可用，无法核验会话残留")
             try:

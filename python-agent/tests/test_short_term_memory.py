@@ -23,18 +23,12 @@ from datetime import datetime, timedelta
 
 @pytest.fixture(autouse=True)
 def isolate_session_persistence(monkeypatch):
-    """Keep unit tests independent from any running development Redis."""
-    monkeypatch.setattr(
-        stm_module.session_persistence, "load_messages", lambda _session_id, **kw: []
-    )
-    monkeypatch.setattr(
-        stm_module.session_persistence,
-        "save_messages",
-        lambda _session_id, _messages, **kw: None,
-    )
-    monkeypatch.setattr(
-        stm_module.session_persistence, "delete_session", lambda _session_id, **kw: None
-    )
+    """Use real isolated SQL history without depending on a running Redis."""
+    backend = MagicMock()
+    backend.get.return_value = None
+    backend.exists.return_value = 0
+    monkeypatch.setattr(stm_module.session_persistence, "_ensure_connection", lambda: True)
+    monkeypatch.setattr(stm_module.session_persistence, "_redis", backend)
 
 
 def _mock_llm(return_content: str):

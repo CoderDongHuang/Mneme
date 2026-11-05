@@ -101,6 +101,25 @@ store.register_session(user,session,delivery_id=delivery)
 store.increment_message_count(user,session,delivery_id=delivery)
 assert store.get_sessions(user)==before
 print('durable delivery verified')`, String(account.userId), String(session.id), saved.requestId)).toBe('durable delivery verified')
+    // Cold interpreter, actual SQL history and receipts; Redis is deliberately
+    // unavailable to this isolated process only. No whole-completion replay.
+    expect(python(`import sys
+from unittest.mock import patch
+from app.memory.short_term_memory import ShortTermMemoryManager
+from app.memory.session_persistence import session_persistence
+from app.knowledge.generations import generation_store
+from app.models.chat import Message
+user,session,delivery=sys.argv[1:]
+with patch.object(session_persistence,'_ensure_connection',return_value=False):
+ manager=ShortTermMemoryManager()
+ before=manager.get_history(session,user_id=user)
+ assert any(m.content=='Candidate memory QA verified answer' for m in before)
+ state=generation_store.snapshot(user)
+ for role,content in [('user','hello'),('assistant','Candidate memory QA verified answer')]:
+  manager.add_message(session,Message(role=role,content=content,timestamp='retry'),user_id=user,delivery_id=delivery)
+ assert manager.get_history(session,user_id=user)==before
+ assert generation_store.snapshot(user)==state
+print('durable history verified')`, String(account.userId), String(session.id), saved.requestId)).toBe('durable history verified')
     expect(JSON.parse(python("import sys\nfrom pathlib import Path\nprint((Path(sys.argv[1])/'privacy-check.json').read_text())", folder)))
       .toEqual({ intent_fallback: true, suggestion_fallback: true, summary_history_preserved: true, real_trace_redacted: true, redis_session_diagnostics_redacted: true })
     await expect.poll(async () => (await memoryTask())?.status, { timeout: 45_000, intervals: [1000] }).toBe('failed')
@@ -177,6 +196,13 @@ shutil.rmtree(root)
 print('restored')`, folder)
       await restart(agent, 'http://127.0.0.1:8001/health/ready')
     }
-    if (account) await api('delete', '/profile/account')
+    if (account) {
+      await api('delete', '/profile/account')
+      await expect.poll(() => sql(`SELECT COUNT(*) FROM mneme.user WHERE id=${account.userId}`), { timeout: 90_000, intervals: [1000] }).toBe('0')
+      expect(python(`import sys
+from app.memory.session_history import count_user
+assert count_user(sys.argv[1])==0
+print('history cleared')`, String(account.userId))).toBe('history cleared')
+    }
   }
 })

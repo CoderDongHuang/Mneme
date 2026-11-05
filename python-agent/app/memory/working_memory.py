@@ -24,6 +24,13 @@ class WorkingMemoryManager:
         with account_session(user_id, session_id=session_id), self._lock:
             return [item.model_copy(deep=True) for item in self._store.get(cache_key(user_id, session_id), [])]
 
+    def replace_messages(self, session_id: str, messages: List[Message], *, user_id="default"):
+        """Project the committed history window; replay never appends twice."""
+        with account_session(user_id, session_id=session_id), self._lock:
+            self._store[cache_key(user_id, session_id)] = [
+                item.model_copy(deep=True) for item in messages[-settings.WORKING_MEMORY_WINDOW_SIZE:]
+            ]
+
     def clear(self, session_id: str, *, user_id="default"):
         with account_session(user_id, cleanup=True), self._lock:
             self._store.pop(cache_key(user_id, session_id), None)

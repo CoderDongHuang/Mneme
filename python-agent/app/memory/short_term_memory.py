@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.core.logging import setup_logger, memory_log_fields
 from app.memory.session_persistence import session_persistence
 from app.memory.session_scope import account_session, cache_key, session_revision
+from app.memory import session_history
 
 logger = setup_logger("short_term_memory")
 
@@ -52,15 +53,17 @@ class ShortTermMemoryManager:
 
     def _history(self, session_id, user_id, state):
         key = cache_key(user_id, session_id)
+        # Always validate SQL history, including inactivity expiry. An earlier
+        # failed commit must not leave a readable phantom in this local mirror.
+        restored = session_persistence.load_messages(session_id, user_id=user_id)
         revision = session_revision(state, session_id)
         if key not in self._store or self._revisions.get(key, "") != revision:
-            restored = session_persistence.load_messages(session_id, user_id=user_id)
-            self._store[key] = self._copy(restored or [])
             self._revisions[key] = revision
             self._last_summary_time.pop(key, None)
             if restored:
                 logger.info("message_count=%d %s", len(restored), memory_log_fields(
                     "history_restore", "completed", source_session_id=session_id))
+        self._store[key] = self._copy(restored or [])
         return self._store[key]
 
     def _persist(self, session_id, user_id, state):
@@ -68,11 +71,15 @@ class ShortTermMemoryManager:
         session_persistence.save_messages(session_id, self._store[key], user_id=user_id)
         self._revisions[key] = session_revision(state, session_id)
 
-    def add_message(self, session_id: str, message: Message, *, user_id="default") -> List[Message]:
+    def add_message(self, session_id: str, message: Message, *, user_id="default", delivery_id=None) -> List[Message]:
         with account_session(user_id, session_id=session_id) as state, self._lock:
             history = self._history(session_id, user_id, state)
+            if delivery_id is not None and session_history.already_delivered(state, session_id, message, delivery_id):
+                return self._copy(history)
             history.append(message.model_copy(deep=True))
             self._persist(session_id, user_id, state)
+            if delivery_id is not None:
+                session_history.record_delivery(state, session_id, message, delivery_id)
             return self._copy(history)
 
     def get_history(self, session_id: str, *, user_id="default") -> List[Message]:

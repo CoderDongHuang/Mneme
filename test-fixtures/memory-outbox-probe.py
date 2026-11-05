@@ -17,7 +17,7 @@ import app.agents.nodes as _qa_nodes
 import app.memory.short_term_memory as _qa_stm
 import app.memory.reflection as _qa_reflection_module
 import app.memory.session_persistence as _qa_persistence
-from app.memory.session_scope import account_session as _qa_account, cache_key as _qa_key, session_revision as _qa_revision
+from app.memory.session_scope import account_session as _qa_account, cache_key as _qa_key
 import traceback as _qa_traceback
 import time as _qa_time
 
@@ -70,7 +70,15 @@ def complete_conversation(request, state, answer):
                     persistence.save_messages(probe_session, [_QaHistoryMessage(
                         role="user", content=canary, timestamp=_qa_now().isoformat())], user_id=request.user_id)
                 elif stage in {"load", "malformed"}:
-                    assert persistence.load_messages(probe_session, user_id=request.user_id) is None
+                    if stage == "load":
+                        assert persistence.load_messages(probe_session, user_id=request.user_id) is None
+                    else:
+                        try:
+                            persistence.load_messages(probe_session, user_id=request.user_id)
+                        except RuntimeError as error:
+                            assert canary not in "".join(_qa_traceback.format_exception(error))
+                        else:
+                            raise AssertionError("Malformed legacy history must fail closed")
                 else:
                     try:
                         if stage == "delete":
@@ -104,14 +112,17 @@ def complete_conversation(request, state, answer):
             raise AssertionError("Invalid reflection must fail")
         assert _qa_nodes.suggestion_generation_node(state) == {}
     temporary = _QaShortManager()
-    temporary_key = _qa_key(request.user_id, request.session_id)
-    temporary._store[temporary_key] = [_QaHistoryMessage(
+    temporary_history = [_QaHistoryMessage(
         role="user", content=canary, timestamp=_qa_now().isoformat(), token_count=500) for _ in range(30)]
+    from app.memory.session_history import save as _qa_save_history
+    summary_session = "privacy-summary"
     with _qa_account(request.user_id) as account:
-        temporary._revisions[temporary_key] = _qa_revision(account, request.session_id)
+        _qa_save_history(account, summary_session, temporary_history)
+    temporary_key = _qa_key(request.user_id, summary_session)
+    temporary.get_history(summary_session, user_id=request.user_id)
     original_history = temporary._store[temporary_key].copy()
     with _qa_patch.object(_qa_stm, "llm", _QaMock(invoke=_QaMock(side_effect=RuntimeError(canary)))):
-        temporary.summarize(request.session_id, user_id=request.user_id)
+        temporary.summarize(summary_session, user_id=request.user_id)
         _qa_stm.llm.invoke.assert_called_once()
     assert temporary._store[temporary_key] == original_history
     try:

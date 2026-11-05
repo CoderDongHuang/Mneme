@@ -8,6 +8,7 @@ from app.memory.version_store import memory_version_store
 from app.memory.reflection_scheduler import reflection_scheduler
 from app.memory.session_store import session_store
 from app.memory.session_persistence import session_persistence
+from app.memory import session_history
 from app.tools.registry import tool_registry
 
 
@@ -21,6 +22,7 @@ def deletion_report(user_id: str) -> dict[str, int]:
         "privacy_rows": lambda: privacy_store.count_user(user_id),
         "tool_governance": lambda: tool_registry.count_user_governance(user_id),
         "session_manifest": lambda: len(session_store.cleanup_session_ids(user_id)),
+        "sql_session_histories": lambda: session_history.count_user(user_id),
         "redis_scoped_sessions": lambda: session_persistence.count_user_sessions(user_id),
         "reflection_keys": lambda: reflection_scheduler.count_user_keys(user_id),
         "reflection_queue_entries": lambda: reflection_scheduler.count_user_queue(user_id),
