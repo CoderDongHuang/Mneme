@@ -17,6 +17,31 @@ import static org.mockito.Mockito.*;
 class AccountDeletionServiceTest {
     @TempDir Path root;
 
+    @Test void throttledAccountCleanupKeepsBudgetAndReleasesLeaseForLaterRetry() {
+        var users = mock(UserMapper.class);
+        var jdbc = mock(JdbcTemplate.class);
+        var http = mock(RestTemplate.class);
+        var operations = mock(OperationLogService.class);
+        var lease = mock(TaskLeaseService.Lease.class);
+        var row = java.util.Map.<String, Object>of("operation_id", "op", "user_id", 7L,
+            "attempt_count", 7, "current_step", "queued");
+        when(lease.id()).thenReturn(9L); when(lease.owner()).thenReturn("owner"); when(lease.fence()).thenReturn(3L);
+        when(lease.write(any())).thenAnswer(invocation -> {
+            java.util.function.Function<java.util.Map<String, Object>, Object> change = invocation.getArgument(0);
+            return change.apply(row);
+        });
+        var user = new User(); user.setId(7L); when(users.selectById(7L)).thenReturn(user);
+        doThrow(TaskRetryPolicyTest.limited("120")).when(http).delete("http://agent/api/v1/knowledge/admin/user/7");
+        when(http.getForObject(anyString(), eq(java.util.Map.class))).thenReturn(AccountCleanupVerificationTest.healthyAgent());
+        var service = new AccountDeletionService(users, jdbc, http, operations, "http://agent", root.toString(),
+            8, mock(ObjectStorageService.class), mock(TaskLeaseService.class));
+        service.execute(lease);
+        verify(jdbc).update(contains("attempt_count=?"), eq(7), eq(120L), eq(9L), eq("owner"), eq(3L));
+        verify(jdbc).update(contains("UPDATE user SET status=?"), eq("deleting"), eq(7L));
+        verify(lease).finish("retry", TaskRetryPolicy.RATE_LIMIT_MESSAGE);
+        verify(users, never()).deleteById(anyLong());
+    }
+
     @Test
     void enqueueFreezesUserAndCreatesRecoverableTask() {
         UserMapper users = mock(UserMapper.class);

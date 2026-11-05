@@ -158,9 +158,11 @@ public class AccountDeletionService {
             log.info("账号删除执行权已转移: operationId={}", operationId);
         } catch (Exception error) {
             CleanupReport failureReport = verification.read(userId, user);
-            int nextAttempt = attempts + 1;
-            boolean exhausted = nextAttempt >= maxAttempts;
-            long delay = Math.min(3600, 1L << Math.min(nextAttempt, 10));
+            var retry = TaskRetryPolicy.decide(error, attempts, maxAttempts, 3600, java.time.Instant.now());
+            int nextAttempt = retry.attempts();
+            boolean exhausted = retry.exhausted();
+            long delay = retry.delaySeconds();
+            Exception diagnosis = retry.rateLimited() ? new IllegalStateException(TaskRetryPolicy.RATE_LIMIT_MESSAGE) : error;
             try {
                 lease.write(row -> {
                     saveReport(lease, failureReport);
@@ -169,14 +171,15 @@ public class AccountDeletionService {
                     jdbc.update("UPDATE user SET status=? WHERE id=? AND status IN ('deleting','deletion_failed')",
                         exhausted ? "deletion_failed" : "deleting", userId);
                     operations.record(operationId, userId, "account_delete", userId.toString(),
-                        String.valueOf(row.get("current_step")), exhausted ? "failed" : "retry", Map.of("attempts", nextAttempt), error);
-                    lease.finish(exhausted ? "failed" : "retry", safeError(error));
+                        String.valueOf(row.get("current_step")), exhausted ? "failed" : "retry", Map.of("attempts", nextAttempt), diagnosis);
+                    lease.finish(exhausted ? "failed" : "retry", safeError(diagnosis));
                     return null;
                 });
             } catch (TaskLeaseService.LostLease lost) {
                 return; // A stale owner must not publish failure over its successor.
             }
-            log.warn("账号删除任务失败: operationId={}, attempt={}/{}", operationId, nextAttempt, maxAttempts, error);
+            if (retry.rateLimited()) log.info("账号删除等待限流恢复: operationId={}, delaySeconds={}", operationId, delay);
+            else log.warn("账号删除任务失败: operationId={}, attempt={}/{}", operationId, nextAttempt, maxAttempts, error);
         }
     }
 
