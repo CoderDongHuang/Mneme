@@ -152,7 +152,14 @@ test('整站恢复真实权限和执行器状态，隔离归档校验与锁定�
   } finally {
     if (account) {
       await api('delete', '/profile/account')
-      await expect.poll(() => sql(`SELECT COUNT(*) FROM user WHERE id=${account.userId}`), { timeout: 30000, intervals: [1000] }).toBe('0')
+      // Maintenance reads may legitimately return 429 with a persisted 30s
+      // backoff. Include that delay and the next scheduler tick in cleanup.
+      await expect.poll(() => sql(`SELECT status FROM account_deletion_task WHERE user_id=${account.userId}`), { timeout: 90000, intervals: [1000] }).toBe('completed')
+      expect(sql(`SELECT COUNT(*) FROM user WHERE id=${account.userId}`)).toBe('0')
+      const report = JSON.parse(sql(`SELECT cleanup_report FROM account_deletion_task WHERE user_id=${account.userId}`))
+      expect(report.status).toBe('verified')
+      expect(Object.keys(report.counts).length).toBeGreaterThan(0)
+      expect(Object.values(report.counts).every(count => count === 0)).toBe(true)
     }
   }
 })
