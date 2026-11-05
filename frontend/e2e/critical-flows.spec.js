@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
   })
   await page.addInitScript(() => localStorage.setItem('mneme_auth', JSON.stringify({ userId: 1, username: 'tester', nickname: '测试用户' })))
   await page.route('**/api/v1/**', route => route.fulfill(ok(new URL(route.request().url()).pathname.endsWith('/preferences') ? { language: 'zh-CN', timezone: 'Asia/Shanghai', theme: 'light', notifications: true } : [])))
-  await page.route('**/api/v1/profile', route => route.fulfill(ok({ userId: 1, username: 'tester', nickname: '测试用户', email: 'test@example.com', hasAvatar: false })))
+  await page.route('**/api/v1/profile', route => route.fulfill(ok({ userId: 1, username: 'tester', nickname: '测试用户', email: 'test@example.com', emailVerified: false, hasAvatar: false })))
   await page.route('**/api/v1/sessions', route => route.fulfill(ok([])))
   await page.route('**/api/v1/knowledge/base/list', route => route.fulfill(ok([{ id: 1, name: '验收资料库' }])))
   await page.route('**/api/v1/knowledge/base/1/documents', route => route.fulfill(ok([])))

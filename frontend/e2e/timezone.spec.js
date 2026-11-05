@@ -16,7 +16,7 @@ test('保存与刷新后的语言时区覆盖会话、文档版本、解析、�
       return route.fulfill(ok(preferences))
     }
     const fixtures = {
-      '/profile': { userId: 1, username: 'timezone-test', role: 'admin' },
+      '/profile': { userId: 1, username: 'timezone-test', nickname: null, email: null, emailVerified: false, role: 'admin' },
       '/profile/sessions': [{ session_id: 'tz-session', last_seen_at: instant }],
       '/sessions': [{ id: 5, title: 'Timezone conversation', updatedAt: '2026-10-30T18:30:00' }],
       '/workspace/tasks': [{ task_id: 'tz-task', task_type: 'document_ingest', file_name: 'timezone.txt', status: 'completed', created_at: instant }],

@@ -184,16 +184,16 @@ export const endpoints = {
   resetPassword: (body) => api('/auth/reset-password', { method: 'POST', body: JSON.stringify(body) }),
   requestPasswordReset: (body) => api('/auth/password-reset/request', { method: 'POST', body: JSON.stringify(body) }),
   confirmPasswordReset: (body) => api('/auth/password-reset/confirm', { method: 'POST', body: JSON.stringify(body) }),
-  profile: () => api('/profile'),
-  updateProfile: (body) => api('/profile', { method: 'PATCH', body: JSON.stringify(body) }),
-  requestEmailVerification: (email) => api('/profile/email-verification/request', { method: 'POST', body: JSON.stringify({ email }) }),
-  confirmEmailVerification: (token) => api('/profile/email-verification/confirm', { method: 'POST', body: JSON.stringify({ token }) }),
-  changePassword: (body) => api('/profile/password', { method: 'POST', body: JSON.stringify(body) }),
+  profile: (options) => api('/profile', options),
+  updateProfile: (body, options) => api('/profile', { ...options, method: 'PATCH', body: JSON.stringify(body) }),
+  requestEmailVerification: (email, options) => api('/profile/email-verification/request', { ...options, method: 'POST', body: JSON.stringify({ email }) }),
+  confirmEmailVerification: (token, options) => api('/profile/email-verification/confirm', { ...options, method: 'POST', body: JSON.stringify({ token }) }),
+  changePassword: (body, options) => api('/profile/password', { ...options, method: 'POST', body: JSON.stringify(body) }),
   deleteAccount: () => api('/profile/account', { method: 'DELETE' }),
-  uploadAvatar: (file) => {
+  uploadAvatar: (file, options) => {
     const form = new FormData()
     form.append('file', file)
-    return api('/profile/avatar', { method: 'POST', body: form })
+    return api('/profile/avatar', { ...options, method: 'POST', body: form })
   },
   avatarUrl: () => `${API_BASE}/profile/avatar`,
   sessions: options => api('/sessions', options),

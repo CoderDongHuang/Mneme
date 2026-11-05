@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { endpoints } from '../api/client'
+import { validProfile } from '../features/profile/profileValidation'
 
 const AuthContext = createContext(null)
 
@@ -16,15 +17,18 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(storedSession)
   const [verifiedRole, setVerifiedRole] = useState(null)
   const userId = session?.userId
+  const username = session?.username
   useEffect(() => {
     setVerifiedRole(null)
     if (!userId) return
     let active = true
-    endpoints.profile().then(profile => {
+    const controller = new AbortController()
+    endpoints.profile({ signal: controller.signal }).then(profile => {
+      if (!validProfile(profile, { userId, username })) throw new Error('Invalid profile response')
       if (active) { setVerifiedRole(profile.role || 'user'); setSession(current => current?.userId === userId ? { ...current, ...profile } : current) }
     }).catch(() => { if (active) setVerifiedRole('unavailable') })
-    return () => { active = false }
-  }, [userId])
+    return () => { active = false; controller.abort() }
+  }, [userId, username])
 
   useEffect(() => {
     const logout = () => setSession(null)
