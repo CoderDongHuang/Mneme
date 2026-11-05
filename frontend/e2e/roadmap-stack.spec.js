@@ -190,6 +190,7 @@ test('真实解析异常与恢复：扫描 OCR、复杂布局、损坏文件、�
     await expect(page.getByRole('img', { name: '第 1 页 OCR 区域预览' })).toBeVisible()
     const image = page.getByRole('img', { name: '第 1 页 OCR 区域预览' })
     await expect.poll(() => image.evaluate(img => img.naturalWidth)).toBeGreaterThan(0)
+    await image.scrollIntoViewIfNeeded()
     await page.screenshot({ path: testInfo.outputPath('cancellation-recovery.png'), fullPage: false })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
   } finally {
