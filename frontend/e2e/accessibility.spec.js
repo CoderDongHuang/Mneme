@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/**', route => {
     const path = new URL(route.request().url()).pathname
     const fixtures = {
-      '/api/v1/profile': { userId: 1, username: 'tester', nickname: '测试用户', role: 'admin' },
+      '/api/v1/profile': { userId: 1, username: 'tester', nickname: '测试用户', email: null, emailVerified: false, role: 'admin' },
       '/api/v1/workspace/tasks': [], '/api/v1/workspace/operations': [], '/api/v1/sessions': [],
       '/api/v1/knowledge/base/list': [{ id: 1, name: '资料库' }],
       '/api/v1/privacy': { providers: ['DeepSeek'], sending_scope: ['检索片段'], cloud_allowed: true, trace_days: 30, trace_max_days: 30 },
@@ -98,7 +98,7 @@ test('导航分组按角色展示且个人设置不属于管理员组', async ({
   await nav.getByRole('link', { name: '管理员运维', exact: true }).scrollIntoViewIfNeeded()
   await expect(nav.getByRole('link', { name: '管理员运维', exact: true })).toBeInViewport()
   await page.screenshot({ path: testInfo.outputPath('admin-navigation.png'), fullPage: true })
-  await page.route('**/api/v1/profile', route => route.fulfill(ok({ userId: 1, username: 'tester', role: 'user' })))
+  await page.route('**/api/v1/profile', route => route.fulfill(ok({ userId: 1, username: 'tester', nickname: null, email: null, emailVerified: false, role: 'user' })))
   await page.goto('/settings')
   await expect(page.getByRole('heading', { name: '设置', exact: true })).toBeVisible()
   if (page.viewportSize().width < 1100) await page.getByRole('button', { name: '打开导航', exact: true }).click()

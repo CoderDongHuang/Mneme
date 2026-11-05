@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { setTimeout as delay } from 'node:timers/promises'
 import process from 'node:process'
 
 test.skip(process.env.MNEME_REAL_E2E !== 'true', '需要真实 Gateway 和 MySQL')
@@ -10,13 +12,16 @@ test('资料与会话故障可重试，撤销成功不因刷新失败被抹去',
   page.setDefaultTimeout(15_000)
   const suffix = randomUUID().replaceAll('-', '')
   const username = `profilestate_${suffix.slice(0, 10)}`, password = `States!${suffix}`
-  let account, other
+  let account, other, cleanup
+  const mysql = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=mysql', '--filter', 'label=com.docker.compose.container-number=1', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim()
+  expect(mysql).toMatch(/^[a-f0-9]+$/)
+  const sql = query => execFileSync('docker', ['exec', '-i', mysql, 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -N -B mneme'], { input: query, encoding: 'utf8', timeout: 30000 }).trim()
   let failProfile = true, failSessions = true, sessionReads = 0
   async function request(client, method, path, data, expected = 200) {
     for (let attempt = 0; attempt < 12; attempt++) {
       const response = await client[method]('/api/v1' + path, data === undefined ? {} : { data })
       if (response.status() === 429) {
-        await page.waitForTimeout(Math.min(60_000, Math.max(1000, Number(response.headers()['retry-after'] || 5) * 1000)))
+        await delay(Math.min(60_000, Math.max(1000, Number(response.headers()['retry-after'] || 5) * 1000)))
         continue
       }
       expect(response.status(), `${method} ${path}`).toBe(expected)
@@ -30,6 +35,7 @@ test('资料与会话故障可重试，撤销成功不因刷新失败被抹去',
   const fits = async () => expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
   try {
     account = await request(page.request, 'post', '/auth/register', { username, password })
+    cleanup = await playwright.request.newContext({ baseURL: testInfo.project.use.baseURL, storageState: await page.context().storageState() })
     await page.addInitScript(value => {
       if (!sessionStorage.getItem('profile-states-initialized')) {
         localStorage.setItem('mneme_auth', JSON.stringify(value))
@@ -95,7 +101,14 @@ test('资料与会话故障可重试，撤销成功不因刷新失败被抹去',
     await fits()
     await page.screenshot({ path: testInfo.outputPath('sessions-recovered.png'), fullPage: true })
   } finally {
-    if (account) await request(page.request, 'delete', '/profile/account')
-    await other?.dispose()
+    test.setTimeout(testInfo.timeout + 90000)
+    await page.close()
+    try {
+      if (account) {
+        await request(cleanup, 'delete', '/profile/account')
+        await expect.poll(() => sql(`SELECT COUNT(*) FROM user WHERE id=${account.userId}`), { timeout: 60000 }).toBe('0')
+        expect(sql(`SELECT COUNT(*) FROM auth_session WHERE user_id=${account.userId}`)).toBe('0')
+      }
+    } finally { await other?.dispose(); await cleanup?.dispose() }
   }
 })

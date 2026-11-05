@@ -409,7 +409,7 @@ jobs:
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
-        run: npx playwright test e2e/profile-states-real.spec.js --workers=1 --retries=0
+        run: npx playwright test e2e/profile-states-real.spec.js e2e/profile-read-states-real.spec.js --workers=1 --retries=0
       - name: Verify real analytics windows, export and feedback recovery on desktop and mobile
         working-directory: frontend
         env:
