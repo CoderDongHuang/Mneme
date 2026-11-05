@@ -1,3 +1,4 @@
+import { validBases } from '../../api/collectionValidation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { endpoints, openNotificationStream } from '../../api/client'
 import { useSerialPoll } from '../../hooks/useSerialPoll'
@@ -8,8 +9,6 @@ const id = value => Number.isSafeInteger(value) && value > 0
 const text = value => typeof value === 'string'
 const optionalText = value => value == null || text(value)
 const unique = (items, key) => new Set(items.map(item => item?.[key])).size === items.length
-const validBases = value => Array.isArray(value) && unique(value, 'id') && value.every(item => record(item)
-  && id(item.id) && text(item.name) && item.name.trim() && optionalText(item.description))
 const validDocuments = value => Array.isArray(value) && unique(value, 'id') && value.every(item => record(item)
   && id(item.id) && text(item.fileName) && item.fileName.trim() && text(item.status) && item.status.trim()
   && ['errorMessage', 'updatedAt', 'parseReport'].every(key => optionalText(item[key]))

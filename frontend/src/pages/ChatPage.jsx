@@ -1,3 +1,6 @@
+import useIndependentRead from '../hooks/useIndependentRead'
+import { validBases, validSessions } from '../api/collectionValidation'
+import { useAuth } from '../state/AuthContext'
 import { useFormatters } from '../hooks/useFormatters'
 import { parseInstant } from '../utils/dates'
 import { useDateFormatter } from '../hooks/useDateFormatter'
@@ -6,10 +9,10 @@ import {
   ArrowUp, BookOpen, Check, ChevronDown, CircleStop, FileText, MessageSquarePlus,
   PanelLeftClose, PanelLeftOpen, Quote, Search, SlidersHorizontal, Sparkles, Trash2, X,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { endpoints, streamChat } from '../api/client'
-import { Modal } from '../components/ui'
+import { FeedbackBlock, Modal } from '../components/ui'
 import LoadingState from '../components/LoadingState'
 import RetrievalFilters, { emptyFilters } from '../components/RetrievalFilters'
 import useChatScroll from '../hooks/useChatScroll'
@@ -29,7 +32,12 @@ function answerFailure(message) {
   return message.error || t(Object.hasOwn(labels, message.errorCode) ? labels[message.errorCode] : '回答未完成，请重试')
 }
 
-export default function ChatPage({ renderTools, workspace = false }) {
+export default function ChatPage(props) {
+  const session = useAuth()?.session
+  return <ChatView key={session?.userId || session?.username || 'anonymous'} {...props} />
+}
+
+function ChatView({ renderTools, workspace = false }) {
   useI18n();
   const dates = useDateFormatter()
   const fmt = useFormatters()
@@ -46,17 +54,23 @@ export default function ChatPage({ renderTools, workspace = false }) {
   const [renameBusy, setRenameBusy] = useState(false)
   const renameLock = useRef(false)
   const [narrow, setNarrow] = useState(window.innerWidth <= 1279)
-  const [sessions, setSessions] = useState([])
+  const sessionRead = useIndependentRead(endpoints.sessions, validSessions)
+  const kbRead = useIndependentRead(endpoints.knowledgeBases, validBases)
+  const sessions = sessionRead.data || [], knowledgeBases = kbRead.data || []
+  const setSessions = sessionRead.commit
+  const sessionUnavailable = sessionRead.data === null || sessionRead.error || sessionRead.loading
+  const kbUnavailable = kbRead.data === null || kbRead.error || kbRead.loading
+  const initialSelection = useRef(new URLSearchParams(window.location.search).get('session'))
+  const [requestedPending, setRequestedPending] = useState(!!initialSelection.current)
+  const kbInitialized = useRef(false)
   const [conversation, setConversation] = useState({ session: null, messages: [] })
   const { session: activeSession, messages } = conversation
   const setMessages = (update) => setConversation(current => ({ ...current, messages: typeof update === 'function' ? update(current.messages) : update }))
   const [switching, setSwitching] = useState(false)
   const selectionRef = useRef(0)
-  const [knowledgeBases, setKnowledgeBases] = useState([])
   const [selectedKbIds, setSelectedKbIds] = useState([])
   const [retrievalFilters, setRetrievalFilters] = useState({ ...emptyFilters })
   const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(true)
   const [streaming, setStreaming] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1280)
   useEffect(() => { const resize = () => { setNarrow(window.innerWidth <= 1279); setSidebarOpen(window.innerWidth >= 1280) }; window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [])
@@ -154,27 +168,20 @@ export default function ChatPage({ renderTools, workspace = false }) {
   }, [scrollToBottom])
 
   useEffect(() => {
-    let active = true
-    Promise.allSettled([endpoints.sessions(), endpoints.knowledgeBases()])
-      .then(([sessionResult, kbResult]) => {
-        if (!active) return
-        if (sessionResult.status === 'fulfilled') {
-          const list = sessionResult.value || []; setSessions(list)
-          const requested = new URLSearchParams(window.location.search).get('session')
-          const match = list.find(item => String(item.id) === requested)
-          if (match) void chooseSession(match)
-        }
-        if (kbResult.status === 'fulfilled') {
-          const kbList = kbResult.value || []
-          setKnowledgeBases(kbList)
-          setSelectedKbIds(kbList.map((item) => String(item.id)))
-        }
-        const failure = [sessionResult, kbResult].find((result) => result.status === 'rejected')
-        if (failure) setError(failure.reason?.message || t("部分数据加载失败，请刷新重试"))
-      })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [chooseSession])
+    if (sessionRead.data === null || !initialSelection.current) return
+    const requested = initialSelection.current
+    initialSelection.current = null
+    const match = sessionRead.data.find(item => String(item.id) === requested)
+    if (match) void chooseSession(match)
+    setRequestedPending(false)
+  }, [sessionRead.data, chooseSession])
+  useEffect(() => {
+    if (kbRead.data === null) return
+    const ids = kbRead.data.map(item => String(item.id))
+    const initialized = kbInitialized.current
+    setSelectedKbIds(current => initialized ? current.filter(id => ids.includes(id)) : ids)
+    kbInitialized.current = true
+  }, [kbRead.data])
 
   useEffect(() => () => { selectionRef.current++; abortRef.current?.abort() }, [])
 
@@ -182,6 +189,8 @@ export default function ChatPage({ renderTools, workspace = false }) {
   function newChat() {
     if (abortRef.current) return
     selectionRef.current++
+    initialSelection.current = null
+    setRequestedPending(false)
     setSwitching(false)
     setConversation({ session: null, messages: [] })
     setInput('')
@@ -201,7 +210,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
   async function sendMessage(event, retryText) {
     event?.preventDefault()
     const text = (retryText ?? input).trim()
-    if (!text || abortRef.current || loading || switching) return
+    if (!text || abortRef.current || kbUnavailable || requestedPending || switching) return
     const controller = new AbortController()
     const active = { controller, requestId: crypto.randomUUID(), sent: false, stopRequested: false, stopped: false, stopInFlight: false, terminal: false }
     activeRequestRef.current = active
@@ -252,10 +261,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
       active.terminal = true
       setError(current => current === active.stopError ? '' : current)
       updateAssistant({ status: result?.status === 'stopped' ? 'stopped' : 'complete' })
-      try {
-        const refreshed = await endpoints.sessions()
-        if (abortRef.current === controller) setSessions(refreshed || [])
-      } catch { /* completed answers remain available if the history refresh fails */ }
+      void sessionRead.refresh()
     } catch (requestError) {
       const stopped = active.stopped
       if (stopped) setError(current => current === active.stopError ? '' : current)
@@ -304,7 +310,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
 
   async function removeSession(event, session) {
     event.stopPropagation()
-    if (abortRef.current || switching || sessionLocks.current.has(session.id)) return
+    if (abortRef.current || switching || sessionUnavailable || sessionLocks.current.has(session.id)) return
     sessionLocks.current.add(session.id)
     setDeletingSessions(current => [...current, session.id])
     setError('')
@@ -345,7 +351,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
   const displaySources = sourceDrawer || messages.findLast(message => message.sources?.length)?.sources || []
   async function rename(event) {
     event.preventDefault()
-    if (renameLock.current) return
+    if (renameLock.current || sessionUnavailable) return
     renameLock.current = true; setRenameBusy(true)
     try {
       await endpoints.renameSession(renaming.id, renaming.title)
@@ -354,12 +360,14 @@ export default function ChatPage({ renderTools, workspace = false }) {
       setRenaming(null)
     } catch (e) { setError(e.message) } finally { renameLock.current = false; setRenameBusy(false) }
   }
-  const selectedLabel = useMemo(() => {
+  const selectedLabel = (() => {
+    if (kbRead.error) return t('资料库暂不可用')
+    if (kbRead.loading || kbRead.data === null) return t('资料库加载中…')
     if (!knowledgeBases.length) return t("暂无资料库")
     if (selectedKbIds.length === knowledgeBases.length) return t("全部资料库")
     if (!selectedKbIds.length) return t("不使用资料")
     return t("已选 {0} 个资料库", [selectedKbIds.length])
-  }, [knowledgeBases, selectedKbIds])
+  })()
 
   return (
     <div className={`chat-page reference-chat ${sidebarOpen ? '' : 'sidebar-collapsed'} ${!narrow ? 'with-sources' : ''}`}>
@@ -371,14 +379,17 @@ export default function ChatPage({ renderTools, workspace = false }) {
           <button onClick={newChat} title={t("新对话")} aria-label={t("新对话")}><MessageSquarePlus size={16} /><span>{t('新建对话')}</span></button>
         </div>
 <div className="history-filters"><label><Search size={16} /><input aria-label={t("搜索会话")} placeholder={t("搜索对话…")} value={historyQuery} onChange={e => setHistoryQuery(e.target.value)} /></label><div className="history-ranges">{[[0, '全部'], [7, '最近 7 天'], [30, '最近 30 天']].map(([days, label]) => <button key={days} aria-pressed={historyRange === days} onClick={() => { setHistoryRange(days); setHistoryDate('') }}>{t(label)}<small>{sessions.filter(item => !days || historyNow - (parseInstant(item.updatedAt || item.createdAt)?.getTime() ?? NaN) <= days * 86400000).length}</small></button>)}</div><details><summary>{t('按日期筛选会话')}</summary><input type="date" aria-label={t("按日期筛选会话")} value={historyDate} onChange={e => setHistoryDate(e.target.value)} /></details></div>
-        <div className="history-list">
-          {loading ? <LoadingState /> : filteredSessions.length ? filteredSessions.map((session) => (
+        <div className="history-list" role="region" aria-label={t('会话列表读取')} aria-busy={sessionRead.loading}>
+          <FeedbackBlock error={sessionRead.error ? t('会话列表加载失败。已有记录可能不是最新状态，请重试。') : ''} onRetry={sessionRead.loading ? undefined : sessionRead.refresh} />
+          {sessionRead.loading && <LoadingState />}
+          {!sessionRead.loading && !sessionRead.error && <button onClick={sessionRead.refresh}>{t('刷新会话')}</button>}
+          {filteredSessions.length ? filteredSessions.map((session) => (
             <div key={session.id} className={`history-item ${activeSession?.id === session.id ? 'active' : ''}`}>
-              <button className="session-open" aria-label={t("打开对话：{0}", [session.title || '新对话'])} onClick={() => chooseSession(session)}><strong>{session.title || t("新对话")}</strong><small>{dates.date(session.updatedAt || session.createdAt)}</small></button>
-              <button className="rename-session" disabled={streaming || switching} title={t("重命名会话")} aria-label={t("重命名会话：{0}", [session.title])} onClick={() => setRenaming({ id: session.id, title: session.title || t("新对话") })}>✎</button>
-              <button className="delete-session" disabled={streaming || switching || deletingSessions.includes(session.id)} title={t("删除对话：{0}", [session.title || '新对话'])} aria-label={t("删除对话：{0}", [session.title || '新对话'])} onClick={(event) => removeSession(event, session)}><Trash2 size={15} /></button>
+              <button className="session-open" disabled={sessionUnavailable} aria-label={t("打开对话：{0}", [session.title || '新对话'])} onClick={() => chooseSession(session)}><strong>{session.title || t("新对话")}</strong><small>{dates.date(session.updatedAt || session.createdAt)}</small></button>
+              <button className="rename-session" disabled={streaming || switching || sessionUnavailable} title={t("重命名会话")} aria-label={t("重命名会话：{0}", [session.title])} onClick={() => setRenaming({ id: session.id, title: session.title || t("新对话") })}>✎</button>
+              <button className="delete-session" disabled={streaming || switching || sessionUnavailable || deletingSessions.includes(session.id)} title={t("删除对话：{0}", [session.title || '新对话'])} aria-label={t("删除对话：{0}", [session.title || '新对话'])} onClick={(event) => removeSession(event, session)}><Trash2 size={15} /></button>
             </div>
-          )) : <p className="history-empty">{t("还没有历史对话")}</p>}
+          )) : !sessionRead.loading && !sessionRead.error && <p className="history-empty">{t(sessions.length ? '没有符合筛选条件的对话' : '还没有历史对话')}</p>}
         </div>
         <div className="history-foot"><Sparkles size={16} /><span>{t("从对话中积累学习记忆")}</span></div>
       </aside>
@@ -400,13 +411,18 @@ export default function ChatPage({ renderTools, workspace = false }) {
                 {knowledgeBases.length ? knowledgeBases.map((kb) => {
                   const id = String(kb.id)
                   const checked = selectedKbIds.includes(id)
-                  return <label key={id}><input type="checkbox" checked={checked} onChange={() => { setSelectedKbIds((current) => checked ? current.filter((item) => item !== id) : [...current, id]); setRetrievalFilters({ ...emptyFilters }) }} /><span className="custom-check">{checked && <Check size={12} />}</span><span>{kb.name}</span></label>
-                }) : <p>{t("请先在资料库页面上传学习资料。")}</p>}
+                  return <label key={id}><input type="checkbox" checked={checked} disabled={kbUnavailable || streaming} onChange={() => { setSelectedKbIds((current) => checked ? current.filter((item) => item !== id) : [...current, id]); setRetrievalFilters({ ...emptyFilters }) }} /><span className="custom-check">{checked && <Check size={12} />}</span><span>{kb.name}</span></label>
+                }) : !kbUnavailable && <p>{t("请先在资料库页面上传学习资料。")}</p>}
+                <button disabled={kbRead.loading || streaming} onClick={kbRead.refresh}>{t('刷新资料库')}</button>
               </div>
             )}
           </div>
         </header>
 
+        <div className="chat-read-feedback" role="region" aria-label={t('对话资料库读取')} aria-busy={kbRead.loading}>
+          {kbRead.loading && <p role="status">{t('资料库加载中…')}</p>}
+          <FeedbackBlock error={kbRead.error ? t('资料库加载失败。已有记录可能不是最新状态，请重试。') : ''} onRetry={kbRead.loading ? undefined : kbRead.refresh} />
+        </div>
         <div ref={conversationRef} className="conversation" aria-busy={switching}>
           {switching && <p role="status">{t("正在切换对话…")}</p>}
           {!messages.length ? (
@@ -431,7 +447,7 @@ export default function ChatPage({ renderTools, workspace = false }) {
                   {message.status === 'failed' && <p role="alert">{answerFailure(message)}{message.content ? ` · ${t('已保留部分回答')}` : ''}</p>}
                   {message.content && <button onClick={async () => { try { await navigator.clipboard.writeText(message.content + (message.sources?.length ? '\n\n' + message.sources.map((source, index) => `[${index + 1}] ${source.document_name || source.document_id} · ${source.page || t("全文")}\n${source.chunk_content || ''}`).join('\n\n') : '')) } catch { setError(t("复制失败，请手动选择文本复制")) } }}>{t("复制回答")}</button>}
                   {message.status === 'stopped' && message.content && <span role="status">{t("已停止 · 保留部分回答")}</span>}
-                  {['failed', 'stopped'].includes(message.status) && message.requestText && <button disabled={streaming || switching} onClick={() => sendMessage(null, message.requestText)}>{t("重试")}</button>}
+                  {['failed', 'stopped'].includes(message.status) && message.requestText && <button disabled={streaming || switching || sessionUnavailable} onClick={() => sendMessage(null, message.requestText)}>{t("重试")}</button>}
                 </div>}
                 {!!message.sources?.length && (
                   <button className="source-trigger" onClick={() => setSourceDrawer(message.sources)}><Quote size={15} />{t("查看 ")}{message.sources.length}{t(" 条资料依据")}</button>
@@ -450,10 +466,10 @@ export default function ChatPage({ renderTools, workspace = false }) {
 
         {unseen && <button className="new-content" onClick={scrollToBottom}>{t("有新内容 · 返回底部")}</button>}
         <form className="composer" onSubmit={sendMessage} aria-busy={switching}>
-          <div className="composer-tools"><RetrievalFilters kbIds={selectedKbIds} value={retrievalFilters} onChange={setRetrievalFilters} /><button type="button" onClick={() => navigate('/knowledge')}><FileText size={14} />{t('导入资料')}</button><button type="button" onClick={() => setKbMenuOpen(!kbMenuOpen)}><Quote size={14} />{t('引用检索')}</button><button type="button" onClick={() => setSourceDrawer(displaySources)}><BookOpen size={14} />{t('引用与原文')}{displaySources.length ? ` · ${displaySources.length}` : ''}</button></div>
+          <div className="composer-tools"><RetrievalFilters disabled={kbUnavailable || streaming} kbIds={selectedKbIds} value={retrievalFilters} onChange={setRetrievalFilters} /><button type="button" onClick={() => navigate('/knowledge')}><FileText size={14} />{t('导入资料')}</button><button type="button" onClick={() => setKbMenuOpen(!kbMenuOpen)}><Quote size={14} />{t('引用检索')}</button><button type="button" onClick={() => setSourceDrawer(displaySources)}><BookOpen size={14} />{t('引用与原文')}{displaySources.length ? ` · ${displaySources.length}` : ''}</button></div>
           <textarea aria-label={t("向忆知提问...")} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); sendMessage() } }} placeholder={t("向忆知提问...")} rows={1} />
           <span className="composer-context"><FileText size={14} />{selectedLabel}</span>
-          {streaming ? <button type="button" className="stop-send" disabled={stopBusy} onClick={stopGeneration} title={t("停止生成")} aria-label={t("停止生成")}><CircleStop size={19} /></button> : <button className="send-message" disabled={loading || switching || !input.trim()} title={t("发送")} aria-label={t("发送")}><ArrowUp size={20} /></button>}
+          {streaming ? <button type="button" className="stop-send" disabled={stopBusy} onClick={stopGeneration} title={t("停止生成")} aria-label={t("停止生成")}><CircleStop size={19} /></button> : <button className="send-message" disabled={kbUnavailable || requestedPending || switching || !input.trim()} title={t("发送")} aria-label={t("发送")}><ArrowUp size={20} /></button>}
         </form>
       </section>
 

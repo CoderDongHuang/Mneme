@@ -50,6 +50,8 @@ npm --prefix frontend run build
 
 ## 真实全链路 E2E
 
+已运行服务的对话/阅读工作台与学习记忆组合回归（在 frontend 目录）：设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/chat-read-states-real.spec.js e2e/memory-states-real.spec.js --workers=1 --retries=0`。共六项，使用正式注册、读取、SSE、保存/恢复/删除及 SQL 核验；只中止指定 GET 模拟传输故障，不伪造成功响应。桌面和手机截图核对后清理 test-results，不保留重复本地产物。
+
 `frontend/e2e/real-stack.spec.js` 覆盖真实注册、创建资料库、上传、任务轮询、Embedding、RAG、流式回答、引用、多轮对话和刷新恢复。常规 CI 使用显式启用的确定性验收模型，MySQL、Redis、Qdrant、MinIO、Java、Python、Caddy 和浏览器仍为真实组件，不访问付费模型：
 
 ```powershell
