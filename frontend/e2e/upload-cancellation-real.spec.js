@@ -23,6 +23,13 @@ test('真实限速上传取消、同批次继续和已提交回执确认', async
     }
     throw new Error('Rate limit did not recover')
   }
+  async function chooseFiles(files) {
+    // Use the real enabled control: background refresh deliberately disables
+    // imports, and assigning the hidden input bypasses that user-visible guard.
+    const chooser = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: '导入资料', exact: true }).click()
+    await (await chooser).setFiles(files)
+  }
   try {
     const suffix = randomUUID().replaceAll('-', '')
     const auth = await api('post', '/auth/register', { data: { username: `uploadqa_${suffix.slice(0, 12)}`, password: `UploadQA!${suffix}` } })
@@ -38,11 +45,12 @@ test('真实限速上传取消、同批次继续和已提交回执确认', async
     cdp.on('Network.requestWillBeSent', event => {
       if (new URL(event.request.url).pathname === '/api/v1/knowledge/document/upload' && !uploadRequest) uploadRequest = event.requestId
     })
-    const aborted = new Promise(resolve => cdp.on('Network.loadingFailed', event => {
-      if (event.requestId === uploadRequest) resolve(event)
-    }))
+    let failure
+    cdp.on('Network.loadingFailed', event => {
+      if (event.requestId === uploadRequest) failure = event
+    })
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: 32 * 1024 })
-    await page.locator('input[type=file][multiple]').setInputFiles([
+    await chooseFiles([
       { name: 'cancel-large.txt', mimeType: 'text/plain', buffer: Buffer.alloc(4 * 1024 * 1024, 'a') },
       { name: 'continue-next.txt', mimeType: 'text/plain', buffer: Buffer.from('The second file continues after cancellation.') },
     ])
@@ -50,7 +58,7 @@ test('真实限速上传取消、同批次继续和已提交回执确认', async
     await expect(large).toHaveClass(/uploading/)
     await expect.poll(() => uploadRequest).toBeTruthy()
     await large.getByRole('button', { name: '取消上传', exact: true }).click()
-    const failure = await aborted
+    await expect.poll(() => failure, { message: '限速上传应产生浏览器取消事件' }).toBeTruthy()
     expect(failure.canceled).toBe(true)
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 })
     await expect(large).toHaveClass(/cancelled/)
@@ -65,18 +73,16 @@ test('真实限速上传取消、同批次继续和已提交回执确认', async
     evidence.server_confirmed_cancelled = true
     evidence.batch_continued = true
 
-    let resolveCommitted
-    const committed = new Promise(resolve => { resolveCommitted = resolve })
+    let body
     const release = new Promise(resolve => { releaseResponse = resolve })
     await page.route('**/api/v1/knowledge/document/upload', async route => {
       const response = await route.fetch()
-      const body = await response.json()
-      resolveCommitted(body)
+      body = await response.json()
       await release
       await route.fulfill({ response }).catch(() => {}) // browser may already have aborted
     })
-    await page.locator('input[type=file][multiple]').setInputFiles({ name: 'already-committed.txt', mimeType: 'text/plain', buffer: Buffer.from('The server commits before the response reaches the browser.') })
-    const body = await committed
+    await chooseFiles({ name: 'already-committed.txt', mimeType: 'text/plain', buffer: Buffer.from('The server commits before the response reaches the browser.') })
+    await expect.poll(() => body?.code, { message: '真实上传应提交成功，随后暂扣响应', timeout: 30000 }).toBe(200)
     expect(body.code).toBe(200)
     const committedRow = page.locator('.upload-queue-item').filter({ hasText: 'already-committed.txt' })
     await committedRow.getByRole('button', { name: '取消上传', exact: true }).click()
@@ -97,6 +103,7 @@ test('真实限速上传取消、同批次继续和已提交回执确认', async
     await page.screenshot({ path: testInfo.outputPath('upload-cancellation.png'), fullPage: true })
   } finally {
     releaseResponse?.()
+    test.setTimeout(testInfo.timeout + 60000)
     if (registered) await api('delete', '/profile/account')
   }
 })
