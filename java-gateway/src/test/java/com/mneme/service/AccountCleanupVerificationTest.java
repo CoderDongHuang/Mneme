@@ -10,6 +10,21 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class AccountCleanupVerificationTest {
+    @Test void throttledReadRemainsUnknownAndPreservesRetryInformation() {
+        var http = mock(RestTemplate.class);
+        var throttled = org.springframework.web.client.HttpClientErrorException.create(
+            org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "limited",
+            new org.springframework.http.HttpHeaders(), new byte[0], null);
+        when(http.getForObject("http://agent/report", Map.class)).thenThrow(throttled);
+        var report = new CleanupReport();
+        report.agent(http, "http://agent/report", List.of("fts_rows"));
+        assertThat(report.json(new ObjectMapper())).contains("\"fts_rows\":-1", "\"status\":\"pending\"");
+        assertThatThrownBy(() -> report.requireZeroExcept(null)).hasCause(throttled);
+        doReturn(Map.of("fts_rows", 0)).when(http).getForObject("http://agent/report", Map.class);
+        report.agent(http, "http://agent/report", List.of("fts_rows"));
+        report.requireZeroExcept(null);
+        assertThat(report.json(new ObjectMapper())).contains("\"fts_rows\":0", "\"status\":\"verified\"");
+    }
     @Test void missingUserSnapshotCannotProveAvatarAbsence() {
         var jdbc = mock(org.springframework.jdbc.core.JdbcTemplate.class);
         var http = mock(RestTemplate.class);

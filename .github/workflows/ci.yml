@@ -476,6 +476,13 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/quiz-states-real.spec.js --workers=1 --retries=0
+      - name: Verify durable cleanup rate-limit backoff and restart recovery
+        working-directory: frontend
+        env:
+          MNEME_REAL_E2E: "true"
+          MNEME_RATE_LIMIT_QA: "true"
+          MNEME_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/cleanup-backoff-real.spec.js --workers=1 --retries=0
       - name: Verify shared display formats on desktop and mobile
         working-directory: frontend
         env:
