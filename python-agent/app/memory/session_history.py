@@ -10,7 +10,7 @@ from datetime import timedelta
 
 from app.core.config import settings
 from app.core.time import utc_now
-from app.memory.session_scope import advance_revision, session_deleted
+from app.memory.session_scope import advance_revision_for_key, session_deleted
 from app.models.chat import Message
 
 
@@ -26,7 +26,11 @@ def _entries(state):
 
 
 def bucket(state, session_id):
-    value = _entries(state).get(session_key(session_id))
+    return _bucket_for_key(state, session_key(session_id), utc_now().timestamp())
+
+
+def _bucket_for_key(state, key, now):
+    value = _entries(state).get(key)
     if value is None:
         return None
     if isinstance(value, dict) and set(value) == {"expired"} and value["expired"] is True:
@@ -39,9 +43,9 @@ def bucket(state, session_id):
             raise ValueError
         if not isinstance(value["messages"], list) or not isinstance(value["deliveries"], dict):
             raise ValueError
-        for key, digest in value["deliveries"].items():
+        for receipt_key, digest in value["deliveries"].items():
             if any(not isinstance(item, str) or len(item) != 64 or any(c not in "0123456789abcdef" for c in item)
-                   for item in (key, digest)):
+                   for item in (receipt_key, digest)):
                 raise ValueError
         for item in value["messages"]:
             if not isinstance(item, dict) or set(item) != set(Message.model_fields):
@@ -50,11 +54,31 @@ def bucket(state, session_id):
     except Exception:
         # ValidationError can contain private field values. Never propagate it.
         raise ValueError("会话持久历史损坏") from None
-    if expiry <= utc_now().timestamp():
+    if expiry <= now:
         value = {"expired": True}
-        state["session_histories"][session_key(session_id)] = value
-        advance_revision(state, session_id)
+        advance_revision_for_key(state, key)
+        state["session_histories"][key] = value
     return value
+
+
+def expire_user(state, *, now=None):
+    """Caller owns the account transaction; rollback the whole user on error.
+
+    Keep expired markers and revision fences: removing the bucket would allow
+    an unmigrated legacy Redis mirror to be imported on the next request.
+    """
+    if not isinstance(state, dict):
+        raise ValueError("会话持久历史损坏") from None
+    now = utc_now().timestamp() if now is None else now
+    expired = 0
+    for key, value in _entries(state).items():
+        if not isinstance(key, str) or len(key) != 64 or any(c not in "0123456789abcdef" for c in key):
+            raise ValueError("会话持久历史损坏") from None
+        was_expired = value == {"expired": True}
+        current = _bucket_for_key(state, key, now)
+        if current == {"expired": True} and not was_expired:
+            expired += 1
+    return expired
 
 
 def messages(value):

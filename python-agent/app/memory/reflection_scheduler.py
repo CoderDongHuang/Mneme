@@ -481,6 +481,10 @@ class ReflectionScheduler:
         from app.agents.trace_store import agent_trace_store
         self.scheduler.add_job(agent_trace_store.prune_policies, trigger=IntervalTrigger(hours=1),
                                id="privacy_retention", replace_existing=True)
+        from app.memory.session_retention import session_history_retention
+        self.scheduler.add_job(session_history_retention.run_batch, trigger=IntervalTrigger(minutes=1),
+                               id="session_history_retention", replace_existing=True,
+                               max_instances=1, coalesce=True)
         self.scheduler.add_job(
             self.run_memory_maintenance,
             trigger=IntervalTrigger(hours=MEMORY_MAINTENANCE_INTERVAL_HOURS),

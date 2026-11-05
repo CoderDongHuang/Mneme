@@ -2,8 +2,10 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from contextlib import contextmanager
+from datetime import timedelta
 import sys
 from threading import Event
+from types import SimpleNamespace
 from unittest.mock import patch
 import uuid
 
@@ -14,6 +16,9 @@ from app.knowledge.generations import generation_store, StaleGeneration  # noqa:
 from app.memory.session_store import SessionStore  # noqa: E402
 from app.memory.short_term_memory import ShortTermMemoryManager  # noqa: E402
 from app.memory.session_persistence import session_persistence  # noqa: E402
+from app.memory.session_history import session_key  # noqa: E402
+from app.memory.session_retention import SessionHistoryRetention  # noqa: E402
+from app.core.time import utc_now  # noqa: E402
 from app.models.chat import Message  # noqa: E402
 from reflection_qa import remove_probe_users  # noqa: E402
 
@@ -48,14 +53,47 @@ def verify_history(user):
             assert ShortTermMemoryManager().get_history(stage, user_id=user) == [message]
 
 
+def verify_retention(prefix):
+    """Use actual keyset SQL and account locks, restricted to QA identities."""
+    users = [prefix + "-a", prefix + "-b"]
+    with patch.object(session_persistence, "_ensure_connection", return_value=False):
+        manager = ShortTermMemoryManager()
+        message = Message(role="user", content="retention QA", timestamp=utc_now().isoformat())
+        for user in users:
+            for session in ("unread", "active"):
+                manager.add_message(session, message, user_id=user, delivery_id="receipt")
+            with generation_store.locked(user) as state:
+                state["session_histories"][session_key("unread")]["expires_at"] = (utc_now() - timedelta(seconds=1)).timestamp()
+        before = {user: generation_store.snapshot(user) for user in users}
+        def page(after=None, *, limit=100):
+            rows = generation_store.user_page(prefix if after is None else after, limit=limit)
+            return [user for user in rows if user in users]
+        scoped = SimpleNamespace(user_page=page, locked=generation_store.locked)
+        workers = [SessionHistoryRetention(scoped, batch_size=1) for _ in range(2)]
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda w: w.run_batch(), workers))
+        assert sum(row["expired"] for row in results) == 1
+        assert sum(row["failed"] for row in results) == 0
+        assert workers[0].run_batch()["expired"] == 1
+        assert workers[0].run_batch()["scanned"] == 0
+        for user in users:
+            after = generation_store.snapshot(user)
+            assert after["session_histories"][session_key("unread")] == {"expired": True}
+            assert after["session_histories"][session_key("active")] == before[user]["session_histories"][session_key("active")]
+            assert manager.get_history("unread", user_id=user) == []
+    return users
+
+
 def main():
     # Reuse the reserved standalone cleanup-probe identity convention.
     user = "reflection-cleanup-qa-" + uuid.uuid4().hex
     other = user + "-other"
+    retention_users = [user + "-retention-a", user + "-retention-b"]
     first, second = SessionStore(), SessionStore()
     entered, release, deleting = Event(), Event(), Event()
     try:
         verify_history(other)
+        assert verify_retention(user + "-retention") == retention_users
         with ThreadPoolExecutor(max_workers=8) as pool:
             list(pool.map(lambda i: (first, second)[i % 2].register_session(other, str(i)), range(32)))
             list(pool.map(lambda i: (first, second)[i % 2].increment_message_count(other, "0"), range(32)))
@@ -113,12 +151,12 @@ def main():
         assert len(fresh.cleanup_session_ids(other)) == 32
     finally:
         release.set()
-        for who in (user, other):
+        for who in (user, other, *retention_users):
             generation_store.tombstone(who)
             second.delete_user(who)
             assert not Path(second._get_file_path(who)).exists()
-        remove_probe_users(user, other)
-    print("PASS: session manifest/history delivery, rollback, lost ACK, concurrent updates and cleanup on", settings.auxiliary_store_backend)
+        remove_probe_users(user, other, *retention_users)
+    print("PASS: session history delivery/retention, rollback, lost ACK, concurrent updates and cleanup on", settings.auxiliary_store_backend)
 
 
 if __name__ == "__main__":
