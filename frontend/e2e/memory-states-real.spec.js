@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { expect, request, test } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
 
@@ -8,7 +9,10 @@ test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 test('记忆读取故障不伪装为空数据，版本恢复与保存使用真实服务', async ({ page }, testInfo) => {
   test.setTimeout(180000)
   page.setDefaultTimeout(15000)
-  let account, failItems = true, failPending = true, failVersions = true, writes = 0
+  let account, cleanup, failItems = true, failPending = true, failVersions = true, writes = 0, itemReads = 0, invalidItems = false
+  const mysql = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=mysql', '--filter', 'label=com.docker.compose.container-number=1', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim()
+  expect(mysql).toMatch(/^[a-f0-9]+$/)
+  const sql = query => execFileSync('docker', ['exec', '-i', mysql, 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -B mneme'], { input: query, encoding: 'utf8', timeout: 30000 }).trim()
   async function api(method, path, data) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await page.request[method]('/api/v1' + path, data === undefined ? {} : { data })
@@ -46,6 +50,10 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
   }
   const metric = name => page.locator('.reference-metrics > div').filter({ has: page.getByText(name, { exact: true }) }).locator('strong')
   const screenshot = async name => {
+    // A newly opened detail may still be finishing its legitimate version read.
+    // Compare layout only after that read settles, so an arriving count is not
+    // mistaken for a screenshot-induced remount.
+    await expect(page.locator('section[aria-label="记忆历史版本"][aria-busy="true"]')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     const state = () => page.evaluate(() => ({ width: innerWidth, height: innerHeight,
       details: [...document.querySelectorAll('details')].map(item => ({ open: item.open, summary: item.querySelector('summary')?.textContent })) }))
@@ -61,6 +69,7 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
   try {
     const suffix = randomUUID().replaceAll('-', '')
     account = await api('post', '/auth/register', { username: `memorystate_${suffix.slice(0, 10)}`, password: `MemoryState!${suffix}` })
+    cleanup = await request.newContext({ baseURL: testInfo.project.use.baseURL, storageState: await page.context().storageState(), timeout: 45000 })
     await api('post', '/memory/write', { category: 'preference', content: '先核对引用原文，再整理学习笔记。' })
     await api('post', '/memory/write', { category: 'weak_point', topic: '记忆状态回归乙', content: '向量检索距离和概率分布还需要练习。' })
     const seeded = await api('get', '/workspace/memories')
@@ -72,7 +81,17 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
     const history = await api('get', `/workspace/memories/${entry.id}/versions`)
     expect(history.versions.length).toBeGreaterThan(0)
     await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), account)
-    await page.route('**/api/v1/workspace/memories', route => route.request().method() === 'GET' && failItems ? fail(route) : route.continue())
+    await page.route('**/api/v1/workspace/memories', async route => {
+      if (route.request().method() !== 'GET') return route.continue()
+      itemReads++
+      if (failItems) return fail(route)
+      if (invalidItems) {
+        const response = await route.fetch(), body = await response.json()
+        body.data.memories[0].tags = '{}'
+        return route.fulfill({ response, json: body })
+      }
+      return route.continue()
+    })
     await page.route('**/api/v1/memory/pending', route => route.request().method() === 'GET' && failPending ? fail(route) : route.continue())
     await page.route('**/api/v1/workspace/memories/*/versions', route => failVersions ? fail(route) : route.continue())
     page.on('response', response => { if (response.request().method() === 'PATCH' && response.ok()) writes++ })
@@ -92,6 +111,12 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
     await expect(page.getByRole('button', { name: /记忆状态回归甲/ })).toBeVisible()
     await expect(metric('总记忆数')).toHaveText('2')
     await expect(metric('待确认')).toHaveText('—')
+    const readsBeforeRetry = itemReads
+    failPending = false
+    const pendingRegion = page.getByRole('region', { name: '待确认记忆读取', exact: true })
+    await browserAction(pendingRegion.getByRole('button', { name: '重试 / Retry', exact: true }), 'GET', '/memory/pending')
+    await expect(metric('待确认')).toHaveText('0')
+    expect(itemReads).toBe(readsBeforeRetry)
     await page.getByRole('button', { name: /记忆状态回归甲/ }).click()
     const detail = page.getByRole(testInfo.project.name === '移动端' ? 'dialog' : 'complementary', { name: '记忆详情', exact: true })
     await detail.getByRole('textbox', { name: '内容', exact: true }).fill('已修改的学习记忆内容')
@@ -121,16 +146,31 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
     await expect(detail.getByRole('textbox', { name: '标签（以逗号分隔）', exact: true })).toHaveValue('')
     expect((await api('get', '/workspace/memories')).memories.find(item => item.id === entry.id).content).toBe('先核对引用原文，再整理学习笔记。')
     await detail.getByRole('button', { name: '关闭 / Close', exact: true }).click()
-    failItems = true; failPending = false
+    invalidItems = true
     await browserAction(page.getByRole('button', { name: '刷新记忆', exact: true }), 'GET', '/memory/pending')
     await expect(page.getByText('已有记忆记录可能不是最新状态。', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: /记忆状态回归甲/ })).toBeVisible()
     await expect(metric('待确认')).toHaveText('0')
+    await page.getByRole('button', { name: /记忆状态回归甲/ }).click()
+    await expect(detail.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled()
+    await expect(detail.getByRole('button', { name: '删除记忆', exact: true })).toBeDisabled()
     await screenshot('memory-stale-list.png')
-    failItems = false
+    await detail.getByRole('button', { name: '关闭 / Close', exact: true }).click()
+    invalidItems = false
     await browserAction(page.getByRole('button', { name: '刷新记忆', exact: true }), 'GET', '/workspace/memories', ['/memory/pending'])
     await expect(page.getByRole('alert')).toHaveCount(0)
     expect(writes).toBe(1)
+    if (testInfo.project.name === '移动端') {
+      const add = page.getByRole('button', { name: '添加记忆', exact: true })
+      await add.scrollIntoViewIfNeeded()
+      // At a scrolled position the shell menu must not cover the add action.
+      await expect(add).toBeInViewport()
+      const hit = await add.evaluate(button => {
+        const box = button.getBoundingClientRect()
+        return button.contains(document.elementFromPoint(box.left + 16, box.top + box.height / 2))
+      })
+      expect(hit).toBe(true)
+    }
     await screenshot('memory-recovered.png')
     await page.getByRole('button', { name: /记忆状态回归甲/ }).click()
     await detail.getByRole('button', { name: '删除记忆', exact: true }).click()
@@ -143,6 +183,15 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
     await expect(metric('总记忆数')).toHaveText('1')
     expect((await api('get', '/workspace/memories')).memories.map(item => item.id)).toEqual(original.memories.filter(item => item.id !== entry.id).map(item => item.id))
   } finally {
-    if (account) await api('delete', '/profile/account')
+    test.setTimeout(testInfo.timeout + 90000)
+    if (account) {
+      await page.close()
+      try {
+        const response = await cleanup.delete('/api/v1/profile/account')
+        expect(response.status()).toBe(200)
+        expect((await response.json()).code).toBe(200)
+        await expect.poll(() => sql(`SELECT COUNT(*) FROM user WHERE id=${account.userId}`), { timeout: 60000, intervals: [1000] }).toBe('0')
+      } finally { await cleanup.dispose() }
+    }
   }
 })

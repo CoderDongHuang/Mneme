@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import MemoryPage from './MemoryPage'
 import { endpoints } from '../api/client'
 
+vi.mock('../state/AuthContext', () => ({ useAuth: () => ({ session: { userId: 1 } }) }))
 vi.mock('../api/client', () => ({ endpoints: {
   managedMemories: vi.fn(), pendingMemories: vi.fn(), memoryVersions: vi.fn(),
   updateManagedMemory: vi.fn(), restoreMemory: vi.fn(), deleteManagedMemory: vi.fn(), confirmMemory: vi.fn(), writeMemory: vi.fn(),
@@ -195,4 +196,36 @@ test('unmounted version replies cannot affect a new detail selection', async () 
   await within(detail()).findByText('暂无历史版本。')
   await act(async () => release({ versions: [{ version: 12, content: '卸载后的旧内容' }] }))
   expect(detail()).not.toHaveTextContent('卸载后的旧内容')
+})
+
+test.each([null, {}, { versions: null }, { versions: [null] },
+  { versions: [{ version: 1, content: {} }] }, { versions: [{ version: '1', content: 'bad' }] }])(
+  'invalid version data stays an error and retries without a page crash: %j', async value => {
+    endpoints.memoryVersions.mockResolvedValueOnce(value)
+    mount()
+    fireEvent.click(await screen.findByRole('button', { name: /第一条/ }))
+    openHistory()
+    await within(detail()).findByText('记忆版本加载失败，请重试。')
+    expect(within(detail()).queryByText('暂无历史版本。')).not.toBeInTheDocument()
+    fireEvent.click(within(detail()).getByRole('button', { name: '重试 / Retry' }))
+    await within(detail()).findByText('暂无历史版本。')
+    expect(endpoints.managedMemories).toHaveBeenCalledTimes(1)
+  })
+
+test('a stale list keeps the detail draft but prevents mutations until its own retry succeeds', async () => {
+  mount()
+  fireEvent.click(await screen.findByRole('button', { name: /第一条/ }))
+  fireEvent.change(within(detail()).getByLabelText('内容'), { target: { value: '保留过期记录的草稿' } })
+  endpoints.managedMemories.mockResolvedValueOnce({ memories: [{ ...first, tags: '{}' }] })
+  fireEvent.click(screen.getByRole('button', { name: '刷新记忆' }))
+  await within(detail()).findByText('记忆列表加载失败，请重试。')
+  expect(within(detail()).getByLabelText('内容')).toHaveValue('保留过期记录的草稿')
+  expect(within(detail()).getByRole('button', { name: '保存修改' })).toBeDisabled()
+  expect(within(detail()).getByRole('button', { name: '删除记忆' })).toBeDisabled()
+  expect(endpoints.updateManagedMemory).not.toHaveBeenCalled()
+  const calls = endpoints.pendingMemories.mock.calls.length
+  fireEvent.click(within(detail()).getByRole('button', { name: '重试 / Retry' }))
+  await waitFor(() => expect(within(detail()).getByRole('button', { name: '保存修改' })).toBeEnabled())
+  expect(endpoints.pendingMemories).toHaveBeenCalledTimes(calls)
+  expect(within(detail()).getByLabelText('内容')).toHaveValue('保留过期记录的草稿')
 })

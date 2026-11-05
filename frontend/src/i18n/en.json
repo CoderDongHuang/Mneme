@@ -1345,5 +1345,7 @@
   "应用通知已关闭": "Application notifications are disabled",
   "资料库不可用": "Libraries unavailable",
   "删除任务已提交，最终结果请查看任务中心。": "Deletion accepted. Check the task center for the final outcome.",
-  "解析任务已提交，最终结果请查看任务中心。": "Parsing accepted. Check the task center for the final outcome."
+  "解析任务已提交，最终结果请查看任务中心。": "Parsing accepted. Check the task center for the final outcome.",
+  "记忆列表读取": "Memory list loading",
+  "待确认记忆读取": "Pending memory loading"
 }

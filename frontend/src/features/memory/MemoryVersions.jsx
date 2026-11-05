@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { validMemoryVersions } from './memoryReadValidation'
 import { endpoints } from '../../api/client'
 import { FeedbackBlock } from '../../components/ui'
 import { useFormatters } from '../../hooks/useFormatters'
@@ -11,17 +12,19 @@ export default function MemoryVersions({ memoryId, revision, busy, onRestore }) 
   const [state, setState] = useState({ items: [], loaded: false, loading: true, error: false })
   useEffect(() => {
     let active = true
+    const controller = new AbortController()
     async function load() {
       setState(old => ({ ...old, loading: true, error: false }))
       try {
-        const data = await endpoints.memoryVersions(memoryId)
-        if (active) setState({ items: data.versions || [], loaded: true, loading: false, error: false })
+        const data = await endpoints.memoryVersions(memoryId, { signal: controller.signal })
+        if (!validMemoryVersions(data)) throw new Error('Invalid memory versions')
+        if (active) setState({ items: data.versions, loaded: true, loading: false, error: false })
       } catch {
         if (active) setState(old => ({ ...old, loading: false, error: true }))
       }
     }
     void load()
-    return () => { active = false }
+    return () => { active = false; controller.abort() }
   }, [memoryId, revision, attempt])
   return <details><summary>{t('历史版本')}{state.loaded ? ` (${fmt.number(state.items.length)})` : ''}</summary>
     <section aria-label={t('记忆历史版本')} aria-busy={state.loading}>
