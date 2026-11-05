@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { execFileSync } from 'node:child_process'
 import { Buffer } from 'node:buffer'
 import { expect, test } from '@playwright/test'
 
@@ -128,63 +129,74 @@ test('真实资料闭环：多格式、联合过滤、历史版本、权限、�
   }
 })
 
-test('真实解析异常与恢复：扫描 OCR、复杂布局、损坏文件、运行中取消及重试', async ({ page }) => {
+test('真实解析异常与恢复：扫描 OCR、复杂布局、损坏文件、运行中取消及重试', async ({ page }, testInfo) => {
+  const mysql = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=mysql', '--filter', 'label=com.docker.compose.container-number=1', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim()
+  expect(mysql).toMatch(/^[a-f0-9]+$/)
+  const sql = query => execFileSync('docker', ['exec', '-i', mysql, 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -B mneme'], { input: query, encoding: 'utf8', timeout: 30000 }).trim()
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`
   const auth = await data(await page.request.post('/api/v1/auth/register', {
     data: { username: `parsing_${suffix}`, password: `Mneme_${suffix}!` },
   }))
   await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), auth)
-  const kb = await data(await page.request.post('/api/v1/knowledge/base', { data: { name: `解析-${suffix}` } }))
-  async function upload(name, buffer) {
-    return data(await page.request.post('/api/v1/knowledge/document/upload', {
-      multipart: { kbId: String(kb.id), file: { name, mimeType: 'application/pdf', buffer } },
-    }))
+  try {
+    const kb = await data(await page.request.post('/api/v1/knowledge/base', { data: { name: `解析-${suffix}` } }))
+    async function upload(name, buffer) {
+      return data(await page.request.post('/api/v1/knowledge/document/upload', {
+        multipart: { kbId: String(kb.id), file: { name, mimeType: 'application/pdf', buffer } },
+      }))
+    }
+    const scan = await upload('scanned-acceptance.pdf', fs.readFileSync(path.resolve('../test-fixtures/scanned-acceptance.pdf')))
+    await ready(page.request, scan.id)
+    const preview = await data(await page.request.get(`/api/v1/workspace/documents/${scan.id}/preview`))
+    expect(preview.parse_report.pages[0].ocr_regions.length).toBeGreaterThan(0)
+    expect(preview.parse_report.pages[0].ocr_regions.every(region => region.confidence >= 0 && region.confidence <= 1)).toBeTruthy()
+    expect(preview.parse_report.pages[0].text).toContain('SCAN-ALPHA')
+    expect(preview.parse_report.pages[0].text).toContain('42 months')
+    const complex = await upload('complex-layout.pdf', fs.readFileSync(path.resolve('../python-agent/evaluation/fixtures/complex-layout.pdf')))
+    await ready(page.request, complex.id)
+    const layout = await data(await page.request.get(`/api/v1/workspace/documents/${complex.id}/preview`))
+    expect(layout.parse_report.pages.length).toBeGreaterThan(1)
+    expect(layout.parse_report.pages.some(page => page.blocks.some(block => block.type === 'table'))).toBeTruthy()
+    const damaged = await upload('damaged.pdf', Buffer.from('%PDF-1.7\nnot a valid cross-reference table'))
+    let failure
+    await expect.poll(async () => {
+      failure = await data(await page.request.get(`/api/v1/knowledge/document/${damaged.id}/status`))
+      return failure.status
+    }, { timeout: 150_000, intervals: [1000, 2000] }).toBe('failed')
+    expect(failure.errorMessage).toBeTruthy()
+    const long = await upload('scanned-cancellation.pdf', fs.readFileSync(path.resolve('../test-fixtures/scanned-cancellation.pdf')))
+    let task
+    await expect.poll(async () => {
+      const tasks = await data(await page.request.get('/api/v1/workspace/tasks'))
+      task = tasks.find(task => String(task.aggregate_id) === String(long.id) && task.task_type === 'document_ingest')
+      return task?.status
+    }, { timeout: 30_000, intervals: [100, 200] }).toBe('processing')
+    await data(await page.request.post(`/api/v1/workspace/tasks/${task.task_id}/cancel`))
+    await expect.poll(async () => {
+      const tasks = await data(await page.request.get('/api/v1/workspace/tasks'))
+      return tasks.find(item => item.task_id === task.task_id)?.status
+    }, { timeout: 60_000, intervals: [500, 1000] }).toBe('cancelled')
+    const retry = await data(await page.request.post(`/api/v1/workspace/tasks/${task.task_id}/retry`))
+    expect(retry.task_id).not.toBe(task.task_id)
+    await ready(page.request, long.id)
+    const chunks = await data(await page.request.get(`/api/v1/workspace/retrieval/debug?kbId=${kb.id}&documentIds=${long.id}&query=SCAN-ALPHA&topK=20`))
+    expect(chunks.chunks.length).toBeGreaterThan(0)
+    expect(new Set(chunks.chunks.map(chunk => chunk.id)).size).toBe(chunks.chunks.length)
+    await page.goto('/workspace')
+    await page.getByRole('button', { name: '工具', exact: true }).click()
+    await page.getByRole('button', { name: '引用阅读', exact: true }).click()
+    await page.getByRole('button', { name: 'scanned-acceptance.pdf', exact: false }).click()
+    await page.getByText('解析内容 ·', { exact: false }).click()
+    await expect(page.getByRole('img', { name: '第 1 页 OCR 区域预览' })).toBeVisible()
+    const image = page.getByRole('img', { name: '第 1 页 OCR 区域预览' })
+    await expect.poll(() => image.evaluate(img => img.naturalWidth)).toBeGreaterThan(0)
+    await page.screenshot({ path: testInfo.outputPath('cancellation-recovery.png'), fullPage: false })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+  } finally {
+    test.setTimeout(testInfo.timeout + 90000)
+    await data(await page.request.delete('/api/v1/profile/account'))
+    await expect.poll(() => sql(`SELECT COUNT(*) FROM user WHERE id=${auth.userId}`), { timeout: 60000, intervals: [1000] }).toBe('0')
   }
-  const scan = await upload('scanned-acceptance.pdf', fs.readFileSync(path.resolve('../test-fixtures/scanned-acceptance.pdf')))
-  await ready(page.request, scan.id)
-  const preview = await data(await page.request.get(`/api/v1/workspace/documents/${scan.id}/preview`))
-  expect(preview.parse_report.pages[0].ocr_regions.length).toBeGreaterThan(0)
-  expect(preview.parse_report.pages[0].ocr_regions.every(region => region.confidence >= 0 && region.confidence <= 1)).toBeTruthy()
-  expect(preview.parse_report.pages[0].text).toContain('SCAN-ALPHA')
-  expect(preview.parse_report.pages[0].text).toContain('42 months')
-  const complex = await upload('complex-layout.pdf', fs.readFileSync(path.resolve('../python-agent/evaluation/fixtures/complex-layout.pdf')))
-  await ready(page.request, complex.id)
-  const layout = await data(await page.request.get(`/api/v1/workspace/documents/${complex.id}/preview`))
-  expect(layout.parse_report.pages.length).toBeGreaterThan(1)
-  expect(layout.parse_report.pages.some(page => page.blocks.some(block => block.type === 'table'))).toBeTruthy()
-  const damaged = await upload('damaged.pdf', Buffer.from('%PDF-1.7\nnot a valid cross-reference table'))
-  let failure
-  await expect.poll(async () => {
-    failure = await data(await page.request.get(`/api/v1/knowledge/document/${damaged.id}/status`))
-    return failure.status
-  }, { timeout: 150_000, intervals: [1000, 2000] }).toBe('failed')
-  expect(failure.errorMessage).toBeTruthy()
-  const long = await upload('scanned-cancellation.pdf', fs.readFileSync(path.resolve('../test-fixtures/scanned-cancellation.pdf')))
-  let task
-  await expect.poll(async () => {
-    const tasks = await data(await page.request.get('/api/v1/workspace/tasks'))
-    task = tasks.find(task => String(task.aggregate_id) === String(long.id) && task.task_type === 'document_ingest')
-    return task?.status
-  }, { timeout: 30_000, intervals: [100, 200] }).toBe('processing')
-  await data(await page.request.post(`/api/v1/workspace/tasks/${task.task_id}/cancel`))
-  await expect.poll(async () => {
-    const tasks = await data(await page.request.get('/api/v1/workspace/tasks'))
-    return tasks.find(item => item.task_id === task.task_id)?.status
-  }, { timeout: 60_000, intervals: [500, 1000] }).toBe('cancelled')
-  const retry = await data(await page.request.post(`/api/v1/workspace/tasks/${task.task_id}/retry`))
-  expect(retry.task_id).not.toBe(task.task_id)
-  await ready(page.request, long.id)
-  const chunks = await data(await page.request.get(`/api/v1/workspace/retrieval/debug?kbId=${kb.id}&documentIds=${long.id}&query=SCAN-ALPHA&topK=20`))
-  expect(chunks.chunks.length).toBeGreaterThan(0)
-  expect(new Set(chunks.chunks.map(chunk => chunk.id)).size).toBe(chunks.chunks.length)
-  await page.goto('/workspace')
-  await page.getByRole('button', { name: '工具', exact: true }).click()
-  await page.getByRole('button', { name: '引用阅读', exact: true }).click()
-  await page.getByRole('button', { name: 'scanned-acceptance.pdf', exact: false }).click()
-  await page.getByText('解析内容 ·', { exact: false }).click()
-  await expect(page.getByRole('img', { name: '第 1 页 OCR 区域预览' })).toBeVisible()
-  const image = page.getByRole('img', { name: '第 1 页 OCR 区域预览' })
-  await expect.poll(() => image.evaluate(img => img.naturalWidth)).toBeGreaterThan(0)
 })
 
 test('真实界面交互：标签、筛选、空结果、切换知识库与配置诊断', async ({ page }) => {

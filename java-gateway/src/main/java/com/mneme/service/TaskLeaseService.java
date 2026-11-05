@@ -140,6 +140,18 @@ public class TaskLeaseService implements AutoCloseable {
                 + " AND lease_until>UTC_TIMESTAMP(6) AND status IN ('processing','cancelling')", state, error, id, owner, fence) != 1) throw new LostLease();
         }
 
+        /** Relinquish only cancellation cleanup; never make an active job retryable. */
+        public void deferCancellation() {
+            write(row -> {
+                if (!"cancelling".equals(row.get("status"))) throw new IllegalStateException("Task is not cancelling");
+                if (jdbc.update("UPDATE " + queue.table + " SET owner_token=NULL,lease_until=NULL,locked_at=NULL,locked_by=NULL"
+                    + " WHERE id=? AND owner_token=? AND lease_fence=? AND status='cancelling'"
+                    + " AND lease_until>UTC_TIMESTAMP(6)", id, owner, fence) != 1) throw new LostLease();
+                return null;
+            });
+            lost.set(true);
+        }
+
         @Override public void close() {
             if (closed.compareAndSet(false, true)) {
                 if (heartbeat != null) heartbeat.cancel(false);
