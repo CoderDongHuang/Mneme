@@ -1369,5 +1369,15 @@
   "已核实，继续操作": "I have verified the result; continue",
   "刷新复习卡": "Refresh review cards",
   "刷新学习计划": "Refresh study plans",
-  "核对读取失败，请重试核对；尚未重新提交。": "The check failed. Retry checking; nothing has been resubmitted."
+  "核对读取失败，请重试核对；尚未重新提交。": "The check failed. Retry checking; nothing has been resubmitted.",
+  "测验列表加载失败，请重试。": "Could not load quizzes. Please retry.",
+  "测验资料库加载失败，请重试。": "Could not load quiz libraries. Please retry.",
+  "测验草稿加载失败，请重试。": "Could not load the quiz draft. Please retry.",
+  "作答记录加载失败，请重试。": "Could not load attempt history. Please retry.",
+  "草稿保存回执无法确认，请重试保存": "The draft save receipt could not be confirmed. Please retry saving",
+  "测验提交回执无法确认，请重试确认提交。": "The submission receipt could not be confirmed. Retry to confirm it.",
+  "提交结果尚未确认。答案已锁定，重试将沿用同一提交编号，不会重复评分。": "Submission is unconfirmed. Answers are locked; retrying uses the same request ID to avoid duplicate grading.",
+  "测验创建回执无法确认，请先核对测验列表。": "The creation receipt could not be confirmed. Check the quiz list first.",
+  "核对测验列表": "Check quiz list",
+  "创建结果尚未确认。请先核对最新列表，再决定是否重新创建；重新创建可能产生另一份测验。": "Creation is unconfirmed. Check the latest list before deciding to create again; another request may create a second quiz."
 }
