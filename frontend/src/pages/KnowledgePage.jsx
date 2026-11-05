@@ -332,10 +332,7 @@ function KnowledgeView({ session }) {
       {versionDialog && (
         <Modal title={t("版本历史")} onClose={() => { versionRequest.current++; setVersionDialog(null); }}>
           <section className="version-dialog">
-            <header>
-              <div><span>{t("版本历史")}</span><h2>{versionDialog.document.fileName}</h2></div>
-              <button type="button" onClick={() => setVersionDialog(null)}><X size={18} /></button>
-            </header>
+            <h3>{versionDialog.document.fileName}</h3>
             <div className="version-list">
               {versionDialog.versions === null && <LoadingState label={t("正在读取版本")} />}
               {versionDialog.versions?.map((version) => (
