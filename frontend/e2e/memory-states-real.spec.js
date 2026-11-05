@@ -110,6 +110,25 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
     await browserAction(page.getByRole('button', { name: '刷新记忆', exact: true }), 'GET', '/workspace/memories')
     await expect(page.getByRole('button', { name: /记忆状态回归甲/ })).toBeVisible()
     await expect(metric('总记忆数')).toHaveText('2')
+    const selectSpace = await page.locator('.page-toolbar select').evaluate(select => {
+      const style = getComputedStyle(select)
+      return { available: select.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+        text: parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2 }
+    })
+    expect(selectSpace.available, 'Filter text fits inside the native select').toBeGreaterThanOrEqual(selectSpace.text)
+    const rowButton = page.getByRole('button', { name: /记忆状态回归甲/ })
+    const titleBox = await rowButton.locator('.record-title').boundingBox()
+    const excerptBox = await rowButton.locator('small').boundingBox()
+    expect(excerptBox.y, 'Excerpt starts below its title').toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1)
+    if (testInfo.project.name === '移动端') {
+      const tableRegion = page.getByRole('region', { name: '记忆列表', exact: true })
+      expect(await tableRegion.evaluate(region => region.scrollWidth > region.clientWidth)).toBe(true)
+      await tableRegion.focus()
+      await tableRegion.press('ArrowRight')
+      await expect.poll(() => tableRegion.evaluate(region => region.scrollLeft)).toBeGreaterThan(0)
+      await tableRegion.evaluate(region => { region.scrollLeft = 0 })
+    }
+    await screenshot('memory-list-readable.png')
     await expect(metric('待确认')).toHaveText('—')
     const readsBeforeRetry = itemReads
     failPending = false

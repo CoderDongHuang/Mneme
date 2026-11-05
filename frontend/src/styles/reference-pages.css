@@ -44,7 +44,7 @@
  .reference-metrics { margin-top:18px; }
  .reference-page .page-toolbar { margin:16px 0; padding:0; border:0; background:none; gap:12px; font-size:12px; flex-wrap:wrap; }
  .reference-page .page-toolbar label { font-size:12px; gap:8px; }
- .reference-page .page-toolbar input,.reference-page .page-toolbar select { height:34px; min-height:34px; font-size:12px; }
+ .reference-page .page-toolbar input,.reference-page .page-toolbar select { height:34px; min-height:34px; padding:6px 10px; font-size:12px; line-height:1.4; }
  .reference-page .page-toolbar .search-field { display:flex; align-items:center; gap:7px; padding:0 10px; border:1px solid var(--mn-border); border-radius:6px; }
  .reference-page .page-toolbar .search-field input { border:0; background:transparent; box-shadow:none; padding:0; }
  .memory-filter-tabs { display:flex; border:1px solid var(--mn-border); border-radius:6px; overflow:hidden; width:fit-content; }
@@ -52,8 +52,9 @@
  .memory-filter-tabs button[aria-pressed=true] { background:var(--mn-accent); color:var(--mn-on-accent); }
  .line-clamp { overflow:hidden; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; }
  .quiet-tag { display:inline-block; padding:2px 7px; border-radius:5px; background:var(--mn-accent-soft); color:var(--mn-accent-dark); font-size:10px; margin:2px; white-space:nowrap; }
- .reference-memory .reference-table { font-size:12px; }
+ .reference-memory .reference-table { min-width:720px; font-size:12px; }
  .reference-memory .reference-table td:first-child { min-width:205px; }
+ .reference-memory .reference-table td:first-child > button { display:flex; flex-direction:column; align-items:stretch; width:100%; min-width:0; }
  .memory-split { grid-template-columns:minmax(0,1fr) 350px; }
  .memory-list-panel { min-width:0; }
  .reference-detail .input-action,.reference-detail input,.reference-detail textarea { max-width:100%; }
