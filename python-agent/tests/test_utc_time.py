@@ -35,8 +35,8 @@ def test_task_expiry_handles_old_utc_and_new_aware_timestamps(monkeypatch):
     now = datetime(2026, 10, 31, tzinfo=timezone.utc)
     monkeypatch.setattr(task_tracker, 'utc_now', lambda: now)
     monkeypatch.setattr(task_tracker, '_task_store', {
-        'expired': {'created_at': '2026-10-30T22:59:59'},
-        'active': {'created_at': '2026-10-31T07:30:00+08:00'},
+        'expired': {'status': 'done', 'created_at': '2026-10-30T22:59:59'},
+        'active': {'status': 'done', 'created_at': '2026-10-31T07:30:00+08:00'},
     })
     assert task_tracker.get_task('active') is not None
     assert task_tracker.get_task('expired') is None

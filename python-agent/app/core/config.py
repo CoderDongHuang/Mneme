@@ -125,6 +125,7 @@ class Settings:
     )
 
     upload_max_mb: int = int(os.getenv("UPLOAD_MAX_MB", "30"))
+    ingestion_task_retention_seconds: float = _positive_float("INGESTION_TASK_RETENTION_SECONDS", 3600)
     upload_dir: str = os.getenv(
         "UPLOAD_DIR", str(PYTHON_AGENT_DIR / "data" / "uploads")
     )
