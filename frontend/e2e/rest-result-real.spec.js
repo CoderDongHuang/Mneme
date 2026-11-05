@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, request, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
@@ -14,10 +14,10 @@ test('普通 JSON 响应拒绝非法成功，真实资料写入与健康探针�
   const sql = query => execFileSync('docker', ['exec', '-i', mysql, 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -B mneme'], { input: query, encoding: 'utf8', timeout: 30000 }).trim()
   const suffix = randomUUID().replaceAll('-', '')
   const username = `restqa_${suffix.slice(0, 12)}`, password = `RestQA!${suffix}`
-  let account, malformedRead = true, malformedWrite = true, writes = 0
-  async function api(method, path, data) {
+  let account, cleanup, malformedRead = true, malformedWrite = true, writes = 0
+  async function api(method, path, data, client = page.request) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const response = await page.request[method]('/api/v1' + path, { data, timeout: 45000 })
+      const response = await client[method]('/api/v1' + path, { data, timeout: 45000 })
       if (response.status() === 429 && attempt < 2) {
         const seconds = Number(response.headers()['retry-after'])
         expect(seconds > 0 && seconds <= 60).toBe(true)
@@ -32,6 +32,7 @@ test('普通 JSON 响应拒绝非法成功，真实资料写入与健康探针�
   const formatError = '服务返回的数据格式异常，请刷新核实后再操作'
   try {
     account = await api('post', '/auth/register', { username, password })
+    cleanup = await request.newContext({ baseURL: testInfo.project.use.baseURL, storageState: await page.context().storageState() })
     expect(String(account.userId)).toMatch(/^\d+$/)
     await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), account)
     await page.route('**/api/v1/profile', async route => {
@@ -51,13 +52,23 @@ test('普通 JSON 响应拒绝非法成功，真实资料写入与健康探针�
     await page.locator('.profile-page').getByRole('button', { name: '重试 / Retry', exact: true }).click()
     await page.getByRole('textbox', { name: '昵称', exact: true }).fill(`REST QA ${suffix.slice(0, 8)}`)
     await page.getByRole('button', { name: '保存资料', exact: true }).click()
-    await expect(page.locator('.profile-page [role="alert"]')).toContainText(formatError)
+    await expect(page.locator('.profile-page [role="alert"]')).toContainText('资料操作结果尚未确认，请先核对服务端资料。')
+    await expect(page.getByRole('button', { name: '保存资料', exact: true })).toBeDisabled()
+    await expect(page.getByRole('textbox', { name: '昵称', exact: true })).toHaveValue(`REST QA ${suffix.slice(0, 8)}`)
+    expect(await page.locator('body').innerText()).not.toContain('MNEME_PRIVATE_PROXY_BODY')
     await expect(page.getByText('个人资料已保存', { exact: true })).toHaveCount(0)
     // The server committed the PATCH. An unreadable receipt must not cause an
     // automatic repeat of a mutation whose outcome is unknown to the client.
     expect(writes).toBe(1)
     expect((await api('get', '/profile')).nickname).toBe(`REST QA ${suffix.slice(0, 8)}`)
     malformedWrite = false
+    await page.getByRole('button', { name: '核对已保存资料', exact: true }).click()
+    const reconciliation = page.getByRole('region', { name: '核对个人资料', exact: true })
+    await expect(reconciliation).toContainText(`REST QA ${suffix.slice(0, 8)}`)
+    await expect(page.getByRole('button', { name: '保存资料', exact: true })).toBeDisabled()
+    expect(writes).toBe(1)
+    await reconciliation.getByRole('button', { name: '采用服务端资料', exact: true }).click()
+    await expect(page.getByRole('button', { name: '保存资料', exact: true })).toBeEnabled()
     await page.reload()
     await expect(page.getByRole('textbox', { name: '昵称', exact: true })).toHaveValue(`REST QA ${suffix.slice(0, 8)}`)
     expect(writes).toBe(1)
@@ -85,9 +96,12 @@ test('普通 JSON 响应拒绝非法成功，真实资料写入与健康探针�
       account = await api('post', '/auth/login', { username, password })
     }
     if (account) {
+      cleanup ||= await request.newContext({ baseURL: testInfo.project.use.baseURL, storageState: await page.context().storageState() })
       await page.close()
-      await api('delete', '/profile/account')
-      await expect.poll(() => sql(`SELECT COUNT(*) FROM user WHERE id=${account.userId}`), { timeout: 60000, intervals: [1000] }).toBe('0')
+      try {
+        await api('delete', '/profile/account', undefined, cleanup)
+        await expect.poll(() => sql(`SELECT COUNT(*) FROM user WHERE id=${account.userId}`), { timeout: 60000, intervals: [1000] }).toBe('0')
+      } finally { await cleanup.dispose() }
     }
   }
 })
