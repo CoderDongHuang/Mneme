@@ -100,6 +100,45 @@ class KnowledgeServiceSecurityTest {
         return new Fixture(service, documents, tasks, jdbc);
     }
 
+    @Test void interruptedReplacementClosesStreamAndPreservesActiveDocument() throws Exception {
+        Fixture f = fixture();
+        var document = new KnowledgeDocument();
+        document.setId(42L); document.setKbId(3L); document.setStatus("ready");
+        document.setFilePath("retained.txt"); document.setFileName("retained.txt");
+        when(f.documents.selectById(42L)).thenReturn(document);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var closed = new java.util.concurrent.atomic.AtomicBoolean();
+        var file = new MockMultipartFile("file", "new.txt", "text/plain", "hello".getBytes()) {
+            @Override public java.io.InputStream getInputStream() {
+                if (calls.incrementAndGet() == 1) return new java.io.ByteArrayInputStream("hello".getBytes());
+                return new java.io.InputStream() {
+                    int count;
+                    @Override public int read() throws java.io.IOException {
+                        if (count++ > 1) throw new java.io.IOException("interrupted");
+                        return 'x';
+                    }
+                    @Override public void close() { closed.set(true); }
+                };
+            }
+        };
+        assertThrows(IllegalStateException.class, () -> f.service.replaceDocument(7L, 42L, file));
+        assertTrue(closed.get());
+        assertEquals("retained.txt", document.getFilePath());
+        try (var paths = java.nio.file.Files.walk(root)) {
+            assertEquals(0, paths.filter(java.nio.file.Files::isRegularFile).count());
+        }
+        verify(f.documents, never()).updateById(any(KnowledgeDocument.class));
+        verifyNoInteractions(f.tasks);
+    }
+
+    @Test void restoringVersionOfDeletingAccountIsRejectedBeforeReadingFiles() {
+        Fixture f = fixture();
+        when(f.jdbc.queryForList("SELECT status FROM user WHERE id=? FOR UPDATE", String.class, 7L))
+            .thenReturn(java.util.List.of("deleting"));
+        assertThrows(IllegalArgumentException.class, () -> f.service.restoreDocumentVersion(7L, 42L, 1));
+        verifyNoInteractions(f.documents, f.tasks);
+    }
+
     @Test void indexRepairIsOwnedAndDurableWithoutSourceFile() {
         Fixture f = fixture();
         KnowledgeDocument document = new KnowledgeDocument();
