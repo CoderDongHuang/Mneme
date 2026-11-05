@@ -14,6 +14,7 @@ from app.models.chat import ChatRequest, Message
 
 def prepare_conversation(request: ChatRequest) -> dict:
     require_cloud_processing(request.user_id)
+    delivery_id = request.request_id or uuid.uuid4().hex
     user_message = Message(
         role="user",
         content=request.message,
@@ -24,6 +25,7 @@ def prepare_conversation(request: ChatRequest) -> dict:
         request.user_id,
         request.session_id,
         title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
+        delivery_id=delivery_id,
     )
     working_memory.add_message(request.session_id, user_message, user_id=request.user_id)
     short_term_memory.add_message(request.session_id, user_message, user_id=request.user_id)
@@ -38,7 +40,7 @@ def prepare_conversation(request: ChatRequest) -> dict:
         "memory_input": {
             "history": [message.model_dump() for message in short_term_memory.get_history(request.session_id, user_id=request.user_id)],
             "reference_time": user_message.timestamp,
-            "delivery_id": request.request_id or uuid.uuid4().hex,
+            "delivery_id": delivery_id,
         },
     }
     with agent_trace_store.span(
@@ -52,6 +54,16 @@ def prepare_conversation(request: ChatRequest) -> dict:
 
 def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dict:
     require_cloud_processing(request.user_id)
+    memory_input = state.get("memory_input")
+    delivery_id = (memory_input or {}).get("delivery_id") or state.get("completion_delivery_id") or request.request_id or uuid.uuid4().hex
+    # Establish legacy identity before any fallible completion side effect.
+    # Retrying the same state must retain it even when memory extraction fails.
+    if memory_input is not None:
+        state["memory_input"] = {**memory_input, "delivery_id": delivery_id}
+    else:
+        # Do not fabricate an incomplete snapshot: legacy extraction still reads
+        # its history normally, while retaining identity across an early failure.
+        state["completion_delivery_id"] = delivery_id
     answer = answer.strip()
     state["answer"] = answer
     with agent_trace_store.span(
@@ -69,15 +81,7 @@ def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dic
     )
     working_memory.add_message(request.session_id, assistant_message, user_id=request.user_id)
     short_term_memory.add_message(request.session_id, assistant_message, user_id=request.user_id)
-    session_store.increment_message_count(request.user_id, request.session_id)
-
-    memory_input = state.get("memory_input") or {}
-    delivery_id = memory_input.get("delivery_id") or request.request_id
-    if not delivery_id:
-        # Retain an identity even for a legacy direct completion retried with
-        # the same state. Never derive it from mutable answer/message content.
-        delivery_id = uuid.uuid4().hex
-        state["memory_input"] = {**memory_input, "delivery_id": delivery_id}
+    session_store.increment_message_count(request.user_id, request.session_id, delivery_id=delivery_id)
     reflection_scheduler.record_session(request.user_id, request.session_id, delivery_id)
     reflection_scheduler.check_and_trigger(request.user_id)
 

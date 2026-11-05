@@ -57,7 +57,8 @@ def test_prepare_copies_message_objects_before_pre_llm_nodes(monkeypatch):
     monkeypatch.setattr(runtime, "working_memory", SimpleNamespace(add_message=lambda *args, **kw: None))
     monkeypatch.setattr(runtime, "short_term_memory", SimpleNamespace(
         add_message=lambda _, item, **kw: history.append(item), get_history=lambda _, **kw: history))
-    monkeypatch.setattr(runtime, "session_store", SimpleNamespace(register_session=lambda *args, **kw: None))
+    register = Mock()
+    monkeypatch.setattr(runtime, "session_store", SimpleNamespace(register_session=register))
 
     def prepare(prepared):
         history[0].content = "changed later"
@@ -70,6 +71,7 @@ def test_prepare_copies_message_objects_before_pre_llm_nodes(monkeypatch):
     assert [item["content"] for item in prepared["memory_input"]["history"]] == ["old answer", "current question"]
     assert prepared["memory_input"]["reference_time"] == NOW.isoformat()
     assert prepared["memory_input"]["delivery_id"] == "turn-1"
+    assert register.call_args.kwargs["delivery_id"] == prepared["memory_input"]["delivery_id"]
 
 
 def test_candidate_identity_is_stable_reordered_and_tenant_turn_scoped():
@@ -100,7 +102,8 @@ def test_completion_passes_stable_turn_identity_to_reflection(monkeypatch, reque
     monkeypatch.setattr(runtime, "working_memory", SimpleNamespace(add_message=lambda *args, **kw: None))
     monkeypatch.setattr(runtime, "short_term_memory", SimpleNamespace(
         add_message=lambda *args, **kw: None, should_summarize=lambda _, **kw: False))
-    monkeypatch.setattr(runtime, "session_store", SimpleNamespace(increment_message_count=lambda *args, **kw: None))
+    count = Mock()
+    monkeypatch.setattr(runtime, "session_store", SimpleNamespace(increment_message_count=count))
     monkeypatch.setattr(runtime.agent_trace_store, "record", lambda *args, **kw: None)
     record = Mock()
     monkeypatch.setattr(runtime, "reflection_scheduler", SimpleNamespace(
@@ -112,6 +115,25 @@ def test_completion_passes_stable_turn_identity_to_reflection(monkeypatch, reque
     first, second = [call.args for call in record.call_args_list]
     assert first == second
     assert first[:2] == ("owner", "session")
-    expected_id = captured_id or request_id or captured["memory_input"]["delivery_id"]
+    expected_id = captured_id or request_id or captured["completion_delivery_id"]
     assert first[2] == expected_id
     assert first[2]
+    assert [call.kwargs["delivery_id"] for call in count.call_args_list] == [expected_id, expected_id]
+
+
+def test_legacy_completion_keeps_identity_before_extraction_failure_without_fabricating_snapshot(monkeypatch):
+    monkeypatch.setattr(runtime, "require_cloud_processing", lambda _: None)
+    captured = {"user_id": "owner", "session_id": "session"}
+    observed = []
+
+    def fail(state):
+        assert "memory_input" not in state
+        observed.append(state["completion_delivery_id"])
+        raise RuntimeError("extraction unavailable")
+
+    monkeypatch.setattr(runtime, "memory_write_node", fail)
+    request = ChatRequest(user_id="owner", session_id="session", message="question")
+    for _ in range(2):
+        with pytest.raises(RuntimeError, match="extraction unavailable"):
+            runtime.complete_conversation(request, captured, "answer")
+    assert observed[0] and observed[0] == observed[1]

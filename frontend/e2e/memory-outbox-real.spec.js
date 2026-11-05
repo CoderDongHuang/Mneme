@@ -89,7 +89,18 @@ DELIMITER ;`)
     expect(saved).toMatchObject({ status: 'completed', errorCode: null, content: 'Candidate memory QA verified answer' })
     expect(JSON.parse(python("import sys\nfrom pathlib import Path\nprint((Path(sys.argv[1])/'snapshot-check.json').read_text())", folder)))
       .toEqual({ snapshot_frozen: true, candidate_stable: true, actual_completion: true, reflection_delivery_recorded: true,
-        distillation_failure_visible: true, distillation_retry_valid: true })
+        distillation_failure_visible: true, distillation_retry_valid: true, session_count_delivery_deduplicated: true })
+    // A separate interpreter reads the actual durable manifest and account fence.
+    // Retry only metadata; the entire completion is not safe to replay yet.
+    expect(python(`import sys
+from app.memory.session_store import session_store as store
+user,session,delivery=sys.argv[1:]
+before=store.get_sessions(user)
+assert next(row for row in before if row['id']==session)['message_count']==2
+store.register_session(user,session,delivery_id=delivery)
+store.increment_message_count(user,session,delivery_id=delivery)
+assert store.get_sessions(user)==before
+print('durable delivery verified')`, String(account.userId), String(session.id), saved.requestId)).toBe('durable delivery verified')
     expect(JSON.parse(python("import sys\nfrom pathlib import Path\nprint((Path(sys.argv[1])/'privacy-check.json').read_text())", folder)))
       .toEqual({ intent_fallback: true, suggestion_fallback: true, summary_history_preserved: true, real_trace_redacted: true, redis_session_diagnostics_redacted: true })
     await expect.poll(async () => (await memoryTask())?.status, { timeout: 45_000, intervals: [1000] }).toBe('failed')
