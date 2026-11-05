@@ -22,6 +22,14 @@ transaction rolls all dependent MySQL writes back. Notifications persist in that
 transaction and are delivered after commit, never from a stale worker snapshot.
 Legacy timestamp recovery is retained only for tasks created before V27.
 
+Cancellation observed while fetching an ingestion source transfers directly to
+cleanup under the current owner; it is not treated as loss of ownership. When
+Python still holds its ingestion lease, cleanup explicitly releases the MySQL
+owner while retaining `cancelling`. The scheduler waits for Python to drain,
+then claims a new fence without waiting for the default 300-second owner expiry.
+The former owner cannot write or renew after yielding. Ordinary lease `close()`
+still only stops heartbeat; it does not make unfinished active jobs retryable.
+
 Slow external calls run outside MySQL transactions. An already issued external
 delete cannot be recalled if the process loses ownership; deletes must remain
 idempotent and target a deleting entity. MySQL fencing prevents stale step/result

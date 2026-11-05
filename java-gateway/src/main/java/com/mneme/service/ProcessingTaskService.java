@@ -225,8 +225,10 @@ public class ProcessingTaskService {
         JsonNode payload = objectMapper.readTree(task.getPayload());
         Path localFile = storage.materialize(payload.path("file_path").asText());
         lease.renew();
-        long generation = lease.write(row -> {
-            if (!"processing".equals(row.get("status"))) throw new TaskLeaseService.LostLease();
+        Long generation = lease.write(row -> {
+            // Cancellation preserves ownership. Hand it to cleanup instead of
+            // abandoning this live owner until its five-minute lease expires.
+            if ("cancelling".equals(row.get("status"))) return null;
             KnowledgeDocument document = documentMapper.selectForUpdate(task.getAggregateId());
             if (document == null || !java.util.Objects.equals(document.getParseTaskId(), task.getTaskId())
                 || "deleting".equals(document.getStatus())) throw new IllegalStateException("文档已变更，拒绝解析");
@@ -236,6 +238,10 @@ public class ProcessingTaskService {
             record(task, "source_ready", "processing", Map.of("index_generation", next), null);
             return next;
         });
+        if (generation == null) {
+            finishCancelled(task, lease);
+            return;
+        }
         IngestionRequest request = new IngestionRequest(
             payload.path("user_id").asText(),
             payload.path("kb_id").asText(),
@@ -542,7 +548,12 @@ public class ProcessingTaskService {
         String status = lease.write(row -> String.valueOf(row.get("status")));
         if (!"cancelling".equals(status)) return false;
         task.setStatus("cancelling");
-        if (ingestionActive(task)) return true;
+        if (ingestionActive(task)) {
+            // Python still owns its writes. Keep cancelling, but allow the next
+            // scheduler tick to acquire cleanup as soon as Python drains.
+            lease.deferCancellation();
+            return true;
+        }
         try {
             JsonNode payload = objectMapper.readTree(task.getPayload());
             restTemplate.delete(pythonAgentUrl + "/api/v1/knowledge/internal/cancelled-documents/" + payload.path("document_id").asText()
