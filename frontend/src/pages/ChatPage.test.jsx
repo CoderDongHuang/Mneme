@@ -288,9 +288,13 @@ test('failed refresh keeps history visible but blocks actions until verified rec
 })
 
 test('library recovery preserves an explicit empty selection and the draft', async () => {
+  const libraries = deferred()
+  endpoints.knowledgeBases.mockReturnValueOnce(libraries.promise)
   endpoints.knowledgeBases.mockResolvedValue([{ id: 9, name: '资料甲' }])
   await open()
-  fireEvent.click(screen.getByRole('button', { name: '全部资料库', exact: true }))
+  expect(screen.queryByRole('button', { name: '全部资料库', exact: true })).not.toBeInTheDocument()
+  await act(async () => libraries.resolve([{ id: 9, name: '资料甲' }]))
+  fireEvent.click(await screen.findByRole('button', { name: '全部资料库', exact: true }))
   fireEvent.click(screen.getByRole('checkbox'))
   fireEvent.change(screen.getByRole('textbox', { name: '向忆知提问...' }), { target: { value: '保留草稿' } })
   endpoints.knowledgeBases.mockRejectedValueOnce(new Error('offline'))
@@ -373,7 +377,7 @@ test('account changes isolate late reads and deletion receipts from the new acco
   fireEvent.click(screen.getByRole('button', { name: '删除对话：会话 A' }))
   endpoints.sessions.mockReturnValueOnce(oldSessions.promise)
   fireEvent.click(screen.getByRole('button', { name: '刷新会话' }))
-  fireEvent.click(screen.getByRole('button', { name: '全部资料库', exact: true }))
+  fireEvent.click(await screen.findByRole('button', { name: '全部资料库', exact: true }))
   endpoints.knowledgeBases.mockReturnValueOnce(oldLibraries.promise)
   fireEvent.click(screen.getByRole('button', { name: '刷新资料库' }))
   const signals = [endpoints.sessions.mock.calls.at(-1)[0].signal, endpoints.knowledgeBases.mock.calls.at(-1)[0].signal]
@@ -388,7 +392,7 @@ test('account changes isolate late reads and deletion receipts from the new acco
     oldSessions.resolve([{ id: 1, title: '会话 A' }])
     oldLibraries.resolve([{ id: 9, name: '旧资料库' }])
   })
-  fireEvent.click(screen.getByRole('button', { name: '全部资料库', exact: true }))
+  fireEvent.click(await screen.findByRole('button', { name: '全部资料库', exact: true }))
   expect(screen.getByText('新账号资料库')).toBeInTheDocument()
   expect(screen.queryByText('旧资料库')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: '打开对话：会话 A' })).not.toBeInTheDocument()
