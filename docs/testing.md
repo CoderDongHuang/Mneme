@@ -232,3 +232,6 @@ python scripts/evaluate_rag.py --dataset evaluation/retrieval_holdout_cases.json
 ```
 
 云 P95 ≤ 3000ms 是单独的新工程预算，原离线 P95 ≤ 250ms 保留。2257.86ms/915.23ms 的离线延迟门限失败报告与 704.57ms 的云预算通过报告一起保存，详见本轮验收；不得把不同预算结果混比。
+
+
+2026-11-05 会话计数投递子项：Windows 定向 42 项通过；正式 Linux Python 3.11 全量 1145 项无跳过通过；实际 SQLite/MySQL 并发和重放均通过。最终部署 localhost:3000 桌面/手机 memory-outbox-real 共 2 项通过（1.6 分钟），6 张截图已目视核对，实际 manifest 跨解释器重放计数仍为 2。Ruff、ESLint 与 diff 检查通过。首次部署脚本误将 ready 判为 ok 后已纠正并重新部署验收；中断测试遗留账号经正式注销清理。Windows 本机仅有 Python 3.10，全量在 asyncio.timeout（要求 3.11）处失败，不列作本机全量成功；Windows 3.11 全量另由本项 CI 验证。主项剩余 8，尚待本项 PR 当前 HEAD 全部 9 项 CI。

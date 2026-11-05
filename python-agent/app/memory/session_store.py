@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 import threading
+from hashlib import sha256
 from contextlib import contextmanager
 from datetime import timedelta
 
@@ -43,6 +44,14 @@ class SessionStore:
             for key, value in data.items()
         ):
             raise ValueError("会话清理清单损坏，无法确认范围")
+        for info in data.values():
+            receipts = info.get("message_deliveries", {})
+            if not isinstance(receipts, dict) or any(
+                not isinstance(key, str) or len(key) != 64
+                or any(char not in "0123456789abcdef" for char in key) or value is not True
+                for key, value in receipts.items()
+            ):
+                raise ValueError("会话计数回执损坏，拒绝重复计数")
         return data
 
     def owns_legacy_cache(self, user_id, session_id):
@@ -88,9 +97,19 @@ class SessionStore:
             if temporary is not None and os.path.exists(temporary):
                 os.unlink(temporary)
 
-    def register_session(self, user_id: str, session_id: str, title: str = "", message_count: int = 0):
+    @staticmethod
+    def _delivery_key(delivery_id, role):
+        if not isinstance(delivery_id, str) or len(delivery_id) > 64 or (delivery_id and not delivery_id.strip()):
+            raise ValueError("会话投递编号无效")
+        return sha256(json.dumps([role, delivery_id], separators=(",", ":")).encode()).hexdigest() if delivery_id else None
+
+    def register_session(self, user_id: str, session_id: str, title: str = "", message_count: int = 0,
+                         *, delivery_id: str = ""):
+        delivery = self._delivery_key(delivery_id, "user")
         with self._changing(user_id, session_id):
             data = self._load(user_id)
+            if delivery and delivery in data.get(session_id, {}).get("message_deliveries", {}):
+                return
             now = utc_now().isoformat()
             if session_id in data:
                 existing = data[session_id]
@@ -103,6 +122,10 @@ class SessionStore:
                     "user_id": user_id, "title": title or "新对话",
                     "message_count": max(message_count, 1), "created_at": now, "last_updated": now,
                 }
+            if delivery:
+                # Count and receipt share the atomic file publication. A lost
+                # acknowledgement or a new worker cannot increment this turn again.
+                data[session_id].setdefault("message_deliveries", {})[delivery] = True
             self._write(user_id, data)
 
     def update_title(self, user_id: str, session_id: str, title: str):
@@ -113,12 +136,17 @@ class SessionStore:
                 data[session_id]["last_updated"] = utc_now().isoformat()
                 self._write(user_id, data)
 
-    def increment_message_count(self, user_id: str, session_id: str):
+    def increment_message_count(self, user_id: str, session_id: str, *, delivery_id: str = ""):
+        delivery = self._delivery_key(delivery_id, "assistant")
         with self._changing(user_id, session_id):
             data = self._load(user_id)
             if session_id in data:
+                if delivery and delivery in data[session_id].get("message_deliveries", {}):
+                    return
                 data[session_id]["message_count"] = data[session_id].get("message_count", 0) + 1
                 data[session_id]["last_updated"] = utc_now().isoformat()
+                if delivery:
+                    data[session_id].setdefault("message_deliveries", {})[delivery] = True
                 self._write(user_id, data)
 
     def get_sessions(self, user_id: str) -> list[dict]:

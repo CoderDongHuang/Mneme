@@ -166,3 +166,18 @@ Gateway 在同一 MySQL 事务中，将带执行代的回答从 processing 更�
 没有依赖、配置、迁移或存储协议变化。升级仍停止全部应用写入者，保留匹配 SQL/Agent 数据、旧镜像和容器配置，再替换镜像；回退使用匹配数据和镜像。回退旧代码会重新暴露异常文本，不能据此宣称旧版本也具备本项保护。
 
 本项不修改通用 JsonFormatter 的任意第三方日志策略，不保证异常对象在进程内物理擦除，不取消已发请求，也不宣称全部日志与整份审查完成。最终结果见整改记录。
+
+
+<a id="session-message-delivery"></a>
+
+## 会话元数据消息计数投递协议
+
+对应 P1-06 的一个重放前置条件。prepare 在副作用前固定 request_id 或随机 delivery_id，用户注册计数、完成计数和反思共用该身份；旧的直接完成调用在 state 保留 completion_delivery_id，不伪造缺少 history 的 memory_input。无 request_id 的新 HTTP 请求仍无法识别为重放。
+
+SessionStore 按账号、会话、角色去重，message_deliveries 仅保存规范 JSON [role, delivery_id] 的 SHA-256 键和 true。计数与回执同一次临时文件 fsync、原子 replace；SQL 用户锁和实例锁覆盖整个读取修改发布，不跨模型调用。丢失确认后重放或新实例不重复计数，也不改变标题和时间。API 列表不暴露回执，原始请求 ID 不写入 manifest。非法 ID 和损坏回执明确失败，不能当作空账本覆盖。账号/会话删除围栏优先检查，旧回执不能绕过删除保护。
+
+去重仅覆盖仍保留的会话 manifest：现有 30 天 last_updated 过期清理会一起移除回执，重复调用不延长留存。删除也清除对应元数据；不是永久 exactly-once 协议。SQLite 为单机，MySQL 只提供共享锁，多副本仍需共享同一文件系统；SQL 锁不复制文件。工作/短期历史、长期记忆和摘要的整体重放尚未完成，不能因此重试整个 complete_conversation。
+
+无新依赖、配置或 SQL 迁移，但增加了 JSON 回执协议。升级应停止全部旧应用写入者，保留匹配 SQL、Agent 文件、Redis 和镜像配置后替换。旧写入者不认识回执，不可混跑；回退使用匹配数据快照和镜像，不能只替换旧代码并承诺已有去重仍成立。
+
+验收包括真实 SQLite/MySQL 的两个实例并发及新实例重放、序列化/fsync/replace 故障及丢失确认、损坏回执、隔离与删除；真实网页回归另在实际 Agent 中用新解释器读取原 manifest 并重放同一请求。完整完成阶段未开放自动重试。

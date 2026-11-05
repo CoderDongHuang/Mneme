@@ -26,6 +26,19 @@ def main():
             list(pool.map(lambda i: (first, second)[i % 2].increment_message_count(other, "0"), range(32)))
         assert len(first.cleanup_session_ids(other)) == 32
         assert next(row for row in first.get_sessions(other) if row["id"] == "0")["message_count"] == 33
+        def deliver(i):
+            store = (first, second)[i % 2]
+            store.register_session(other, "0", delivery_id=str(i % 8))
+            store.increment_message_count(other, "0", delivery_id=str(i % 8))
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(deliver, range(64)))
+        assert next(row for row in first.get_sessions(other) if row["id"] == "0")["message_count"] == 49
+        before = Path(first._get_file_path(other)).read_bytes()
+        fresh_delivery = SessionStore()
+        fresh_delivery.register_session(other, "0", delivery_id="0")
+        fresh_delivery.increment_message_count(other, "0", delivery_id="0")
+        assert Path(first._get_file_path(other)).read_bytes() == before
         original = first._write
 
         def delayed(*args):
@@ -70,7 +83,7 @@ def main():
             second.delete_user(who)
             assert not Path(second._get_file_path(who)).exists()
         remove_probe_users(user, other)
-    print("PASS: session manifest fence, concurrent updates and cleanup on", settings.auxiliary_store_backend)
+    print("PASS: session manifest fence, delivery replay, concurrent updates and cleanup on", settings.auxiliary_store_backend)
 
 
 if __name__ == "__main__":

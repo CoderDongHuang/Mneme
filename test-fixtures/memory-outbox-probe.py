@@ -146,6 +146,13 @@ def complete_conversation(request, state, answer):
     assert any(row["node"] == "memory.distillation.validation" and row["status"] == "error" for row in rows)
     assert canary not in _qa_json.dumps(rows)
     result = _qa_complete(request, state, answer)
+    from app.memory.session_store import SessionStore as _QaSessionStore, session_store as _qa_sessions
+    count_before = _qa_sessions.get_sessions(request.user_id)
+    assert next(row for row in count_before if row["id"] == request.session_id)["message_count"] == 2
+    fresh_store = _QaSessionStore(_qa_sessions._data_dir)
+    fresh_store.register_session(request.user_id, request.session_id, delivery_id=state["memory_input"]["delivery_id"])
+    fresh_store.increment_message_count(request.user_id, request.session_id, delivery_id=state["memory_input"]["delivery_id"])
+    assert fresh_store.get_sessions(request.user_id) == count_before
     repeated = _qa_memory_write(state)
     assert result["pending_memories"] == repeated["pending_memories"]
     assert len(state["memory_input"]["history"]) == 3
@@ -164,6 +171,7 @@ def complete_conversation(request, state, answer):
         "snapshot_frozen": True, "candidate_stable": True, "actual_completion": True,
         "reflection_delivery_recorded": True,
         "distillation_failure_visible": True, "distillation_retry_valid": True,
+        "session_count_delivery_deduplicated": True,
     }))
     return result
 
