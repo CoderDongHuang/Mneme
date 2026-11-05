@@ -57,13 +57,14 @@
 .task-notification { display: grid; grid-template-columns: minmax(90px, .25fr) auto 1fr; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line, #e4e7ec); background: var(--surface, #fff); font-size: .85rem; }
 .task-notification span:last-child { color: var(--muted, #687386); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 620px) { .task-notification { grid-template-columns: 1fr auto; } .task-notification span:last-child { grid-column: 1 / -1; } }
-.version-dialog { width:min(620px,calc(100vw - 32px)); }
-.version-list { display:grid;gap:8px;max-height:55vh;overflow:auto; }
-.version-list>button { width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px;text-align:left;background:#f6f6f2;border:1px solid rgb(32 34 29 / 8%); }
-.version-list>button:not(:disabled):hover { background:#fff; }
-.version-list>button span:first-child { display:grid;gap:4px;min-width:0; }
-.version-list strong,.version-list small { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.version-list small { color:#777970;font-size:11px; }
+.version-dialog { width:100%;min-width:0; }
+.version-dialog h3 { margin:0 0 16px;overflow-wrap:anywhere;font-size:16px; }
+.version-list { display:grid;grid-template-columns:minmax(0,1fr);gap:8px;max-height:55vh;overflow:auto; }
+.version-list>button { width:100%;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;padding:12px 14px;text-align:left;background:var(--mn-surface-soft);border:1px solid var(--mn-border); }
+.version-list>button:not(:disabled):hover { background:var(--mn-surface); }
+.version-list>button>span:first-child { display:grid;gap:4px;min-width:0; }
+.version-list strong { overflow-wrap:anywhere; }
+.version-list small { color:var(--mn-muted);font-size:11px;overflow-wrap:anywhere; }
 .parse-report { max-width: 34rem; overflow-wrap: anywhere; white-space: normal; }
 .parse-report small { display: block; margin-block: .4rem; }
 

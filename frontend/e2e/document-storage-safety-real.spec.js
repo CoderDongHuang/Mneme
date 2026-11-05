@@ -65,6 +65,10 @@ test('十次替换后可从真实版本界面恢复原文且清理无残留', as
     await page.getByLabel('文档操作：version-0.txt', { exact: true }).click()
     await page.getByRole('button', { name: '版本历史', exact: true }).click()
     await expect(dialog.getByRole('button', { name: /v1 · version-0.txt/ })).toBeDisabled()
+    await expect(dialog.getByRole('button', { name: '关闭 / Close', exact: true })).toHaveCount(1)
+    expect(await dialog.evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1), 'Version dialog must fit its content width').toBe(true)
+    expect(await dialog.locator('.version-list').evaluate(list => list.scrollWidth <= list.clientWidth + 1), 'Version rows must fit the scroll area').toBe(true)
+    expect(await dialog.locator('button:not(.icon-button)').count()).toBe(11)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('storage-versions.png'), fullPage: true, animations: 'disabled' })
   } finally {
