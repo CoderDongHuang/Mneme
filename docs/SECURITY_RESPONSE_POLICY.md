@@ -23,6 +23,8 @@
 
 当前无项目主动配置的漏洞扫描例外。2026-10-29 移除 Chroma 包、服务及三个 pip-audit 忽略项，改用 Qdrant 1.20.0；这是替换受影响组件，不是声称 Chroma 上游已修复。运行时和向量库镜像均纳入扫描。迁移、回滚和旧数据保护见 [迁移指南](VECTOR_STORE_MIGRATION.md)。历史处理记录如下。
 
+2026-11-05：Qdrant 固定上游镜像中的 Debian 13 `apt` 和 `libapt-pkg7.0` 3.0.3 命中 `CVE-2026-109518`（High）。派生镜像从官方安全仓库升级这两个包，并强制验证版本不低于 3.0.4；保留固定上游 digest、Qdrant 二进制和 SBOM，不增加扫描例外。`scripts/verify_qdrant_image.py` 在无业务数据挂载的临时容器中核对官方二进制哈希、非 root 身份、补丁版本、就绪、向量写入/查询/删除及控制台关闭，完成后清除容器；CI 在镜像扫描前运行同一检查。合并仍要求当前提交全部 9 项 CI 成功。
+
 2026-10-27 Java 镜像复扫：Brotli `CVE-2026-111497` 通过构建时 `apk upgrade --no-cache` 获取发行版补丁，镜像扫描继续强制拦截。
 
 2026-10-28：Spring `CVE-2026-47884`（XSLT/wildcard view）和 `CVE-2026-47890`（SSE view fragments）通过 Spring Boot 4.0.9 / Spring Framework 7.0.10 迁移处理。删除两项 `.trivyignore` 忽略及旧版适用性检查，继续执行普通 Java 依赖和镜像扫描。MyBatis、springdoc、RestClient、Flyway 和 OpenTelemetry 使用兼容的 Boot 4 模块；JSON 暂沿官方 Jackson 2 兼容模块维持已有持久化契约。验收证据见 [本轮记录](PROJECT_STATUS.md)。
