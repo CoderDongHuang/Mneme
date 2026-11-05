@@ -58,7 +58,6 @@ test('独立解析阶段保留多格式、OCR、页码、表格与实际预览',
     expect(image.ok()).toBe(true)
     expect((await image.body()).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
     await page.goto(`/workspace?document=${scan.id}`)
-    await page.getByText('解析内容 ·', { exact: false }).click()
     const previewImage = page.getByRole('img', { name: '第 1 页 OCR 区域预览' })
     await expect(previewImage).toBeVisible()
     await expect.poll(() => previewImage.evaluate(img => img.naturalWidth)).toBeGreaterThan(0)

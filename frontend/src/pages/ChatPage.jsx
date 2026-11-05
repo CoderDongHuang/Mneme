@@ -48,6 +48,7 @@ function ChatView({ renderTools, workspace = false }) {
   const [historyRange, setHistoryRange] = useState(0)
   const [historyNow] = useState(Date.now)
   const [toolsOpen, setToolsOpen] = useState(false)
+  const toolsTrigger = useRef(null)
   const [toolMode, setToolMode] = useState(() => workspace && new URLSearchParams(window.location.search).has('document') ? 'reader' : null)
   useEffect(() => { if (workspace && new URLSearchParams(location.search).has('document')) setToolMode('reader') }, [workspace, location.search])
   const [renaming, setRenaming] = useState(null)
@@ -403,7 +404,7 @@ function ChatView({ renderTools, workspace = false }) {
             <strong>{activeSession?.title || (workspace ? t('阅读工作台') : t("新的学习对话"))}</strong>
           </div>
           <div className="kb-selector">
-            {renderTools && <div className="workspace-tool-menu"><button aria-expanded={toolsOpen} onClick={() => setToolsOpen(!toolsOpen)}><SlidersHorizontal size={16} />{t('工具')}</button>{toolsOpen && <div>{[['reader', '引用阅读'], ['debug', '检索调试'], ['branch', '分支对比']].map(([id, label]) => <button key={id} onClick={() => { setToolMode(id); setToolsOpen(false) }}>{t(label)}</button>)}</div>}</div>}
+            {renderTools && <div className="workspace-tool-menu"><button ref={toolsTrigger} aria-expanded={toolsOpen} onClick={() => setToolsOpen(!toolsOpen)}><SlidersHorizontal size={16} />{t('工具')}</button>{toolsOpen && <div>{[['reader', '引用阅读'], ['debug', '检索调试'], ['branch', '分支对比']].map(([id, label]) => <button key={id} onClick={() => { toolsTrigger.current?.focus(); setToolMode(id); setToolsOpen(false) }}>{t(label)}</button>)}</div>}</div>}
             <button aria-label={selectedLabel} aria-expanded={kbMenuOpen} onClick={() => setKbMenuOpen((value) => !value)}><BookOpen size={16} /><span>{selectedLabel}</span><ChevronDown size={15} /></button>
             {kbMenuOpen && (
               <div className="kb-menu">

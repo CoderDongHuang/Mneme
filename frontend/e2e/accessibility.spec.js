@@ -53,6 +53,39 @@ for (const path of ['chat', 'knowledge', 'memory', 'review', 'quiz', 'workspace'
   })
 }
 
+test('工作台工具弹窗的明暗主题、键盘关闭与焦点恢复', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/workspace')
+  const tools = page.getByRole('button', { name: '工具', exact: true })
+  await tools.click()
+  await page.getByRole('button', { name: '引用阅读', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '工作台工具' })
+  await expect(dialog.locator('.loading-state')).toHaveCount(0)
+  const close = dialog.getByRole('button', { name: '关闭 / Close', exact: true })
+  await expect(close).toBeFocused()
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(value => document.documentElement.setAttribute('data-theme', value), theme)
+    for (const name of ['引用阅读', '检索调试', '分支对比']) {
+      const mode = dialog.getByRole('button', { name, exact: true })
+      await mode.focus()
+      await page.keyboard.press('Enter')
+      await expect(mode).toHaveAttribute('aria-pressed', 'true')
+      if (name === '检索调试') await dialog.locator('.retrieval-filters').evaluate(node => { node.open = true })
+      const bounds = await mode.boundingBox()
+      expect(bounds.width).toBeGreaterThanOrEqual(90)
+      expect(bounds.height).toBeLessThanOrEqual(52)
+      const report = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+      expect(report.violations, `${theme}/${name}`).toEqual([])
+    }
+  }
+  await close.focus()
+  await page.keyboard.press('Shift+Tab')
+  await expect(dialog.locator(':focus')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(tools).toBeFocused()
+})
+
 for (const [path, title] of [['tasks', '任务中心'], ['recovery', '备份与恢复'], ['privacy', '数据与隐私'], ['operations', '管理员运维中心'], ['analytics', '学习分析']]) {
   test(`${title} WCAG AA、资源与响应式验收`, async ({ page }, testInfo) => {
     await page.goto(`/${path}`)
