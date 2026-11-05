@@ -1356,5 +1356,18 @@
   "刷新会话": "Refresh conversations",
   "刷新资料库": "Refresh libraries",
   "资料库暂不可用": "Libraries unavailable",
-  "资料库加载中…": "Loading libraries…"
+  "资料库加载中…": "Loading libraries…",
+  "复习卡加载失败，请重试。": "Review cards could not be loaded. Please retry.",
+  "学习计划加载失败，请重试。": "Study plans could not be loaded. Please retry.",
+  "评分结果尚未确认，请先核对最新复习状态。": "The rating result is unconfirmed. Check the latest review state first.",
+  "计划创建结果尚未确认，请先核对已保存计划。": "Plan creation is unconfirmed. Check saved plans first.",
+  "提交结果核对": "Check submission result",
+  "读取不会重新提交。请核对最新安排；刷新或离开页面不能撤销已提交操作，再次提交可能重复写入。": "Checking only reads data. Verify the latest schedule; refreshing or leaving cannot undo a submitted operation. Submitting again may create duplicates.",
+  "核对已保存计划": "Check saved plans",
+  "核对最新复习状态": "Check latest review state",
+  "已读取最新复习状态，请核对卡片及下次复习安排。": "The latest review state is loaded. Check the cards and next review schedule.",
+  "已核实，继续操作": "I have verified the result; continue",
+  "刷新复习卡": "Refresh review cards",
+  "刷新学习计划": "Refresh study plans",
+  "核对读取失败，请重试核对；尚未重新提交。": "The check failed. Retry checking; nothing has been resubmitted."
 }

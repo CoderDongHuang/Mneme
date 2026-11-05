@@ -2,13 +2,15 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import ReviewPage from './ReviewPage'
+import { useAuth } from '../state/AuthContext'
 import { endpoints } from '../api/client'
 
+vi.mock('../state/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('../api/client', () => ({ endpoints: { reviews: vi.fn(), plans: vi.fn(), createPlan: vi.fn(), reviewCard: vi.fn() } }))
 
 const card = { id: 1, prompt: '真实复习问题', answer: '真实参考答案', due_at: '2000-01-01T00:00:00Z', review_count: 0 }
 const plan = { id: 2, title: '已保存计划', goal: '学习目标' }
-beforeEach(() => { vi.resetAllMocks(); endpoints.reviews.mockResolvedValue([card]); endpoints.plans.mockResolvedValue([plan]) })
+beforeEach(() => { vi.resetAllMocks(); useAuth.mockReturnValue({ session: { userId: 1 } }); endpoints.reviews.mockResolvedValue([card]); endpoints.plans.mockResolvedValue([plan]) })
 function mount() { return render(<MemoryRouter><ReviewPage /></MemoryRouter>) }
 function cards() { return screen.getByRole('region', { name: '复习卡片' }) }
 function plans() { return screen.getByRole('region', { name: '我的计划' }) }
@@ -43,8 +45,8 @@ test('initial failures show unknown metrics and independent retries, never a com
   expect(screen.getAllByText('—')).toHaveLength(3)
   expect(screen.getByText('正在读取复习卡…')).toBeVisible()
   expect(screen.getByText('正在读取学习计划…')).toBeVisible()
-  await within(cards()).findByText('复习卡加载失败：卡片离线')
-  await within(plans()).findByText('学习计划加载失败：计划离线')
+  await within(cards()).findByText('复习卡加载失败，请重试。')
+  await within(plans()).findByText('学习计划加载失败，请重试。')
   for (const text of ['今天的复习已就绪', '暂无记录', '还没有计划。', '复习日历']) expect(screen.queryByText(text)).not.toBeInTheDocument()
   fireEvent.click(within(cards()).getByRole('button', { name: '重试 / Retry' }))
   await screen.findByRole('heading', { name: card.prompt })
@@ -57,7 +59,7 @@ test('plan retry does not change a flipped card or fetch cards again', async () 
   endpoints.plans.mockRejectedValueOnce(new Error('计划离线'))
   mount()
   fireEvent.click(await screen.findByRole('button', { name: '查看答案' }))
-  await within(plans()).findByText('学习计划加载失败：计划离线')
+  await within(plans()).findByText('学习计划加载失败，请重试。')
   fireEvent.click(within(plans()).getByRole('button', { name: '重试 / Retry' }))
   await within(plans()).findByText(plan.title)
   expect(screen.getByText(card.answer)).toBeVisible()
@@ -68,7 +70,7 @@ test('successful create keeps its receipt and cached records when refresh fails;
   mount()
   await screen.findByRole('heading', { name: card.prompt })
   const dialog = draft()
-  endpoints.createPlan.mockResolvedValueOnce({ id: 3 })
+  endpoints.createPlan.mockResolvedValueOnce({ id: 3, title: '新计划草稿', goal: '新目标草稿' })
   endpoints.reviews.mockRejectedValueOnce(new Error('卡片刷新离线'))
   endpoints.plans.mockRejectedValueOnce(new Error('计划刷新离线'))
   fireEvent.click(within(dialog).getByRole('button', { name: '创建计划' }))
@@ -84,33 +86,43 @@ test('successful create keeps its receipt and cached records when refresh fails;
   expect(screen.getByText('计划已创建，复习卡使用你填写的真实答案')).toBeVisible()
 })
 
-test('failed create retains draft and disabled inputs prevent edits and duplicate writes while retrying', async () => {
+test('unconfirmed create retains draft and requires a read and explicit acknowledgement before another submission', async () => {
   mount()
   await screen.findByRole('heading', { name: card.prompt })
   const dialog = draft()
   endpoints.createPlan.mockRejectedValueOnce(new Error('创建失败'))
   const submit = within(dialog).getByRole('button', { name: '创建计划' })
   fireEvent.click(submit)
-  await within(dialog).findByText('创建失败')
+  await within(dialog).findByText('计划创建结果尚未确认，请先核对已保存计划。')
+  expect(submit).toBeDisabled()
+  fireEvent.click(within(dialog).getByRole('button', { name: '核对已保存计划' }))
+  fireEvent.click(await within(dialog).findByRole('button', { name: '已核实，继续操作' }))
   expect(within(dialog).getByLabelText('计划名称')).toHaveValue('新计划草稿')
-  expect(endpoints.reviews).toHaveBeenCalledOnce()
+  expect(endpoints.reviews).toHaveBeenCalledTimes(2)
   let release
   endpoints.createPlan.mockReturnValueOnce(new Promise(resolve => { release = resolve }))
   fireEvent.click(submit); fireEvent.click(submit)
   expect(submit).toBeDisabled()
   expect(within(dialog).getByLabelText('计划名称')).toBeDisabled()
   expect(endpoints.createPlan).toHaveBeenCalledTimes(2)
-  await act(async () => release({ id: 3 }))
+  await act(async () => release({ id: 3, title: '新计划草稿', goal: '新目标草稿' }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
-test('failed rating retains the flipped card and manual rating retry sends exactly one mutation', async () => {
+test('unconfirmed rating retains the flipped card; failed checks cannot unlock another submission', async () => {
   mount()
   fireEvent.click(await screen.findByRole('button', { name: '查看答案' }))
   endpoints.reviewCard.mockRejectedValueOnce(new Error('评分失败'))
   const button = screen.getByRole('button', { name: '基本掌握' })
   fireEvent.click(button)
-  await screen.findByText('评分失败')
+  await screen.findByText('评分结果尚未确认，请先核对最新复习状态。')
+  expect(button).toBeDisabled()
+  endpoints.reviews.mockRejectedValueOnce(new Error('核对离线'))
+  fireEvent.click(screen.getByRole('button', { name: '核对最新复习状态' }))
+  await screen.findByText('核对读取失败，请重试核对；尚未重新提交。')
+  expect(screen.queryByRole('button', { name: '已核实，继续操作' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '核对最新复习状态' }))
+  fireEvent.click(await screen.findByRole('button', { name: '已核实，继续操作' }))
   expect(screen.getByText(card.answer)).toBeVisible()
   expect(screen.queryByRole('button', { name: '重试 / Retry' })).not.toBeInTheDocument()
   let release
@@ -121,24 +133,30 @@ test('failed rating retains the flipped card and manual rating retry sends exact
   await act(async () => release({ ...card, due_at: '2100-01-01T00:00:00Z', review_count: 1 }))
   await screen.findByText(/^评分已保存，下次复习：/)
   expect(screen.queryByText(card.answer)).not.toBeInTheDocument()
-  expect(endpoints.reviews).toHaveBeenCalledOnce()
+  expect(endpoints.reviews).toHaveBeenCalledTimes(3)
 })
 
-test('a late refresh cannot resurrect a card after a saved rating', async () => {
+test('rating waits for a fresh card read; old cancelled replies cannot overwrite the saved receipt', async () => {
   mount()
   fireEvent.click(await screen.findByRole('button', { name: '查看答案' }))
   let release
   endpoints.reviews.mockReturnValueOnce(new Promise(resolve => { release = resolve }))
-  endpoints.createPlan.mockResolvedValueOnce({ id: 3 })
+  fireEvent.click(screen.getByRole('button', { name: '刷新复习卡' }))
+  const button = screen.getByRole('button', { name: '基本掌握' })
+  expect(button).toBeDisabled()
+  fireEvent.click(button)
+  expect(endpoints.reviewCard).not.toHaveBeenCalled()
   const dialog = draft()
+  endpoints.createPlan.mockResolvedValueOnce({ id: 3, title: '新计划草稿', goal: '新目标草稿' })
   fireEvent.click(within(dialog).getByRole('button', { name: '创建计划' }))
   await screen.findByText('计划已创建，复习卡使用你填写的真实答案')
   endpoints.reviewCard.mockResolvedValueOnce({ ...card, due_at: '2100-01-01T00:00:00Z', review_count: 1 })
-  fireEvent.click(screen.getByRole('button', { name: '基本掌握' }))
+  expect(button).toBeEnabled()
+  fireEvent.click(button)
   await screen.findByText(/^评分已保存，下次复习：/)
   await act(async () => release([card]))
   expect(screen.queryByRole('heading', { name: card.prompt })).not.toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: '查看答案' })).not.toBeInTheDocument()
+  expect(endpoints.reviews.mock.calls[1][0].signal.aborted).toBe(true)
 })
 
 test('late initial replies after unmount cannot populate a new page', async () => {
@@ -152,4 +170,88 @@ test('late initial replies after unmount cannot populate a new page', async () =
   await act(async () => { releaseCards([card]); releasePlans([plan]) })
   expect(screen.queryByRole('heading', { name: card.prompt })).not.toBeInTheDocument()
   expect(screen.queryByText(plan.title)).not.toBeInTheDocument()
+})
+
+test.each([null, {}, [null], [{ ...card, answer: {} }], [card, card], [{ ...card, due_at: '2026-02-31T00:00:00Z' }], [{ ...card, due_at: '2026-11-05T24:00:00Z' }]])('invalid review data shows a retryable failure instead of crashing or claiming completion: %j', async value => {
+  endpoints.reviews.mockResolvedValueOnce(value)
+  mount()
+  await within(cards()).findByText('复习卡加载失败，请重试。')
+  expect(screen.queryByText('今天的复习已就绪')).not.toBeInTheDocument()
+  expect(screen.queryByText('复习日历')).not.toBeInTheDocument()
+  fireEvent.click(within(cards()).getByRole('button', { name: '重试 / Retry' }))
+  await screen.findByRole('heading', { name: card.prompt })
+})
+
+test.each([null, {}, [null], [{ ...plan, goal: {} }], [plan, plan], [{ ...plan, target_date: '2026-02-31' }]])('invalid plans fail independently without hiding a flipped card: %j', async value => {
+  endpoints.plans.mockResolvedValueOnce(value)
+  mount()
+  fireEvent.click(await screen.findByRole('button', { name: '查看答案' }))
+  await within(plans()).findByText('学习计划加载失败，请重试。')
+  expect(screen.getByText(card.answer)).toBeVisible()
+  fireEvent.click(within(plans()).getByRole('button', { name: '重试 / Retry' }))
+  await within(plans()).findByText(plan.title)
+  expect(endpoints.reviews).toHaveBeenCalledOnce()
+})
+
+test.each([null, { ...card, id: 99 }, { ...card, review_count: 0 }])('invalid rating receipt never reports success or replaces a card: %j', async receipt => {
+  endpoints.reviewCard.mockResolvedValueOnce(receipt)
+  mount()
+  fireEvent.click(await screen.findByRole('button', { name: '查看答案' }))
+  fireEvent.click(screen.getByRole('button', { name: '基本掌握' }))
+  await screen.findByText('评分结果尚未确认，请先核对最新复习状态。')
+  expect(screen.getByText(card.answer)).toBeVisible()
+  expect(screen.getByRole('button', { name: '基本掌握' })).toBeDisabled()
+  expect(screen.queryByText(/^评分已保存/)).not.toBeInTheDocument()
+  expect(endpoints.reviewCard).toHaveBeenCalledOnce()
+})
+
+test('account changes discard drafts and ignore late submission receipts', async () => {
+  let release
+  endpoints.createPlan.mockReturnValueOnce(new Promise(resolve => { release = resolve }))
+  const view = mount()
+  await screen.findByRole('heading', { name: card.prompt })
+  fireEvent.click(within(draft()).getByRole('button', { name: '创建计划' }))
+  useAuth.mockReturnValue({ session: { userId: 2 } })
+  endpoints.reviews.mockResolvedValueOnce([]); endpoints.plans.mockResolvedValueOnce([])
+  view.rerender(<MemoryRouter><ReviewPage /></MemoryRouter>)
+  await screen.findByText('今天的复习已就绪')
+  await act(async () => release({ id: 3, title: '新计划草稿', goal: '新目标草稿' }))
+  expect(screen.queryByText('计划已创建，复习卡使用你填写的真实答案')).not.toBeInTheDocument()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '制定计划' }))
+  expect(within(screen.getByRole('dialog')).getByLabelText('计划名称')).toHaveValue('')
+})
+
+test.each([null, { ...plan, title: {} }, { ...plan, title: '其他计划' }, { id: 3, title: '新计划草稿', goal: '新目标草稿', target_date: '2027-01-01' }])('invalid plan receipts retain the draft and check with GET only: %j', async receipt => {
+  endpoints.createPlan.mockResolvedValueOnce(receipt)
+  mount()
+  await screen.findByRole('heading', { name: card.prompt })
+  const dialog = draft()
+  fireEvent.click(within(dialog).getByRole('button', { name: '创建计划' }))
+  await within(dialog).findByText('计划创建结果尚未确认，请先核对已保存计划。')
+  expect(within(dialog).getByLabelText('计划名称')).toHaveValue('新计划草稿')
+  expect(within(dialog).getByRole('button', { name: '创建计划' })).toBeDisabled()
+  endpoints.plans.mockResolvedValueOnce(null)
+  fireEvent.click(within(dialog).getByRole('button', { name: '核对已保存计划' }))
+  await within(dialog).findByText('核对读取失败，请重试核对；尚未重新提交。')
+  expect(within(dialog).queryByRole('button', { name: '已核实，继续操作' })).not.toBeInTheDocument()
+  fireEvent.click(within(dialog).getByRole('button', { name: '核对已保存计划' }))
+  await within(dialog).findByText(plan.title)
+  fireEvent.click(within(dialog).getByRole('button', { name: '已核实，继续操作' }))
+  expect(within(dialog).getByRole('button', { name: '创建计划' })).toBeEnabled()
+  expect(endpoints.createPlan).toHaveBeenCalledOnce()
+})
+
+test('cached cards remain readable after refresh fails, but cannot be rated until recovery', async () => {
+  mount()
+  fireEvent.click(await screen.findByRole('button', { name: '查看答案' }))
+  endpoints.reviews.mockRejectedValueOnce(new Error('离线'))
+  fireEvent.click(screen.getByRole('button', { name: '刷新复习卡' }))
+  await screen.findByText('已有复习卡可能不是最新状态。')
+  expect(screen.getByText(card.answer)).toBeVisible()
+  expect(screen.getByRole('button', { name: '基本掌握' })).toBeDisabled()
+  fireEvent.click(within(cards()).getByRole('button', { name: '重试 / Retry' }))
+  await within(cards()).findByRole('heading', { name: card.prompt })
+  expect(screen.getByRole('button', { name: '基本掌握' })).toBeEnabled()
+  expect(endpoints.reviewCard).not.toHaveBeenCalled()
 })

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, request, test } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
 
@@ -8,14 +8,14 @@ test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 test('复习卡和计划独立恢复，真实创建与评分保留回执且刷新可读', async ({ page }, testInfo) => {
   test.setTimeout(180000)
   page.setDefaultTimeout(15000)
-  let account, failCards = true, failPlans = true, ratingWrites = 0, planWrites = 0
-  async function api(method, path, data) {
+  let account, cleanup, failCards = true, failPlans = true, ratingWrites = 0, planWrites = 0
+  async function api(method, path, data, context = page.request) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const response = await page.request[method]('/api/v1' + path, data === undefined ? {} : { data })
+      const response = await context[method]('/api/v1' + path, { data, timeout: 45000 })
       if (response.status() === 429 && attempt < 2) {
         const seconds = Number(response.headers()['retry-after'])
         expect(seconds > 0 && seconds <= 60).toBe(true)
-        await page.waitForTimeout(seconds * 1000 + 250)
+        await new Promise(resolve => setTimeout(resolve, seconds * 1000 + 250))
         continue
       }
       expect(response.status(), `${method} ${path}`).toBe(200)
@@ -27,9 +27,10 @@ test('复习卡和计划独立恢复，真实创建与评分保留回执且刷�
   }
   async function clickRequest(button, method, path) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const pending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1' + path && response.request().method() === method)
-      await button.click()
-      const response = await pending
+      const [response] = await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1' + path && response.request().method() === method),
+        button.click(),
+      ])
       if (response.status() === 429 && attempt < 2) {
         const seconds = Number(response.headers()['retry-after'])
         expect(seconds > 0 && seconds <= 60).toBe(true)
@@ -48,6 +49,7 @@ test('复习卡和计划独立恢复，真实创建与评分保留回执且刷�
   try {
     const suffix = randomUUID().replaceAll('-', '')
     account = await api('post', '/auth/register', { username: `reviewstate_${suffix.slice(0, 10)}`, password: `Review!${suffix}` })
+    cleanup = await request.newContext({ baseURL: testInfo.project.use.baseURL, storageState: await page.context().storageState() })
     await api('post', '/workspace/plans', { title: '初始真实计划', goal: '独立读取与评分回归', cards: [
       { prompt: '第一张真实问题', answer: '第一张真实答案' }, { prompt: '第二张真实问题', answer: '第二张真实答案' },
     ] })
@@ -65,8 +67,8 @@ test('复习卡和计划独立恢复，真实创建与评分保留回执且刷�
     await page.goto('/review')
     const cards = page.getByRole('region', { name: '复习卡片', exact: true })
     const plans = page.getByRole('region', { name: '我的计划', exact: true })
-    await expect(cards.getByText('复习卡加载失败：读取服务暂不可用', { exact: true })).toBeVisible()
-    await expect(plans.getByText('学习计划加载失败：读取服务暂不可用', { exact: true })).toBeVisible()
+    await expect(cards.getByText('复习卡加载失败，请重试。', { exact: true })).toBeVisible()
+    await expect(plans.getByText('学习计划加载失败，请重试。', { exact: true })).toBeVisible()
     await expect(page.getByText('—', { exact: true })).toHaveCount(3)
     for (const text of ['今天的复习已就绪', '还没有计划。', '暂无记录', '复习日历']) await expect(page.getByText(text, { exact: true })).toHaveCount(0)
     await shot('review-unavailable.png')
@@ -101,16 +103,19 @@ test('复习卡和计划独立恢复，真实创建与评分保留回执且刷�
     await clickRequest(plans.getByRole('button', { name: '重试 / Retry', exact: true }), 'GET', '/workspace/plans')
     await expect(plans.getByText('刷新后可见的真实计划', { exact: true })).toBeVisible()
     await expect(cards.getByText(current.answer, { exact: true })).toBeVisible()
+    await expect(cards.getByRole('button', { name: '基本掌握', exact: true })).toBeDisabled()
+    failCards = false
+    await clickRequest(cards.getByRole('button', { name: '重试 / Retry', exact: true }), 'GET', '/workspace/reviews')
+    await expect(cards.getByText(current.answer, { exact: true })).toBeVisible()
     await clickRequest(cards.getByRole('button', { name: '基本掌握', exact: true }), 'POST', `/workspace/reviews/${current.id}`)
     await expect(page.getByText(/^评分已保存，下次复习：/)).toBeVisible()
     await expect(cards.getByText(current.answer, { exact: true })).toHaveCount(0)
     const saved = (await api('get', '/workspace/reviews')).find(item => item.id === current.id)
     expect(saved.review_count).toBe(1)
     expect(new Date(saved.due_at).getTime()).toBeGreaterThan(Date.now())
-    failCards = false
-    await clickRequest(cards.getByRole('button', { name: '重试 / Retry', exact: true }), 'GET', '/workspace/reviews')
+    await clickRequest(cards.getByRole('button', { name: '刷新复习卡', exact: true }), 'GET', '/workspace/reviews')
     await expect(cards.getByRole('button', { name: '查看答案', exact: true })).toBeVisible()
-    await expect(cards.getByText('复习卡加载失败：读取服务暂不可用', { exact: true })).toHaveCount(0)
+    await expect(cards.getByText('复习卡加载失败，请重试。', { exact: true })).toHaveCount(0)
     await shot('review-recovered.png')
     expect(ratingWrites).toBe(1)
     expect(planWrites).toBe(1)
@@ -119,6 +124,11 @@ test('复习卡和计划独立恢复，真实创建与评分保留回执且刷�
     await expect(cards.getByRole('heading', { name: currentPrompt, exact: true })).toHaveCount(0)
     expect((await api('get', '/workspace/reviews')).find(item => item.id === current.id).review_count).toBe(1)
   } finally {
-    if (account) await api('delete', '/profile/account')
+    test.setTimeout(testInfo.timeout + 90000)
+    if (account && cleanup) {
+      await page.close()
+      try { await api('delete', '/profile/account', undefined, cleanup) }
+      finally { await cleanup.dispose() }
+    }
   }
 })
