@@ -39,6 +39,7 @@ public class KnowledgeService {
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbc;
     private final ObjectStorageService storage;
+    private final KnowledgeQuotaService quotas;
 
     @Autowired(required = false)
     private MaliciousContentScanner maliciousContentScanner;
@@ -46,19 +47,14 @@ public class KnowledgeService {
     @Value("${mneme.file-storage-path:./data/files}")
     private String fileStoragePath;
 
-    @Value("${mneme.tenant-storage-quota-mb:2048}")
-    private long tenantStorageQuotaMb;
-
-    @Value("${mneme.tenant-knowledge-base-quota:100}")
-    private int tenantKnowledgeBaseQuota;
-
     public KnowledgeService(
         KnowledgeBaseMapper kbMapper,
         KnowledgeDocumentMapper docMapper,
         ProcessingTaskMapper taskMapper,
         ObjectMapper objectMapper,
         JdbcTemplate jdbc,
-        ObjectStorageService storage
+        ObjectStorageService storage,
+        KnowledgeQuotaService quotas
     ) {
         this.kbMapper = kbMapper;
         this.docMapper = docMapper;
@@ -66,6 +62,7 @@ public class KnowledgeService {
         this.objectMapper = objectMapper;
         this.jdbc = jdbc;
         this.storage = storage;
+        this.quotas = quotas;
     }
 
     @Transactional
@@ -87,15 +84,7 @@ public class KnowledgeService {
 
     @Transactional
     public void requireKnowledgeBaseCapacity(Long userId, int incoming) {
-        if (incoming < 0) throw new IllegalArgumentException("新增知识库数量不合法");
-        lockQuotaOwner(userId);
-        // Use a current read even if the outer import transaction already has
-        // an older REPEATABLE READ snapshot. The user lock lasts until commit.
-        int count = jdbc.queryForList("SELECT id FROM knowledge_base WHERE user_id=? FOR UPDATE",
-            Long.class, userId).size();
-        if ((long) count + incoming > tenantKnowledgeBaseQuota) {
-            throw new IllegalArgumentException("知识库数量已达到租户配额");
-        }
+        quotas.requireKnowledgeBaseCapacity(userId, incoming);
     }
 
     public List<KnowledgeBase> listKb(Long userId) {
@@ -115,7 +104,7 @@ public class KnowledgeService {
 
     @Transactional
     public KnowledgeDocument uploadDocument(Long userId, Long kbId, MultipartFile file) {
-        lockQuotaOwner(userId);
+        quotas.lockActiveOwner(userId);
         lockOwnedActiveKb(userId, kbId);
         if (file.isEmpty()) {
             throw new IllegalArgumentException("上传文件为空");
@@ -127,7 +116,7 @@ public class KnowledgeService {
             throw new IllegalArgumentException("不支持的文件格式");
         }
         if (file.getSize() > 30L * 1024 * 1024) throw new IllegalArgumentException("文件不能超过 30MB");
-        requireStorageQuota(userId, file.getSize());
+        quotas.requireStorageCapacity(userId, file.getSize());
         validateUpload(file, lowerName);
         scanUpload(file);
         Path targetDirectory = Path.of(fileStoragePath, userId.toString(), kbId.toString()).normalize();
@@ -271,7 +260,7 @@ public class KnowledgeService {
 
     @Transactional
     public KnowledgeDocument replaceDocument(Long userId, Long documentId, MultipartFile file) {
-        lockQuotaOwner(userId);
+        quotas.lockActiveOwner(userId);
         KnowledgeDocument document = ownedDocument(userId, documentId);
         requireIdleDocument(document);
         String originalName = file.getOriginalFilename() == null ? "document" : file.getOriginalFilename();
@@ -279,7 +268,7 @@ public class KnowledgeService {
         String lowerName = safeName.toLowerCase(java.util.Locale.ROOT);
         if (SUPPORTED_EXTENSIONS.stream().noneMatch(lowerName::endsWith)) throw new IllegalArgumentException("不支持的文件格式");
         if (file.isEmpty() || file.getSize() > 30L * 1024 * 1024) throw new IllegalArgumentException("文件大小必须在 30MB 以内");
-        requireStorageQuota(userId, file.getSize());
+        quotas.requireStorageCapacity(userId, file.getSize());
         validateUpload(file, lowerName);
         scanUpload(file);
         Path directory = Path.of(fileStoragePath, userId.toString(), document.getKbId().toString()).normalize();
@@ -318,34 +307,9 @@ public class KnowledgeService {
             """, documentId, documentId);
     }
 
-    private void lockQuotaOwner(Long userId) {
-        List<String> states = jdbc.queryForList("SELECT status FROM user WHERE id=? FOR UPDATE", String.class, userId);
-        if (states.isEmpty() || !"active".equals(states.get(0))) {
-            throw new IllegalArgumentException("用户不存在或正在删除");
-        }
-    }
-
-    private void requireStorageQuota(Long userId, long incomingBytes) {
-        // Count every retained version, including inactive versions and pending
-        // deletion. FOR UPDATE bypasses any earlier consistent-read snapshot.
-        List<Long> sizes = jdbc.queryForList("""
-            SELECT v.size_bytes
-            FROM knowledge_document_version v
-            JOIN knowledge_document d ON d.id=v.document_id
-            JOIN knowledge_base k ON k.id=d.kb_id
-            WHERE k.user_id=? FOR UPDATE
-            """, Long.class, userId);
-        long limit = Math.max(1, tenantStorageQuotaMb) * 1024L * 1024L;
-        long remaining = limit;
-        for (long size : sizes) remaining -= Math.min(remaining, Math.max(0, size));
-        if (incomingBytes < 0 || incomingBytes > remaining) {
-            throw new IllegalArgumentException("文档存储量已达到租户配额");
-        }
-    }
-
     @Transactional
     public KnowledgeDocument restoreDocumentVersion(Long userId, Long documentId, int version) {
-        lockQuotaOwner(userId);
+        quotas.lockActiveOwner(userId);
         KnowledgeDocument document = ownedDocument(userId, documentId);
         requireIdleDocument(document);
         List<Map<String, Object>> rows = jdbc.queryForList("""

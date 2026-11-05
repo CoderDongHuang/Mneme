@@ -93,10 +93,8 @@ class KnowledgeServiceSecurityTest {
         ObjectStorageService storage = new ObjectStorageService(
             "local", root.toString(), "", "", "", "mneme");
         KnowledgeService service = new KnowledgeService(
-            bases, documents, tasks, new ObjectMapper(), jdbc, storage);
+            bases, documents, tasks, new ObjectMapper(), jdbc, storage, new KnowledgeQuotaService(jdbc, 100L, 100));
         ReflectionTestUtils.setField(service, "fileStoragePath", root.toString());
-        ReflectionTestUtils.setField(service, "tenantStorageQuotaMb", 100L);
-        ReflectionTestUtils.setField(service, "tenantKnowledgeBaseQuota", 100);
         return new Fixture(service, documents, tasks, jdbc);
     }
 
