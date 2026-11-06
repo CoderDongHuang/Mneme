@@ -44,6 +44,15 @@ def test_archive_round_trip_verification(tmp_path):
     }
 
 
+@pytest.mark.parametrize('manifest', [[], {'format': 'mneme-backup', 'version': 2, 'metadata': []},
+                                     {'format': 'mneme-backup', 'version': 2, 'security': []}])
+def test_invalid_manifest_shapes_fail_with_fixed_diagnostic(tmp_path, manifest):
+    archive = tmp_path / 'invalid.tar.gz'
+    write_raw_archive(archive, {'manifest.json': json.dumps(manifest).encode()})
+    with pytest.raises(BackupError, match='invalid backup manifest'):
+        verify_archive(archive, decrypt=True)
+
+
 @pytest.mark.parametrize('encrypted', [False, True])
 def test_selected_recovery_verifies_archive_without_extracting_unrelated_stores(tmp_path, monkeypatch, encrypted):
     if encrypted:
