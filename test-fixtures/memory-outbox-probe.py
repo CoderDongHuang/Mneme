@@ -158,6 +158,7 @@ def _qa_complete_memory(request):
                 else:
                     raise AssertionError("Invalid distillation must fail")
         frozen = request.model_dump_json()
+        (_qa_root / "completion-request.json").write_text(frozen)
         result = _qa_complete(request)
         assert result == _qa_complete(request)
         assert request.model_dump_json() == frozen

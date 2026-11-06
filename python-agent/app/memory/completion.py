@@ -13,6 +13,7 @@ from app.core.privacy import require_cloud_processing
 from app.core.time import parse_utc, utc_now
 from app.memory.session_scope import account_session
 from app.memory.session_history import session_key
+from app.memory.completion_retention import expire_user, require_current, require_capacity
 from app.models.chat import MemoryCompletion, Message
 
 
@@ -35,12 +36,19 @@ class Checkpoints:
         self.fingerprint = _digest(request.model_dump())
 
     def _job(self, state):
+        expire_user(state)
+        require_current(state, self.request.reference_time)
         jobs = state.setdefault("memory_completions", {}).setdefault(self.session_key, {})
         job = jobs.setdefault(self.key, {"fingerprint": self.fingerprint, "created_at": utc_now().isoformat(), "phases": {}})
         if (not isinstance(job, dict) or not isinstance(job.get("fingerprint"), str)
                 or not isinstance(job.get("phases"), dict) or not isinstance(job.get("created_at"), str)):
             raise ValueError("记忆任务检查点损坏，拒绝执行")
         if job["fingerprint"] != self.fingerprint:
+            raise ValueError("记忆任务投递内容冲突")
+        # Bind a legacy checkpoint only after its full frozen input matches.
+        # Existing created_at is not a substitute for the original request time.
+        job.setdefault("reference_time", self.request.reference_time)
+        if parse_utc(job["reference_time"]) != parse_utc(self.request.reference_time):
             raise ValueError("记忆任务投递内容冲突")
         # A missing remote acknowledgement must remain distinguishable from a
         # later user deletion. Never replay an unacknowledged effect after its
@@ -54,13 +62,16 @@ class Checkpoints:
     def phase(self, name, action):
         with account_session(self.request.user_id, session_id=self.request.session_id) as state:
             job = self._job(state)
+            require_capacity(state)
             if name in job["phases"]:
                 return deepcopy(job["phases"][name])
         result = action()
         with account_session(self.request.user_id, session_id=self.request.session_id) as state:
             # Concurrent workers must all consume the first committed extraction
             # or plan, never apply their own discarded provider result.
-            return deepcopy(self._job(state)["phases"].setdefault(name, result))
+            result = self._job(state)["phases"].setdefault(name, result)
+            require_capacity(state)
+            return deepcopy(result)
 
 
 def _extract(request):
@@ -147,7 +158,8 @@ def _apply(request, plan, effect):
     store._require_embedding_profile()
     # A retry may need no write, but an embedding call never holds the SQL lock.
     vectors = embeddings([plan["content"]])
-    with account_session(request.user_id, session_id=request.session_id):
+    with account_session(request.user_id, session_id=request.session_id) as state:
+        require_current(state, request.reference_time)
         current = store.get_memory(plan["id"])
         applied = _receipt(request.user_id, plan["id"], current, effect)
         if not applied:
@@ -181,14 +193,17 @@ def complete_memory(request: MemoryCompletion):
 
     require_cloud_processing(request.user_id)
     checkpoints = Checkpoints(request)
+    def guard(state):
+        require_current(state, request.reference_time)
 
     def history():
         assistant = Message(role="assistant", content=request.answer, timestamp=request.reference_time,
                             token_count=max(1, len(request.answer) // 4))
         committed = short_term_memory.add_message(request.session_id, assistant, user_id=request.user_id,
-                                                  delivery_id=request.delivery_id)
+                                                  delivery_id=request.delivery_id, commit_guard=guard)
         working_memory.replace_messages(request.session_id, committed, user_id=request.user_id)
-        session_store.increment_message_count(request.user_id, request.session_id, delivery_id=request.delivery_id)
+        session_store.increment_message_count(request.user_id, request.session_id, delivery_id=request.delivery_id,
+                                              commit_guard=guard)
         return True
 
     checkpoints.phase("history", history)
@@ -205,15 +220,16 @@ def complete_memory(request: MemoryCompletion):
                                       candidate_scope=scope)
 
     def reflection():
-        reflection_scheduler.record_session(request.user_id, request.session_id, request.delivery_id)
-        reflection_scheduler.check_and_trigger(request.user_id)
+        reflection_scheduler.record_session(request.user_id, request.session_id, request.delivery_id, commit_guard=guard)
+        reflection_scheduler.check_and_trigger(request.user_id, commit_guard=guard)
         return True
 
     checkpoints.phase("reflection", reflection)
 
     def summarize():
         if short_term_memory.should_summarize(request.session_id, user_id=request.user_id):
-            short_term_memory.summarize(request.session_id, user_id=request.user_id, raise_on_error=True)
+            short_term_memory.summarize(request.session_id, user_id=request.user_id, raise_on_error=True,
+                                        commit_guard=lambda state: require_current(state, request.reference_time))
         return True
 
     checkpoints.phase("summary", summarize)
