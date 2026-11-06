@@ -448,7 +448,37 @@ def _validated_name(member: tarfile.TarInfo) -> str:
     return path.as_posix().rstrip("/")
 
 
-def verify_archive(archive: Path) -> dict:
+def _archive_decryption_key(manifest):
+    security = manifest.get("security", {})
+    if not security.get("encrypted"):
+        return None
+    if security.get("envelope_encrypted"):
+        wrapped = base64.b64decode(security["wrapped_data_key"], validate=True)
+        secret = _key_provider("unwrap", security["key_version"], wrapped)
+        if len(secret) != 32:
+            raise BackupError("backup key provider returned a data key with invalid length")
+    else:
+        secret, _ = _security_keys_for_version(security.get("key_version"))
+    if secret is None:
+        raise BackupError("encrypted backup requires BACKUP_ENCRYPTION_KEY")
+    return secret
+
+
+def _plaintext(entry, data, secret):
+    name = entry["path"]
+    if secret is not None:
+        if len(data) < 12:
+            raise BackupError(f"encrypted archive file is truncated: {name}")
+        try:
+            data = AESGCM(secret).decrypt(data[:12], data[12:], name.encode())
+        except InvalidTag as error:
+            raise BackupError(f"backup decryption authentication failed: {name}") from error
+        if sha256_stream(io.BytesIO(data)) != entry.get("plaintext_sha256"):
+            raise BackupError(f"plaintext checksum mismatch: {name}")
+    return data
+
+
+def verify_archive(archive: Path, *, decrypt: bool = False) -> dict:
     if not archive.is_file():
         raise BackupError(f"backup archive does not exist: {archive}")
     try:
@@ -466,8 +496,12 @@ def verify_archive(archive: Path) -> dict:
             if manifest_stream is None:
                 raise BackupError("backup manifest cannot be read")
             manifest = json.load(manifest_stream)
+            if not isinstance(manifest, dict):
+                raise BackupError("invalid backup manifest")
             if manifest.get("format") != FORMAT or manifest.get("version") not in {1, VERSION}:
                 raise BackupError("unsupported backup format or version")
+            if not isinstance(manifest.get("metadata", {}), dict) or not isinstance(manifest.get("security", {}), dict):
+                raise BackupError("invalid backup manifest metadata")
             security = manifest.get("security", {}) if manifest.get("version") >= 2 else {}
             if os.getenv("BACKUP_REQUIRE_PROTECTION", "false").lower() in {"1", "true", "yes", "on"}:
                 if not security.get("encrypted") or not security.get("signed"):
@@ -518,6 +552,7 @@ def verify_archive(archive: Path) -> dict:
                 missing = sorted(set(declared) - actual)
                 unknown = sorted(actual - set(declared))
                 raise BackupError(f"archive inventory mismatch; missing={missing}, unknown={unknown}")
+            secret = _archive_decryption_key(manifest) if decrypt else None
             for name, entry in declared.items():
                 member = members[name]
                 stream = bundle.extractfile(member)
@@ -526,6 +561,8 @@ def verify_archive(archive: Path) -> dict:
                 digest = sha256_stream(stream)
                 if member.size != entry.get("size") or digest != entry.get("sha256"):
                     raise BackupError(f"checksum or size mismatch: {name}")
+                if decrypt and secret is not None:
+                    _plaintext(entry, bundle.extractfile(member).read(), secret)
             return manifest
     except (tarfile.TarError, json.JSONDecodeError, OSError) as error:
         raise BackupError(f"invalid backup archive: {error}") from error
@@ -554,18 +591,7 @@ def extract_verified(archive: Path, destination: Path, *, selected_paths: set[st
     if selected_paths is not None and not selected_paths <= {entry['path'] for entry in manifest['files']}:
         raise BackupError('selected recovery file is missing')
     destination = _empty_isolated_destination(destination)
-    security = manifest.get("security", {})
-    encryption_secret = None
-    if security.get("encrypted"):
-        if security.get("envelope_encrypted"):
-            wrapped = base64.b64decode(security["wrapped_data_key"], validate=True)
-            encryption_secret = _key_provider("unwrap", security["key_version"], wrapped)
-            if len(encryption_secret) != 32:
-                raise BackupError("backup key provider returned a data key with invalid length")
-        else:
-            encryption_secret, _ = _security_keys_for_version(security.get("key_version"))
-        if encryption_secret is None:
-            raise BackupError("encrypted backup requires BACKUP_ENCRYPTION_KEY")
+    encryption_secret = _archive_decryption_key(manifest)
     with tarfile.open(archive, "r:gz") as bundle:
         for entry in manifest["files"]:
             name = entry["path"]
@@ -576,18 +602,7 @@ def extract_verified(archive: Path, destination: Path, *, selected_paths: set[st
             stream = bundle.extractfile(bundle.getmember(name))
             if stream is None:
                 raise BackupError(f"archive file cannot be read: {name}")
-            data = stream.read()
-            if security.get("encrypted"):
-                if len(data) < 12:
-                    raise BackupError(f"encrypted archive file is truncated: {name}")
-                try:
-                    data = AESGCM(encryption_secret).decrypt(
-                        data[:12], data[12:], name.encode()
-                    )
-                except InvalidTag as error:
-                    raise BackupError(f"backup decryption authentication failed: {name}") from error
-                if sha256_stream(io.BytesIO(data)) != entry.get("plaintext_sha256"):
-                    raise BackupError(f"plaintext checksum mismatch: {name}")
+            data = _plaintext(entry, stream.read(), encryption_secret)
             with target.open("xb") as output:
                 output.write(data)
     return manifest
