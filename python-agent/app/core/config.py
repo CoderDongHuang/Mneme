@@ -131,6 +131,7 @@ class Settings:
     )
     ocr_enabled: bool = _bool("OCR_ENABLED", True)
     ocr_languages: str = os.getenv("OCR_LANGUAGES", "chi_sim+eng")
+    ocr_timeout_seconds: float = _positive_float("OCR_TIMEOUT_SECONDS", 60)
     pdf_min_text_chars: int = int(os.getenv("PDF_MIN_TEXT_CHARS", "80"))
     multimodal_enabled: bool = _bool("MULTIMODAL_ENABLED", False)
     multimodal_model: str = os.getenv("MULTIMODAL_MODEL", "qwen3-vl-plus")

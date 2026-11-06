@@ -10,7 +10,8 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.core.logging import setup_logger
-from app.knowledge.cancellation import check_cancelled, IngestionCancelled
+from app.knowledge.cancellation import check_cancelled, IngestionCancelled, IngestionLeaseLost
+from app.knowledge.ocr import recognize_image
 
 logger = setup_logger("ingestion")
 PARSER_VERSION = "mneme-structured-v3"
@@ -94,16 +95,16 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
 
             if len(text) < settings.pdf_min_text_chars and settings.ocr_enabled:
                 try:
-                    import pytesseract
                     from PIL import Image
 
                     pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
                     image = Image.frombytes(
                         "RGB", [pixmap.width, pixmap.height], pixmap.samples
                     )
-                    ocr_data = pytesseract.image_to_data(
-                        image, lang=settings.ocr_languages, output_type=pytesseract.Output.DICT
-                    )
+                    with image:
+                        ocr_data, ocr_text = recognize_image(
+                            image, settings.ocr_languages, settings.ocr_timeout_seconds
+                        )
                     confidence_values = [
                         float(value) for value in ocr_data.get("conf", [])
                         if str(value).strip() not in {"", "-1"} and float(value) >= 0
@@ -117,12 +118,13 @@ def _parse_pdf(path: Path, source: str) -> list[Document]:
                         ocr_regions.append({"text": str(word), "confidence": round(confidence / 100, 4),
                                             "region": _region(left, top, left + ocr_data["width"][index],
                                                               top + ocr_data["height"][index], image.width, image.height)})
-                    ocr_text = pytesseract.image_to_string(image, lang=settings.ocr_languages).strip()
                     if ocr_text:
                         text = ocr_text
                         lines = [
                             line.strip() for line in text.splitlines() if line.strip()
                         ]
+                except (IngestionCancelled, IngestionLeaseLost):
+                    raise
                 except (ImportError, OSError, RuntimeError) as error:
                     warnings.append({"page": page_index, "code": "ocr_unavailable"})
                     logger.warning(

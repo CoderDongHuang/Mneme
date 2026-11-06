@@ -28,7 +28,7 @@ def profiles():
                    "configured": bool(settings.dashscope_api_key) if settings.reranker_provider == "dashscope" else True,
                    "timeout_seconds": 10, "max_retries": 0},
         "ocr": {"provider": "tesseract", "model": settings.ocr_languages,
-                "enabled": settings.ocr_enabled, "timeout_seconds": 10, "max_retries": 0,
+                "enabled": settings.ocr_enabled, "timeout_seconds": 15, "max_retries": 0,
                 "vision_model": settings.multimodal_model if settings.multimodal_enabled else "disabled"},
     }
 
@@ -98,14 +98,15 @@ async def _probe(name):
                         error.status_code = response.status_code
                         raise error
         else:
-            import pytesseract
             from PIL import Image
             def check_ocr():
-                languages = set(pytesseract.get_languages(config=""))
+                from app.knowledge.ocr import available_languages, recognize_image
+
+                languages = available_languages(timeout=5)
                 if not set(settings.ocr_languages.split("+")).issubset(languages):
                     raise FileNotFoundError("OCR language pack missing")
-                pytesseract.image_to_string(Image.new("RGB", (80, 30), "white"),
-                                           lang=settings.ocr_languages, timeout=10)
+                with Image.new("RGB", (80, 30), "white") as image:
+                    recognize_image(image, settings.ocr_languages, timeout=5)
             await asyncio.wait_for(asyncio.to_thread(check_ocr), 15)
     except Exception as error:
         state = classify_error(error)
