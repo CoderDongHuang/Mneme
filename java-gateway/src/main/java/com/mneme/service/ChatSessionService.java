@@ -163,6 +163,36 @@ public class ChatSessionService {
 
     public record Exchange(ChatMessage userMessage, ChatMessage assistantMessage, boolean completed) { }
 
+    public List<java.util.Map<String, Object>> conversationHistory(Long userId, Long sessionId, Long beforeId) {
+        var history = jdbc.queryForList("""
+            SELECT m.role,m.content,CONCAT(DATE_FORMAT(m.created_at,'%Y-%m-%dT%H:%i:%s.%f'),'Z') AS timestamp
+            FROM chat_message m JOIN chat_session s ON s.id=m.session_id
+            WHERE s.id=? AND s.user_id=? AND s.deletion_status='active' AND m.id<?
+              AND m.status='completed' AND EXISTS (
+                SELECT 1 FROM chat_message a WHERE a.session_id=m.session_id AND a.request_id=m.request_id
+                  AND a.role='assistant' AND a.status='completed')
+            ORDER BY m.id DESC LIMIT 40
+            """, sessionId, userId, beforeId);
+        // Keep the recent canonical context within the Agent's 64 KiB chat
+        // budget, even when a previous answer or imported message is very long.
+        var bounded = new java.util.ArrayList<java.util.Map<String, Object>>();
+        int bytes = 2;
+        for (var row : history) {
+            String content = String.valueOf(row.get("content"));
+            int points = content.codePointCount(0, content.length());
+            if (points > 4000) row.put("content", content.substring(0, content.offsetByCodePoints(0, 4000)));
+            try {
+                int size = json.writeValueAsBytes(row).length + 1;
+                if (bytes + size > 24 * 1024) break;
+                bounded.add(row); bytes += size;
+            } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+                throw new IllegalStateException("对话上下文读取失败");
+            }
+        }
+        java.util.Collections.reverse(bounded);
+        return bounded;
+    }
+
     @Transactional
     public ChatSession renameSession(Long userId, Long sessionId, String title) {
         if (title == null || title.isBlank() || title.trim().length() > 120) {
@@ -184,21 +214,43 @@ public class ChatSessionService {
     @Transactional
     public void finishAnswer(Long messageId, long generation, String content, String sourcesJson,
                              List<com.mneme.dto.ChatResponse.PendingMemory> candidates) {
+        finishAnswer(messageId, generation, content, sourcesJson, candidates, null);
+    }
+
+    /** Persist the complete memory intent in the same transaction as the answer. */
+    @Transactional
+    public void finishAnswer(Long messageId, long generation, String content, String sourcesJson,
+                             List<com.mneme.dto.ChatResponse.PendingMemory> candidates,
+                             com.fasterxml.jackson.databind.JsonNode completion) {
         if (content == null || content.isBlank()) throw new IllegalArgumentException("回答内容为空");
         if (jdbc.update("UPDATE chat_message SET content=?,sources_json=?,status='completed',error_code=NULL"
             + " WHERE id=? AND role='assistant' AND status='processing' AND answer_generation=?",
             content, sourcesJson, messageId, generation) != 1)
             throw new IllegalStateException("回答执行权已失效，拒绝发布完成状态");
-        if (candidates == null || candidates.isEmpty()) return;
+        boolean fullCompletion = completion != null && !completion.isNull();
+        if (!fullCompletion && (candidates == null || candidates.isEmpty())) return;
+        if (fullCompletion) {
+            com.mneme.dto.ChatStreamContract.validate("completion", json.valueToTree(java.util.Map.of("input", completion)), true);
+            var owners = jdbc.queryForList("""
+                SELECT s.user_id,s.id AS session_id,m.request_id FROM chat_session s JOIN chat_message m ON m.session_id=s.id
+                WHERE m.id=? AND s.deletion_status='active' FOR UPDATE
+                """, messageId);
+            if (owners.size() != 1 || !String.valueOf(owners.get(0).get("user_id")).equals(completion.path("user_id").asText())
+                || !String.valueOf(owners.get(0).get("session_id")).equals(completion.path("session_id").asText())
+                || !String.valueOf(owners.get(0).get("request_id")).equals(completion.path("delivery_id").asText())
+                || !content.equals(completion.path("answer").asText()))
+                throw new IllegalStateException("记忆任务来源不匹配");
+        }
         String payload;
-        try { payload = json.writeValueAsString(candidates); }
+        try { payload = json.writeValueAsString(fullCompletion ? completion : candidates); }
         catch (Exception error) { throw new IllegalStateException("记忆任务交接失败", error); }
         int inserted = jdbc.update("""
             INSERT INTO processing_task(task_id,task_type,user_id,aggregate_id,idempotency_key,payload)
-            SELECT ?, 'memory_candidates',s.user_id,m.id,?,CAST(? AS JSON)
+            SELECT ?, ?,s.user_id,m.id,?,CAST(? AS JSON)
             FROM chat_message m JOIN chat_session s ON s.id=m.session_id
             WHERE m.id=? AND m.answer_generation=? AND m.status='completed'
             """, "task_" + java.util.UUID.randomUUID().toString().replace("-", ""),
+            fullCompletion ? "memory_completion" : "memory_candidates",
             "memory:" + messageId + ":" + generation, payload, messageId, generation);
         if (inserted != 1) throw new IllegalStateException("记忆任务交接失败");
     }

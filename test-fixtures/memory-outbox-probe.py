@@ -8,7 +8,6 @@ from app.core.time import utc_now as _qa_now
 from app.memory.short_term_memory import short_term_memory as _qa_short
 from app.models.chat import Message as _QaHistoryMessage
 from app.memory import distillation as _qa_distillation
-from app.agents.nodes import memory_write_node as _qa_memory_write
 from app.memory.reflection_scheduler import reflection_scheduler as _qa_reflection
 from app.agents.trace_store import agent_trace_store as _qa_trace
 from app.memory.short_term_memory import ShortTermMemoryManager as _QaShortManager
@@ -23,30 +22,23 @@ import time as _qa_time
 
 _qa_context = _qa_contextvars.ContextVar("memory_outbox_probe", default=False)
 _qa_prepare = prepare_conversation  # noqa: F821 -- injected module globals
-_qa_complete = complete_conversation  # noqa: F821
+from app.memory.completion import complete_memory as _qa_complete
+import app.api.chat as _qa_chat_api
 _qa_llm = llm  # noqa: F821
 _qa_distill_llm = _qa_distillation.llm
-_qa_seeded = set()
 
 
 def prepare_conversation(request):
     scope = _qa_json.loads((_qa_root / "scope.json").read_text(encoding="utf-8"))  # noqa: F821
     matches = str(request.user_id) == scope["user"] and str(request.session_id) == scope["session"]
     _qa_context.set(matches)
-    if matches and request.session_id not in _qa_seeded:
-        _qa_seeded.add(request.session_id)
-        for role, content in [("user", "Historical snapshot preference"), ("assistant", "Prior snapshot answer")]:
-            _qa_short.add_message(request.session_id, _QaHistoryMessage(
-                role=role, content=content, timestamp=(_qa_now() - _QaDelta(minutes=20)).isoformat(), token_count=5), user_id=request.user_id)
     state = _qa_prepare(request)
     if matches:
         state["intent"] = "general"
     return state
 
 
-def complete_conversation(request, state, answer):
-    if not _qa_context.get():
-        return _qa_complete(request, state, answer)
+def _qa_privacy(request, state):
     scope = _qa_json.loads((_qa_root / "scope.json").read_text(encoding="utf-8"))  # noqa: F821
     canary = scope["privacy_canary"]
     # Exercise actual persistence error handlers, without interrupting the
@@ -138,53 +130,67 @@ def complete_conversation(request, state, answer):
         "real_trace_redacted": True,
         "redis_session_diagnostics_redacted": True,
     }))
-    # Run the actual completion and distillation pipeline. Only provider output
-    # is controlled: cache reads, idle detection, IDs and Redis writes are real.
-    # First fail actual idle detection/extraction on malformed provider output.
-    # No whole-completion retry is attempted: later side effects are not yet
-    # globally idempotent. The original snapshot alone is safe to extract again.
-    original_input = _qa_json.dumps(state["memory_input"], sort_keys=True)
-    with _qa_patch.object(_qa_distillation, "llm", _QaMock(invoke=_QaMock(return_value=_QaMessage(content=canary)))):
-        try:
-            with _qa_trace.span(request.user_id, request.session_id, "memory.distillation.validation"):
-                _qa_memory_write(state)
-        except _qa_distillation.DistillationResultError as error:
-            assert error.__context__ is None and canary not in "".join(_qa_traceback.format_exception(error))
-        else:
-            raise AssertionError("Invalid distillation must fail, not return empty success")
-    assert _qa_json.dumps(state["memory_input"], sort_keys=True) == original_input
-    rows = _qa_trace.list_session(request.user_id, request.session_id)
-    assert any(row["node"] == "memory.distillation.validation" and row["status"] == "error" for row in rows)
-    assert canary not in _qa_json.dumps(rows)
-    result = _qa_complete(request, state, answer)
-    from app.memory.session_store import SessionStore as _QaSessionStore, session_store as _qa_sessions
-    count_before = _qa_sessions.get_sessions(request.user_id)
-    assert next(row for row in count_before if row["id"] == request.session_id)["message_count"] == 2
-    fresh_store = _QaSessionStore(_qa_sessions._data_dir)
-    fresh_store.register_session(request.user_id, request.session_id, delivery_id=state["memory_input"]["delivery_id"])
-    fresh_store.increment_message_count(request.user_id, request.session_id, delivery_id=state["memory_input"]["delivery_id"])
-    assert fresh_store.get_sessions(request.user_id) == count_before
-    repeated = _qa_memory_write(state)
-    assert result["pending_memories"] == repeated["pending_memories"]
-    assert len(state["memory_input"]["history"]) == 3
-    assert any(m.content == "Later turn must not be distilled" for m in _qa_short.get_history(request.session_id, user_id=request.user_id))
-    marker = _qa_reflection._delivery_key(request.user_id, request.session_id, state["memory_input"]["delivery_id"])
-    from hashlib import sha256
-    from app.knowledge.generations import generation_store
-    receipts = generation_store.snapshot(request.user_id)["reflection_deliveries"]
-    assert receipts[sha256(request.session_id.encode()).hexdigest()][marker.rsplit(":", 1)[1]] is True
-    assert _qa_reflection._redis.exists(marker) == 0
-    counter = _qa_reflection._counter_key(request.user_id)
-    before = _qa_reflection._redis.get(counter)
-    _qa_reflection.record_session(request.user_id, request.session_id, state["memory_input"]["delivery_id"])
-    assert _qa_reflection._redis.get(counter) == before
-    (_qa_root / "snapshot-check.json").write_text(_qa_json.dumps({  # noqa: F821
-        "snapshot_frozen": True, "candidate_stable": True, "actual_completion": True,
-        "reflection_delivery_recorded": True,
-        "distillation_failure_visible": True, "distillation_retry_valid": True,
-        "session_count_delivery_deduplicated": True,
-    }))
-    return result
+
+
+def _qa_complete_memory(request):
+    scope = _qa_json.loads((_qa_root / "scope.json").read_text(encoding="utf-8"))
+    matches = request.user_id == scope["user"] and request.session_id == scope["session"]
+    token = _qa_context.set(matches)
+    try:
+        if not matches:
+            return _qa_complete(request)
+        state = {"user_id": request.user_id, "session_id": request.session_id,
+                 "memory_input": {"history": [m.model_dump() for m in request.history],
+                                  "reference_time": request.reference_time, "delivery_id": request.delivery_id}}
+        if not (_qa_root / "privacy-check.json").exists():
+            _qa_privacy(request, state)
+        # The first worker attempt fails inside the real parser. The answer has
+        # already committed; the next attempt replays the actual SQL checkpoint.
+        if not (_qa_root / "invalid-result-checked").exists():
+            with _qa_patch.object(_qa_distillation, "llm", _QaMock(invoke=_QaMock(return_value=_QaMessage(content=scope["privacy_canary"])))):
+                try:
+                    _qa_complete(request)
+                except _qa_distillation.DistillationResultError as error:
+                    assert error.__context__ is None
+                    assert scope["privacy_canary"] not in "".join(_qa_traceback.format_exception(error))
+                    (_qa_root / "invalid-result-checked").touch()
+                    raise
+                else:
+                    raise AssertionError("Invalid distillation must fail")
+        frozen = request.model_dump_json()
+        result = _qa_complete(request)
+        assert result == _qa_complete(request)
+        assert request.model_dump_json() == frozen
+        from app.memory.session_store import session_store as sessions, SessionStore
+        count_before = sessions.get_sessions(request.user_id)
+        assert next(row for row in count_before if row["id"] == request.session_id)["message_count"] == 2
+        fresh = SessionStore(sessions._data_dir)
+        fresh.register_session(request.user_id, request.session_id, delivery_id=request.delivery_id)
+        fresh.increment_message_count(request.user_id, request.session_id, delivery_id=request.delivery_id)
+        assert fresh.get_sessions(request.user_id) == count_before
+        assert len(request.history) == 3
+        assert any(m.content == "Later turn must not be distilled" for m in _qa_short.get_history(request.session_id, user_id=request.user_id))
+        marker = _qa_reflection._delivery_key(request.user_id, request.session_id, request.delivery_id)
+        from hashlib import sha256
+        from app.knowledge.generations import generation_store
+        receipts = generation_store.snapshot(request.user_id)["reflection_deliveries"]
+        assert receipts[sha256(request.session_id.encode()).hexdigest()][marker.rsplit(":", 1)[1]] is True
+        assert _qa_reflection._redis.exists(marker) == 0
+        counter = _qa_reflection._counter_key(request.user_id)
+        before = _qa_reflection._redis.get(counter)
+        _qa_reflection.record_session(request.user_id, request.session_id, request.delivery_id)
+        assert _qa_reflection._redis.get(counter) == before
+        (_qa_root / "snapshot-check.json").write_text(_qa_json.dumps({
+            "snapshot_frozen": True, "candidate_stable": True, "actual_completion": True,
+            "reflection_delivery_recorded": True, "distillation_failure_visible": True,
+            "distillation_retry_valid": True, "session_count_delivery_deduplicated": True,
+        }))
+        return result
+    finally:
+        _qa_context.reset(token)
+
+
+_qa_chat_api.complete_memory = _qa_complete_memory
 
 
 class _QaDistiller:

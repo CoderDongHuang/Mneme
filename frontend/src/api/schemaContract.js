@@ -1,6 +1,6 @@
 // The supported JSON Schema vocabulary is deliberately bounded and checked in
 // tests. Unsupported future constraints fail closed rather than silently drift.
-const vocabulary = new Set(['$ref', 'title', 'description', 'default', 'type', 'properties', 'required', 'additionalProperties', 'items', 'anyOf', 'const', 'enum', 'minimum', 'maximum', 'minLength', 'maxLength'])
+const vocabulary = new Set(['$ref', 'title', 'description', 'default', 'type', 'properties', 'required', 'additionalProperties', 'items', 'anyOf', 'const', 'enum', 'minimum', 'maximum', 'minLength', 'maxLength', 'maxItems'])
 
 export function matchesSchema(schema, value, definitions = {}) {
   if (!schema || typeof schema !== 'object') return false
@@ -17,6 +17,7 @@ export function matchesSchema(schema, value, definitions = {}) {
     const length = Array.from(value).length
     if ((schema.minLength !== undefined && length < schema.minLength) || (schema.maxLength !== undefined && length > schema.maxLength)) return false
   }
+  if (Array.isArray(value) && schema.maxItems !== undefined && value.length > schema.maxItems) return false
   if (Array.isArray(value) && schema.items && !value.every(item => matchesSchema(schema.items, item, definitions))) return false
   if (object) {
     if (schema.required?.some(key => !Object.hasOwn(value, key))) return false

@@ -196,7 +196,7 @@ public class WorkspaceService {
         if (owned.isEmpty() || !List.of("failed", "retry", "cancelled").contains(String.valueOf(owned.get(0).get("status")))) {
             throw new IllegalArgumentException("任务不存在或当前状态不可重试");
         }
-        if ("memory_candidates".equals(owned.get(0).get("task_type"))) {
+        if (List.of("memory_candidates", "memory_completion").contains(String.valueOf(owned.get(0).get("task_type")))) {
             if ("cancelled".equals(owned.get(0).get("status")) || rows("""
                 SELECT m.id FROM user u JOIN chat_session s ON s.user_id=u.id JOIN chat_message m ON m.session_id=s.id
                 WHERE u.id=? AND u.status='active' AND s.deletion_status='active' AND m.id=? AND m.status='completed' FOR UPDATE

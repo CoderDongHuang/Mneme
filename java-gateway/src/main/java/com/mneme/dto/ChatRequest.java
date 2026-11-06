@@ -37,6 +37,11 @@ public class ChatRequest {
     private String dateTo;
     @com.fasterxml.jackson.annotation.JsonProperty(value = "document_ids", access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     private List<String> documentIds;
+    @com.fasterxml.jackson.annotation.JsonProperty(value = "conversation_history", access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private List<java.util.Map<String, Object>> conversationHistory;
+
+    public List<java.util.Map<String, Object>> getConversationHistory() { return conversationHistory; }
+    public void setConversationHistory(List<java.util.Map<String, Object>> value) { conversationHistory = value; }
 
     public List<String> getSelectedDocumentIds() { return selectedDocumentIds; }
     public void setSelectedDocumentIds(List<String> ids) { selectedDocumentIds = ids; }

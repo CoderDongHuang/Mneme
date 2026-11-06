@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.chat import PendingMemory, Source
+from app.models.chat import MemoryCompletion, PendingMemory, Source
 
 
 def json_integer(value):
@@ -65,6 +65,10 @@ class Memory(Payload):
     status: Literal["queued"] | None = None
 
 
+class Completion(Payload):
+    input: MemoryCompletion
+
+
 class Done(Payload):
     answer_length: int | None = Field(default=None, ge=0, le=9007199254740991)
     ok: Literal[True] | None = None
@@ -96,15 +100,18 @@ class Stopped(Payload):
 
 EVENT_MODELS = {
     "start": Start, "meta": Meta, "token": Token, "memory": Memory,
-    "done": Done, "error": Error, "stopped": Stopped,
+    "done": Done, "error": Error, "stopped": Stopped, "completion": Completion,
 }
-AGENT_EVENTS = ("meta", "token", "memory", "done", "error")
+AGENT_EVENTS = ("meta", "token", "memory", "completion", "done", "error")
+AGENT_ONLY_EVENTS = ("completion",)
 TERMINAL_EVENTS = ("done", "error", "stopped")
 
 
 def validate_event(event: str, payload: dict, *, agent=False) -> None:
     # Never echo payloads (answers, citations, candidates) in protocol errors.
     try:
+        if not agent and event in AGENT_ONLY_EVENTS:
+            raise ValueError()
         if agent and event not in AGENT_EVENTS:
             raise ValueError()
         EVENT_MODELS[event].model_validate(payload, strict=True)

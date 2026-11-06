@@ -1221,11 +1221,10 @@
   "记忆已确认": "Memory confirmed",
   "记忆已忽略": "Memory dismissed",
   "记忆已添加": "Memory added",
-  "回答已保存，候选记忆正在后台保存。": "Your answer is saved. Memory candidates are being saved in the background.",
+  "回答已保存，记忆正在后台处理。": "Your answer is saved. Memory is being processed in the background.",
   "查看记忆任务": "View memory tasks",
   "前往学习记忆确认": "Review saved memories",
   "候选记忆保存": "Save memory candidates",
-  "回答已保存。候选记忆保存失败不会更改回答状态，可在修复服务后重试此任务。": "Your answer is saved. A memory save failure does not change its status. Retry this task after restoring the service.",
   "来源回答": "Source answer",
   "候选记忆保存未成功，回答已保留。请检查服务状态后重试；联系管理员时提供执行编号。": "Candidate memory could not be saved. Your answer is retained. Check the service and retry; include the task ID when contacting support.",
   "正在读取测验…": "Loading quizzes…",
@@ -1394,5 +1393,8 @@
   "核对个人资料": "Check profile",
   "核对已保存资料": "Check saved profile",
   "草稿已保留。核对只读取资料，不会再次保存、上传或发送邮件；邮箱验证状态不能证明邮件是否送达。": "Your draft is preserved. Checking only reads your profile and will not save, upload or send mail again. Verification status cannot confirm email delivery.",
-  "采用服务端资料": "Use server profile"
+  "采用服务端资料": "Use server profile",
+  "对话记忆处理": "Process conversation memory",
+  "回答已保存。后台记忆处理失败不会更改回答状态，可在修复服务后重试此任务。": "Your answer is saved. A background memory failure does not change its status. Retry this task after restoring the service.",
+  "记忆处理未成功，回答已保留。请检查模型配置与服务状态后重试；联系管理员时提供执行编号。": "Memory processing failed. Your answer is retained. Check your model configuration and service status, then retry; include the task ID when contacting support."
 }

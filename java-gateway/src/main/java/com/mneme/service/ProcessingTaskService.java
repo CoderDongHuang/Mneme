@@ -47,6 +47,8 @@ public class ProcessingTaskService {
     private OperationLogService operationLog;
     @Autowired(required = false)
     private org.springframework.data.redis.core.StringRedisTemplate cancellationRedis;
+    @Autowired(required = false)
+    private UserSettingsService userSettings;
 
     @Value("${mneme.python-agent-url}")
     private String pythonAgentUrl;
@@ -131,6 +133,8 @@ public class ProcessingTaskService {
                 deleteKnowledgeBase(task, lease);
             } else if ("memory_candidates".equals(task.getTaskType())) {
                 storeMemoryCandidates(task, lease);
+            } else if ("memory_completion".equals(task.getTaskType())) {
+                completeMemory(task, lease);
             } else if ("session_delete".equals(task.getTaskType())) {
                 deleteSession(task, lease);
             } else {
@@ -179,6 +183,68 @@ public class ProcessingTaskService {
         });
     }
 
+    private void completeMemory(ProcessingTask task, TaskLeaseService.Lease lease) throws Exception {
+        JsonNode payload = objectMapper.readTree(task.getPayload());
+        com.mneme.dto.ChatStreamContract.validate("completion", objectMapper.valueToTree(Map.of("input", payload)), true);
+        if (!String.valueOf(task.getUserId()).equals(payload.path("user_id").asText()))
+            throw new IllegalStateException("记忆任务来源不匹配");
+        if (!lease.write(row -> activeMemorySource(task, payload))) {
+            cancelMemory(task, lease);
+            return;
+        }
+        var headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        // Scheduler threads have no Servlet request context. Resolve this
+        // account's current encrypted configuration, never persist its key.
+        if (userSettings != null) {
+            String model = userSettings.modelHeader(task.getUserId());
+            if (!model.isEmpty()) headers.set("X-Mneme-Model", model);
+        }
+        var receipt = restTemplate.postForObject(pythonAgentUrl + "/api/v1/chat/memory/complete",
+            new org.springframework.http.HttpEntity<>(payload, headers), JsonNode.class);
+        if (receipt == null || !receipt.path("completed").isBoolean() || !receipt.path("completed").asBoolean()
+            || !payload.path("delivery_id").asText().equals(receipt.path("delivery_id").asText())
+            || !receipt.path("pending_memories").isArray())
+            throw new IllegalStateException("记忆任务未通过完成核验");
+        com.mneme.dto.ChatStreamContract.validate("memory", objectMapper.valueToTree(Map.of("pending", receipt.path("pending_memories"))), true);
+        var candidates = objectMapper.<List<com.mneme.dto.ChatResponse.PendingMemory>>convertValue(receipt.path("pending_memories"),
+            objectMapper.getTypeFactory().constructCollectionType(List.class, com.mneme.dto.ChatResponse.PendingMemory.class));
+        lease.write(row -> {
+            if (!activeMemorySource(task, payload) || "cancelling".equals(row.get("status"))) {
+                cancelMemoryLocked(task, lease);
+                return null;
+            }
+            pendingMemories.store(task.getUserId(), Long.valueOf(payload.path("session_id").asText()), task.getAggregateId(), candidates);
+            jdbc.update("UPDATE processing_task SET payload=JSON_OBJECT() WHERE id=?", task.getId());
+            completeLocked(task, lease);
+            return null;
+        });
+    }
+
+    private boolean activeMemorySource(ProcessingTask task, JsonNode payload) {
+        var users = jdbc.queryForList("SELECT status FROM user WHERE id=? FOR UPDATE", task.getUserId());
+        if (users.isEmpty() || !"active".equals(users.get(0).get("status"))) return false;
+        return !jdbc.queryForList("""
+            SELECT m.id FROM chat_session s JOIN chat_message m ON m.session_id=s.id
+            WHERE s.user_id=? AND s.id=? AND s.deletion_status='active' AND m.id=?
+              AND m.request_id=? AND m.content=? AND m.role='assistant' AND m.status='completed' FOR UPDATE
+            """, task.getUserId(), payload.path("session_id").asText(), task.getAggregateId(), payload.path("delivery_id").asText(), payload.path("answer").asText()).isEmpty();
+    }
+
+    private void cancelMemory(ProcessingTask task, TaskLeaseService.Lease lease) {
+        lease.write(row -> {
+            cancelMemoryLocked(task, lease);
+            return null;
+        });
+    }
+
+    private void cancelMemoryLocked(ProcessingTask task, TaskLeaseService.Lease lease) {
+        jdbc.update("UPDATE processing_task SET payload=JSON_OBJECT(),error_code=NULL WHERE id=?", task.getId());
+        lease.finish("cancelled", null);
+        task.setStatus("cancelled");
+        notificationService.publish(task);
+    }
+
     private void deleteSession(ProcessingTask task, TaskLeaseService.Lease lease) {
         // No SQL transaction spans network IO. Agent commits a permanent fence
         // before cache cleanup, so a lost lease or response is safe to replay.
@@ -196,11 +262,11 @@ public class ProcessingTaskService {
             jdbc.update("""
                 DELETE t FROM processing_task t JOIN chat_message m ON m.id=t.aggregate_id
                 JOIN chat_session s ON s.id=m.session_id
-                WHERE t.task_type='memory_candidates' AND t.user_id=? AND s.id=? AND s.user_id=?
+                WHERE t.task_type IN ('memory_candidates','memory_completion') AND t.user_id=? AND s.id=? AND s.user_id=?
                 """, task.getUserId(), task.getAggregateId(), task.getUserId());
             Long candidates = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM processing_task t JOIN chat_message m ON m.id=t.aggregate_id
-                WHERE t.task_type='memory_candidates' AND t.user_id=? AND m.session_id=?
+                WHERE t.task_type IN ('memory_candidates','memory_completion') AND t.user_id=? AND m.session_id=?
                 """, Long.class, task.getUserId(), task.getAggregateId());
             if (candidates == null || candidates != 0) throw new IllegalStateException("会话候选任务仍有残留");
             jdbc.update("DELETE FROM pending_memory WHERE user_id=? AND session_id=?", task.getUserId(), task.getAggregateId());
@@ -485,6 +551,7 @@ public class ProcessingTaskService {
             task.getMaxAttempts() == null ? 3 : task.getMaxAttempts(), 300, java.time.Instant.now());
         // SQL exceptions may embed bound memory text; persist only a fixed diagnosis.
         if ("memory_candidates".equals(task.getTaskType())) error = new IllegalStateException("候选记忆保存失败，请重试任务");
+        if ("memory_completion".equals(task.getTaskType())) error = new IllegalStateException("记忆处理失败，回答已保留；请检查服务配置后重试任务");
         if ("session_delete".equals(task.getTaskType())) error = new IllegalStateException("会话清理未完成，请修复服务后重试任务");
         if (retry.rateLimited()) error = new IllegalStateException(TaskRetryPolicy.RATE_LIMIT_MESSAGE);
         int attempts = retry.attempts();

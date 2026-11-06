@@ -164,7 +164,7 @@ test('queued candidates preserve a completed answer and offer task and memory li
   })
   await open(); send()
   expect(await screen.findByText('已保存的完整回答')).toBeInTheDocument()
-  expect(await screen.findByText(/回答已保存，候选记忆正在后台保存/)).toBeInTheDocument()
+  expect(await screen.findByText(/回答已保存，记忆正在后台处理/)).toBeInTheDocument()
   expect(screen.getByRole('link', { name: '查看记忆任务' })).toHaveAttribute('href', '/tasks')
   expect(screen.getByRole('link', { name: '前往学习记忆确认' })).toHaveAttribute('href', '/memory')
   expect(screen.queryByRole('button', { name: '确认记忆' })).not.toBeInTheDocument()

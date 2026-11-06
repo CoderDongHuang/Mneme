@@ -43,3 +43,15 @@ def test_agent_serializer_rejects_invalid_event_before_emitting_private_payload(
                         ("error", {"message": "private", "unknown": "secret"})]:
         with pytest.raises(ValueError, match="^INVALID_CHAT_EVENT$"):
             _event(event, data)
+
+
+def test_completion_history_bound_and_internal_only():
+    payload = {"input": {"user_id": "7", "session_id": "9", "delivery_id": "turn",
+                         "reference_time": "2026-11-06T00:00:00Z", "answer": "saved",
+                         "history": [{"role": "user", "content": "question", "timestamp": "2026-11-06T00:00:00Z"}] * 41}}
+    validate_event("completion", payload, agent=True)
+    with pytest.raises(ValueError, match="^INVALID_CHAT_EVENT$"):
+        validate_event("completion", payload)
+    payload["input"]["history"].append(payload["input"]["history"][0])
+    with pytest.raises(ValueError, match="^INVALID_CHAT_EVENT$"):
+        validate_event("completion", payload, agent=True)

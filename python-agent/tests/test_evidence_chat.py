@@ -20,7 +20,9 @@ def test_sync_and_sse_validate_identical_references(monkeypatch, stream, answer,
     ]}
     monkeypatch.setattr(module, "prepare_conversation", lambda _: state)
     monkeypatch.setattr(module, "build_llm_prompt", lambda _: "prompt")
-    monkeypatch.setattr(module, "complete_conversation", lambda *args: {})
+    monkeypatch.setattr(module, "completion_input", lambda request, _, answer: {
+        "user_id": request.user_id, "session_id": request.session_id, "delivery_id": "test-turn",
+        "reference_time": "2026-11-06T00:00:00Z", "history": [], "answer": answer})
     monkeypatch.setattr(module.llm, "invoke", lambda *_: AIMessageChunk(content=answer))
     monkeypatch.setattr(module.llm, "ainvoke", AsyncMock(return_value=AIMessageChunk(content=json.dumps({
         "checks": [{"id": 0, "supported": True, "quotes": [
@@ -54,7 +56,9 @@ def test_no_evidence_refuses_without_calling_provider(monkeypatch, stream):
     module = stream_api if stream else sync_api
     monkeypatch.setattr(module, "prepare_conversation", lambda _: {"intent": "qa"})
     monkeypatch.setattr(module, "build_llm_prompt", lambda _: "prompt")
-    monkeypatch.setattr(module, "complete_conversation", lambda *args: {})
+    monkeypatch.setattr(module, "completion_input", lambda request, _, answer: {
+        "user_id": request.user_id, "session_id": request.session_id, "delivery_id": "test-turn",
+        "reference_time": "2026-11-06T00:00:00Z", "history": [], "answer": answer})
     provider = Mock(side_effect=AssertionError("must not call provider"))
     monkeypatch.setattr(module.llm, "invoke", provider)
     monkeypatch.setattr(module.llm, "astream", provider)

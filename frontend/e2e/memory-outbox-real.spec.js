@@ -7,7 +7,7 @@ import process from 'node:process'
 test.skip(process.env.MNEME_REAL_E2E !== 'true' || process.env.MNEME_MEMORY_QA_FAULTS !== 'true', '需要真实服务及隔离数据库故障注入')
 test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 
-test('候选记忆入库失败不覆盖已完成回答，重启后真实重试与确认可读且不重复', async ({ page }, testInfo) => {
+test('后台记忆失败不覆盖回答，冷启动重放与真实重试确认不重复', async ({ page }, testInfo) => {
   test.setTimeout(300_000)
   page.setDefaultTimeout(15000)
   const container = service => execFileSync('docker', ['ps', '--filter', `label=com.docker.compose.service=${service}`, '--format', '{{.ID}}'], { encoding: 'utf8' }).trim()
@@ -42,7 +42,7 @@ test('候选记忆入库失败不覆盖已完成回答，重启后真实重试�
     }, { timeout: 90_000, intervals: [1000] }).toBe(true)
   }
   const tasks = () => api('get', '/workspace/tasks')
-  const memoryTask = async () => (await tasks()).find(t => t.task_type === 'memory_candidates')
+  const memoryTask = async () => (await tasks()).find(t => t.task_type === 'memory_completion')
   async function screenshot(name) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(name), fullPage: false, animations: 'disabled' })
@@ -52,6 +52,9 @@ test('候选记忆入库失败不覆盖已完成回答，重启后真实重试�
     expect(String(account.userId)).toMatch(/^\d+$/)
     await page.addInitScript(value => localStorage.setItem('mneme_auth', JSON.stringify(value)), account)
     session = await api('post', '/sessions', { title: 'Memory outbox QA' })
+    sql(`INSERT INTO chat_message(session_id,role,content,status,request_id,created_at) VALUES
+      (${session.id},'user','Historical snapshot preference','completed','seed',UTC_TIMESTAMP()-INTERVAL 20 MINUTE),
+      (${session.id},'assistant','Prior snapshot answer','completed','seed',UTC_TIMESTAMP()-INTERVAL 20 MINUTE)` )
     const owner = JSON.parse(execFileSync('docker', ['exec', agent, 'python', '-c', 'import os,json; print(json.dumps([os.getuid(),os.getgid()]))'], { encoding: 'utf8' }))
     const fixture = fs.readFileSync('../test-fixtures/memory-outbox-probe.py', 'utf8')
     folder = python("import tempfile\nprint(tempfile.mkdtemp(prefix='mneme-memory-qa-'))")
@@ -80,18 +83,19 @@ DELIMITER ;`)
     // output, not the separate intent classifier's network latency.
     await page.getByRole('textbox', { name: '向忆知提问...' }).fill('hello')
     await page.getByRole('button', { name: '发送', exact: true }).click()
-    await expect(page.locator('.message-assistant')).toContainText('Candidate memory QA verified answer')
+    await expect(page.locator('.message-assistant').filter({ hasText: 'Candidate memory QA verified answer' })).toHaveCount(1)
     await expect(page.getByRole('button', { name: '发送', exact: true })).toBeVisible()
-    await expect(page.getByText('回答已保存，候选记忆正在后台保存。')).toBeVisible()
+    await expect(page.getByText('回答已保存，记忆正在后台处理。')).toBeVisible()
     await expect(page.getByRole('button', { name: '确认记忆', exact: true })).toHaveCount(0)
     const messages = await api('get', `/sessions/${session.id}/messages`)
-    const saved = messages.find(m => m.role === 'assistant'); assistantId = saved.id
+    const saved = messages.find(m => m.role === 'assistant' && m.content === 'Candidate memory QA verified answer'); assistantId = saved.id
     expect(saved).toMatchObject({ status: 'completed', errorCode: null, content: 'Candidate memory QA verified answer' })
+    await expect.poll(async () => (await memoryTask())?.status, { timeout: 60_000, intervals: [1000] }).toBe('failed')
     expect(JSON.parse(python("import sys\nfrom pathlib import Path\nprint((Path(sys.argv[1])/'snapshot-check.json').read_text())", folder)))
       .toEqual({ snapshot_frozen: true, candidate_stable: true, actual_completion: true, reflection_delivery_recorded: true,
         distillation_failure_visible: true, distillation_retry_valid: true, session_count_delivery_deduplicated: true })
     // A separate interpreter reads the actual durable manifest and account fence.
-    // Retry only metadata; the entire completion is not safe to replay yet.
+    // Cold metadata replay must retain the same durable delivery receipt.
     expect(python(`import sys
 from app.memory.session_store import session_store as store
 user,session,delivery=sys.argv[1:]
@@ -102,7 +106,7 @@ store.increment_message_count(user,session,delivery_id=delivery)
 assert store.get_sessions(user)==before
 print('durable delivery verified')`, String(account.userId), String(session.id), saved.requestId)).toBe('durable delivery verified')
     // Cold interpreter, actual SQL history and receipts; Redis is deliberately
-    // unavailable to this isolated process only. No whole-completion replay.
+    // unavailable to this isolated process only. Background replay is checked separately.
     expect(python(`import sys
 from unittest.mock import patch
 from app.memory.short_term_memory import ShortTermMemoryManager
@@ -129,10 +133,11 @@ print('durable history verified')`, String(account.userId), String(session.id), 
     expect(sql(`SELECT COUNT(*) FROM pending_memory WHERE user_id=${account.userId}`)).toBe('0')
     await screenshot('answer-retained.png')
     // A real process restart must preserve both the successful answer and retryable work.
+    await restart(agent, 'http://127.0.0.1:8001/health/ready')
     await restart(gateway, '/api/v1/health')
     expect((await memoryTask()).status).toBe('failed')
     await page.goto('/tasks')
-    await page.getByRole('button', { name: /候选记忆保存/ }).click()
+    await page.getByRole('button', { name: /对话记忆处理/ }).click()
     const detail = page.getByRole('complementary', { name: '任务详情' })
       .or(page.getByRole('dialog', { name: '任务详情', exact: true }))
     await expect(detail).toContainText('来源回答')
@@ -150,7 +155,7 @@ print('durable history verified')`, String(account.userId), String(session.id), 
     // Replaying the same answer never starts another candidate task.
     const request = { session_id: String(session.id), request_id: saved.requestId, message: 'hello' }
     expect((await api('post', '/chat', request)).answer).toBe(saved.content)
-    expect((await tasks()).filter(t => t.task_type === 'memory_candidates')).toHaveLength(1)
+    expect((await tasks()).filter(t => t.task_type === 'memory_completion')).toHaveLength(1)
     await page.goto('/memory')
     await expect(page.getByText('Candidate memory QA preference')).toBeVisible()
     // Confirmation uses the real embedding/vector service. Await its bounded
@@ -166,7 +171,7 @@ print('durable history verified')`, String(account.userId), String(session.id), 
     await expect(page.getByRole('region', { name: '记忆列表', exact: true })).toContainText('Candidate memory QA preference')
     await screenshot('memory-confirmed.png')
     await page.goto(`/chat?session=${session.id}`)
-    await expect(page.locator('.message-assistant')).toContainText(saved.content)
+    await expect(page.locator('.message-assistant').filter({ hasText: saved.content })).toHaveCount(1)
     await expect(page.locator('.message-assistant [role="alert"]')).toHaveCount(0)
     // Expire only this QA user's SQL history; do not invoke the cleanup helper.
     // The running Agent's real minute scheduler must reclaim unread bodies.
@@ -195,7 +200,7 @@ print(all(histories[session_key(name)]=={'expired':True} for name in [session,'r
     { timeout: 90_000, intervals: [3000] }).toBe('True')
     // Gateway's permanent answer remains readable after short context expires.
     await page.reload()
-    await expect(page.locator('.message-assistant')).toContainText(saved.content)
+    await expect(page.locator('.message-assistant').filter({ hasText: saved.content })).toHaveCount(1)
     expect(python(`import sys
 from app.memory.short_term_memory import ShortTermMemoryManager
 assert ShortTermMemoryManager().get_history(sys.argv[2],user_id=sys.argv[1])==[]

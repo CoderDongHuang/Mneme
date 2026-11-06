@@ -7,7 +7,8 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
 from app.agents.nodes import build_llm_prompt
-from app.agents.runtime import complete_conversation, prepare_conversation
+from app.agents.runtime import prepare_conversation
+from app.memory.completion import completion_input
 from app.core.config import settings
 from app.core.logging import setup_logger
 from app.knowledge.citations import select_citations, NO_EVIDENCE_ANSWER
@@ -129,10 +130,7 @@ async def chat_stream(request: ChatRequest, http_request: Request = None) -> Str
                 answer = await verify_evidence_answer(state, answer)
                 yield _event("token", {"content": answer})
 
-            phase = "memory_failed"
-            memory_result = complete_conversation(request, state, answer)
-            if memory_result.get("pending_memories"):
-                yield _event("memory", {"pending": memory_result["pending_memories"]})
+            yield _event("completion", {"input": completion_input(request, state, answer)})
             yield _event("done", {"answer_length": len(answer)})
         except Exception as error:
             if http_request is not None:

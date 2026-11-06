@@ -42,8 +42,10 @@ def configure(monkeypatch, provider, timeout=1):
 
     monkeypatch.setattr(module, "prepare_conversation", lambda _: {"intent": "general"})
     monkeypatch.setattr(module, "build_llm_prompt", lambda _: "prompt")
-    complete = Mock(return_value={})
-    monkeypatch.setattr(module, "complete_conversation", complete)
+    complete = Mock(side_effect=lambda request, _, answer: {
+        "user_id": request.user_id, "session_id": request.session_id, "delivery_id": "test-turn",
+        "reference_time": "2026-11-06T00:00:00Z", "history": [], "answer": answer})
+    monkeypatch.setattr(module, "completion_input", complete)
     monkeypatch.setattr(module, "settings", SimpleNamespace(stream_timeout_seconds=timeout))
     monkeypatch.setattr(module, "llm", SimpleNamespace(astream=lambda *args: provider))
     return module, complete

@@ -162,6 +162,92 @@
       ],
       "title": "StreamMemory",
       "type": "object"
+    },
+    "MemoryCompletion": {
+      "additionalProperties": false,
+      "properties": {
+        "user_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "User Id",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "delivery_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Delivery Id",
+          "type": "string"
+        },
+        "reference_time": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Reference Time",
+          "type": "string"
+        },
+        "history": {
+          "items": {
+            "$ref": "#/$defs/Message"
+          },
+          "maxItems": 41,
+          "title": "History",
+          "type": "array"
+        },
+        "answer": {
+          "maxLength": 1000000,
+          "minLength": 1,
+          "title": "Answer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "session_id",
+        "delivery_id",
+        "reference_time",
+        "history",
+        "answer"
+      ],
+      "title": "MemoryCompletion",
+      "type": "object"
+    },
+    "Message": {
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant",
+            "system"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "token_count": {
+          "default": 0,
+          "title": "Token Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "role",
+        "content",
+        "timestamp"
+      ],
+      "title": "Message",
+      "type": "object"
     }
   },
   "events": {
@@ -389,14 +475,31 @@
       ],
       "title": "Stopped",
       "type": "object"
+    },
+    "completion": {
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/MemoryCompletion"
+        }
+      },
+      "required": [
+        "input"
+      ],
+      "title": "Completion",
+      "type": "object"
     }
   },
   "agent_events": [
     "meta",
     "token",
     "memory",
+    "completion",
     "done",
     "error"
+  ],
+  "agent_only_events": [
+    "completion"
   ],
   "terminal_events": [
     "done",

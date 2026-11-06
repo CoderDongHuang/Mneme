@@ -36,7 +36,9 @@ def test_json_and_sse_share_source_wire_contract(monkeypatch, case):
     for module in [sync_api, stream_api]:
         monkeypatch.setattr(module, "prepare_conversation", lambda _: {"intent": "general", "retrieved_chunks": chunks})
         monkeypatch.setattr(module, "build_llm_prompt", lambda _: "prompt")
-        monkeypatch.setattr(module, "complete_conversation", lambda *args: {})
+        monkeypatch.setattr(module, "completion_input", lambda request, _, answer: {
+        "user_id": request.user_id, "session_id": request.session_id, "delivery_id": "test-turn",
+        "reference_time": "2026-11-06T00:00:00Z", "history": [], "answer": answer})
         monkeypatch.setattr(module.llm, "invoke", lambda *_: AIMessageChunk(content="Answer [2]"))
         monkeypatch.setattr(module.llm, "astream", model)
 

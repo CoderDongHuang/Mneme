@@ -52,6 +52,10 @@ SSE 事件：
 - `done`：完成。
 - `error`：错误信息。
 
+完整回答与后台 `memory_completion` 任务同事务保存后，`memory` 返回空 pending 和 `status=queued`，随后才发送 `done`。后台失败不改变已完成回答；在任务中心修复配置后重试记忆任务，无需重新生成。内部完成输入与事件不向浏览器暴露，也不接受浏览器注入的 `conversation_history`。详见 [后台记忆协议](MEMORY_RELIABILITY.md#durable-memory-completion)。
+
+内部 Agent 端点 `POST /api/v1/chat/memory/complete` 仅供受内部认证保护的 Gateway 调用，载荷为冻结的用户、会话、投递编号、reference_time、最多 41 条 history 和 answer。请求上限 8 MiB；成功返回 completed、相同 delivery_id 与 pending_memories。普通聊天仍为 64 KiB。工作器按当前用户配置调用，密钥不存入任务。
+
 ## 资料库
 
 - `POST /knowledge/base`

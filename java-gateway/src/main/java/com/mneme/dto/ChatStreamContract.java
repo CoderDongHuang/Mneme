@@ -21,6 +21,7 @@ public final class ChatStreamContract {
     public static void validate(String event, JsonNode payload, boolean agent) {
         JsonNode schema = CONTRACT.path("events").get(event);
         boolean allowed = !agent;
+        if (!agent) for (JsonNode name : CONTRACT.path("agent_only_events")) if (name.asText().equals(event)) allowed = false;
         if (agent) for (JsonNode name : CONTRACT.path("agent_events")) if (name.asText().equals(event)) allowed = true;
         if (!allowed || schema == null || payload == null || !SchemaContract.matches(schema, payload, CONTRACT.path("$defs")))
             throw new IllegalArgumentException("INVALID_CHAT_EVENT");

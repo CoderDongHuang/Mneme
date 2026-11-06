@@ -127,4 +127,10 @@ def clear(state, session_id):
 def count_user(user_id):
     from app.knowledge.generations import generation_store
     # Raw accounting: expiry/deletion filters must not hide retained data.
-    return len(_entries(generation_store.snapshot(user_id)))
+    state = generation_store.snapshot(user_id)
+    completions = state.get("memory_completions", {})
+    if not isinstance(completions, dict):
+        raise ValueError("记忆任务回执损坏")
+    # This evidence includes all SQL session memory buckets, including orphaned
+    # completion plans; deletion cannot hide private extraction results.
+    return len(_entries(state)) + len(completions)

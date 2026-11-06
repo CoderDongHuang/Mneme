@@ -1,8 +1,9 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from app.models.chat import ChatRequest, ChatResponse, PendingMemory
+from app.models.chat import ChatRequest, ChatResponse, MemoryCompletion
 from app.agents.nodes import build_llm_prompt
-from app.agents.runtime import complete_conversation, prepare_conversation
+from app.agents.runtime import prepare_conversation
+from app.memory.completion import completion_input, complete_memory
 from app.utils.llm import llm
 from app.memory.session_store import session_store
 from app.memory.short_term_memory import short_term_memory
@@ -126,33 +127,14 @@ async def chat(request: ChatRequest):
             else llm.invoke([HumanMessage(content=build_llm_prompt(state))])
         )
     answer = await verify_evidence_answer(state, str(response.content or "").strip())
-    completion = complete_conversation(request, state, answer)
-    result = {**state, **completion, "answer": answer}
-
-    sources = citation_sources(select_citations(result.get("retrieved_chunks", [])))
-
-    # 待确认记忆
-    pending_memories = [
-        PendingMemory(**pm) for pm in result.get("pending_memories", [])
-    ]
-
-    # 从蒸馏产物中提取 memory_insights
-    memory_insights = []
-    for entry in result.get("memory_entries_to_write", []):
-        cat = entry.get("category", "")
-        content = entry.get("content", "")
-        if cat == "preference":
-            memory_insights.append(f"偏好：{content}")
-        elif cat == "weak_point":
-            memory_insights.append(f"薄弱点：{content}")
-        elif cat == "progress":
-            memory_insights.append(f"进度：{content}")
-
     return ChatResponse(
-        answer=result.get("answer", ""),
-        intent=result.get("intent", "general"),
-        sources=sources,
-        session_summary=completion.get("session_summary"),
-        memory_insights=memory_insights,
-        pending_memories=pending_memories,
+        answer=answer,
+        intent=state.get("intent", "general"),
+        sources=citation_sources(select_citations(state.get("retrieved_chunks", []))),
+        memory_completion=completion_input(request, state, answer),
     )
+
+
+@router.post("/chat/memory/complete", summary="执行持久记忆任务（内部服务）")
+def complete_chat_memory(request: MemoryCompletion):
+    return complete_memory(request)

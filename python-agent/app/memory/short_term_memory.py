@@ -12,7 +12,7 @@ from typing import List
 from datetime import datetime
 from threading import RLock
 from langchain_core.messages import HumanMessage, SystemMessage
-from app.core.time import utc_now
+from app.core.time import parse_utc, utc_now
 from app.models.chat import Message
 from app.utils.llm import llm
 from app.core.config import settings
@@ -77,6 +77,9 @@ class ShortTermMemoryManager:
             if delivery_id is not None and session_history.already_delivered(state, session_id, message, delivery_id):
                 return self._copy(history)
             history.append(message.model_copy(deep=True))
+            # Completion workers can arrive after later user turns. Timestamp
+            # ordering preserves the conversation while receipts prevent replay.
+            history.sort(key=lambda item: (item.role != "system", parse_utc(item.timestamp)))
             self._persist(session_id, user_id, state)
             if delivery_id is not None:
                 session_history.record_delivery(state, session_id, message, delivery_id)
@@ -127,7 +130,7 @@ class ShortTermMemoryManager:
 
         return True
 
-    def summarize(self, session_id: str, *, user_id="default"):
+    def summarize(self, session_id: str, *, user_id="default", raise_on_error=False):
         """执行增量摘要压缩。"""
         with account_session(user_id, session_id=session_id) as state, self._lock:
             history = self._copy(self._history(session_id, user_id, state))
@@ -175,6 +178,8 @@ class ShortTermMemoryManager:
         except Exception as error:
             logger.error("error_type=%s %s", type(error).__name__, memory_log_fields(
                 "summarize", "failed", source_session_id=session_id))
+            if raise_on_error:
+                raise RuntimeError("对话摘要暂时不可用，请重试记忆任务") from None
             return
 
         summary_msg = Message(
