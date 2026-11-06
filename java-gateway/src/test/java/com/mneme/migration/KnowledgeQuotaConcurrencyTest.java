@@ -11,6 +11,7 @@ import com.mneme.mapper.ProcessingTaskMapper;
 import com.mneme.service.KnowledgeService;
 import com.mneme.service.KnowledgeQuotaService;
 import com.mneme.service.ObjectStorageService;
+import com.mneme.service.StorageRetention;
 import com.mneme.service.WorkspaceService;
 import com.mneme.service.UploadSubmissionService;
 import com.mneme.exception.RequestInProgressException;
@@ -280,6 +281,83 @@ class KnowledgeQuotaConcurrencyTest {
         var proxy = new ProxyFactory(new UploadSubmissionService(jdbc, knowledge));
         proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source), new AnnotationTransactionAttributeSource()));
         return (UploadSubmissionService) proxy.getProxy();
+    }
+
+    @Test void offlineRetentionAfterTenReplacementsProtectsActiveRetryPinnedAndHighestVersions() throws Exception {
+        long user = user();
+        var service = service(null, 10);
+        long kb = service.createKb(user, "Retention", "").getId();
+        var document = service.uploadDocument(user, kb, file(100));
+        finish(document);
+        for (int i = 0; i < 10; i++) {
+            service.replaceDocument(user, document.getId(), file(100));
+            finish(document);
+        }
+        var locations = jdbc.queryForList("SELECT file_path FROM knowledge_document_version WHERE document_id=? ORDER BY version_number", String.class, document.getId());
+        for (String location : locations) Files.setLastModifiedTime(Path.of(location),
+            java.nio.file.attribute.FileTime.from(java.time.Instant.parse("2020-01-01T00:00:00Z")));
+        service.restoreDocumentVersion(user, document.getId(), 1);
+        finish(document);
+        jdbc.update("UPDATE knowledge_document_version SET created_at='2020-01-01' WHERE document_id=?", document.getId());
+        jdbc.update("UPDATE processing_task SET updated_at='2020-01-01' WHERE user_id=?", user);
+        String retryId = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO processing_task(task_id,task_type,user_id,aggregate_id,idempotency_key,status,payload,updated_at) VALUES(?,'document_ingest',?,?,?,'failed',?,'2020-01-01')",
+            retryId, user, document.getId(), retryId, new ObjectMapper().writeValueAsString(Map.of("file_path", locations.get(1))));
+        Path oldOrphan = root.resolve(user + "/" + kb + "/" + UUID.randomUUID() + "-failed-upload.txt");
+        Path freshOrphan = root.resolve(user + "/" + kb + "/" + UUID.randomUUID() + "-active-staging.txt");
+        Files.writeString(oldOrphan, "failed upload");
+        Files.setLastModifiedTime(oldOrphan, java.nio.file.attribute.FileTime.from(java.time.Instant.parse("2020-01-01T00:00:00Z")));
+        Files.writeString(freshOrphan, "still within grace");
+        Path unknown = root.resolve("operator-notes.txt");
+        Files.writeString(unknown, "never manage unknown files");
+        Path cache = root.resolve(".object-cache/" + "a".repeat(24) + "-copy.txt");
+        Files.createDirectories(cache.getParent());
+        Files.writeString(cache, "derived cache");
+        var storage = new ObjectStorageService("local", root.toString(), "", "", "", "mneme");
+        var retention = new StorageRetention(jdbc, storage);
+        var policy = new StorageRetention.Policy(2, 30, 30, 24, 24, 0, java.util.Set.of(locations.get(2)));
+        var plan = retention.run(policy, false, java.time.Instant.now());
+        assertThat(plan.status()).isEqualTo("planned");
+        assertThat(plan.versions()).isEqualTo(6);
+        assertThat(Files.exists(oldOrphan)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_document_version WHERE document_id=?", Long.class, document.getId())).isEqualTo(11);
+        var receipt = retention.run(policy, true, java.time.Instant.now());
+        assertThat(receipt.versions()).isEqualTo(6);
+        assertThat(receipt.caches()).isEqualTo(1);
+        assertThat(Files.exists(oldOrphan)).isFalse();
+        assertThat(Files.exists(cache)).isFalse();
+        assertThat(Files.exists(freshOrphan)).isTrue();
+        assertThat(Files.readString(unknown)).isEqualTo("never manage unknown files");
+        assertThat(jdbc.queryForList("SELECT version_number FROM knowledge_document_version WHERE document_id=? ORDER BY version_number", Integer.class, document.getId())).containsExactly(1, 2, 3, 10, 11);
+        for (int i : List.of(0, 1, 2, 9, 10)) assertThat(Files.exists(Path.of(locations.get(i)))).isTrue();
+        for (int i = 3; i < 9; i++) assertThat(Files.exists(Path.of(locations.get(i)))).isFalse();
+        assertThat(jdbc.queryForObject("SELECT status FROM processing_task WHERE task_id=?", String.class, retryId)).isEqualTo("failed");
+        assertThat(retention.run(policy, true, java.time.Instant.now()).objects()).isZero();
+        service.replaceDocument(user, document.getId(), file(100));
+        assertThat(jdbc.queryForObject("SELECT MAX(version_number) FROM knowledge_document_version WHERE document_id=?", Integer.class, document.getId())).isEqualTo(12);
+    }
+
+    @Test void failedInventoryPreventsEvenMetadataPruningAndDeletedDocumentsBecomeOrphans() throws Exception {
+        long user = user();
+        var service = service(null, 10);
+        long kb = service.createKb(user, "Deleted", "").getId();
+        var document = service.uploadDocument(user, kb, file(100));
+        finish(document);
+        String location = jdbc.queryForObject("SELECT file_path FROM knowledge_document WHERE id=?", String.class, document.getId());
+        Files.setLastModifiedTime(Path.of(location), java.nio.file.attribute.FileTime.from(java.time.Instant.parse("2020-01-01T00:00:00Z")));
+        jdbc.update("DELETE FROM knowledge_document WHERE id=?", document.getId());
+        jdbc.update("UPDATE processing_task SET updated_at='2020-01-01' WHERE user_id=?", user);
+        var policy = new StorageRetention.Policy(1, 1, 1, 1, 1, 1000, java.util.Set.of());
+        var storage = spy(new ObjectStorageService("local", root.toString(), "", "", "", "mneme"));
+        doThrow(new java.io.IOException("listing interrupted")).when(storage).retentionInventory();
+        assertThatThrownBy(() -> new StorageRetention(jdbc, storage).run(policy, true, java.time.Instant.now())).isInstanceOf(java.io.IOException.class);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM processing_task WHERE user_id=?", Long.class, user)).isEqualTo(1);
+        assertThat(Files.exists(Path.of(location))).isTrue();
+        var actual = new ObjectStorageService("local", root.toString(), "", "", "", "mneme");
+        var receipt = new StorageRetention(jdbc, actual).run(policy, true, java.time.Instant.now());
+        assertThat(receipt.objects()).isEqualTo(1);
+        assertThat(receipt.tasks()).isGreaterThanOrEqualTo(1);
+        assertThat(Files.exists(Path.of(location))).isFalse();
     }
 
     private void importKnowledgeBases(WorkspaceService workspace, long user, int count) {

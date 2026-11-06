@@ -35,6 +35,29 @@ class ObjectCachePublicationTest {
         return new GetObjectResponse(new Headers.Builder().build(), "", "mneme", "", input);
     }
 
+    @Test void inventoryOnlyIncludesOwnedNamesAndAbortsOnInterruptedRemoteListing() throws Exception {
+        var client = mock(MinioClient.class);
+        var storage = storage(client);
+        Path original = root.resolve("7/3/" + java.util.UUID.randomUUID() + "-original.txt");
+        Files.createDirectories(original.getParent());
+        Files.writeString(original, "original");
+        Files.writeString(root.resolve("operator-notes.txt"), "preserve");
+        Path cache = root.resolve(".object-cache/" + "a".repeat(24) + "-copy.txt");
+        Files.createDirectories(cache.getParent());
+        Files.writeString(cache, "derived");
+        when(client.listObjects(any(io.minio.ListObjectsArgs.class))).thenReturn(java.util.List.of());
+        assertThat(storage.retentionInventory()).extracting(ObjectStorageService.RetentionObject::location)
+            .containsExactlyInAnyOrder(original.toString(), cache.toString());
+        var item = mock(io.minio.messages.Item.class);
+        when(item.objectName()).thenReturn("users/7/knowledge/3/" + original.getFileName());
+        when(item.lastModified()).thenReturn(java.time.ZonedDateTime.now());
+        when(client.listObjects(any(io.minio.ListObjectsArgs.class))).thenReturn(java.util.List.of(
+            new io.minio.Result<>(item), new io.minio.Result<io.minio.messages.Item>(new IOException("interrupted listing"))));
+        assertThatThrownBy(storage::retentionInventory).isInstanceOf(IOException.class);
+        verify(client, never()).removeObject(any(io.minio.RemoveObjectArgs.class));
+        assertThat(Files.readString(original)).isEqualTo("original");
+    }
+
     @Test void failedDownloadLeavesNoCacheAndRetryReadsWholeObject() throws Exception {
         var client = mock(MinioClient.class);
         var broken = spy(new InputStream() {

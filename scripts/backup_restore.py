@@ -549,8 +549,10 @@ def _empty_isolated_destination(destination: Path) -> Path:
     return destination
 
 
-def extract_verified(archive: Path, destination: Path) -> dict:
+def extract_verified(archive: Path, destination: Path, *, selected_paths: set[str] | None = None) -> dict:
     manifest = verify_archive(archive)
+    if selected_paths is not None and not selected_paths <= {entry['path'] for entry in manifest['files']}:
+        raise BackupError('selected recovery file is missing')
     destination = _empty_isolated_destination(destination)
     security = manifest.get("security", {})
     encryption_secret = None
@@ -567,6 +569,8 @@ def extract_verified(archive: Path, destination: Path) -> dict:
     with tarfile.open(archive, "r:gz") as bundle:
         for entry in manifest["files"]:
             name = entry["path"]
+            if selected_paths is not None and name not in selected_paths:
+                continue
             target = destination.joinpath(*PurePosixPath(name).parts)
             target.parent.mkdir(parents=True, exist_ok=True)
             stream = bundle.extractfile(bundle.getmember(name))
@@ -619,7 +623,8 @@ def _backup(args: argparse.Namespace) -> int:
         try:
             manifest = capture_snapshot(args.compose_file, staging, archive)
         finally:
-            start_application_services(args.compose_file)
+            if not getattr(args, "keep_stopped", False):
+                start_application_services(args.compose_file)
     verify_archive(archive)
     print(json.dumps({"archive": str(archive), "created_at": manifest["created_at"]}))
     return 0
@@ -750,6 +755,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
     backup_parser = subparsers.add_parser("backup")
     backup_parser.add_argument("--output-dir", default="backups")
+    backup_parser.add_argument("--keep-stopped", action="store_true",
+                               help="Keep application writers stopped for offline maintenance, including on backup failure")
     verify_parser = subparsers.add_parser("verify")
     verify_parser.add_argument("archive")
     restore_parser = subparsers.add_parser("restore")
