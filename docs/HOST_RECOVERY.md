@@ -17,7 +17,7 @@ BACKUP_KEY_VERSION=v1
 BACKUP_REQUIRE_PROTECTION=true
 ```
 
-不要使用示例占位符。`backup_restore.py` 自动读取项目 `.env`；保留这些秘密的独立安全副本。个人模型配置在 MySQL 中以 AES-GCM 加密并绑定用户 ID，密钥留空时回退到 JWT_SECRET；改变实际加密密钥后原密文不能解密，应先完成受控迁移或让用户重新保存个人配置。
+不要使用示例占位符。`backup_restore.py` 自动读取项目 `.env`；保留这些秘密的独立安全副本。个人模型配置在 MySQL 中以 AES-GCM 加密并绑定用户 ID 与密钥版本。生产环境强制独立 MODEL_CONFIG_ENCRYPTION_KEY，仅开发环境允许空密钥回退 JWT_SECRET。轮换时保留所需旧版本密钥并完成受控迁移；备份恢复前会核验密钥版本覆盖。
 
 Linux 给网关添加 `extra_hosts: ["host.docker.internal:host-gateway"]`（CI 覆盖文件已有）。Docker Desktop 支持该主机名。使用防火墙限制执行器只供 Docker 私有网络访问，勿将 8091 暴露到公网。
 
@@ -40,7 +40,34 @@ python scripts/recovery_worker.py --host 0.0.0.0 --port 8091 \
 
 执行器同一时刻只接受一个操作；只接受固定动作和备份目录内的普通归档，拒绝外部路径、符号链接、任意命令和预览后变更的摘要。服务重启后未完成任务标为 interrupted，不自动重放危险操作。
 
-## 可复现验收
+## 离线文档与对象留存
+
+`python scripts/maintain_retention.py` 默认只读，输出候选版本、任务、对象、缓存与字节数。工具使用指定 Gateway 容器的实际镜像、数据库配置、网络与文件挂载，不启动应用、迁移或调度器。必须先部署包含 `com.mneme.maintenance.RetentionMain` 的新镜像。
+
+策略 JSON（`--policy` 指定）默认保留最新 10 版；仅同时超出最新数量且超过 30 天的版本可回收。当前文档原件、未移除任务 payload 的 `file_path/file_paths` 和 `pinned_locations` 引用始终保留；最高版本号保留以保证后续上传编号递增。仅回收超过 30 天、非文档当前解析任务的 completed/cancelled 任务，失败任务保留供重试。无引用原件有 24 小时宽限；缓存默认 24 小时或 1 GiB 容量阈值。数量、天数和小时须为正整数，缓存字节可为零。
+
+```json
+{"versions":10,"version_days":30,"task_days":30,"orphan_hours":24,"cache_hours":24,"cache_bytes":1073741824,"pinned_locations":[]}
+```
+
+完整备份包含原件副本时，无需为其钉住在线对象。仅保存引用的外部归档必须把仍需恢复的位置放入 `pinned_locations`；工具不会猜测外部依赖。未知文件名和链接不作为清理候选，损坏/中断清单会阻止执行。全量盘点需要与当前对象数相应的内存和时间，大库先在隔离副本评估。
+
+本地执行流程（先预览并核对空间；备份还会暂存一份未压缩数据）：
+
+```powershell
+python scripts/maintain_retention.py --container mneme-java-gateway-1
+python scripts/backup_restore.py --compose-file docker-compose.yml --compose-file docker-compose.selfhost.yml backup --output-dir backups --keep-stopped
+# 将下方路径替换为上一条实际输出的归档；若有引用型备份，同时传 --policy 实际策略文件。
+python scripts/maintain_retention.py --container mneme-java-gateway-1 --recovery-archive backups/mneme-YYYYMMDD-HHMMSS.tar.gz --apply
+```
+
+`--keep-stopped` 在成功和失败时都保持应用写入者停止，备份失败必须先查明原因。执行前工具重新核验归档格式/哈希/迁移版本、当前 SQL 和所有托管本地原件；有其他 Gateway、Agent 或共享目录写入者、备份过期/缺原件时拒绝删除。禁止在此期间手工写库。每次执行重新生成计划；执行改变 SQL 后再次执行必须重新备份，旧归档不能授权删除。SQL 元数据事务先提交，再删除对象；文件删除失败时留下可重新盘点的孤儿，不报告成功。
+
+结束后按原部署配置先恢复 Redis/Qdrant/对象存储，再 Agent、最后 Gateway，核验健康、旧版预览及新上传；使用已有容器可依次 `docker start`，避免用不匹配的 Compose 配置重建。若需要回退，走上文完整恢复流程，保留本次匹配备份，不能只回滚 SQL。
+
+S3 当前支持只读计划；普通宿主备份无法证明远端原件的恢复覆盖，`--apply` 会拒绝。该工具尚不清理 OCR 临时目录、长期活跃会话回执、记忆检查点、备份归档或 SQLite WAL，不代表完整 P2-12 已完成，也不会由网页自动执行。
+
+## 整站恢复验收
 
 仅在可丢弃、使用独立卷/目录的测试栈运行：
 

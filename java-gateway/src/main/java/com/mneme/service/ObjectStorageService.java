@@ -31,6 +31,7 @@ public class ObjectStorageService {
     private final MinioClient minio;
     private final MinioClient diagnosticMinio;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ObjectStorageService(
         @Value("${mneme.storage-backend:local}") String backend,
         @Value("${mneme.file-storage-path:../data/files}") String fileStoragePath,
@@ -39,6 +40,12 @@ public class ObjectStorageService {
         @Value("${mneme.object-storage-secret-key:}") String secretKey,
         @Value("${mneme.object-storage-bucket:mneme}") String bucket
     ) {
+        this(backend, fileStoragePath, endpoint, accessKey, secretKey, bucket, true);
+    }
+
+    /** Offline maintenance must not create a missing bucket during a read-only plan. */
+    public ObjectStorageService(String backend, String fileStoragePath, String endpoint,
+                                String accessKey, String secretKey, String bucket, boolean initializeBucket) {
         this.backend = backend.toLowerCase();
         this.root = Path.of(fileStoragePath).toAbsolutePath().normalize();
         this.cacheRoot = root.resolve(".object-cache").normalize();
@@ -52,7 +59,7 @@ public class ObjectStorageService {
                 .httpClient(new okhttp3.OkHttpClient.Builder().connectTimeout(java.time.Duration.ofSeconds(3))
                     .readTimeout(java.time.Duration.ofSeconds(5)).writeTimeout(java.time.Duration.ofSeconds(5))
                     .callTimeout(java.time.Duration.ofSeconds(8)).build()).build();
-            ensureBucket();
+            if (initializeBucket) ensureBucket();
         } else if ("local".equals(this.backend)) {
             this.minio = null;
             this.diagnosticMinio = null;
@@ -132,6 +139,50 @@ public class ObjectStorageService {
     }
 
     public String backend() { return backend; }
+
+    public record RetentionObject(String location, long modifiedMillis, long bytes, boolean cache) {}
+
+    /** Complete inventory before any delete. Unknown names are never maintenance candidates. */
+    public java.util.List<RetentionObject> retentionInventory() throws Exception {
+        var objects = new java.util.ArrayList<RetentionObject>();
+        checkedLocal(root.toString(), false);
+        if (Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
+            try (var paths = Files.walk(root)) {
+                for (Path path : paths.toList()) {
+                    checkedLocal(path.toString(), false);
+                    if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue;
+                    String relative = root.relativize(path).toString().replace('\\', '/');
+                    boolean cache = relative.matches("\\.object-cache/(?:[a-f0-9]{24}-.+|\\.download-.+\\.tmp)");
+                    if (!cache && !knownDocumentObject(relative)) continue;
+                    var attrs = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                    objects.add(new RetentionObject(path.toAbsolutePath().normalize().toString(),
+                        attrs.lastModifiedTime().toMillis(), attrs.size(), cache));
+                }
+            }
+        }
+        if (minio != null) {
+            for (var entry : minio.listObjects(ListObjectsArgs.builder().bucket(bucket).prefix("users/").recursive(true).build())) {
+                var item = entry.get(); // A failed/truncated listing aborts the entire plan.
+                if (item.isDir() || !item.objectName().startsWith("users/")) continue;
+                String key = item.objectName();
+                if (!key.matches("users/[1-9][0-9]*/knowledge/.*")) continue;
+                String relative = key.substring("users/".length()).replaceFirst("/knowledge/", "/");
+                if (knownDocumentObject(relative)) {
+                    objects.add(new RetentionObject("s3://" + bucket + "/" + key,
+                        item.lastModified().toInstant().toEpochMilli(), item.size(), false));
+                }
+            }
+        }
+        return java.util.List.copyOf(objects);
+    }
+
+    private static boolean knownDocumentObject(String relative) {
+        return relative.matches("[1-9][0-9]*/[1-9][0-9]*/[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}-.+");
+    }
+
+    public String normalizedLocation(String location) {
+        return location.startsWith("s3://") ? location : Path.of(location).toAbsolutePath().normalize().toString();
+    }
 
     public java.util.Map<String, Object> diagnose() {
         var result = new DiagnosticResult(true);

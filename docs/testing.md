@@ -50,6 +50,16 @@ npm --prefix frontend run build
 
 ## 真实全链路 E2E
 
+离线存储留存回归（frontend 目录）：
+
+```powershell
+$env:MNEME_REAL_E2E='true'
+$env:MNEME_E2E_BASE_URL='http://localhost:3000'
+npx playwright test e2e/document-storage-safety-real.spec.js --workers=1 --retries=0
+```
+
+需要可控的本地 Docker 测试部署与已含 RetentionMain 的 Gateway 镜像；测试创建独立账号，经正式 API 操作十一版/旧版恢复，校验清理与后续上传。维护阶段会短暂停止该部署的 Gateway/Agent，备份当前 SQL 和本地原件；finally 恢复原容器，正式注销并核对零残留。不得并发启动其他业务测试。远端后端只核验计划及拒绝未验证恢复覆盖的执行。敏感测试关闭 trace/video/自动失败截图，仅显式保存安全截图，核对后清理。
+
 复习页最终服务回归（frontend 目录）：设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/review-states-real.spec.js e2e/review-read-states-real.spec.js --workers=1 --retries=0`。前者覆盖读取服务不可用和真实正常创建/评分；后者真实 GET/POST 到服务器后损坏业务 data，核对只 GET、不重复提交，并由 SQL 核验评分次数、学习事件与计划数量。finally 经正式接口注销隔离账号，SQL 核对零残留。2026-11-05 最终两端共 4 项通过（22.2 秒），前端全量 513 项及 Lint/构建/体积门禁通过；12 张截图验收后删除。此项验证当前挂载客户端未知结果保护，不声称服务器持久幂等。
 
 已运行服务的对话/阅读工作台与学习记忆组合回归（在 frontend 目录）：设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/chat-read-states-real.spec.js e2e/memory-states-real.spec.js --workers=1 --retries=0`。默认桌面共三项，使用正式注册、读取、SSE、保存/恢复/删除及 SQL 核验；只中止指定 GET 模拟传输故障，不伪造成功响应。电脑浏览器截图核对后清理 test-results，不保留重复本地产物。

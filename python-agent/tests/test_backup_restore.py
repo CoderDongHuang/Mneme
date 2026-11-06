@@ -44,6 +44,24 @@ def test_archive_round_trip_verification(tmp_path):
     }
 
 
+@pytest.mark.parametrize('encrypted', [False, True])
+def test_selected_recovery_verifies_archive_without_extracting_unrelated_stores(tmp_path, monkeypatch, encrypted):
+    if encrypted:
+        monkeypatch.setenv('BACKUP_ENCRYPTION_KEY', 'retention-test-encryption-secret')
+        monkeypatch.setenv('BACKUP_SIGNING_KEY', 'retention-test-signing-secret')
+    archive = make_archive(tmp_path)
+    destination = tmp_path / 'sql-only'
+    extract_verified(archive, destination, selected_paths={'payload/mysql.sql'})
+    assert (destination / 'payload/mysql.sql').read_text() == 'CREATE TABLE marker(id INT);'
+    assert not (destination / 'payload/data').exists()
+    with pytest.raises(BackupError, match='selected recovery file is missing'):
+        extract_verified(archive, tmp_path / 'missing', selected_paths={'payload/missing.sql'})
+    if encrypted:
+        monkeypatch.setenv('BACKUP_ENCRYPTION_KEY', 'wrong-retention-encryption-secret')
+        with pytest.raises(BackupError, match='decryption authentication failed'):
+            extract_verified(archive, tmp_path / 'wrong-key', selected_paths={'payload/mysql.sql'})
+
+
 def test_backup_restores_published_generation_and_deletion_fence(tmp_path):
     from app.knowledge.generations import GenerationStore, StaleGeneration
 
@@ -477,6 +495,32 @@ def test_restore_checks_actual_database_migration_checksums(tmp_path, monkeypatc
     metadata["flyway_schema_history"].append(metadata["flyway_schema_history"][0])
     with pytest.raises(BackupError):
         module.validate_restore_schema({"metadata": metadata})
+
+
+@pytest.mark.parametrize("keep_stopped", [False, True])
+@pytest.mark.parametrize("fails", [False, True])
+def test_backup_maintenance_keeps_writers_stopped(tmp_path, monkeypatch, keep_stopped, fails):
+    from scripts import backup_restore as module
+
+    args = module.parse_args(["backup", "--output-dir", str(tmp_path)]
+                             + (["--keep-stopped"] if keep_stopped else []))
+    events = []
+    monkeypatch.setattr(module, "stop_application_services", lambda _: events.append("stop"))
+    monkeypatch.setattr(module, "start_application_services", lambda _: events.append("start"))
+
+    def capture(*_):
+        if fails:
+            raise module.BackupError("injected snapshot failure")
+        return {"created_at": "2026-11-06T00:00:00Z"}
+
+    monkeypatch.setattr(module, "capture_snapshot", capture)
+    monkeypatch.setattr(module, "verify_archive", lambda _: events.append("verify"))
+    if fails:
+        with pytest.raises(module.BackupError, match="injected snapshot failure"):
+            module._backup(args)
+    else:
+        assert module._backup(args) == 0
+    assert events == ["stop"] + ([] if keep_stopped else ["start"]) + ([] if fails else ["verify"])
 
 
 def test_backup_restore_operations_cannot_overlap(tmp_path, monkeypatch):

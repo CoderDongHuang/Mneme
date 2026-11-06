@@ -4,13 +4,14 @@ import { execFileSync } from 'node:child_process'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import { setTimeout as delay } from 'node:timers/promises'
+import { fileURLToPath } from 'node:url'
 
 test.skip(process.env.MNEME_REAL_E2E !== 'true', '需要真实 Gateway、解析服务和 MySQL')
 test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 
-test('十次替换后可从真实版本界面恢复原文且清理无残留', async ({ page }, testInfo) => {
+test('十次替换恢复旧版后离线留存清理保护引用且可继续上传', async ({ page }, testInfo) => {
   test.setTimeout(300000)
-  let account, cleanup
+  let account, cleanup, maintenanceWriters
   const mysql = execFileSync('docker', ['ps', '--filter', 'label=com.docker.compose.service=mysql', '--filter', 'label=com.docker.compose.container-number=1', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim()
   expect(mysql).toMatch(/^[a-f0-9]+$/)
   const sql = query => execFileSync('docker', ['exec', '-i', mysql, 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -N -B mneme'], { input: query, encoding: 'utf8', timeout: 15000 }).trim()
@@ -71,12 +72,50 @@ test('十次替换后可从真实版本界面恢复原文且清理无残留', as
     expect(await dialog.locator('button:not(.icon-button)').count()).toBe(11)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('storage-versions.png'), fullPage: true, animations: 'disabled' })
+    const deployment = execFileSync('docker', ['inspect', mysql, '--format', '{{index .Config.Labels "com.docker.compose.project"}}'], { encoding: 'utf8' }).trim()
+    const peers = execFileSync('docker', ['ps', '--filter', `label=com.docker.compose.project=${deployment}`, '-q'], { encoding: 'utf8' }).trim().split(/\s+/)
+    maintenanceWriters = JSON.parse(execFileSync('docker', ['inspect', ...peers], { encoding: 'utf8' }))
+      .filter(peer => ['java-gateway', 'python-agent'].includes(peer.Config.Labels['com.docker.compose.service']))
+      .map(peer => peer.Id)
+    expect(maintenanceWriters.length).toBeGreaterThanOrEqual(2)
+    const receipt = JSON.parse(execFileSync(process.env.MNEME_MAINTENANCE_PYTHON || 'python',
+      [fileURLToPath(new URL('../../scripts/check_retention.py', import.meta.url)), String(account.userId), String(document.id)],
+      { encoding: 'utf8', timeout: 240000 }))
+    if (receipt.status === 'remote_read_only') {
+      testInfo.annotations.push({ type: 'retention', description: 'S3：已核验只读巡检与删除阻断；未执行本地文件清理断言' })
+    } else {
+      expect(receipt).toMatchObject({ status: 'completed', versions: 7, objects: 7, caches: 0 })
+    }
+    await expect.poll(async () => {
+      try { return (await page.request.get('/api/v1/health')).status() } catch { return 0 }
+    }, { timeout: 90000, intervals: [1000, 2000] }).toBe(200)
+    const retained = await api('get', `/knowledge/document/${document.id}/versions`)
+    expect(retained.map(version => version.version_number)).toEqual(receipt.status === 'completed' ? [11, 10, 2, 1] : [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
+    expect(retained.filter(version => version.active).map(version => version.version_number)).toEqual([1])
+    const after = await api('get', `/workspace/documents/${document.id}/preview`)
+    expect(after.parse_report.chunks.some(chunk => chunk.content.includes('QZ-7294-0'))).toBe(true)
+    await api('post', `/knowledge/document/${document.id}/replace`, { multipart: { file: upload(11) } })
+    await ready()
+    expect((await api('get', `/knowledge/document/${document.id}/versions`))[0].version_number).toBe(12)
   } finally {
     test.setTimeout(testInfo.timeout + 300000)
     if (account) {
       cleanup ||= await request.newContext({ baseURL: testInfo.project.use.baseURL, storageState: await page.context().storageState(), timeout: 45000 })
       await page.close()
       try {
+        if (maintenanceWriters) {
+          // The parent owns restoration too: an OS-killed helper cannot execute
+          // its Python finally block. Restore only IDs captured before shutdown.
+          execFileSync(process.env.MNEME_MAINTENANCE_PYTHON || 'python', ['-c',
+            'import sys,json; sys.path.insert(0,sys.argv[1]); import check_retention as c; c.restart_exact(json.loads(c.retention.docker("inspect",*sys.argv[2:])))',
+            fileURLToPath(new URL('../../scripts/', import.meta.url)), ...maintenanceWriters],
+          { encoding: 'utf8', timeout: 210000 })
+        }
+        // A failed offline-maintenance assertion still restarts the services.
+        // Wait for readiness here too, so cleanup preserves the primary failure.
+        await expect.poll(async () => {
+          try { return (await cleanup.get('/api/v1/health')).status() } catch { return 0 }
+        }, { timeout: 90000, intervals: [1000, 2000] }).toBe(200)
         await api('delete', '/profile/account', {}, cleanup)
         expect(String(account.userId)).toMatch(/^\d+$/)
         await expect.poll(() => sql(`SELECT (SELECT COUNT(*) FROM user WHERE id=${account.userId})+(SELECT COUNT(*) FROM auth_session WHERE user_id=${account.userId});`), { timeout: 60000, intervals: [1000, 2000] }).toBe('0')
