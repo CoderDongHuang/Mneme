@@ -16,8 +16,9 @@ from app.models.knowledge import DocumentIngestRequest
 
 
 @pytest.fixture(autouse=True)
-def isolated_tasks(monkeypatch):
+def isolated_tasks(monkeypatch, tmp_path):
     monkeypatch.setattr(task_tracker, '_task_store', {})
+    monkeypatch.setattr(knowledge, 'settings', SimpleNamespace(upload_max_mb=30, upload_dir=str(tmp_path)))
 
 
 def upload():
@@ -76,7 +77,7 @@ def test_queued_upload_has_an_owner_after_request_loop_exits(tmp_path, monkeypat
     tmp_path = tmp_path / 'uploads'
     tmp_path.mkdir()
     original = knowledge.tempfile.NamedTemporaryFile
-    monkeypatch.setattr(knowledge.tempfile, 'NamedTemporaryFile', lambda **kw: original(dir=tmp_path, **kw))
+    monkeypatch.setattr(knowledge.tempfile, 'NamedTemporaryFile', lambda **kw: original(**(kw | {'dir': tmp_path})))
     gate = Event()
     parsed = Event()
     pool = ThreadPoolExecutor(max_workers=1)

@@ -67,6 +67,21 @@ python scripts/maintain_retention.py --container mneme-java-gateway-1 --recovery
 
 S3 当前支持只读计划；普通宿主备份无法证明远端原件的恢复覆盖，`--apply` 会拒绝。该工具尚不清理旧 OCR 临时目录、长期活跃会话回执、记忆检查点、备份归档或 SQLite WAL，不代表完整 P2-12 已完成，也不会由网页自动执行。当前 OCR 已改用内存管道，避免新增识别图片/文本/坐标临时文件；旧残片与上传孤儿的边界见 [OCR 管道](INDEX_GENERATIONS.md#ocr-管道与处理时限)。
 
+## 上传临时文件回收
+
+`python scripts/maintain_uploads.py` 默认只读计划，报告候选文件数、字节数、近期保留数和未知项数，不输出文件名或正文。默认保留 24 小时，可用正整数 `--hours` 调整。必须先部署包含 `app.storage.upload_maintenance` 的 Agent 镜像；工具从实际容器读取镜像、挂载与 `UPLOAD_DIR`，要求目录在可写持久挂载中。
+
+```powershell
+python scripts/maintain_uploads.py --container mneme-python-agent-1
+# 停止全部 Gateway、Agent 副本及其他共享目录写入者，再执行：
+python scripts/maintain_uploads.py --container mneme-python-agent-1 --hours 24 --apply
+# 按原部署顺序恢复 Agent、Gateway，并核验健康、现有原文与新上传。
+```
+
+工具只扫描 `UPLOAD_DIR/.mneme-staging` 的直接子文件，回收严格匹配受管名称、超过保留期的普通文件；保留近期文件、未知文件和子目录，不递归。链接、硬链接、Windows junction、盘点后变更或目录错误会使执行失败。执行前验证全部候选，再逐文件重验；部分文件删除后遇到故障则报告失败，可重新计划并重跑。执行使用宿主维护锁、实际镜像和挂载，并拒绝运行中的同项目写入者或共享目录容器；禁止维护期间手工启动服务或写入目录。
+
+该目录专供可丢弃的异步上传副本，不能放原件或引用型备份。此工具不删除业务版本和持久任务原件，无须用整站备份证明这些临时副本的可丢弃性；业务原件留存仍遵循上一节的备份门禁。更早版本的系统临时目录残片、旧 OCR 文件不在此工具范围，无法确认归属时保留。保留期本身不证明任务已结束，因此不提供在线自动执行。
+
 ## 整站恢复验收
 
 仅在可丢弃、使用独立卷/目录的测试栈运行：

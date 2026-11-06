@@ -24,6 +24,7 @@ from app.knowledge.retriever import retrieve
 from app.knowledge.task_tracker import create_task, get_task, update_task
 from app.knowledge.vector_store import vector_store
 from app.knowledge.index_reconciliation import reconcile_document
+from app.storage.upload_maintenance import staging_directory
 from app.utils.llm import llm
 from app.models.knowledge import (
     DocumentIngestRequest,
@@ -182,7 +183,9 @@ async def upload_file(
 
     temporary_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as temporary:
+        directory = staging_directory(Path(settings.upload_dir), create=True)
+        with tempfile.NamedTemporaryFile(delete=False, dir=directory,
+                                         prefix="mneme-upload-", suffix=extension) as temporary:
             temporary_path = temporary.name
             temporary.write(content)
         task_id = _submit_ingestion(user_id, kb_id, temporary_path, filename)
