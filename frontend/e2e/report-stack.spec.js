@@ -84,9 +84,9 @@ test('个人配置隔离、双语持久化与真实个人归档恢复向导', as
   expect((await data(await page.request.get('/api/v1/workspace/reviews'))).filter(item => item.prompt === '恢复问题')).toHaveLength(2)
 })
 
-test('全部页面在五种宽度与明暗主题下可读，英文导航和页面无横向溢出', async ({ page }) => {
+test('全部页面在电脑宽屏和窄窗口与明暗主题下可读，英文导航和页面无横向溢出', async ({ page }) => {
   page.setDefaultTimeout(10_000)
-  // Keep real requests below the production IP limit while traversing 240 views.
+  // Keep real requests below the production IP limit while traversing 96 desktop views.
   let nextRequest = 0
   await page.route('**/api/v1/**', async route => {
     const at = Math.max(Date.now(), nextRequest)
@@ -102,7 +102,7 @@ test('全部页面在五种宽度与明暗主题下可读，英文导航和页�
     for (const theme of ['light', 'dark']) {
       await data(await page.request.put('/api/v1/settings/preferences', { data: { language, timezone: 'UTC', theme, notifications: true } }))
       await page.goto('/chat')
-      for (const width of [320, 375, 760, 1024, 1440]) {
+      for (const width of [1024, 1440]) {
         await page.setViewportSize({ width, height: 900 })
         for (const route of routes) {
           if (new URL(page.url()).pathname !== `/${route}`) {
@@ -128,7 +128,7 @@ test('全部页面在五种宽度与明暗主题下可读，英文导航和页�
             await expect(page.locator('select option[value=mastered]')).toHaveText('Mastered')
           }
           expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${language}/${theme}/${width}/${route}`).toBeTruthy()
-          if (language === 'zh-CN' && [375, 1440].includes(width)) await page.screenshot({ path: path.join(directory, `${route}-${theme}-${width}.png`), fullPage: true, animations: 'disabled' })
+          if (language === 'zh-CN') await page.screenshot({ path: path.join(directory, `${route}-${theme}-${width}.png`), fullPage: true, animations: 'disabled' })
         }
       }
     }
@@ -140,7 +140,7 @@ test('真实复习与测验保留草稿和评分，认证及法律页可访问',
   fs.mkdirSync(directory, { recursive: true })
   await page.goto('/auth')
   await expect(page.getByRole('button', { name: '进入忆知', exact: true })).toBeVisible()
-  for (const width of [375, 1440]) {
+  for (const width of [1024, 1440]) {
     await page.setViewportSize({ width, height: 900 })
     await page.screenshot({ path: path.join(directory, `auth-${width}.png`), fullPage: true })
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])

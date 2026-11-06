@@ -341,7 +341,7 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/roadmap-stack.spec.js --project=桌面端 --grep '真实解析异常|真实界面交互' --retries=0
-      - name: Verify delayed tag loading preserves edits on desktop and mobile
+      - name: Verify delayed tag loading preserves edits in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
@@ -367,7 +367,7 @@ jobs:
           MNEME_INDEX_QA_FAULTS: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/index-generation-real.spec.js --workers=1 --retries=0
-      - name: Verify deletion readback and retry on desktop and mobile
+      - name: Verify deletion readback and retry in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
@@ -386,19 +386,19 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/account-files-real.spec.js --workers=1 --retries=0
-      - name: Verify offline SQLite compaction and real service recovery on desktop and mobile
+      - name: Verify offline SQLite compaction and real service recovery in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/sqlite-maintenance-real.spec.js --workers=1 --retries=0
-      - name: Verify email ownership, reset and rebinding on desktop and mobile
+      - name: Verify email ownership, reset and rebinding in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/email-verification-real.spec.js --workers=1 --retries=0
-      - name: Verify profile persistence and password session revocation on desktop and mobile
+      - name: Verify profile persistence and password session revocation in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
@@ -410,43 +410,43 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/profile-states-real.spec.js e2e/profile-read-states-real.spec.js --workers=1 --retries=0
-      - name: Verify real analytics windows, export and feedback recovery on desktop and mobile
+      - name: Verify real analytics windows, export and feedback recovery in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/analytics-states-real.spec.js --workers=1 --retries=0
-      - name: Verify memory loading states and version recovery on desktop and mobile
+      - name: Verify memory loading states and version recovery in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/memory-states-real.spec.js --workers=1 --retries=0
-      - name: Verify independent task reads and real retry acceptance on desktop and mobile
+      - name: Verify independent task reads and real retry acceptance in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/task-center-states-real.spec.js --workers=1 --retries=0
-      - name: Verify JSON result receipts and bare health contracts on desktop and mobile
+      - name: Verify JSON result receipts and bare health contracts in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/rest-result-real.spec.js --workers=1 --retries=0
-      - name: Verify independent knowledge reads and real deletion receipts on desktop and mobile
+      - name: Verify independent knowledge reads and real deletion receipts in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/knowledge-states-real.spec.js --workers=1 --retries=0
-      - name: Verify independent chat reads, scope recovery and retained answers on desktop and mobile
+      - name: Verify independent chat reads, scope recovery and retained answers in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/chat-read-states-real.spec.js --workers=1 --retries=0
-      - name: Verify review reads and real submission receipt checks on desktop and mobile
+      - name: Verify review reads and real submission receipt checks in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
@@ -458,31 +458,31 @@ jobs:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/trace-privacy-fence-real.spec.js --workers=1 --retries=0
-      - name: Verify long-term memory erasure and isolated accounts on desktop and mobile
+      - name: Verify long-term memory erasure and isolated accounts in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/memory-fence-real.spec.js --workers=1 --retries=0
-      - name: Verify memory cache erasure and shared invalidation on desktop and mobile
+      - name: Verify memory cache erasure and shared invalidation in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/memory-cache-fence-real.spec.js --workers=1 --retries=0
-      - name: Verify privacy read retries and durable write receipts on desktop and mobile
+      - name: Verify privacy read retries and durable write receipts in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/privacy-states-real.spec.js --workers=1 --retries=0
-      - name: Verify review read states and real plan and rating writes on desktop and mobile
+      - name: Verify review read states and real plan and rating writes in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/review-states-real.spec.js --workers=1 --retries=0
-      - name: Verify quiz read recovery and real draft and submission writes on desktop and mobile
+      - name: Verify quiz read recovery and real draft and submission writes in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
@@ -495,32 +495,32 @@ jobs:
           MNEME_RATE_LIMIT_QA: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/cleanup-backoff-real.spec.js --workers=1 --retries=0
-      - name: Verify shared display formats on desktop and mobile
+      - name: Verify shared display formats in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/formatters-real.spec.js --workers=1 --retries=0
-      - name: Verify real task stages and safe diagnostics on desktop and mobile
+      - name: Verify real task stages and safe diagnostics in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/tasks-feedback-real.spec.js --workers=1 --retries=0
-      - name: Verify answer persistence before done on desktop and mobile
+      - name: Verify answer persistence before done in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_RATE_LIMIT_QA: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/answer-terminal-real.spec.js --workers=1 --retries=0
-      - name: Verify document parsing and shared PDF citations on desktop and mobile
+      - name: Verify document parsing and shared PDF citations in desktop browsers
         working-directory: frontend
         env:
           MNEME_REAL_E2E: "true"
           MNEME_E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/document-parser-real.spec.js e2e/citation-contract-real.spec.js e2e/document-storage-safety-real.spec.js --workers=1 --retries=0
-      - name: Verify explicit stop and disconnected provider cleanup on desktop and mobile
+      - name: Verify explicit stop and disconnected provider cleanup in desktop browsers
         # All provider fault hooks are scoped to a new QA account and restored.
         working-directory: frontend
         env:

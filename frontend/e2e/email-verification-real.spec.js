@@ -6,7 +6,7 @@ test.skip(process.env.MNEME_REAL_E2E !== 'true', '需要真实 Gateway、MySQL �
 // Codes and passwords must not be captured in traces, video or failure screenshots.
 test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 
-test('真实邮箱所有权、重置密码和换绑失效在桌面与移动端成立', async ({ page, playwright }, testInfo) => {
+test('真实邮箱所有权、重置密码和换绑失效在电脑浏览器成立', async ({ page, playwright }, testInfo) => {
   test.setTimeout(180000)
   const suffix = randomUUID().replaceAll('-', '')
   const username = `emailqa_${suffix.slice(0, 12)}`

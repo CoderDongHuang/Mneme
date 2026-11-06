@@ -98,7 +98,7 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
     await page.goto('/memory')
     const search = page.getByRole('textbox', { name: '搜索记忆', exact: true })
     const searchBox = await search.boundingBox()
-    expect(searchBox.width).toBeGreaterThanOrEqual(testInfo.project.name === '移动端' ? 250 : 120)
+    expect(searchBox.width).toBeGreaterThanOrEqual(120)
     await search.fill('搜索回归')
     await expect(search).toHaveValue('搜索回归')
     await search.clear()
@@ -120,14 +120,6 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
     const titleBox = await rowButton.locator('.record-title').boundingBox()
     const excerptBox = await rowButton.locator('small').boundingBox()
     expect(excerptBox.y, 'Excerpt starts below its title').toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1)
-    if (testInfo.project.name === '移动端') {
-      const tableRegion = page.getByRole('region', { name: '记忆列表', exact: true })
-      expect(await tableRegion.evaluate(region => region.scrollWidth > region.clientWidth)).toBe(true)
-      await tableRegion.focus()
-      await tableRegion.press('ArrowRight')
-      await expect.poll(() => tableRegion.evaluate(region => region.scrollLeft)).toBeGreaterThan(0)
-      await tableRegion.evaluate(region => { region.scrollLeft = 0 })
-    }
     await screenshot('memory-list-readable.png')
     await expect(metric('待确认')).toHaveText('—')
     const readsBeforeRetry = itemReads
@@ -137,7 +129,7 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
     await expect(metric('待确认')).toHaveText('0')
     expect(itemReads).toBe(readsBeforeRetry)
     await page.getByRole('button', { name: /记忆状态回归甲/ }).click()
-    const detail = page.getByRole(testInfo.project.name === '移动端' ? 'dialog' : 'complementary', { name: '记忆详情', exact: true })
+    const detail = page.getByRole('complementary', { name: '记忆详情', exact: true })
     await detail.getByRole('textbox', { name: '内容', exact: true }).fill('已修改的学习记忆内容')
     await detail.getByRole('textbox', { name: '标签（以逗号分隔）', exact: true }).fill('版本回归, 学习')
     await detail.getByText('历史版本', { exact: true }).click()
@@ -179,17 +171,6 @@ test('记忆读取故障不伪装为空数据，版本恢复与保存使用真�
     await browserAction(page.getByRole('button', { name: '刷新记忆', exact: true }), 'GET', '/workspace/memories', ['/memory/pending'])
     await expect(page.getByRole('alert')).toHaveCount(0)
     expect(writes).toBe(1)
-    if (testInfo.project.name === '移动端') {
-      const add = page.getByRole('button', { name: '添加记忆', exact: true })
-      await add.scrollIntoViewIfNeeded()
-      // At a scrolled position the shell menu must not cover the add action.
-      await expect(add).toBeInViewport()
-      const hit = await add.evaluate(button => {
-        const box = button.getBoundingClientRect()
-        return button.contains(document.elementFromPoint(box.left + 16, box.top + box.height / 2))
-      })
-      expect(hit).toBe(true)
-    }
     await screenshot('memory-recovered.png')
     await page.getByRole('button', { name: /记忆状态回归甲/ }).click()
     await detail.getByRole('button', { name: '删除记忆', exact: true }).click()

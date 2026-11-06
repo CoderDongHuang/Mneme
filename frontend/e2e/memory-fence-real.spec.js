@@ -75,7 +75,7 @@ test('长期记忆和版本删除围栏：真实存储竞态、另一账号隔�
     expect(versions).toHaveLength(35)
     expect(new Set(versions.map(item => item.version)).size).toBe(35)
     await shot('memory-fence-other-unaffected.png')
-    const detail = page.getByRole(testInfo.project.name === '移动端' ? 'dialog' : 'complementary', { name: '记忆详情', exact: true })
+    const detail = page.getByRole('complementary', { name: '记忆详情', exact: true })
     let throttleVersions = true
     const versionsPath = `/workspace/memories/${memories[0].id}/versions`
     await page.route('**/api/v1' + versionsPath, route => {

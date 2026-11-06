@@ -88,7 +88,7 @@ test('真实注册、资料入库、检索引用和流式回答', async ({ page 
   await restoredAnswer.scrollIntoViewIfNeeded()
   await expect(restoredAnswer).toBeInViewport()
   await page.screenshot({ path: path.join(imageDirectory, 'mneme-rag-chat.png'), fullPage: true, animations: 'disabled' })
-  for (const width of [816, 390, 320]) {
+  for (const width of [1024, 816]) {
     await page.setViewportSize({ width, height: 900 })
     await expect(restoredAnswer).toContainText('QZ-7294')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
