@@ -73,10 +73,14 @@ def cache_key(user_id, session_id):
 
 
 def session_revision(state, session_id):
+    return _revision_for_key(state, sha256(session_id.encode()).hexdigest())
+
+
+def _revision_for_key(state, key):
     revisions = state.get("session_memory_revisions", {})
     if not isinstance(revisions, dict):
         raise ValueError("会话缓存版本损坏")
-    revision = revisions.get(sha256(session_id.encode()).hexdigest(), "")
+    revision = revisions.get(key, "")
     if not isinstance(revision, str) or (revision and (
         len(revision) != 32 or any(char not in "0123456789abcdef" for char in revision)
     )):
@@ -85,9 +89,16 @@ def session_revision(state, session_id):
 
 
 def advance_revision(state, session_id):
-    session_revision(state, session_id)  # Fail closed on corrupt state.
+    return advance_revision_for_key(state, sha256(session_id.encode()).hexdigest())
+
+
+def advance_revision_for_key(state, key):
+    """Invalidate an expired SQL bucket without retaining its raw session ID."""
+    if not isinstance(key, str) or len(key) != 64 or any(c not in "0123456789abcdef" for c in key):
+        raise ValueError("会话缓存标识损坏")
+    _revision_for_key(state, key)  # Fail closed on corrupt state.
     # Non-reusable token: a Redis write followed by a DB rollback must never
     # accidentally match the next committed write after a cache outage.
     revision = uuid4().hex
-    state.setdefault("session_memory_revisions", {})[sha256(session_id.encode()).hexdigest()] = revision
+    state.setdefault("session_memory_revisions", {})[key] = revision
     return revision

@@ -78,6 +78,39 @@ class GenerationStore:
                 row = connection.execute("SELECT state_json FROM knowledge_index_state WHERE user_id=?", (str(user_id),)).fetchone()
         return json.loads(row[0]) if row else {}
 
+    def user_page(self, after=None, *, limit=100):
+        """Bounded keyset scan, including users with only SQL session history.
+
+        Return IDs only; read/mutate each state later under its existing lock.
+        Do not discover these users through Qdrant or the session manifest.
+        """
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("Invalid state scan size")
+        if after is not None and not isinstance(after, str):
+            raise ValueError("Invalid state scan cursor")
+        if settings.auxiliary_store_backend == "mysql":
+            with mysql_connection() as connection:
+                cursor = connection.cursor()
+                try:
+                    # Use the column's collation for both order and predicate.
+                    query = "SELECT user_id FROM knowledge_index_state"
+                    params = ()
+                    if after is not None:
+                        query += " WHERE user_id > %s"
+                        params = (after,)
+                    cursor.execute(query + " ORDER BY user_id LIMIT %s", (*params, limit))
+                    return [str(row[0]) for row in cursor.fetchall()]
+                finally:
+                    cursor.close()
+        with closing(sqlite3.connect(self.path, timeout=60)) as connection:
+            query = "SELECT user_id FROM knowledge_index_state"
+            params = ()
+            if after is not None:
+                query += " WHERE user_id > ?"
+                params = (after,)
+            return [str(row[0]) for row in connection.execute(
+                query + " ORDER BY user_id LIMIT ?", (*params, limit)).fetchall()]
+
     @staticmethod
     def _document(state, kb_id, document_id):
         kb = state.setdefault("libraries", {}).setdefault(str(kb_id), {})

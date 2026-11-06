@@ -168,6 +168,39 @@ print('durable history verified')`, String(account.userId), String(session.id), 
     await page.goto(`/chat?session=${session.id}`)
     await expect(page.locator('.message-assistant')).toContainText(saved.content)
     await expect(page.locator('.message-assistant [role="alert"]')).toHaveCount(0)
+    // Expire only this QA user's SQL history; do not invoke the cleanup helper.
+    // The running Agent's real minute scheduler must reclaim unread bodies.
+    expect(python(`import sys
+from datetime import timedelta
+from app.core.time import utc_now
+from app.knowledge.generations import generation_store
+from app.memory.short_term_memory import ShortTermMemoryManager
+from app.memory.session_history import session_key
+from app.models.chat import Message
+user,session=sys.argv[1:]
+manager=ShortTermMemoryManager()
+for name in ['retention-orphan','retention-active']:
+ manager.add_message(name,Message(role='user',content='isolated retention QA',timestamp=utc_now().isoformat()),user_id=user,delivery_id='retention')
+with generation_store.locked(user) as state:
+ for name in [session,'retention-orphan']:
+  state['session_histories'][session_key(name)]['expires_at']=(utc_now()-timedelta(seconds=1)).timestamp()
+print('expiry seeded')`, String(account.userId), String(session.id))).toBe('expiry seeded')
+    await expect.poll(() => python(`import sys
+from app.knowledge.generations import generation_store
+from app.memory.session_history import session_key
+user,session=sys.argv[1:]
+histories=generation_store.snapshot(user)['session_histories']
+assert histories[session_key('retention-active')]['deliveries']
+print(all(histories[session_key(name)]=={'expired':True} for name in [session,'retention-orphan']))`, String(account.userId), String(session.id)),
+    { timeout: 90_000, intervals: [3000] }).toBe('True')
+    // Gateway's permanent answer remains readable after short context expires.
+    await page.reload()
+    await expect(page.locator('.message-assistant')).toContainText(saved.content)
+    expect(python(`import sys
+from app.memory.short_term_memory import ShortTermMemoryManager
+assert ShortTermMemoryManager().get_history(sys.argv[2],user_id=sys.argv[1])==[]
+print('no stale mirror restored')`, String(account.userId), String(session.id))).toBe('no stale mirror restored')
+    await screenshot('history-expired-answer-retained.png')
     // Check captured server output without attaching private canaries or logs.
     for (const id of [agent, gateway]) {
       const result = spawnSync('docker', ['logs', '--since', logStart, id], { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 })
@@ -180,7 +213,7 @@ print('durable history verified')`, String(account.userId), String(session.id), 
       const file = `${entry.parentPath ?? entry.path}/${entry.name}`
       expect(fs.readFileSync(file, 'utf8').includes(privacyCanary), 'Provider body absent from test artifacts').toBe(false)
     }
-    await testInfo.attach('memory-outbox.json', { body: JSON.stringify({ sql_fault: true, answer_retained: true, restart: true, manual_retry: true, candidate_count: 1, payload_purged: true, confirmed: true, replay_idempotent: true }), contentType: 'application/json' })
+    await testInfo.attach('memory-outbox.json', { body: JSON.stringify({ sql_fault: true, answer_retained: true, restart: true, manual_retry: true, candidate_count: 1, payload_purged: true, confirmed: true, replay_idempotent: true, scheduled_history_expiry: true, active_history_retained: true }), contentType: 'application/json' })
   } finally {
     sql(`DROP TRIGGER IF EXISTS ${trigger}`)
     if (folder) {

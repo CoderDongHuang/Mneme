@@ -192,9 +192,19 @@ SessionStore 按账号、会话、角色去重，message_deliveries 仅保存规
 
 SQL 提交失败向上传播，下次读重新从 SQL 获取，不信任内存镜像。提交成功但确认丢失可按同一消息身份重放。Redis 仅为兼容镜像，写入失败不撤销 SQL 结果。未迁移的旧历史先按原归属和 revision 校验 Redis，再在账号事务内迁移；不可读或格式不符明确失败。新会话先持久历史再注册 manifest，避免 Redis 离线时把自己误判为旧会话。Redis 写后 SQL 回滚留下的不匹配镜像也拒绝导入，不能读取未提交正文。
 
-沿用 SESSION_TTL_HOURS（默认 24 小时）的不活跃过期窗口。访问过期桶时惰性删除正文和回执、推进 revision 并留 expired 标记，阻止旧 Redis 或热缓存复活。下一次活动开始新去重窗口；本协议不是永久去重。未被访问的过期 SQL 正文尚无定时物理回收，长期活跃会话回执也尚无容量回收，仍属于未完成的 P2-12。prepare 的整个 memory_input/reference_time 尚未按请求冻结为持久任务，不能因消息去重就重试完整 prepare/complete 或非幂等长期写入。
+沿用 SESSION_TTL_HOURS（默认 24 小时）的不活跃过期窗口。访问过期桶时惰性删除正文和回执、推进 revision 并留 expired 标记，阻止旧 Redis 或热缓存复活。下一次活动开始新去重窗口；本协议不是永久去重。无人访问的 SQL 正文与回执也由下述后台任务到期回收；长期活跃会话回执仍无容量回收，完整 P2-12 未完成。prepare 的整个 memory_input/reference_time 尚未按请求冻结为持久任务，不能因消息去重就重试完整 prepare/complete 或非幂等长期写入。
 
 账号删除直接清除整个 session_histories，包括没有 manifest 的孤儿桶。新 deletion-report 字段 sql_session_histories 原样统计所有桶，不按到期或删除状态隐藏残留；Gateway 要求该字段存在且为零，当前账号协议为 19 项。损坏状态明确失败且只返回固定错误，Pydantic 字段值和正文不会进入异常链。
+
+### 无访问过期回收
+
+Agent 启动时注册 SQL-only 的 `session_history_retention`，每分钟按用户主键分页扫描最多 100 个账号，包括仅有 SQL 历史、没有 manifest 或向量数据的账号。每个账号独立取得既有 SQL 事务锁，在锁内重新读取并严格校验历史；删除到期正文和回执、推进 revision、保留 expired 标记及永久删除围栏。扫描后产生的新消息续期不会被旧快照覆盖，多个 Agent 同时回收不会重复推进已过期桶。SQL-only 不表示进程中的 Redis/向量服务已经关闭，只表示此任务没有调用它们。
+
+游标只在本进程内保存；到页尾开始新一轮，重启从头扫描。失败账号整笔回滚并在下轮重试，不阻塞后续账号；扫描失败保留游标。日志只记录计数、固定操作、异常类型和账号哈希，不附 SQL/JSON/历史异常正文。回收量只统计收到提交确认的事务，提交后丢失确认可安全重试。账号数、故障和重启均影响完成时间，因此不承诺固定全库清除时限。
+
+这里保证 SQL 当前逻辑正文与回执到期清除、旧镜像不能重新导入；不保证 Redis 旧镜像提前于原 TTL 清除、进程中所有副本定时擦除或备份/WAL/介质不可恢复擦除。expired 标记与删除围栏继续保留；长期活跃回执容量、文档版本/对象/备份和孤儿文件治理仍待 P2-12 完整收口。
+
+`test_session_retention.py` 覆盖分页、续期、并发、事务回滚/丢失确认及损坏账号隔离；`check_session_manifest_fence.py` 用独立 QA 身份验证实际 SQLite/MySQL。真实页面回归 `memory-outbox-real.spec.js` 只将本 QA 账号历史设为到期，不直接调用回收函数，等待运行中 Agent 的分钟调度，核对活动桶保留、永久回答仍可读和注销后 SQL 桶清零。
 
 ### 升级与回退
 
