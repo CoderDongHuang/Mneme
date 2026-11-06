@@ -6,6 +6,5 @@ export default defineConfig({
   use: { baseURL: externalBaseUrl || 'http://127.0.0.1:4173', trace: 'retain-on-failure' },
   projects: [
     { name: '桌面端', use: { viewport: { width: 1440, height: 900 } } },
-    { name: '移动端', use: { viewport: { width: 390, height: 844 } } },
   ],
 })

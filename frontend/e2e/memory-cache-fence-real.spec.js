@@ -51,7 +51,7 @@ test('记忆缓存：实际查询迟到、跨实例失效、删除与另一账�
     expect(memories[0].content).toBe('Memory cache QA: updated source evidence retained for the other account.')
     await shot('memory-cache-other-unaffected.png')
     await entry().click()
-    const detail = page.getByRole(testInfo.project.name === '移动端' ? 'dialog' : 'complementary', { name: '记忆详情', exact: true })
+    const detail = page.getByRole('complementary', { name: '记忆详情', exact: true })
     await expect(detail.getByRole('textbox', { name: '内容', exact: true })).toHaveValue(memories[0].content)
     await shot('memory-cache-detail.png')
   } finally {

@@ -6,7 +6,7 @@ import process from 'node:process'
 test.skip(process.env.MNEME_REAL_E2E !== 'true', '需要真实 Gateway、Agent、MySQL、Redis、对象存储和 Mailpit')
 test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 
-test('真实业务诊断、本人邮件、权限及清理在桌面和移动端成立', async ({ page, playwright }, testInfo) => {
+test('真实业务诊断、本人邮件、权限及清理在电脑浏览器成立', async ({ page, playwright }, testInfo) => {
   test.setTimeout(180000)
   const container = service => execFileSync('docker', ['ps', '--filter', `label=com.docker.compose.service=${service}`, '--filter', 'label=com.docker.compose.container-number=1', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim()
   const gateway = container('java-gateway'), mysql = container('mysql'), agent = container('python-agent')

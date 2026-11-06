@@ -142,7 +142,7 @@ Python 内部接口 `POST /api/v1/agent/tools/{tool}/approve` 同时要求内部
 规范来自 `python-agent/app/models/chat_stream.py`。用锁定的 Python 3.11 / Pydantic 环境运行 `python python-agent/scripts/export_stream_contract.py`（或 `--check`），生成 contracts schema、Java classpath 副本与前端类型。新增 schema 约束必须先更新各端有界验证器及跨语言用例，不手改生成文件。
 公开事件为 start/meta/token/memory/done/error/stopped；Agent 只发送 meta/token/memory/done/error，执行权和停止回执由 Gateway 产生。成功 done 必须带非负答案长度或 ok:true。引用页码/排名满足 Java 32 位整数范围，generation/长度满足 JS 安全整数；1.0 可作整数，布尔和数字字符串不可以。
 Agent 序列化前、Gateway 累积/保存/转发前、浏览器回调前均验证。未知事件、坏 JSON、无效 payload 不得忽略后又判成功；固定 INVALID_CHAT_EVENT 不带原 payload/解析异常。Gateway 保存合法部分及失败状态并关闭上游；浏览器取消并释放 reader。持久化后 done、代次围栏及主动停止仍独立验证。
-跨端用例 `contracts/chat-stream.cases.json` 必须按原始 JSON 读取，保留自有 __proto__ 键。真实 `chat-contract-real.spec.js` 需要真实 E2E 和显式故障开关，限定合成账号，finally 恢复模块原字节并删账号，日志不得含私密 canary。前端构建上下文需包含 contracts。三端匹配部署，停旧写入者；回退恢复匹配数据、镜像和配置。
+跨端用例 `contracts/chat-stream.cases.json` 必须按原始 JSON 读取，保留自有 __proto__ 键。真实 `chat-contract-real.spec.js` 需要真实 E2E 和显式故障开关，限定合成账号，finally 恢复模块原字节并删账号，日志不得含私密 canary。前端构建上下文需包含 contracts。前端、Java Gateway、Python Agent 三个服务匹配部署，停旧写入者；回退恢复匹配数据、镜像和配置。
 **2026-11-03：PR #99 已合并，桌面和手机真实回归均通过。** 以上仅是 SSE/引用契约；其他 REST 契约、完整记忆解耦和物理留存仍未完成。
 
 <a id="upload-cancellation"></a>

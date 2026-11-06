@@ -2,7 +2,7 @@
 
 2026-10-30 的布局、原文件名传递和实际页面回归见 [参考图还原记录](PROJECT_STATUS.md)。`real-stack.spec.js` 验证引用显示原上传文件名，并保存宽屏和窄屏对话截图；`report-stack.spec.js` 按参考图尺寸保存有数据的记忆、复习、测验、PDF 预览、任务、设置和分析页面。`accessibility.spec.js` 同时检查参考页面的浅色和暗色主题。执行这些脚本前请按下文区分真实服务与 mock 预览环境。
 
-10 月 29 日上一批界面整改的验收与本地证据见 [FRONTEND_REVIEW_20261029](PROJECT_STATUS.md)。完整栈启动后，在 frontend 目录设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/report-stack.spec.js --project=桌面端 --retries=0`：覆盖个人模型隔离、双语偏好、个人归档向导、240 组页面布局以及实际复习和测验草稿。它直接访问运行服务；认证和法律页面也保存截图。普通浏览器回归中这些真实栈测试会明确跳过，不能把跳过当成功。
+10 月 29 日上一批界面整改的验收与本地证据见 [FRONTEND_REVIEW_20261029](PROJECT_STATUS.md)。完整栈启动后，在 frontend 目录设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/report-stack.spec.js --project=桌面端 --retries=0`：覆盖个人模型隔离、双语偏好、个人归档向导、96 组电脑页面布局以及实际复习和测验草稿。它直接访问运行服务；认证和法律页面也保存截图。普通浏览器回归中这些真实栈测试会明确跳过，不能把跳过当成功。
 
 管理员真实整站恢复由 `scripts/verify_site_recovery.py --confirm-disposable-stack` 验证，必须使用可丢弃栈；会备份、删除测试账号、实际恢复并验证登录/文档/向量/引用。配置和完整命令见 [HOST_RECOVERY](HOST_RECOVERY.md)。GitHub CI 保留该报告、恢复日志和回滚检查点信息。
 
@@ -44,7 +44,7 @@ npm --prefix frontend test
 npm --prefix frontend run build
 ```
 
-浏览器验收至少覆盖 1440x900 与 390x844：认证、会话切换、资料上传状态、SSE 回答、引用抽屉、记忆确认和导航抽屉。
+浏览器仅验收电脑：Playwright 默认只运行 1440x900 的桌面项目，删除原 390x844 手机项目，不再将相同业务流程按手机视口重复运行。全页面视觉矩阵使用 1024/1440px、两种语言、明暗主题，共 96 组（原 240 组）；真实对话保留 816/1024px 桌面窄窗口引用操作。业务、安全、键盘与恢复断言继续保留。历史段落里的手机验收数据是当时记录，不是当前产品支持承诺。
 
 `npm run test:e2e` 自动构建并启动本地静态预览服务器，使用 mock API 验证前端交互和响应式布局，不消耗模型额度。
 
@@ -52,7 +52,7 @@ npm --prefix frontend run build
 
 复习页最终服务回归（frontend 目录）：设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/review-states-real.spec.js e2e/review-read-states-real.spec.js --workers=1 --retries=0`。前者覆盖读取服务不可用和真实正常创建/评分；后者真实 GET/POST 到服务器后损坏业务 data，核对只 GET、不重复提交，并由 SQL 核验评分次数、学习事件与计划数量。finally 经正式接口注销隔离账号，SQL 核对零残留。2026-11-05 最终两端共 4 项通过（22.2 秒），前端全量 513 项及 Lint/构建/体积门禁通过；12 张截图验收后删除。此项验证当前挂载客户端未知结果保护，不声称服务器持久幂等。
 
-已运行服务的对话/阅读工作台与学习记忆组合回归（在 frontend 目录）：设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/chat-read-states-real.spec.js e2e/memory-states-real.spec.js --workers=1 --retries=0`。共六项，使用正式注册、读取、SSE、保存/恢复/删除及 SQL 核验；只中止指定 GET 模拟传输故障，不伪造成功响应。桌面和手机截图核对后清理 test-results，不保留重复本地产物。
+已运行服务的对话/阅读工作台与学习记忆组合回归（在 frontend 目录）：设置 `MNEME_REAL_E2E=true`、`MNEME_E2E_BASE_URL=http://127.0.0.1:3000`，运行 `npx playwright test e2e/chat-read-states-real.spec.js e2e/memory-states-real.spec.js --workers=1 --retries=0`。默认桌面共三项，使用正式注册、读取、SSE、保存/恢复/删除及 SQL 核验；只中止指定 GET 模拟传输故障，不伪造成功响应。电脑浏览器截图核对后清理 test-results，不保留重复本地产物。
 
 `frontend/e2e/real-stack.spec.js` 覆盖真实注册、创建资料库、上传、任务轮询、Embedding、RAG、流式回答、引用、多轮对话和刷新恢复。常规 CI 使用显式启用的确定性验收模型，MySQL、Redis、Qdrant、MinIO、Java、Python、Caddy 和浏览器仍为真实组件，不访问付费模型：
 

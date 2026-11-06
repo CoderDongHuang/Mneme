@@ -127,7 +127,6 @@ test('个人归档真实恢复、结果未知防重放、选择竞态和离页�
     await page.getByRole('button', { name: '下载个人归档', exact: true }).click()
     await expect.poll(() => downloading).toBe(true)
     // SPA navigation exercises unmount cancellation without destroying the tab.
-    if (testInfo.project.name === '移动端') await page.locator('.mobile-nav-toggle').click()
     await page.locator('#global-navigation nav a[href="/chat"]').click()
     await expect(page).toHaveURL(/\/chat$/)
     // URL changes before a lazy route commits; wait for the actual unmount.
