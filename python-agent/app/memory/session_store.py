@@ -136,9 +136,11 @@ class SessionStore:
                 data[session_id]["last_updated"] = utc_now().isoformat()
                 self._write(user_id, data)
 
-    def increment_message_count(self, user_id: str, session_id: str, *, delivery_id: str = ""):
+    def increment_message_count(self, user_id: str, session_id: str, *, delivery_id: str = "", commit_guard=None):
         delivery = self._delivery_key(delivery_id, "assistant")
-        with self._changing(user_id, session_id):
+        with self._changing(user_id, session_id) as state:
+            if commit_guard is not None:
+                commit_guard(state)
             data = self._load(user_id)
             if session_id in data:
                 if delivery and delivery in data[session_id].get("message_deliveries", {}):

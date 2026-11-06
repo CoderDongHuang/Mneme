@@ -71,8 +71,11 @@ class ShortTermMemoryManager:
         session_persistence.save_messages(session_id, self._store[key], user_id=user_id)
         self._revisions[key] = session_revision(state, session_id)
 
-    def add_message(self, session_id: str, message: Message, *, user_id="default", delivery_id=None) -> List[Message]:
+    def add_message(self, session_id: str, message: Message, *, user_id="default", delivery_id=None,
+                    commit_guard=None) -> List[Message]:
         with account_session(user_id, session_id=session_id) as state, self._lock:
+            if commit_guard is not None:
+                commit_guard(state)
             history = self._history(session_id, user_id, state)
             if delivery_id is not None and session_history.already_delivered(state, session_id, message, delivery_id):
                 return self._copy(history)
@@ -130,7 +133,7 @@ class ShortTermMemoryManager:
 
         return True
 
-    def summarize(self, session_id: str, *, user_id="default", raise_on_error=False):
+    def summarize(self, session_id: str, *, user_id="default", raise_on_error=False, commit_guard=None):
         """执行增量摘要压缩。"""
         with account_session(user_id, session_id=session_id) as state, self._lock:
             history = self._copy(self._history(session_id, user_id, state))
@@ -192,6 +195,8 @@ class ShortTermMemoryManager:
         # The model runs outside all locks. A newer turn, another worker,
         # clear or account deletion invalidates this captured result.
         with account_session(user_id, session_id=session_id) as state, self._lock:
+            if commit_guard is not None:
+                commit_guard(state)
             current = self._history(session_id, user_id, state)
             if session_revision(state, session_id) != revision or current != history:
                 logger.info(memory_log_fields("summarize", "stale", source_session_id=session_id))

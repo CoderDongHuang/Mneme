@@ -25,6 +25,13 @@ def _positive_float(name: str, default: float) -> float:
     return value
 
 
+def _positive_int(name: str, default: int) -> int:
+    value = int(os.getenv(name, str(default)))
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     internal_rate_limit_burst: float = _positive_float("INTERNAL_RATE_LIMIT_BURST", 60)
@@ -106,6 +113,9 @@ class Settings:
     )
     agent_trace_retention_days: int = int(os.getenv("AGENT_TRACE_RETENTION_DAYS", "30"))
     memory_version_retention_days: int = int(os.getenv("MEMORY_VERSION_RETENTION_DAYS", "180"))
+    memory_completion_retention_days: int = _positive_int("MEMORY_COMPLETION_RETENTION_DAYS", 30)
+    memory_completion_max_jobs: int = _positive_int("MEMORY_COMPLETION_MAX_JOBS", 1000)
+    memory_completion_max_bytes: int = _positive_int("MEMORY_COMPLETION_MAX_BYTES", 16777216)
     retriever_rewrite_enabled: bool = _bool("RETRIEVER_REWRITE_ENABLED", True)
     reranker_enabled: bool = _bool("RERANKER_ENABLED", False)
     retriever_focus_gate_enabled: bool = _bool("RETRIEVER_FOCUS_GATE_ENABLED", True)

@@ -181,23 +181,56 @@ from app.core.time import utc_now
 from app.knowledge.generations import generation_store
 from app.memory.short_term_memory import ShortTermMemoryManager
 from app.memory.session_history import session_key
+from app.memory.completion import _digest
+from app.models.chat import MemoryCompletion
+from pathlib import Path
 from app.models.chat import Message
-user,session=sys.argv[1:]
+user,session,folder=sys.argv[1:]
+request=MemoryCompletion.model_validate_json((Path(folder)/'completion-request.json').read_text())
+old=request.model_copy(update={'delivery_id':'retention-expired','reference_time':(utc_now()-timedelta(days=3660)).isoformat()})
+(Path(folder)/'expired-request.json').write_text(old.model_dump_json())
 manager=ShortTermMemoryManager()
 for name in ['retention-orphan','retention-active']:
  manager.add_message(name,Message(role='user',content='isolated retention QA',timestamp=utc_now().isoformat()),user_id=user,delivery_id='retention')
 with generation_store.locked(user) as state:
+ jobs=state['memory_completions'][session_key(session)]
+ assert jobs[_digest(request.delivery_id)]['reference_time']==request.reference_time
+ jobs[_digest(old.delivery_id)]={'fingerprint':_digest(old.model_dump()),'created_at':old.reference_time,'reference_time':old.reference_time,'phases':{'history':True}}
+ jobs['legacy-qa']={'fingerprint':'f'*64,'created_at':old.reference_time,'phases':{'history':True}}
  for name in [session,'retention-orphan']:
   state['session_histories'][session_key(name)]['expires_at']=(utc_now()-timedelta(seconds=1)).timestamp()
-print('expiry seeded')`, String(account.userId), String(session.id))).toBe('expiry seeded')
+print('expiry seeded')`, String(account.userId), String(session.id), folder)).toBe('expiry seeded')
     await expect.poll(() => python(`import sys
 from app.knowledge.generations import generation_store
 from app.memory.session_history import session_key
+from app.memory.completion import _digest
 user,session=sys.argv[1:]
-histories=generation_store.snapshot(user)['session_histories']
+state=generation_store.snapshot(user)
+histories=state['session_histories']
 assert histories[session_key('retention-active')]['deliveries']
-print(all(histories[session_key(name)]=={'expired':True} for name in [session,'retention-orphan']))`, String(account.userId), String(session.id)),
+jobs=state['memory_completions'][session_key(session)]
+assert 'legacy-qa' in jobs
+print(all(histories[session_key(name)]=={'expired':True} for name in [session,'retention-orphan']) and _digest('retention-expired') not in jobs and len(jobs)==2)`, String(account.userId), String(session.id)),
     { timeout: 90_000, intervals: [3000] }).toBe('True')
+    expect(python(`import sys
+from pathlib import Path
+from unittest.mock import patch
+from app.memory.completion import complete_memory
+from app.memory.session_store import session_store
+from app.knowledge.generations import generation_store
+from app.models.chat import MemoryCompletion
+user,folder=sys.argv[1:]
+request=MemoryCompletion.model_validate_json((Path(folder)/'expired-request.json').read_text())
+assert request.user_id==user
+before=generation_store.snapshot(user)
+manifest=session_store.get_sessions(user)
+with patch('app.memory.completion._extract',side_effect=AssertionError('expired provider called')):
+ try: complete_memory(request)
+ except ValueError as error: assert '保留期' in str(error)
+ else: raise AssertionError('expired replay accepted')
+assert generation_store.snapshot(user)==before
+assert session_store.get_sessions(user)==manifest
+print('expired completion fenced')`, String(account.userId), folder)).toBe('expired completion fenced')
     // Gateway's permanent answer remains readable after short context expires.
     await page.reload()
     await expect(page.locator('.message-assistant').filter({ hasText: saved.content })).toHaveCount(1)
@@ -218,7 +251,7 @@ print('no stale mirror restored')`, String(account.userId), String(session.id)))
       const file = `${entry.parentPath ?? entry.path}/${entry.name}`
       expect(fs.readFileSync(file, 'utf8').includes(privacyCanary), 'Provider body absent from test artifacts').toBe(false)
     }
-    await testInfo.attach('memory-outbox.json', { body: JSON.stringify({ sql_fault: true, answer_retained: true, restart: true, manual_retry: true, candidate_count: 1, payload_purged: true, confirmed: true, replay_idempotent: true, scheduled_history_expiry: true, active_history_retained: true }), contentType: 'application/json' })
+    await testInfo.attach('memory-outbox.json', { body: JSON.stringify({ sql_fault: true, answer_retained: true, restart: true, manual_retry: true, candidate_count: 1, payload_purged: true, confirmed: true, replay_idempotent: true, scheduled_history_expiry: true, active_history_retained: true, scheduled_completion_expiry: true, legacy_checkpoint_retained: true, expired_completion_fenced: true }), contentType: 'application/json' })
   } finally {
     sql(`DROP TRIGGER IF EXISTS ${trigger}`)
     if (folder) {

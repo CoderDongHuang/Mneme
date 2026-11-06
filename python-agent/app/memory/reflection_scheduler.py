@@ -176,7 +176,7 @@ class ReflectionScheduler:
             REFLECTION_LEASE_TAKEOVERS.inc()
         return True
 
-    def record_session(self, user_id: str, session_id: str = "", delivery_id: str = "") -> int:
+    def record_session(self, user_id: str, session_id: str = "", delivery_id: str = "", *, commit_guard=None) -> int:
         """Hand an atomic Redis increment to a durable SQL receipt before ack.
 
         Legacy callers without either identity count distinct events. Production
@@ -196,6 +196,8 @@ class ReflectionScheduler:
                 if state.get("deleted"):
                     raise StaleGeneration("账号已删除，拒绝反思投递")
                 require_active_session(state, session_id)
+                if commit_guard is not None:
+                    commit_guard(state)
                 receipts = state.setdefault("reflection_deliveries", {})
                 if not isinstance(receipts, dict) or any(
                     not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{64}", key)
@@ -228,12 +230,14 @@ class ReflectionScheduler:
             logger.warning("reflection_marker_cleanup_unavailable operation=record_session")
         return count
 
-    def check_and_trigger(self, user_id: str) -> bool:
+    def check_and_trigger(self, user_id: str, *, commit_guard=None) -> bool:
         """Persist the job and its per-user reservation in one Redis operation."""
         try:
             with generation_store.locked(user_id) as state:
                 if state.get("deleted"):
                     return False
+                if commit_guard is not None:
+                    commit_guard(state)
                 self._ensure_queue()
                 entry = self._redis.eval(
                     _ENQUEUE_SCRIPT, 4, self._job_key(user_id), self._lease_key(user_id),

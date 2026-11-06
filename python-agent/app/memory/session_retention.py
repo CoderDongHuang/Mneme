@@ -4,6 +4,7 @@ from threading import Lock
 from app.core.logging import setup_logger, memory_log_fields
 from app.knowledge.generations import generation_store
 from app.memory.session_history import expire_user
+from app.memory.completion_retention import expire_user as expire_completions
 
 logger = setup_logger("session_retention")
 
@@ -33,6 +34,7 @@ class SessionHistoryRetention:
                 try:
                     with self.store.locked(user_id) as state:
                         count = expire_user(state)
+                        count += expire_completions(state)
                     result["expired"] += count  # Count only acknowledged commits.
                 except Exception as error:
                     result["failed"] += 1

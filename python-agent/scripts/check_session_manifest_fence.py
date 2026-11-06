@@ -18,6 +18,7 @@ from app.memory.short_term_memory import ShortTermMemoryManager  # noqa: E402
 from app.memory.session_persistence import session_persistence  # noqa: E402
 from app.memory.session_history import session_key  # noqa: E402
 from app.memory.session_retention import SessionHistoryRetention  # noqa: E402
+from app.memory.completion_retention import require_current  # noqa: E402
 from app.core.time import utc_now  # noqa: E402
 from app.models.chat import Message  # noqa: E402
 from reflection_qa import remove_probe_users  # noqa: E402
@@ -64,6 +65,14 @@ def verify_retention(prefix):
                 manager.add_message(session, message, user_id=user, delivery_id="receipt")
             with generation_store.locked(user) as state:
                 state["session_histories"][session_key("unread")]["expires_at"] = (utc_now() - timedelta(seconds=1)).timestamp()
+                old = utc_now() - timedelta(days=max(settings.memory_completion_retention_days,
+                                                      settings.memory_version_retention_days) + 1)
+                base = {"fingerprint": "f" * 64, "created_at": old.isoformat(), "phases": {"history": True}}
+                state["memory_completions"] = {"qa": {
+                    "expired": {**base, "reference_time": old.isoformat()},
+                    "active": {**base, "reference_time": utc_now().isoformat()},
+                    "legacy": dict(base),
+                }}
         before = {user: generation_store.snapshot(user) for user in users}
         def page(after=None, *, limit=100):
             rows = generation_store.user_page(prefix if after is None else after, limit=limit)
@@ -72,14 +81,24 @@ def verify_retention(prefix):
         workers = [SessionHistoryRetention(scoped, batch_size=1) for _ in range(2)]
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(lambda w: w.run_batch(), workers))
-        assert sum(row["expired"] for row in results) == 1
+        assert sum(row["expired"] for row in results) == 2
         assert sum(row["failed"] for row in results) == 0
-        assert workers[0].run_batch()["expired"] == 1
+        assert workers[0].run_batch()["expired"] == 2
         assert workers[0].run_batch()["scanned"] == 0
         for user in users:
             after = generation_store.snapshot(user)
             assert after["session_histories"][session_key("unread")] == {"expired": True}
             assert after["session_histories"][session_key("active")] == before[user]["session_histories"][session_key("active")]
+            assert set(after["memory_completions"]["qa"]) == {"active", "legacy"}
+            for key in ("active", "legacy"):
+                assert after["memory_completions"]["qa"][key] == before[user]["memory_completions"]["qa"][key]
+            require_current(after, after["memory_completions"]["qa"]["active"]["reference_time"])
+            try:
+                require_current(after, before[user]["memory_completions"]["qa"]["expired"]["reference_time"])
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Expired completion was accepted")
             assert manager.get_history("unread", user_id=user) == []
     return users
 
