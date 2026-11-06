@@ -65,7 +65,7 @@ python scripts/maintain_retention.py --container mneme-java-gateway-1 --recovery
 
 结束后按原部署配置先恢复 Redis/Qdrant/对象存储，再 Agent、最后 Gateway，核验健康、旧版预览及新上传；使用已有容器可依次 `docker start`，避免用不匹配的 Compose 配置重建。若需要回退，走上文完整恢复流程，保留本次匹配备份，不能只回滚 SQL。
 
-S3 当前支持只读计划；普通宿主备份无法证明远端原件的恢复覆盖，`--apply` 会拒绝。该工具尚不清理 OCR 临时目录、长期活跃会话回执、记忆检查点、备份归档或 SQLite WAL，不代表完整 P2-12 已完成，也不会由网页自动执行。
+S3 当前支持只读计划；普通宿主备份无法证明远端原件的恢复覆盖，`--apply` 会拒绝。该工具尚不清理旧 OCR 临时目录、长期活跃会话回执、记忆检查点、备份归档或 SQLite WAL，不代表完整 P2-12 已完成，也不会由网页自动执行。当前 OCR 已改用内存管道，避免新增识别图片/文本/坐标临时文件；旧残片与上传孤儿的边界见 [OCR 管道](INDEX_GENERATIONS.md#ocr-管道与处理时限)。
 
 ## 整站恢复验收
 

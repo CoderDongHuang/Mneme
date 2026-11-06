@@ -44,7 +44,7 @@ def test_pdf_layout_removes_repeated_headers_and_footers(tmp_path):
 
 
 def test_pdf_keeps_extracted_text_when_ocr_is_unavailable(tmp_path, monkeypatch):
-    import pytesseract
+    from app.knowledge import document_parser
 
     path = tmp_path / "ocr-fallback.pdf"
     document = pymupdf.open()
@@ -53,17 +53,35 @@ def test_pdf_keeps_extracted_text_when_ocr_is_unavailable(tmp_path, monkeypatch)
     document.save(path)
 
     def unavailable(*args, **kwargs):
-        raise pytesseract.TesseractNotFoundError()
+        raise FileNotFoundError("OCR runtime missing")
 
-    monkeypatch.setattr(pytesseract, "image_to_string", unavailable)
+    monkeypatch.setattr(document_parser, "recognize_image", unavailable)
 
     parsed = parse_document(str(path))
 
     assert "Extracted text must survive" in parsed[0].page_content
 
 
+@pytest.mark.parametrize("error_type", ["IngestionCancelled", "IngestionLeaseLost"])
+def test_pdf_does_not_swallow_ocr_cancellation_or_lost_lease(tmp_path, monkeypatch, error_type):
+    from app.knowledge import cancellation, document_parser
+
+    path = tmp_path / "cancelled.pdf"
+    with pymupdf.open() as document:
+        document.new_page()
+        document.save(path)
+
+    error = getattr(cancellation, error_type)
+
+    def stop(*args, **kwargs):
+        raise error("stop")
+
+    monkeypatch.setattr(document_parser, "recognize_image", stop)
+    with pytest.raises(error, match="stop"):
+        parse_document(str(path))
+
+
 def test_native_page_margins_are_removed_when_ocr_is_used(tmp_path, monkeypatch):
-    import pytesseract
     from dataclasses import replace
     from app.knowledge import document_parser
     from app.core.config import settings
@@ -71,15 +89,15 @@ def test_native_page_margins_are_removed_when_ocr_is_used(tmp_path, monkeypatch)
     path = tmp_path / "native-with-ocr.pdf"
     _create_layout_pdf(path)
     monkeypatch.setattr(document_parser, "settings", replace(settings, ocr_enabled=True, pdf_min_text_chars=1000))
-    monkeypatch.setattr(pytesseract, "image_to_data", lambda *args, **kwargs: {
+    coordinates = {
         "text": ["Mneme"], "conf": [95], "left": [72], "top": [40],
         "width": [60], "height": [15],
-    })
+    }
     recognized = iter([
         f"Mneme test material\nChapter {page}\nUnique page content TOKEN-{page}\nInternal material"
         for page in range(1, 4)
     ])
-    monkeypatch.setattr(pytesseract, "image_to_string", lambda *args, **kwargs: next(recognized))
+    monkeypatch.setattr(document_parser, "recognize_image", lambda *args, **kwargs: (coordinates, next(recognized)))
 
     text = [doc for doc in parse_document(str(path)) if doc.metadata["chunk_type"] == "text"]
     assert len(text) == 3
