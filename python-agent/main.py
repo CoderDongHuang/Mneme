@@ -81,15 +81,17 @@ class ChatRequestSizeMiddleware:
         if scope["type"] != "http" or scope.get("path") not in {
             "/api/v1/chat",
             "/api/v1/chat/stream",
+            "/api/v1/chat/memory/complete",
         }:
             await self.app(scope, receive, send)
             return
 
+        limit = 8 * 1024 * 1024 if scope["path"] == "/api/v1/chat/memory/complete" else CHAT_REQUEST_MAX_BYTES
         headers = dict(scope.get("headers", []))
         content_length = headers.get(b"content-length")
         if content_length is not None:
             try:
-                if int(content_length) > CHAT_REQUEST_MAX_BYTES:
+                if int(content_length) > limit:
                     await self._reject(send, "content_length")
                     return
             except ValueError:
@@ -103,7 +105,7 @@ class ChatRequestSizeMiddleware:
             if message["type"] != "http.request":
                 break
             total += len(message.get("body", b""))
-            if total > CHAT_REQUEST_MAX_BYTES:
+            if total > limit:
                 await self._reject(send, "body_size")
                 return
             messages.append(message)
@@ -120,7 +122,7 @@ class ChatRequestSizeMiddleware:
     @staticmethod
     async def _reject(send, reason: str):
         INPUT_REJECTIONS.labels("chat_body", reason).inc()
-        body = b'{"error":{"code":"REQUEST_TOO_LARGE","message":"Chat request body exceeds 65536 bytes"}}'
+        body = b'{"error":{"code":"REQUEST_TOO_LARGE","message":"Chat request body exceeds its size limit"}}'
         await send(
             {
                 "type": "http.response.start",

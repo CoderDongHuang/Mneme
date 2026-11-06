@@ -8,7 +8,7 @@ public final class SchemaContract {
     private SchemaContract() { }
     private static final Set<String> VOCABULARY = Set.of("$ref", "title", "description", "default", "type",
         "properties", "required", "additionalProperties", "items", "anyOf", "const", "enum",
-        "minimum", "maximum", "minLength", "maxLength");
+        "minimum", "maximum", "minLength", "maxLength", "maxItems");
 
     public static boolean matches(JsonNode schema, JsonNode value, JsonNode definitions) {
         if (schema == null || !schema.isObject() || value == null) return false;
@@ -52,6 +52,7 @@ public final class SchemaContract {
             if (schema.has("minLength") && length < schema.get("minLength").asInt()) return false;
             if (schema.has("maxLength") && length > schema.get("maxLength").asInt()) return false;
         }
+        if (value.isArray() && schema.has("maxItems") && value.size() > schema.get("maxItems").asInt()) return false;
         if (value.isArray() && schema.has("items")) for (JsonNode item : value) if (!matches(schema.get("items"), item, definitions)) return false;
         if (value.isObject()) {
             for (JsonNode required : schema.path("required")) if (!value.has(required.asText())) return false;

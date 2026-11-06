@@ -12,15 +12,12 @@ from app.agents.prompts import (
 )
 from app.agents.trace_store import agent_trace_store
 from app.core.config import settings
-from app.core.time import parse_utc, utc_now
 from app.core.logging import setup_logger, memory_log_fields
 from app.knowledge.vector_store import vector_store
 from app.knowledge.citations import build_evidence_context
-from app.memory.distillation import apply_distilled_entries, distill_conversation
 from app.memory.long_term_memory import long_term_memory
 from app.memory.reflection import run_reflection
 from app.memory.short_term_memory import short_term_memory
-from app.models.chat import Message
 from app.utils.llm import llm
 from app.tools.registry import tool_registry
 
@@ -194,10 +191,14 @@ def suggestion_generation_node(state: dict) -> dict:
 
 
 def build_llm_prompt(state: dict) -> str:
+    memory_context = state.get("memory_context") or "暂无明确记录"
+    if state.get("conversation_history") is not None:
+        recent = state["conversation_history"][-6:]
+        memory_context += "\n近期对话：\n" + "\n".join(f"{message.role}: {message.content}" for message in recent)
     values = {
         "question": state["message"],
         "context": state.get("context", "本次未检索到匹配片段"),
-        "memory_context": state.get("memory_context") or "暂无明确记录",
+        "memory_context": memory_context,
     }
     intent = state.get("intent", "general")
     template = {
@@ -207,46 +208,6 @@ def build_llm_prompt(state: dict) -> str:
         "general": GENERAL_PROMPT,
     }.get(intent, GENERAL_PROMPT)
     return template.format(**values)
-
-
-def llm_reasoning_node(state: dict) -> dict:
-    response = llm.invoke([HumanMessage(content=build_llm_prompt(state))])
-    if short_term_memory.should_summarize(state["session_id"], user_id=state["user_id"]):
-        short_term_memory.summarize(state["session_id"], user_id=state["user_id"])
-    return {"answer": str(response.content)}
-
-
-def format_response_node(state: dict) -> dict:
-    return {"answer": state.get("answer", "").strip()}
-
-
-def memory_write_node(state: dict) -> dict:
-    user_id = state["user_id"]
-    session_id = state["session_id"]
-    memory_input = state.get("memory_input")
-    history = (
-        [Message.model_validate(message) for message in memory_input["history"]]
-        if memory_input is not None else short_term_memory.get_history(session_id, user_id=user_id)
-    )
-    if len(history) < 2:
-        return {"memory_entries_to_write": []}
-    try:
-        previous_time = parse_utc(history[-2].timestamp)
-    except (TypeError, ValueError):
-        return {"memory_entries_to_write": []}
-    reference_time = parse_utc(memory_input["reference_time"]) if memory_input is not None else utc_now()
-    idle_seconds = (reference_time - previous_time).total_seconds()
-    if idle_seconds <= settings.distillation_idle_minutes * 60:
-        return {"memory_entries_to_write": []}
-    conversation = [
-        {"role": message.role, "content": message.content} for message in history[:-1]
-    ]
-    distilled = distill_conversation(user_id, session_id, conversation)
-    pending = (
-        apply_distilled_entries(user_id, distilled, candidate_scope=[user_id, session_id, memory_input["delivery_id"]])
-        if memory_input is not None else apply_distilled_entries(user_id, distilled)
-    )
-    return {"memory_entries_to_write": distilled, "pending_memories": pending}
 
 
 def run_pre_llm_nodes(state: dict) -> dict:
@@ -288,7 +249,7 @@ def run_pre_llm_nodes(state: dict) -> dict:
     else:
         with agent_trace_store.span(user_id, session_id, "memory_context"):
             state["memory_context"] = _memory_context(
-                state["user_id"], state["session_id"], include_history=True
+                state["user_id"], state["session_id"], include_history=state.get("conversation_history") is None
             )
     agent_trace_store.record(
         user_id,

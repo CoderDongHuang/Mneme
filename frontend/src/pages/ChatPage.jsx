@@ -453,7 +453,7 @@ function ChatView({ renderTools, workspace = false }) {
                 {!!message.sources?.length && (
                   <button className="source-trigger" onClick={() => setSourceDrawer(message.sources)}><Quote size={15} />{t("查看 ")}{message.sources.length}{t(" 条资料依据")}</button>
                 )}
-                {message.memoryStatus === 'queued' && <p className="muted" role="status">{t('回答已保存，候选记忆正在后台保存。')} <Link to="/tasks">{t('查看记忆任务')}</Link> · <Link to="/memory">{t('前往学习记忆确认')}</Link></p>}
+                {message.memoryStatus === 'queued' && <p className="muted" role="status">{t('回答已保存，记忆正在后台处理。')} <Link to="/tasks">{t('查看记忆任务')}</Link> · <Link to="/memory">{t('前往学习记忆确认')}</Link></p>}
                 {!!message.pending?.length && <div className="memory-confirmations">{message.pending.map((memory) => (
                   <div key={memory.temp_id} aria-busy={!!memoryBusy[memory.temp_id]}><Sparkles size={16} /><span><small>{t("是否记住")}</small>{memory.content}</span><button disabled={!!memoryBusy[memory.temp_id]} onClick={() => resolveMemory(message.id, memory, 'confirm')} title={t("确认")} aria-label={t("确认记忆")}><Check size={15} /></button><button disabled={!!memoryBusy[memory.temp_id]} onClick={() => resolveMemory(message.id, memory, 'dismiss')} title={t("忽略")} aria-label={t("忽略记忆")}><X size={15} /></button></div>
                 ))}</div>}

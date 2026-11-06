@@ -81,13 +81,14 @@ public class ChatService {
         }
         ChatResponse response;
         try {
+            request.setConversationHistory(sessionService.conversationHistory(userId, sessionId, assistant.getId()));
             response = restTemplate.postForObject(
                 pythonAgentUrl + "/api/v1/chat", request, ChatResponse.class
             );
             if (response == null) throw new IllegalStateException("Python Agent 返回空响应");
             finishAnswer(assistant.getId(), assistant.getAnswerGeneration(), response.getAnswer(),
-                serializeSources(response.getSources()), response.getPendingMemories());
-            if (response.getPendingMemories() != null && !response.getPendingMemories().isEmpty()) {
+                serializeSources(response.getSources()), response.getPendingMemories(), response.getMemoryCompletion());
+            if (response.getMemoryCompletion() != null || (response.getPendingMemories() != null && !response.getPendingMemories().isEmpty())) {
                 response.setMemoryStatus("queued");
                 response.setPendingMemories(java.util.List.of());
             }
@@ -151,10 +152,12 @@ public class ChatService {
         boolean completed = false;
         boolean failed = false;
         java.util.List<ChatResponse.PendingMemory> candidates = java.util.List.of();
+        JsonNode completion = null;
         try {
             control = streamMonitor.watch(assistantMessageId, generation, output);
             control.frame("start", objectMapper.writeValueAsString(java.util.Map.of(
                 "session_id", sessionId.toString(), "request_id", request.getRequestId(), "answer_generation", generation)));
+            request.setConversationHistory(sessionService.conversationHistory(userId, sessionId, assistantMessageId));
             var builder = HttpRequest.newBuilder(URI.create(pythonAgentUrl + "/api/v1/chat/stream"))
                 .header("Content-Type", "application/json")
                 .header("X-Internal-Service-Token", internalServiceToken)
@@ -184,11 +187,12 @@ public class ChatService {
                             ? objectMapper.convertValue(payload.path("pending"), objectMapper.getTypeFactory()
                                 .constructCollectionType(java.util.List.class, ChatResponse.PendingMemory.class))
                             : java.util.List.of();
+                        case "completion" -> completion = payload.path("input");
                         case "done" -> {
-                            finishAnswer(assistantMessageId, generation, answer.toString(), sourcesJson, candidates);
+                            finishAnswer(assistantMessageId, generation, answer.toString(), sourcesJson, candidates, completion);
                             completed = true;
                             control.close();
-                            if (!candidates.isEmpty()) control.frame("memory", "{\"pending\":[],\"status\":\"queued\"}");
+                            if (completion != null || !candidates.isEmpty()) control.frame("memory", "{\"pending\":[],\"status\":\"queued\"}");
                         }
                         case "error" -> {
                             String code = payload.path("code").asText("AGENT_ERROR");
@@ -200,7 +204,7 @@ public class ChatService {
                         default -> { }
                     }
                     // Uncommitted candidates must not expose confirmation buttons or report success.
-                    if (!"memory".equals(event.type())) control.frame(event.type(), objectMapper.writeValueAsString(payload));
+                    if (!java.util.Set.of("memory", "completion").contains(event.type())) control.frame(event.type(), objectMapper.writeValueAsString(payload));
                     // Browser stops reading on done. Never wait for provider EOF to persist.
                     if (completed || failed) break;
                 }
@@ -249,8 +253,9 @@ public class ChatService {
     private record SseEvent(String type, String data) { }
 
     private void finishAnswer(Long messageId, long generation, String answer, String sources,
-                              java.util.List<ChatResponse.PendingMemory> candidates) {
-        if (candidates == null || candidates.isEmpty()) sessionService.finishAnswer(messageId, generation, answer, sources);
+                              java.util.List<ChatResponse.PendingMemory> candidates, JsonNode completion) {
+        if (completion != null && !completion.isNull()) sessionService.finishAnswer(messageId, generation, answer, sources, candidates, completion);
+        else if (candidates == null || candidates.isEmpty()) sessionService.finishAnswer(messageId, generation, answer, sources);
         else sessionService.finishAnswer(messageId, generation, answer, sources, candidates);
     }
 

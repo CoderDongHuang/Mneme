@@ -54,7 +54,7 @@ python scripts/demo.py clean --confirm-delete-demo-data
 - **可追溯回答**：保留文档名、页码、章节、原文、文件 SHA-256 和解析器版本；引用核验后展示，并按 hash 打开对应历史版本。
 - **联合检索筛选**：知识库、指定文档、标签和导入日期共同限定范围；聊天与检索调试均可使用。
 - **整改进度与证据**：[当前状态](docs/PROJECT_STATUS.md)及[已合并 PR 索引](docs/CODE_REVIEW_REMEDIATION_20261031.md)。历史结果不代替当前待办验收。
-- **Agent 决策链**：LangGraph 编排意图识别、条件检索、个性化推理和记忆回写。
+- **Agent 决策链**：共享节点执行意图识别、条件检索与个性化推理；回答落库后由持久任务处理记忆。
 - **三级记忆**：工作记忆、短期会话记忆、长期偏好/薄弱点/进度记忆。
 - **记忆质量控制**：高置信度自动写入，中置信度由用户确认，低置信度丢弃。
 - **流式输出**：Python 生成 SSE，Java Gateway 转发，React 前端逐步渲染。
@@ -67,7 +67,7 @@ flowchart LR
     U["React + Vite"] -->|"HTTP / SSE"| J["Spring Boot Gateway"]
     J --> M[(MySQL)]
     J --> R[(Redis)]
-    J -->|"内部 HTTP"| P["FastAPI + LangGraph"]
+    J -->|"内部 HTTP"| P["FastAPI Agent"]
     P --> C[(Qdrant)]
     P --> D["DeepSeek / Qwen"]
     P --> E["DashScope Embedding"]

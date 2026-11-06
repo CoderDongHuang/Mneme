@@ -7,7 +7,9 @@ from unittest.mock import Mock
 import pytest
 
 from app.models.chat import ChatRequest, Message
-from app.agents import nodes, runtime
+from app.agents import runtime
+from app.memory import completion, distillation
+from app.models.chat import MemoryCompletion
 from app.memory.distillation import apply_distilled_entries
 
 
@@ -25,29 +27,34 @@ def state(history):
     }}
 
 
+def task(captured):
+    return MemoryCompletion(user_id=captured["user_id"], session_id=captured["session_id"],
+                            **captured["memory_input"], answer="saved answer")
+
+
 def test_completion_distills_captured_turn_without_reading_mutable_cache(monkeypatch):
     captured = state([message("assistant", "earlier answer", 20), message("user", "current question")])
-    monkeypatch.setattr(nodes.short_term_memory, "get_history", Mock(side_effect=AssertionError("late cache read")))
+    monkeypatch.setattr(runtime.short_term_memory, "get_history", Mock(side_effect=AssertionError("late cache read")))
     distill = Mock(return_value=[{"category": "preference", "content": "captured preference", "confidence": .7}])
-    monkeypatch.setattr(nodes, "distill_conversation", distill)
-    pending = nodes.memory_write_node(captured)["pending_memories"]
+    monkeypatch.setattr(distillation, "distill_conversation", distill)
+    pending = apply_distilled_entries("owner", completion._extract(task(captured)), candidate_scope=["owner", "session", "turn-1"])
     distill.assert_called_once_with("owner", "session", [{"role": "assistant", "content": "earlier answer"}])
     assert len(pending) == 1 and pending[0]["content"] == "captured preference"
 
 
 def test_long_model_delay_does_not_create_an_idle_gap(monkeypatch):
     captured = state([message("assistant", "recent answer", 5), message("user", "question")])
-    monkeypatch.setattr(nodes, "utc_now", lambda: NOW + timedelta(hours=8))
+    monkeypatch.setattr(completion, "utc_now", lambda: NOW + timedelta(hours=8))
     distill = Mock(side_effect=AssertionError("model delay is not user inactivity"))
-    monkeypatch.setattr(nodes, "distill_conversation", distill)
-    assert nodes.memory_write_node(captured) == {"memory_entries_to_write": []}
+    monkeypatch.setattr(distillation, "distill_conversation", distill)
+    assert completion._extract(task(captured)) == []
     distill.assert_not_called()
 
 
 @pytest.mark.parametrize("history", [[], [message("user", "first turn")]])
 def test_empty_snapshot_does_not_fall_back_to_later_cache(monkeypatch, history):
-    monkeypatch.setattr(nodes.short_term_memory, "get_history", Mock(side_effect=AssertionError("late cache read")))
-    assert nodes.memory_write_node(state(history)) == {"memory_entries_to_write": []}
+    monkeypatch.setattr(runtime.short_term_memory, "get_history", Mock(side_effect=AssertionError("late cache read")))
+    assert completion._extract(task(state(history))) == []
 
 
 def test_prepare_copies_message_objects_before_pre_llm_nodes(monkeypatch):
@@ -94,47 +101,3 @@ def test_legacy_call_without_delivery_id_never_coalesces_unrelated_candidates():
     entries = [{"category": "preference", "content": "diagrams", "confidence": .7}]
     first = apply_distilled_entries("owner", entries)
     assert first[0]["temp_id"] != apply_distilled_entries("owner", entries)[0]["temp_id"]
-
-
-@pytest.mark.parametrize("request_id,captured_id", [("request-turn", "captured-turn"), ("request-turn", ""), ("", "")])
-def test_completion_passes_stable_turn_identity_to_reflection(monkeypatch, request_id, captured_id):
-    monkeypatch.setattr(runtime, "require_cloud_processing", lambda _: None)
-    monkeypatch.setattr(runtime, "memory_write_node", lambda _: {})
-    monkeypatch.setattr(runtime, "working_memory", SimpleNamespace(replace_messages=lambda *args, **kw: None))
-    monkeypatch.setattr(runtime, "short_term_memory", SimpleNamespace(
-        add_message=lambda *args, **kw: [], should_summarize=lambda _, **kw: False))
-    count = Mock()
-    monkeypatch.setattr(runtime, "session_store", SimpleNamespace(increment_message_count=count))
-    monkeypatch.setattr(runtime.agent_trace_store, "record", lambda *args, **kw: None)
-    record = Mock()
-    monkeypatch.setattr(runtime, "reflection_scheduler", SimpleNamespace(
-        record_session=record, check_and_trigger=lambda _: None))
-    request = ChatRequest(user_id="owner", session_id="session", request_id=request_id, message="question")
-    captured = {"memory_input": {"delivery_id": captured_id}} if captured_id else {}
-    runtime.complete_conversation(request, captured, "answer")
-    runtime.complete_conversation(request, captured, "answer")
-    first, second = [call.args for call in record.call_args_list]
-    assert first == second
-    assert first[:2] == ("owner", "session")
-    expected_id = captured_id or request_id or captured["completion_delivery_id"]
-    assert first[2] == expected_id
-    assert first[2]
-    assert [call.kwargs["delivery_id"] for call in count.call_args_list] == [expected_id, expected_id]
-
-
-def test_legacy_completion_keeps_identity_before_extraction_failure_without_fabricating_snapshot(monkeypatch):
-    monkeypatch.setattr(runtime, "require_cloud_processing", lambda _: None)
-    captured = {"user_id": "owner", "session_id": "session"}
-    observed = []
-
-    def fail(state):
-        assert "memory_input" not in state
-        observed.append(state["completion_delivery_id"])
-        raise RuntimeError("extraction unavailable")
-
-    monkeypatch.setattr(runtime, "memory_write_node", fail)
-    request = ChatRequest(user_id="owner", session_id="session", message="question")
-    for _ in range(2):
-        with pytest.raises(RuntimeError, match="extraction unavailable"):
-            runtime.complete_conversation(request, captured, "answer")
-    assert observed[0] and observed[0] == observed[1]

@@ -285,7 +285,8 @@ def test_invalid_results_fail_whole_batch_without_private_exception(content, mon
 
 
 def test_failed_batch_can_retry_same_snapshot_without_partial_writes(monkeypatch):
-    from app.agents.nodes import memory_write_node
+    from app.memory.completion import _extract
+    from app.models.chat import MemoryCompletion
 
     backend = MagicMock(get_all_memories=MagicMock(return_value={}))
     provider = _mock_llm("")
@@ -303,10 +304,15 @@ def test_failed_batch_can_retry_same_snapshot_without_partial_writes(monkeypatch
         ],
     }}
     snapshot = json.dumps(state, sort_keys=True)
+    request = MemoryCompletion(user_id=state["user_id"], session_id=state["session_id"], **state["memory_input"], answer="saved")
+    def extract():
+        entries = _extract(request)
+        return {"memory_entries_to_write": entries, "pending_memories": apply_distilled_entries(request.user_id, entries,
+            candidate_scope=[request.user_id, request.session_id, request.delivery_id])}
     with pytest.raises(DistillationResultError):
-        memory_write_node(state)
-    recovered = memory_write_node(state)
-    assert recovered == memory_write_node(state)
+        extract()
+    recovered = extract()
+    assert recovered == extract()
     assert len(recovered["pending_memories"]) == 1
     assert recovered["pending_memories"][0]["content"] == _VALID_ENTRY["content"]
     assert recovered["memory_entries_to_write"][0]["source_session_id"] == "sess_1"

@@ -21,6 +21,41 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ChatStreamTerminalTest {
+    @Test void historyReadFailureTerminatesPreparedAnswerWithoutCallingAgent() throws Exception {
+        try (var fixture = new Fixture(success(), false)) {
+            when(fixture.sessions.conversationHistory(7L, 9L, 2L)).thenThrow(new IllegalStateException("private SQL detail"));
+            var output = new ByteArrayOutputStream(); fixture.run(output);
+            assertThat(output.toString(StandardCharsets.UTF_8)).contains("event: error")
+                .doesNotContain("event: token", "event: done", "private SQL detail");
+            verify(fixture.sessions).failMessage(2L, 3L, "", "IllegalStateException");
+            verify(fixture.sessions, never()).finishAnswer(anyLong(), anyLong(), anyString(), anyString());
+        }
+    }
+
+    @Test void completeMemoryInputCommitsBeforeDoneAndNeverLeavesGateway() throws Exception {
+        String body = "event: token\ndata: {\"content\":\"answer\"}\n\n"
+            + "event: completion\ndata: {\"input\":{\"user_id\":\"7\",\"session_id\":\"9\",\"delivery_id\":\"request\",\"reference_time\":\"2026-11-06T00:00:00Z\",\"history\":[],\"answer\":\"answer\"}}\n\n"
+            + "event: done\ndata: {\"ok\":true}\n\n";
+        for (boolean fail : new boolean[]{false, true}) try (var fixture = new Fixture(body, false)) {
+            var committed = new AtomicBoolean();
+            doAnswer(call -> {
+                assertThat(((com.fasterxml.jackson.databind.JsonNode) call.getArgument(5)).path("delivery_id").asText()).isEqualTo("request");
+                if (fail) throw new IllegalStateException("private database detail");
+                committed.set(true); return null;
+            }).when(fixture.sessions).finishAnswer(eq(2L), eq(3L), eq("answer"), eq("[]"), anyList(), any());
+            var output = new ByteArrayOutputStream() {
+                @Override public synchronized void write(byte[] data, int offset, int length) {
+                    if (new String(data, offset, length, StandardCharsets.UTF_8).contains("event: done")) assertThat(committed).isTrue();
+                    super.write(data, offset, length);
+                }
+            };
+            fixture.run(output);
+            assertThat(output.toString(StandardCharsets.UTF_8)).doesNotContain("event: completion", "delivery_id", "history", "private database detail");
+            if (fail) assertThat(output.toString(StandardCharsets.UTF_8)).contains("event: error").doesNotContain("event: done", "queued");
+            else assertThat(output.toString(StandardCharsets.UTF_8)).contains("event: done", "queued");
+        }
+    }
+
     private static String withCandidates() {
         return "event: token\ndata: {\"content\":\"answer\"}\n\n"
             + "event: memory\ndata: {\"pending\":[{\"temp_id\":\"m1\",\"content\":\"private candidate\",\"category\":\"preference\",\"confidence\":0.8}]}\n\n"

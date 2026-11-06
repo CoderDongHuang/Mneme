@@ -69,7 +69,9 @@ def test_unsupported_claim_never_leaks_from_sync_or_sse(monkeypatch, stream):
     monkeypatch.setattr(grounding, "settings", replace(grounding.settings, demo_mode=False, deterministic_test_llm=False))
     monkeypatch.setattr(module, "prepare_conversation", lambda _: state())
     monkeypatch.setattr(module, "build_llm_prompt", lambda _: "synthetic")
-    monkeypatch.setattr(module, "complete_conversation", lambda *args: {})
+    monkeypatch.setattr(module, "completion_input", lambda request, _, answer: {
+        "user_id": request.user_id, "session_id": request.session_id, "delivery_id": "test-turn",
+        "reference_time": "2026-11-06T00:00:00Z", "history": [], "answer": answer})
     monkeypatch.setattr(module.llm, "invoke", lambda *_: AIMessage(content="Secret false claim [1]."))
     monkeypatch.setattr(module.llm, "ainvoke", AsyncMock(return_value=AIMessage(content='{"checks":[{"id":0,"supported":false,"quotes":[]}]}')))
     async def generate(*args):

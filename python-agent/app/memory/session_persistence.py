@@ -178,6 +178,7 @@ class SessionPersistence:
             if not state.get("deleted"):
                 raise RuntimeError("账号未停止写入，拒绝整批清理会话缓存")
             state.pop("session_histories", None)
+            state.pop("memory_completions", None)
             if not self._ensure_connection():
                 raise RuntimeError("Redis 不可用，无法核验会话残留")
             try:

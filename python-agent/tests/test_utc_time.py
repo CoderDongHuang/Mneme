@@ -46,19 +46,16 @@ def test_task_expiry_handles_old_utc_and_new_aware_timestamps(monkeypatch):
 
 @pytest.mark.parametrize('timestamp', ['2026-10-30T23:40:00', '2026-10-31T07:40:00+08:00'])
 def test_distillation_idle_window_uses_utc_for_legacy_and_aware_history(monkeypatch, timestamp):
-    from types import SimpleNamespace
     from unittest.mock import Mock
-    from app.agents import nodes
-    from app.models.chat import Message
+    from app.memory import completion, distillation
+    from app.models.chat import MemoryCompletion, Message
 
-    monkeypatch.setattr(nodes, 'utc_now', lambda: datetime(2026, 10, 31, tzinfo=timezone.utc))
-    monkeypatch.setattr(nodes, 'settings', SimpleNamespace(distillation_idle_minutes=15))
-    monkeypatch.setattr(nodes.short_term_memory, 'get_history', lambda _, **kw: [
-        Message(role='assistant', content='Earlier', timestamp=timestamp),
-        Message(role='user', content='Now', timestamp='2026-10-31T00:00:00Z'),
-    ])
+    request = MemoryCompletion(user_id='utc-qa', session_id='utc-session', delivery_id='turn',
+        reference_time='2026-10-31T00:00:00Z', answer='saved answer', history=[
+            Message(role='assistant', content='Earlier', timestamp=timestamp),
+            Message(role='user', content='Now', timestamp='2026-10-31T00:00:00Z'),
+        ])
     distill = Mock(return_value=[])
-    monkeypatch.setattr(nodes, 'distill_conversation', distill)
-    monkeypatch.setattr(nodes, 'apply_distilled_entries', lambda *_: [])
-    nodes.memory_write_node({'user_id': 'utc-qa', 'session_id': 'utc-session'})
+    monkeypatch.setattr(distillation, 'distill_conversation', distill)
+    completion._extract(request)
     distill.assert_called_once()

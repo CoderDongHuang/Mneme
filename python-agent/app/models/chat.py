@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Message(BaseModel):
@@ -17,6 +17,8 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     knowledge_base_ids: list[str] = Field(default_factory=list, max_length=20)
     document_ids: list[str] | None = Field(default=None, max_length=10000)
+    # Internal Gateway projection; never accepted from the browser by Java.
+    conversation_history: list[Message] | None = Field(default=None, max_length=40)
 
     @field_validator("user_id", "session_id", "message")
     @classmethod
@@ -82,3 +84,31 @@ class ChatResponse(BaseModel):
     session_summary: str | None = None
     memory_insights: list[str] = Field(default_factory=list)
     pending_memories: list[PendingMemory] = Field(default_factory=list)
+    memory_completion: "MemoryCompletion | None" = None
+
+
+class MemoryCompletion(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    user_id: str = Field(min_length=1, max_length=64)
+    session_id: str = Field(min_length=1, max_length=128)
+    delivery_id: str = Field(min_length=1, max_length=64)
+    reference_time: str = Field(min_length=1, max_length=64)
+    history: list[Message] = Field(max_length=41)
+    answer: str = Field(min_length=1, max_length=1_000_000)
+
+    @field_validator("user_id", "session_id", "delivery_id", "answer")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("blank completion input")
+        return value
+
+    @field_validator("reference_time")
+    @classmethod
+    def valid_time(cls, value):
+        from app.core.time import parse_utc
+        try:
+            parse_utc(value)
+        except (ValueError, TypeError, OverflowError):
+            raise ValueError("invalid completion time") from None
+        return value

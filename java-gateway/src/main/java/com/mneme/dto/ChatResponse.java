@@ -3,6 +3,10 @@ package com.mneme.dto;
 import java.util.List;
 
 public class ChatResponse {
+    @com.fasterxml.jackson.annotation.JsonProperty(value = "memory_completion", access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
+    private com.fasterxml.jackson.databind.JsonNode memoryCompletion;
+    public com.fasterxml.jackson.databind.JsonNode getMemoryCompletion() { return memoryCompletion; }
+    public void setMemoryCompletion(com.fasterxml.jackson.databind.JsonNode value) { memoryCompletion = value; }
     private String answer;
     private String intent;
     private List<Source> sources;

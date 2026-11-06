@@ -41,3 +41,15 @@ def test_chat_endpoints_reject_oversized_raw_bodies():
         )
     assert response.status_code == 413
     assert response.json()["error"]["code"] == "REQUEST_TOO_LARGE"
+
+
+def test_completion_has_separate_bounded_body_budget():
+    with TestClient(app) as client:
+        # Validation fails after middleware accepts a body larger than chat's
+        # 64 KiB limit; no provider or memory effect can run for this JSON.
+        accepted = client.post("/api/v1/chat/memory/complete", content=b"{" + b" " * (65 * 1024) + b"}",
+                               headers={"content-type": "application/json"})
+        rejected = client.post("/api/v1/chat/memory/complete", content=b"{}",
+                               headers={"content-type": "application/json", "content-length": str(8 * 1024 * 1024 + 1)})
+    assert accepted.status_code == 422
+    assert rejected.status_code == 413

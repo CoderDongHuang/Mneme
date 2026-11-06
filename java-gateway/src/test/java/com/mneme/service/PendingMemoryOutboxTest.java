@@ -42,6 +42,7 @@ class PendingMemoryOutboxTest {
     PendingMemoryService pending;
     TaskLeaseService leases;
     NotificationService events;
+    RestTemplate agent;
 
     @BeforeAll static void database() throws Exception {
         var source = new DriverManagerDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
@@ -68,12 +69,13 @@ class PendingMemoryOutboxTest {
         sessions = (ChatSessionService) proxy.getProxy();
         pending = new PendingMemoryService(template.getMapper(PendingMemoryMapper.class), mock(MemoryService.class));
         leases = new TaskLeaseService(jdbc, manager, 30); events = mock(NotificationService.class);
+        agent = mock(RestTemplate.class);
     }
     @AfterEach void cleanup() { leases.close(); jdbc.update("DELETE FROM user WHERE id=?", user); }
 
     ProcessingTaskService worker() {
         return new ProcessingTaskService(template.getMapper(ProcessingTaskMapper.class), mock(KnowledgeDocumentMapper.class),
-            mock(KnowledgeBaseMapper.class), json, mock(RestTemplate.class), new SimpleMeterRegistry(), events,
+            mock(KnowledgeBaseMapper.class), json, agent, new SimpleMeterRegistry(), events,
             jdbc, mock(ObjectStorageService.class), leases, pending);
     }
     ChatResponse.PendingMemory candidate(String id) {
@@ -87,7 +89,7 @@ class PendingMemoryOutboxTest {
     }
     ProcessingTask task() { return template.getMapper(ProcessingTaskMapper.class).selectOne(
         new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProcessingTask>()
-            .eq(ProcessingTask::getUserId, user).eq(ProcessingTask::getTaskType, "memory_candidates")); }
+            .eq(ProcessingTask::getUserId, user).in(ProcessingTask::getTaskType, "memory_candidates", "memory_completion")); }
     String answerState() { return jdbc.queryForObject("SELECT status FROM chat_message WHERE id=?", String.class, message); }
     long count() { return jdbc.queryForObject("SELECT COUNT(*) FROM pending_memory WHERE user_id=?", Long.class, user); }
     void execute(ProcessingTask task, TaskLeaseService.Lease lease) { ReflectionTestUtils.invokeMethod(worker(), "execute", task, lease); }
@@ -209,5 +211,98 @@ class PendingMemoryOutboxTest {
         new WorkspaceService(jdbc, json, new RestTemplate()).retryTask(user, task.getTaskId());
         assertThat(jdbc.queryForObject("SELECT status FROM knowledge_document WHERE id=?", String.class, message)).isEqualTo("ready");
         run(); assertThat(count()).isEqualTo(1);
+    }
+
+    com.fasterxml.jackson.databind.JsonNode completion() {
+        jdbc.update("UPDATE chat_message SET request_id='turn' WHERE id=?", message);
+        return json.valueToTree(java.util.Map.of("user_id", String.valueOf(user), "session_id", String.valueOf(session),
+            "delivery_id", "turn", "reference_time", "2026-11-06T00:00:00Z", "history", List.of(), "answer", "verified answer"));
+    }
+    void enqueueCompletion() {
+        sessions.finishAnswer(message, 1, "verified answer", "[]", List.of(), completion());
+    }
+    com.fasterxml.jackson.databind.JsonNode receipt() {
+        return json.valueToTree(java.util.Map.of("completed", true, "delivery_id", "turn", "pending_memories", List.of(
+            java.util.Map.of("temp_id", "m_" + message, "category", "preference", "content", "candidate", "confidence", .7))));
+    }
+
+    @Test void fullCompletionIsAtomicWithAnswerAndInvalidOwnerRollsBothBack() {
+        var invalid = completion().deepCopy(); ((com.fasterxml.jackson.databind.node.ObjectNode) invalid).put("user_id", "999999");
+        assertThatThrownBy(() -> sessions.finishAnswer(message, 1, "verified answer", "[]", List.of(), invalid))
+            .isInstanceOf(IllegalStateException.class);
+        assertThat(answerState()).isEqualTo("processing"); assertThat(task()).isNull();
+        enqueueCompletion();
+        assertThat(task().getTaskType()).isEqualTo("memory_completion");
+        assertThat(answerState()).isEqualTo("completed"); verifyNoInteractions(agent);
+    }
+
+    @Test void fullCompletionProviderFailureRetainsAnswerAndRetryUsesCurrentAccountSettings() {
+        enqueueCompletion();
+        when(agent.postForObject(anyString(), any(), eq(com.fasterxml.jackson.databind.JsonNode.class)))
+            .thenThrow(new IllegalStateException("private-provider-body"));
+        run();
+        assertThat(answerState()).isEqualTo("completed"); assertThat(task().getStatus()).isEqualTo("retry");
+        assertThat(task().getErrorMessage()).doesNotContain("private-provider-body").contains("回答已保留");
+        var settings = mock(UserSettingsService.class);
+        when(settings.modelHeader(user)).thenReturn("current-user-config");
+        var worker = worker(); ReflectionTestUtils.setField(worker, "userSettings", settings);
+        when(agent.postForObject(anyString(), any(), eq(com.fasterxml.jackson.databind.JsonNode.class))).thenAnswer(call -> {
+            var entity = (org.springframework.http.HttpEntity<?>) call.getArgument(1);
+            assertThat(entity.getHeaders().getFirst("X-Mneme-Model")).isEqualTo("current-user-config");
+            return receipt();
+        });
+        jdbc.update("UPDATE processing_task SET next_attempt_at=UTC_TIMESTAMP() WHERE id=?", task().getId());
+        try (var lease = leases.claim(TaskLeaseService.Queue.PROCESSING, task().getId(), false)) {
+            ReflectionTestUtils.invokeMethod(worker, "execute", task(), lease);
+        }
+        assertThat(task().getStatus()).isEqualTo("completed"); assertThat(count()).isEqualTo(1);
+        assertThat(task().getPayload()).isEqualTo("{}"); assertThat(answerState()).isEqualTo("completed");
+    }
+
+    @Test void completedProviderWorkCannotPublishAfterSessionDeletion() {
+        enqueueCompletion();
+        when(agent.postForObject(anyString(), any(), eq(com.fasterxml.jackson.databind.JsonNode.class))).thenAnswer(call -> {
+            sessions.deleteSession(user, session); return receipt();
+        });
+        run();
+        assertThat(task().getStatus()).isEqualTo("cancelled"); assertThat(count()).isZero();
+        assertThat(task().getPayload()).isEqualTo("{}"); assertThat(answerState()).isEqualTo("completed");
+    }
+
+    @Test void unknownCompletionReceiptCannotBePublished() {
+        enqueueCompletion();
+        when(agent.postForObject(anyString(), any(), eq(com.fasterxml.jackson.databind.JsonNode.class)))
+            .thenReturn(json.valueToTree(java.util.Map.of("completed", true, "delivery_id", "other", "pending_memories", List.of())));
+        run(); assertThat(task().getStatus()).isEqualTo("retry"); assertThat(count()).isZero();
+        assertThat(answerState()).isEqualTo("completed");
+    }
+
+    @Test void nextTurnHistoryIncludesOnlyCompletedOwnedTurnsWithoutWaitingForMemory() {
+        jdbc.update("INSERT INTO chat_message(session_id,role,content,status,request_id) VALUES(?,'user','prior question','completed','turn')", session);
+        enqueueCompletion();
+        jdbc.update("INSERT INTO chat_message(session_id,role,content,status,request_id) VALUES(?,'assistant','failed answer','failed','failed')", session);
+        var history = sessions.conversationHistory(user, session, Long.MAX_VALUE);
+        assertThat(history).hasSize(2);
+        assertThat(history.stream().map(row -> row.get("content"))).containsExactly("verified answer", "prior question");
+        assertThat(sessions.conversationHistory(user + 100000, session, Long.MAX_VALUE)).isEmpty();
+        assertThat(task().getStatus()).isEqualTo("pending");
+    }
+
+    @Test void canonicalHistoryBoundsImportedUnicodeAndTransportSize() throws Exception {
+        enqueueCompletion();
+        for (int i = 0; i < 20; i++) {
+            jdbc.update("INSERT INTO chat_message(session_id,role,content,status,request_id) VALUES(?,'user',?,'completed',?)",
+                session, "中🌱".repeat(5000), "import-" + i);
+            jdbc.update("INSERT INTO chat_message(session_id,role,content,status,request_id) VALUES(?,'assistant','saved','completed',?)",
+                session, "import-" + i);
+        }
+        var history = sessions.conversationHistory(user, session, Long.MAX_VALUE);
+        assertThat(history).isNotEmpty();
+        assertThat(json.writeValueAsBytes(history).length).isLessThanOrEqualTo(24 * 1024);
+        for (var row : history) {
+            String text = String.valueOf(row.get("content"));
+            assertThat(text.codePointCount(0, text.length())).isLessThanOrEqualTo(4000);
+            assertThat(Character.isHighSurrogate(text.charAt(text.length() - 1))).isFalse();
+        }
     }
 }

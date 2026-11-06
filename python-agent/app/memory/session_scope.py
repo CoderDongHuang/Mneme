@@ -58,6 +58,10 @@ def tombstone_session(user_id, session_id):
         session_deleted(state, session_id)
         digest = sha256(session_id.encode()).hexdigest()
         state.setdefault("deleted_sessions", {})[digest] = True
+        completions = state.get("memory_completions", {})
+        if not isinstance(completions, dict):
+            raise ValueError("记忆任务回执损坏")
+        completions.pop(digest, None)
         receipts = state.get("reflection_deliveries", {})
         corrupt = not isinstance(receipts, dict)
         if not corrupt:

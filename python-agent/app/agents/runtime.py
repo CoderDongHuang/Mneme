@@ -3,9 +3,8 @@ import uuid
 from app.core.time import utc_now
 from app.core.privacy import require_cloud_processing
 
-from app.agents.nodes import memory_write_node, run_pre_llm_nodes
+from app.agents.nodes import run_pre_llm_nodes
 from app.agents.trace_store import agent_trace_store
-from app.memory.reflection_scheduler import reflection_scheduler
 from app.memory.session_store import session_store
 from app.memory.short_term_memory import short_term_memory
 from app.memory.working_memory import working_memory
@@ -25,6 +24,8 @@ def prepare_conversation(request: ChatRequest) -> dict:
     # no SQL history must first recover/migrate their legacy Redis contents.
     history = short_term_memory.add_message(
         request.session_id, user_message, user_id=request.user_id, delivery_id=delivery_id)
+    if request.conversation_history is not None:
+        history = [*request.conversation_history, user_message]
     session_store.register_session(
         request.user_id,
         request.session_id,
@@ -38,6 +39,7 @@ def prepare_conversation(request: ChatRequest) -> dict:
         "message": request.message,
         "knowledge_base_ids": request.knowledge_base_ids,
         "document_ids": request.document_ids,
+        "conversation_history": request.conversation_history,
         # Freeze the input before model generation. A delayed completion must
         # never distill a later turn or use its execution time as the idle gap.
         "memory_input": {
@@ -53,58 +55,3 @@ def prepare_conversation(request: ChatRequest) -> dict:
         {"message_chars": len(request.message), "kb_count": len(request.knowledge_base_ids)},
     ):
         return run_pre_llm_nodes(state)
-
-
-def complete_conversation(request: ChatRequest, state: dict, answer: str) -> dict:
-    require_cloud_processing(request.user_id)
-    memory_input = state.get("memory_input")
-    delivery_id = (memory_input or {}).get("delivery_id") or state.get("completion_delivery_id") or request.request_id or uuid.uuid4().hex
-    # Establish legacy identity before any fallible completion side effect.
-    # Retrying the same state must retain it even when memory extraction fails.
-    if memory_input is not None:
-        state["memory_input"] = {**memory_input, "delivery_id": delivery_id}
-    else:
-        # Do not fabricate an incomplete snapshot: legacy extraction still reads
-        # its history normally, while retaining identity across an early failure.
-        state["completion_delivery_id"] = delivery_id
-    answer = answer.strip()
-    state["answer"] = answer
-    with agent_trace_store.span(
-        request.user_id,
-        request.session_id,
-        "memory_write",
-        {"answer_chars": len(answer)},
-    ):
-        memory_result = memory_write_node(state)
-    assistant_message = Message(
-        role="assistant",
-        content=answer,
-        timestamp=utc_now().isoformat(),
-        token_count=max(1, len(answer) // 4),
-    )
-    history = short_term_memory.add_message(
-        request.session_id, assistant_message, user_id=request.user_id, delivery_id=delivery_id)
-    working_memory.replace_messages(request.session_id, history, user_id=request.user_id)
-    session_store.increment_message_count(request.user_id, request.session_id, delivery_id=delivery_id)
-    reflection_scheduler.record_session(request.user_id, request.session_id, delivery_id)
-    reflection_scheduler.check_and_trigger(request.user_id)
-
-    session_summary = None
-    if short_term_memory.should_summarize(request.session_id, user_id=request.user_id):
-        with agent_trace_store.span(request.user_id, request.session_id, "summarize"):
-            short_term_memory.summarize(request.session_id, user_id=request.user_id)
-        for message in short_term_memory.get_history(request.session_id, user_id=request.user_id):
-            if message.role == "system" and message.content.startswith("[历史摘要]"):
-                session_summary = message.content
-                break
-    agent_trace_store.record(
-        request.user_id,
-        request.session_id,
-        "conversation.complete",
-        "ok",
-        {
-            "pending_memories": len(memory_result.get("pending_memories", [])),
-            "summary_created": bool(session_summary),
-        },
-    )
-    return {**memory_result, "session_summary": session_summary}
