@@ -224,7 +224,7 @@ Agent 启动时注册 SQL-only 的 `session_history_retention`，每分钟按用
 
 活跃会话的消息投递回执受 `SESSION_DELIVERY_MAX_RECEIPTS` 限制，默认每个会话 4096 条。达到上限时，写入在账号事务内失败并保留原历史与全部既有回执，不淘汰旧标识。用户应新建会话后继续交互，直到既有会话按 TTL 回收。该限制保护重放去重证据，不等同于长期历史和反思投递回执的完整容量治理。
 
-反思投递账本受 `MEMORY_REFLECTION_MAX_DELIVERIES` 限制，默认每个账号 4096 条。已存在的投递仍可幂等重放，新增投递达到上限时在 SQL 账本事务内拒绝，Redis 计数不会先行增加。它保护重放证据，不淘汰旧账本项，也不替代反思任务完成后的 Redis 队列清理。
+反思投递账本受 `MEMORY_REFLECTION_MAX_DELIVERIES` 限制，默认每个账号 4096 条。已存在的投递仍可幂等重放，新增投递达到上限时在 SQL 账本事务内拒绝，Redis 计数不会先行增加。会话历史过期时同步移除同一会话的反思账本，未知会话标识保留并使维护任务失败核查。它保护重放证据，不淘汰活跃账本项，也不替代反思任务完成后的 Redis 队列清理。
 
 `test_session_retention.py` 覆盖分页、续期、并发、事务回滚/丢失确认及损坏账号隔离；`check_session_manifest_fence.py` 用独立 QA 身份验证实际 SQLite/MySQL。真实页面回归 `memory-outbox-real.spec.js` 只将本 QA 账号历史设为到期，不直接调用回收函数，等待运行中 Agent 的分钟调度，核对活动桶保留、永久回答仍可读和注销后 SQL 桶清零。
 

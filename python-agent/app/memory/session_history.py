@@ -71,6 +71,7 @@ def expire_user(state, *, now=None):
         raise ValueError("会话持久历史损坏") from None
     now = utc_now().timestamp() if now is None else now
     expired = 0
+    expired_keys = []
     for key, value in _entries(state).items():
         if not isinstance(key, str) or len(key) != 64 or any(c not in "0123456789abcdef" for c in key):
             raise ValueError("会话持久历史损坏") from None
@@ -78,7 +79,30 @@ def expire_user(state, *, now=None):
         current = _bucket_for_key(state, key, now)
         if current == {"expired": True} and not was_expired:
             expired += 1
+            expired_keys.append(key)
+    if expired_keys:
+        _remove_expired_reflection_receipts(state, expired_keys)
     return expired
+
+
+def _remove_expired_reflection_receipts(state, expired_keys):
+    receipts = state.get("reflection_deliveries")
+    if receipts is None:
+        return
+    if not isinstance(receipts, dict):
+        raise ValueError("反思投递回执损坏") from None
+    for session, deliveries in receipts.items():
+        if (not isinstance(session, str) or len(session) != 64
+                or any(char not in "0123456789abcdef" for char in session)
+                or not isinstance(deliveries, dict)):
+            raise ValueError("反思投递回执损坏") from None
+        for delivery, value in deliveries.items():
+            if (not isinstance(delivery, str) or len(delivery) != 64
+                    or any(char not in "0123456789abcdef" for char in delivery)
+                    or value is not True):
+                raise ValueError("反思投递回执损坏") from None
+    for key in expired_keys:
+        receipts.pop(key, None)
 
 
 def messages(value):

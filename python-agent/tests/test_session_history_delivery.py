@@ -117,6 +117,24 @@ def test_expiry_removes_body_and_receipts_even_with_hot_local_cache(monkeypatch)
     assert [m.content for m in manager.get_history("s", user_id="alice")] == ["new period"]
 
 
+def test_history_expiry_removes_matching_reflection_receipts_but_keeps_unknown_sessions(monkeypatch):
+    manager = ShortTermMemoryManager()
+    manager.add_message("s", message(), user_id="alice", delivery_id="turn")
+    session_digest = session_history.session_key("s")
+    unknown = session_history.session_key("unknown")
+    with account_session("alice") as state:
+        state["reflection_deliveries"] = {
+            session_digest: {"a" * 64: True},
+            unknown: {"b" * 64: True},
+        }
+    later = utc_now() + timedelta(days=3)
+    with account_session("alice") as state:
+        assert session_history.expire_user(state, now=later.timestamp()) == 1
+    assert generation_store.snapshot("alice")["reflection_deliveries"] == {
+        unknown: {"b" * 64: True}
+    }
+
+
 def test_raw_cleanup_counts_orphans_and_tombstone_wins_over_receipt(monkeypatch):
     manager = ShortTermMemoryManager()
     for user in ("alice", "bob"):
