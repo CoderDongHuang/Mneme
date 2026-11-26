@@ -211,6 +211,9 @@ class ReflectionScheduler:
                 if delivery_digest in bucket:
                     count = int(self._redis.get(self._counter_key(user_id)) or 0)
                 else:
+                    delivery_count = sum(len(items) for items in receipts.values())
+                    if delivery_count >= getattr(settings, "memory_reflection_max_deliveries", 4096):
+                        raise ValueError("反思投递回执容量已满，请等待反思任务完成或清理旧会话")
                     count = int(self._redis.eval(
                         _RECORD_SCRIPT, 2, self._counter_key(user_id), marker, _COUNTER_TTL_SECONDS,
                     ))

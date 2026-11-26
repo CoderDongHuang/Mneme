@@ -135,6 +135,7 @@ class Settings:
     memory_reflection_lease_seconds: int = int(
         os.getenv("MEMORY_REFLECTION_LEASE_SECONDS", "900")
     )
+    memory_reflection_max_deliveries: int = _positive_int("MEMORY_REFLECTION_MAX_DELIVERIES", 4096)
 
     upload_max_mb: int = int(os.getenv("UPLOAD_MAX_MB", "30"))
     ingestion_task_retention_seconds: float = _positive_float("INGESTION_TASK_RETENTION_SECONDS", 3600)

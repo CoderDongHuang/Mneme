@@ -140,6 +140,23 @@ def test_delivery_identity_is_user_session_and_turn_scoped():
     assert "session" not in str(receipts) and "turn" not in str(receipts)
 
 
+def test_reflection_delivery_capacity_rejects_new_receipts_without_redis_increment(monkeypatch):
+    fake = FakeRedis()
+    scheduler = module.ReflectionScheduler(redis_client=fake)
+    previous = module.settings.memory_reflection_max_deliveries
+    object.__setattr__(module.settings, "memory_reflection_max_deliveries", 1)
+    try:
+        assert scheduler.record_session("capacity-user", "session", "first") == 1
+        before = module.generation_store.snapshot("capacity-user")
+        counter = scheduler._counter_key("capacity-user")
+        with pytest.raises(ValueError, match="容量已满"):
+            scheduler.record_session("capacity-user", "session", "second")
+        assert module.generation_store.snapshot("capacity-user") == before
+        assert fake.values[counter] == 1
+    finally:
+        object.__setattr__(module.settings, "memory_reflection_max_deliveries", previous)
+
+
 @pytest.mark.parametrize("session,delivery", [("session", ""), ("", "turn")])
 def test_partial_delivery_identity_rejected_before_counting(session, delivery):
     fake = FakeRedis()
