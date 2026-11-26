@@ -16,7 +16,7 @@ Java 普通响应采用 `{ "code": 200, "message": "success", "data": ... }`。
 
 <a id="gateway-route-contract"></a>
 
-`python-agent/tests/test_gateway_route_contract.py` 从 Java 控制器的 `@RequestMapping` 与 HTTP 方法注解读取 Gateway 路由，再核对 `frontend/src/api/client.js` 的普通请求、流式请求、下载和通知入口。它覆盖路径存在性，避免前端调用已删除或改名的业务路由。业务响应字段、请求体、状态码和枚举仍由各自 DTO、Pydantic model 与专项契约测试维护，不能由路径门禁代替。
+`python-agent/tests/test_gateway_route_contract.py` 从 Java 控制器的 `@RequestMapping` 与 HTTP 方法注解读取 Gateway 路由，再核对 `frontend/src/api/client.js` 的普通请求、流式请求、下载和通知入口。它覆盖路径存在性和 GET/POST/PUT/PATCH/DELETE 方法一致性，避免前端调用已删除、改名或方法不匹配的业务路由。业务响应字段、请求体、状态码和枚举仍由各自 DTO、Pydantic model 与专项契约测试维护，不能由路径和方法门禁代替。
 
 HTTP 成功不代表回执有效。非法 JSON、缺失字段、错误字段类型及非 Result 外壳均显示“服务返回的数据格式异常，请刷新核实后再操作”，不回显原始响应正文、不宣称保存成功、不自动重发写入。服务器可能已提交；刷新读取真实数据后再决定后续操作。HTTP 401 或有效 Result 的 401 仍触发登录失效处理；非字符串错误详情不直接作为界面文案。流式握手的错误响应也遵守字符串消息保护。
 
