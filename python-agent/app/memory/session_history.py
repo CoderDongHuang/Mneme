@@ -112,7 +112,11 @@ def already_delivered(state, session_id, message, delivery_id):
 
 def record_delivery(state, session_id, message, delivery_id):
     key, digest = delivery(message, delivery_id)
-    state["session_histories"][session_key(session_id)]["deliveries"][key] = digest
+    bucket = state["session_histories"][session_key(session_id)]
+    receipts = bucket["deliveries"]
+    if key not in receipts and len(receipts) >= settings.session_delivery_max_receipts:
+        raise ValueError("会话投递回执容量已满，请新建会话")
+    receipts[key] = digest
 
 
 def clear(state, session_id):

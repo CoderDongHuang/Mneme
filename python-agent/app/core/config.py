@@ -116,6 +116,8 @@ class Settings:
     memory_completion_retention_days: int = _positive_int("MEMORY_COMPLETION_RETENTION_DAYS", 30)
     memory_completion_max_jobs: int = _positive_int("MEMORY_COMPLETION_MAX_JOBS", 1000)
     memory_completion_max_bytes: int = _positive_int("MEMORY_COMPLETION_MAX_BYTES", 16777216)
+    session_delivery_max_receipts: int = _positive_int("SESSION_DELIVERY_MAX_RECEIPTS", 4096)
+    session_delivery_max_receipts: int = _positive_int("SESSION_DELIVERY_MAX_RECEIPTS", 4096)
     retriever_rewrite_enabled: bool = _bool("RETRIEVER_REWRITE_ENABLED", True)
     reranker_enabled: bool = _bool("RERANKER_ENABLED", False)
     retriever_focus_gate_enabled: bool = _bool("RETRIEVER_FOCUS_GATE_ENABLED", True)

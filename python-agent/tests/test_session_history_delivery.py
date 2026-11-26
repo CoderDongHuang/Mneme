@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.time import utc_now
+from app.core.config import settings
 from app.knowledge.generations import generation_store, StaleGeneration
 from app.memory import session_history
 from app.memory.session_persistence import session_persistence
@@ -75,6 +76,20 @@ def test_conflicting_payload_rejected_and_unscoped_identical_messages_retained()
     assert len(manager.get_history("s", user_id="alice")) == 3
     manager.add_message("s", message(), user_id="bob", delivery_id="turn")
     manager.add_message("other", message(), user_id="alice", delivery_id="turn")
+
+
+def test_active_delivery_receipts_have_a_bounded_capacity_without_eviction(monkeypatch):
+    manager = ShortTermMemoryManager()
+    previous = settings.session_delivery_max_receipts
+    object.__setattr__(settings, "session_delivery_max_receipts", 1)
+    try:
+        manager.add_message("s", message("first"), user_id="alice", delivery_id="one")
+        before = generation_store.snapshot("alice")
+        with pytest.raises(ValueError, match="容量已满"):
+            manager.add_message("s", message("second"), user_id="alice", delivery_id="two")
+        assert generation_store.snapshot("alice") == before
+    finally:
+        object.__setattr__(settings, "session_delivery_max_receipts", previous)
 
 
 def test_summary_keeps_delivery_receipts_and_replay_does_not_restore_old_message(monkeypatch):
