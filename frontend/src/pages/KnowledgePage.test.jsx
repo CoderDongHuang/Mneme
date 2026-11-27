@@ -60,6 +60,20 @@ test('first library failure offers a read retry without claiming no libraries', 
   expect(endpoints.createKnowledgeBase).not.toHaveBeenCalled()
 })
 
+test.each([{ userId: false }, { status: {} }])('invalid library business fields use the existing read recovery (%j)', async fields => {
+  endpoints.knowledgeBases.mockResolvedValueOnce([{ id: 1, name: '损坏资料库', ...fields }])
+  render(<KnowledgePage />)
+  const reads = screen.getByRole('region', { name: '资料库读取' })
+  expect(await within(reads).findByRole('alert')).toHaveTextContent('资料库加载失败')
+  expect(screen.getByRole('button', { name: '新建资料库' })).toBeDisabled()
+  expect(screen.queryByRole('option', { name: '损坏资料库' })).not.toBeInTheDocument()
+  fireEvent.click(within(reads).getByRole('button', { name: '重试 / Retry' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: '导入资料' })).toBeEnabled())
+  expect(endpoints.knowledgeBases).toHaveBeenCalledTimes(2)
+  expect(endpoints.createKnowledgeBase).not.toHaveBeenCalled()
+  expect(endpoints.deleteKnowledgeBase).not.toHaveBeenCalled()
+})
+
 test('first document failure does not claim empty and has independent retry', async () => {
   endpoints.documents.mockRejectedValueOnce(new Error('offline'))
   render(<KnowledgePage />)

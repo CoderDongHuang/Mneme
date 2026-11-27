@@ -1,5 +1,14 @@
 import { expect, test } from 'vitest'
-import { validSessions } from './collectionValidation'
+import { validBases, validSessions } from './collectionValidation'
+
+test.each([
+  { id: 1, name: '资料库', userId: false },
+  { id: 1, name: '资料库', status: {} },
+  { id: 1, name: '资料库', chromaCollectionId: [] },
+  { id: 1, name: '资料库', updatedAt: {} },
+])('rejects a knowledge base whose business fields have drifted %#', base => {
+  expect(validBases([base])).toBe(false)
+})
 
 test.each([
   { id: 1, userId: false },

@@ -66,6 +66,12 @@ SSE 事件：
 
 ## 资料库
 
+`contracts/knowledge-base.schema.json` 集中定义资料库对象、列表与删除受理回执。Java 实际 HTTP 序列化和浏览器共用 `knowledge-base.cases.json` 的正反例，现有 REST 生成器输出 `frontend/src/api/generated/knowledge-base.d.ts`，由 `--check` 门禁拒绝漂移。知识库、对话、工作台和测验的共享资料库列表校验复用 schema，并保留唯一 ID 与名称非空白规则。
+
+资料库必含安全范围内的正整数 `id` 和非空字符串 `name`。旧记录的 `userId`、说明、集合标识、状态和日期可省略或为 null；存在的所有者 ID 同样须为安全正整数，其他字段须为字符串。归档导入支持旧状态字符串，契约保留该兼容性。错误字段进入原读取失败与独立 GET 重试流程。
+
+创建请求使用 `name`、可选 `description`，Java 按已有规则去除首尾空白并返回保存后的资料库实体。删除接口沿用 `{deleted: true}` 回执，表示清理任务已受理，最终结果由任务中心的 `knowledge_base_delete` 任务记录确认。
+
 - `POST /knowledge/base`
 - `GET /knowledge/base/list`
 - `DELETE /knowledge/base/{id}`
