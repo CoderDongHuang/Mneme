@@ -227,6 +227,37 @@ test('聊天 IME 不误发送，引用抽屉可键盘关闭并恢复焦点', asy
   await expect(trigger).toBeFocused()
 })
 
+for (const path of ['/chat', '/workspace']) test(`${path} 引用抽屉窄窗口来源信息可键盘访问`, async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 900 })
+  await page.route('**/api/v1/sessions', route => route.fulfill(ok([{ id: 5, title: '引用会话' }])))
+  await page.route('**/api/v1/sessions/5/messages', route => route.fulfill(ok([
+    { id: 52, role: 'assistant', content: '引用回答', sourcesJson: JSON.stringify([{
+      document_id: 'doc_42', document_name: '历史资料.pdf', chunk_content: '原文证据',
+      page: 3, section: '证据章节', retrieval_ranks: { lexical: 1 }, score: 0.875,
+      content_sha256: 'a'.repeat(64), indexed_at: '2026-11-27T00:00:00Z', parser_version: 'v3',
+    }]) },
+  ])))
+  await page.goto(`${path}?session=5`)
+  const trigger = page.getByRole('button', { name: '查看 1 条资料依据' })
+  await trigger.click()
+  const drawer = page.getByRole('dialog', { name: '引用与原文', exact: true })
+  const close = drawer.getByRole('button', { name: '关闭资料依据' })
+  const details = drawer.locator('summary')
+  await expect(close).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(details).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(drawer.getByText(/召回路径：/)).toBeVisible()
+  await page.keyboard.press('Tab')
+  await expect(close).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(drawer).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await expect(page.locator('.chat-workspace')).not.toHaveAttribute('inert', '')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect(page.getByRole('complementary', { name: '引用与原文' })).toContainText('历史资料.pdf')
+})
+
 test('历史删除按钮可键盘操作且收起后不可聚焦', async ({ page }) => {
   let sessions = [{ id: 5, title: '键盘会话' }]
   await page.route('**/api/v1/sessions', route => route.fulfill(ok(sessions)))

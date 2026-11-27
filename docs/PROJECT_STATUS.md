@@ -2,11 +2,13 @@
 
 更新：2026-11-27。定位为个人与小团队自部署 Beta。
 
-## 当前执行状态：继续剩余整改，验收 P2-14 对话历史侧栏边界
+## 当前执行状态：继续剩余整改，验收 P2-14 引用抽屉边界
 
 P2-14 知识库列表 PR #139 最终 HEAD `2263da7` 全部九项 CI 成功，已于 2026-11-27 合并（`0ea129f`）。该批同时修复 CI 发现的 OpenTelemetry 与 Qdrant Debian 运行库安全公告，隔离镜像验证与镜像扫描通过。GitHub 认证正常，CLI 需在可读取 Windows 凭据库的授权环境运行。
 
-接续 P2-14 对话历史侧栏子项已完成本地验收：搜索、日期/时间范围筛选、列表反馈、操作按钮和窄窗口焦点迁入 `features/chat/ChatHistoryPanel.jsx`；ChatPage 继续持有读取状态、请求、操作锁和会话协调。ChatPage 42 项、ESLint、生产构建及体积门禁通过；对话/工作台明暗主题、键盘删除、持久历史与 800px 窄窗口焦点/筛选保留共 6 项浏览器回归通过。最终九项 CI 与合并证据集中见 [PR #140](https://github.com/CoderDongHuang/Mneme/pull/140)。完整主项完成 21、未完成 6，另发布收口 1，共剩余 7。
+P2-14 对话历史侧栏 PR #140 最终 HEAD `a012534` 全部九项 CI 成功，已于 2026-11-27 合并（`d26e3fd`）。搜索、日期/时间范围筛选、列表反馈、操作按钮和窄窗口焦点迁入 `features/chat/ChatHistoryPanel.jsx`，ChatPage 继续协调读取和会话操作。详细验收证据见 [PR #140](https://github.com/CoderDongHuang/Mneme/pull/140)。
+
+本轮 P2-14 引用抽屉子项完成本地验收：原文定位、复制、来源信息与焦点迁入 `features/chat/ChatSourceDrawer.jsx`；页面保留引用选择、会话状态和错误反馈。基线复现 1000px 窄窗口焦点循环遗漏来源信息 `summary`，原规则补齐后对话/工作台均通过；ChatPage 45 项、受影响文件 ESLint、生产构建及体积门禁通过，主题/引用/历史侧栏浏览器回归 7 项通过。最终九项 CI 与合并证据集中到本项独立 PR，沿用当前九项门禁。完整主项完成 21、未完成 6，另发布收口 1，共剩余 7。
 
 检查点留存子项已完成并合并。#129—138 均已合并；[检查点留存 PR #138](https://github.com/CoderDongHuang/Mneme/pull/138) 最终 HEAD 27a80ad 全部九项 CI 成功，2026-11-07 合并至 main（83916c2）。完整主项完成 21、未完成 6，另发布收口 1，共剩余 7。
 

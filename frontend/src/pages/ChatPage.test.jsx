@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, act, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, expect, test, vi } from 'vitest'
 import ChatPage from './ChatPage'
 import { endpoints, streamChat } from '../api/client'
@@ -148,6 +148,54 @@ function send(text = '测试问题') {
   fireEvent.change(screen.getByRole('textbox', { name: '向忆知提问...' }), { target: { value: text } })
   fireEvent.click(screen.getByRole('button', { name: '发送' }))
 }
+
+function CurrentLocation() {
+  const location = useLocation()
+  return <output aria-label="当前地址">{location.pathname}{location.search}</output>
+}
+
+const citation = {
+  document_id: 'doc_42', document_name: '资料.pdf', page: 3, section: '证据章节',
+  chunk_content: '原文证据', content_sha256: 'a'.repeat(64),
+  retrieval_ranks: { 'dense:primary': 1, lexical: 2 }, score: 0.875,
+  indexed_at: '2026-11-27T00:00:00Z', parser_version: 'v3',
+}
+
+test.each([false, true])('historical citations open the original version with bounded highlights (workspace=%s)', async workspace => {
+  const source = { ...citation, chunk_content: '证'.repeat(600) }
+  endpoints.sessionMessages.mockResolvedValue([
+    { id: 10, role: 'assistant', content: '历史回答', status: 'completed', sourcesJson: JSON.stringify([source]) },
+  ])
+  render(<MemoryRouter><ChatPage workspace={workspace} /><CurrentLocation /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '打开对话：会话 A' }))
+  fireEvent.click(await screen.findByRole('button', { name: '查看 1 条资料依据' }))
+  expect(screen.getByText('资料.pdf')).toBeInTheDocument()
+  expect(screen.getByText('第 3 页 · 证据章节')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '打开原文定位' }))
+  const target = new URL(screen.getByLabelText('当前地址').textContent, 'http://localhost')
+  expect(target.pathname).toBe('/workspace')
+  expect(Object.fromEntries(target.searchParams)).toEqual({
+    document: '42', page: '3', sha256: source.content_sha256, highlight: source.chunk_content.slice(0, 500),
+  })
+  expect(screen.queryByRole('dialog', { name: '引用与原文' })).not.toBeInTheDocument()
+})
+
+test('citation copy failure preserves evidence and displays the existing error feedback', async () => {
+  const copy = vi.fn().mockRejectedValue(new Error('clipboard unavailable'))
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: copy } })
+  try {
+    endpoints.sessionMessages.mockResolvedValue([
+      { id: 10, role: 'assistant', content: '历史回答', sources: [citation] },
+    ])
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: '打开对话：会话 A' }))
+    fireEvent.click(await screen.findByRole('button', { name: '查看 1 条资料依据' }))
+    fireEvent.click(screen.getByRole('button', { name: '复制引用' }))
+    expect(copy).toHaveBeenCalledWith('资料.pdf · 3\n原文证据')
+    expect(await screen.findByRole('alert')).toHaveTextContent('复制失败，请手动选择文本复制')
+    expect(screen.getByText('原文证据')).toBeInTheDocument()
+  } finally { vi.unstubAllGlobals() }
+})
 test('latest session wins and sending is blocked until its messages arrive', async () => {
   const a = deferred(); const b = deferred()
   endpoints.sessionMessages.mockImplementation(id => id === 1 ? a.promise : b.promise)
