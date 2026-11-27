@@ -36,6 +36,10 @@ HTTP 成功不代表回执有效。非法 JSON、缺失字段、错误字段类�
 
 ## 会话
 
+`contracts/chat-session.schema.json` 集中定义会话对象/列表、历史消息与异步删除受理回执。Java 的 HTTP 序列化测试和浏览器共享 `chat-session.cases.json` 的 31 个正反例；现有 REST 生成器输出 `frontend/src/api/generated/chat-session.d.ts`，Python 契约门禁以 `--check` 检查漂移。会话列表读取复用该 schema，并保留重复 ID 拒绝规则；非法所有者字段类型或删除状态进入已有读取失败与重试流程。
+
+会话兼容旧记录缺省或为 null 的标题、日期和所有者字段，存在的 ID 必须为浏览器安全范围内的正整数。历史消息保留 `sourcesJson` 字符串载荷和旧记录的可空字段，引用 JSON 的解析仍由原历史读取逻辑处理。归档导入允许旧消息状态字符串，契约据此保留兼容性；当前处理状态包括 processing/completed/failed/stopped。删除回执固定 `accepted=true`、非空 `task_id` 与任务状态枚举，重放可返回原任务的 completed/failed 等状态。
+
 - `POST /sessions`：创建会话。
 - `GET /sessions`：按更新时间倒序查询。
 - `GET /sessions/{id}/messages`：读取消息。

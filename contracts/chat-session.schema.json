@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "$defs": {
+    "ChatSession": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "userId": { "anyOf": [{ "type": "integer", "minimum": 1, "maximum": 9007199254740991 }, { "type": "null" }] },
+        "title": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "deletionStatus": { "enum": ["active", "delete_pending"] },
+        "createdAt": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "updatedAt": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
+      }
+    },
+    "ChatSessionList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ChatSession" }
+    },
+    "ChatHistoryMessage": {
+      "type": "object",
+      "required": ["id", "sessionId", "role", "content"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "sessionId": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "requestId": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "role": { "enum": ["user", "assistant", "system"] },
+        "content": { "type": "string" },
+        "status": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "errorCode": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "sourcesJson": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "answerGeneration": { "anyOf": [{ "type": "integer", "minimum": 0, "maximum": 9007199254740991 }, { "type": "null" }] },
+        "createdAt": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
+      }
+    },
+    "ChatHistory": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ChatHistoryMessage" }
+    },
+    "ChatSessionDeletionReceipt": {
+      "type": "object",
+      "required": ["accepted", "task_id", "status"],
+      "properties": {
+        "accepted": { "const": true },
+        "task_id": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["pending", "processing", "retry", "completed", "failed", "cancelling", "cancelled"] }
+      }
+    }
+  }
+}

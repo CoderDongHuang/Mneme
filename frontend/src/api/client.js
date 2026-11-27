@@ -196,10 +196,15 @@ export const endpoints = {
     return api('/profile/avatar', { ...options, method: 'POST', body: form })
   },
   avatarUrl: () => `${API_BASE}/profile/avatar`,
+  /** @returns {Promise<import('./generated/chat-session').ChatSessionList>} */
   sessions: options => api('/sessions', options),
+  /** @returns {Promise<import('./generated/chat-session').ChatSession>} */
   createSession: (title = '新对话') => api('/sessions', { method: 'POST', body: JSON.stringify({ title }) }),
+  /** @returns {Promise<import('./generated/chat-session').ChatHistory>} */
   sessionMessages: (id) => api(`/sessions/${id}/messages`),
+  /** @returns {Promise<import('./generated/chat-session').ChatSessionDeletionReceipt>} */
   deleteSession: (id) => api(`/sessions/${id}`, { method: 'DELETE' }),
+  /** @returns {Promise<import('./generated/chat-session').ChatSession>} */
   renameSession: (id, title) => api(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   knowledgeBases: (options) => api('/knowledge/base/list', options),
   createKnowledgeBase: (body) => api('/knowledge/base', { method: 'POST', body: JSON.stringify(body) }),

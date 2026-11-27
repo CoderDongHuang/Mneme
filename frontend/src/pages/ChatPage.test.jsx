@@ -350,7 +350,7 @@ test.each([
 })
 
 
-test.each([null, {}, [{ id: 1, title: {} }], [{ id: 1 }, { id: 1 }]])('invalid sessions do not become an empty result (%j)', async value => {
+test.each([null, {}, [{ id: 1, title: {} }], [{ id: 1 }, { id: 1 }], [{ id: 1, userId: false }], [{ id: 1, deletionStatus: 'deleted' }]])('invalid sessions do not become an empty result (%j)', async value => {
   endpoints.sessions.mockResolvedValueOnce(value)
   render(<MemoryRouter><ChatPage /></MemoryRouter>)
   expect(await within(screen.getByRole('region', { name: '会话列表读取' })).findByRole('alert')).toHaveTextContent('会话列表加载失败')
