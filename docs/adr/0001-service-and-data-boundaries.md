@@ -5,6 +5,7 @@ Status: accepted
 ## Decision
 
 - The browser calls only Java Gateway.
+- `ChatHistoryPanel` owns history search, date/range filters, list presentation and narrow-window focus handling for both Chat and Workspace. `ChatPage` owns independent reads, session selection, request locks and mutation receipts, passing state and callbacks into the panel.
 - Java Gateway owns users, knowledge metadata, documents, chat sessions, messages, durable jobs, and pending-memory decisions in MySQL.
 - Python Agent owns model orchestration, retrieval, embeddings, and semantic-memory execution. It does not own user identity or business records.
 - Qdrant stores vectors. MySQL/SQLite auxiliary state is authoritative for SQL session history and delivery receipts; Redis may mirror that history for compatibility. Redis also stores short-term context, shared counters and leases, and a reflection task stream; the stream is recoverable queue state and must be included in backup and recovery planning. SQL session history contains private message content and follows the same backup access controls, encryption, retention, and matched rollback set as other account data.

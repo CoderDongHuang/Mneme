@@ -2,18 +2,17 @@ import useIndependentRead from '../hooks/useIndependentRead'
 import { validBases, validSessions } from '../api/collectionValidation'
 import { useAuth } from '../state/AuthContext'
 import { useFormatters } from '../hooks/useFormatters'
-import { parseInstant } from '../utils/dates'
 import { useDateFormatter } from '../hooks/useDateFormatter'
 import { t, useI18n } from '../i18n'
 import {
-  ArrowUp, BookOpen, Check, ChevronDown, CircleStop, FileText, MessageSquarePlus,
-  PanelLeftClose, PanelLeftOpen, Quote, Search, SlidersHorizontal, Sparkles, Trash2, X,
+  ArrowUp, BookOpen, Check, ChevronDown, CircleStop, FileText,
+  PanelLeftClose, PanelLeftOpen, Quote, SlidersHorizontal, Sparkles, X,
 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { endpoints, streamChat } from '../api/client'
 import { FeedbackBlock, Modal } from '../components/ui'
-import LoadingState from '../components/LoadingState'
+import ChatHistoryPanel from '../features/chat/ChatHistoryPanel'
 import RetrievalFilters, { emptyFilters } from '../components/RetrievalFilters'
 import useChatScroll from '../hooks/useChatScroll'
 import logo from '../assets/mneme-logo.svg'
@@ -43,10 +42,6 @@ function ChatView({ renderTools, workspace = false }) {
   const fmt = useFormatters()
   const navigate = useNavigate()
   const location = useLocation()
-  const [historyQuery, setHistoryQuery] = useState('')
-  const [historyDate, setHistoryDate] = useState('')
-  const [historyRange, setHistoryRange] = useState(0)
-  const [historyNow] = useState(Date.now)
   const [toolsOpen, setToolsOpen] = useState(false)
   const toolsTrigger = useRef(null)
   const [toolMode, setToolMode] = useState(() => workspace && new URLSearchParams(window.location.search).has('document') ? 'reader' : null)
@@ -57,7 +52,7 @@ function ChatView({ renderTools, workspace = false }) {
   const [narrow, setNarrow] = useState(window.innerWidth <= 1279)
   const sessionRead = useIndependentRead(endpoints.sessions, validSessions)
   const kbRead = useIndependentRead(endpoints.knowledgeBases, validBases)
-  const sessions = sessionRead.data || [], knowledgeBases = kbRead.data || []
+  const knowledgeBases = kbRead.data || []
   const setSessions = sessionRead.commit
   const sessionUnavailable = sessionRead.data === null || sessionRead.error || sessionRead.loading
   const kbUnavailable = kbRead.data === null || kbRead.error || kbRead.loading
@@ -92,31 +87,12 @@ function ChatView({ renderTools, workspace = false }) {
   const conversationRef = useRef(null)
   const { unseen, scrollToBottom } = useChatScroll(conversationRef, messages)
   const drawerRef = useRef(null)
-  const historyRef = useRef(null)
   const [compact, setCompact] = useState(window.innerWidth <= 819)
   useEffect(() => {
     const resize = () => setCompact(window.innerWidth <= 819)
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
   }, [])
-  useEffect(() => {
-    if (!compact || !sidebarOpen) return
-    const previous = document.activeElement
-    const panel = historyRef.current
-    panel.querySelector('button')?.focus()
-    const keydown = event => {
-      if (event.key === 'Escape') { event.preventDefault(); setSidebarOpen(false) }
-      if (event.key !== 'Tab') return
-      const items = [...panel.querySelectorAll('button:not(:disabled),input,summary')].filter(item => item.getClientRects().length)
-      const index = items.indexOf(document.activeElement)
-      if (index < 0 || (event.shiftKey && index === 0) || (!event.shiftKey && index === items.length - 1)) {
-        event.preventDefault()
-        items[event.shiftKey ? items.length - 1 : 0]?.focus()
-      }
-    }
-    panel.addEventListener('keydown', keydown)
-    return () => { panel.removeEventListener('keydown', keydown); if (previous?.isConnected) previous.focus() }
-  }, [compact, sidebarOpen])
   useEffect(() => {
     if (!sourceDrawer) return
     const previous = document.activeElement
@@ -348,7 +324,6 @@ function ChatView({ renderTools, workspace = false }) {
     }
   }
 
-  const filteredSessions = sessions.filter(item => (item.title || '').toLowerCase().includes(historyQuery.toLowerCase()) && (!historyDate || dates.dateKey(item.updatedAt || item.createdAt) === historyDate) && (!historyRange || historyNow - (parseInstant(item.updatedAt || item.createdAt)?.getTime() ?? NaN) <= historyRange * 86400000))
   const displaySources = sourceDrawer || messages.findLast(message => message.sources?.length)?.sources || []
   async function rename(event) {
     event.preventDefault()
@@ -373,27 +348,10 @@ function ChatView({ renderTools, workspace = false }) {
   return (
     <div className={`chat-page reference-chat ${sidebarOpen ? '' : 'sidebar-collapsed'} ${!narrow ? 'with-sources' : ''}`}>
       {compact && sidebarOpen && <button className="history-scrim" aria-label={t('关闭会话栏')} tabIndex={-1} onClick={() => setSidebarOpen(false)} />}
-      <aside ref={historyRef} className="chat-history" role={compact && sidebarOpen ? 'dialog' : undefined} aria-modal={compact && sidebarOpen ? true : undefined} inert={!sidebarOpen || (!!sourceDrawer && narrow)} aria-label={t("对话记录")}>
-        <button className="history-close" onClick={() => setSidebarOpen(false)} aria-label={t('关闭会话栏')}><X size={16} />{t('关闭会话栏')}</button>
-        <div className="history-head">
-          <div><strong>{t("对话历史")}</strong></div>
-          <button onClick={newChat} title={t("新对话")} aria-label={t("新对话")}><MessageSquarePlus size={16} /><span>{t('新建对话')}</span></button>
-        </div>
-<div className="history-filters"><label><Search size={16} /><input aria-label={t("搜索会话")} placeholder={t("搜索对话…")} value={historyQuery} onChange={e => setHistoryQuery(e.target.value)} /></label><div className="history-ranges">{[[0, '全部'], [7, '最近 7 天'], [30, '最近 30 天']].map(([days, label]) => <button key={days} aria-pressed={historyRange === days} onClick={() => { setHistoryRange(days); setHistoryDate('') }}>{t(label)}<small>{sessions.filter(item => !days || historyNow - (parseInstant(item.updatedAt || item.createdAt)?.getTime() ?? NaN) <= days * 86400000).length}</small></button>)}</div><details><summary>{t('按日期筛选会话')}</summary><input type="date" aria-label={t("按日期筛选会话")} value={historyDate} onChange={e => setHistoryDate(e.target.value)} /></details></div>
-        <div className="history-list" role="region" aria-label={t('会话列表读取')} aria-busy={sessionRead.loading}>
-          <FeedbackBlock error={sessionRead.error ? t('会话列表加载失败。已有记录可能不是最新状态，请重试。') : ''} onRetry={sessionRead.loading ? undefined : sessionRead.refresh} />
-          {sessionRead.loading && <LoadingState />}
-          {!sessionRead.loading && !sessionRead.error && <button onClick={sessionRead.refresh}>{t('刷新会话')}</button>}
-          {filteredSessions.length ? filteredSessions.map((session) => (
-            <div key={session.id} className={`history-item ${activeSession?.id === session.id ? 'active' : ''}`}>
-              <button className="session-open" disabled={sessionUnavailable} aria-label={t("打开对话：{0}", [session.title || '新对话'])} onClick={() => chooseSession(session)}><strong>{session.title || t("新对话")}</strong><small>{dates.date(session.updatedAt || session.createdAt)}</small></button>
-              <button className="rename-session" disabled={streaming || switching || sessionUnavailable} title={t("重命名会话")} aria-label={t("重命名会话：{0}", [session.title])} onClick={() => setRenaming({ id: session.id, title: session.title || t("新对话") })}>✎</button>
-              <button className="delete-session" disabled={streaming || switching || sessionUnavailable || deletingSessions.includes(session.id)} title={t("删除对话：{0}", [session.title || '新对话'])} aria-label={t("删除对话：{0}", [session.title || '新对话'])} onClick={(event) => removeSession(event, session)}><Trash2 size={15} /></button>
-            </div>
-          )) : !sessionRead.loading && !sessionRead.error && <p className="history-empty">{t(sessions.length ? '没有符合筛选条件的对话' : '还没有历史对话')}</p>}
-        </div>
-        <div className="history-foot"><Sparkles size={16} /><span>{t("从对话中积累学习记忆")}</span></div>
-      </aside>
+      <ChatHistoryPanel read={sessionRead} unavailable={sessionUnavailable} activeSessionId={activeSession?.id}
+        streaming={streaming} switching={switching} deletingSessions={deletingSessions}
+        open={sidebarOpen} compact={compact} sourceModalOpen={!!sourceDrawer && narrow} setOpen={setSidebarOpen}
+        onNew={newChat} onChoose={chooseSession} onRename={setRenaming} onDelete={removeSession} />
 
       <section className="chat-workspace" inert={(!!sourceDrawer && narrow) || (compact && sidebarOpen)}>
         <header className="chat-toolbar">
