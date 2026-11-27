@@ -98,7 +98,7 @@ SSE 事件：
 
 ## 个人偏好与模型
 
-- `GET/PUT /settings/preferences`：当前登录用户的 `language`（zh-CN/en）、IANA `timezone`、布尔 `notifications`、`theme`（system/light/dark）。
+- `GET/PUT /settings/preferences`：当前登录用户的 `language`（zh-CN/en）、IANA `timezone`（1–80 个字符）、布尔 `notifications`、`theme`（system/light/dark）。PUT 允许部分字段，未提供字段采用既有默认值；成功响应始终返回完整偏好对象。
 - `GET/PUT /settings/models`：`provider`（deepseek/dashscope/openai）、`model`、`enabled`、写入时的 `apiKey`。读取仅返回 `hasKey`/`keyMask`，不含密钥；同服务商密钥留空保留旧值，`clearKey=true` 显式清除。切换服务商不能沿用旧密钥。
 - `POST /settings/models/test`：相同配置格式，实际调用模型但不保存；可能产生费用，返回模型及延迟。固定服务商地址不接受任意 URL。
 - 模型配置 AES-GCM 加密并绑定用户 ID；只通过受内部令牌保护的请求上下文传入 Python，不放入全局共享模型客户端。账号删除级联清理设置。
