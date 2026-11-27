@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "$defs": {
+    "Profile": {
+      "type": "object",
+      "required": ["username", "nickname", "email", "emailVerified"],
+      "properties": {
+        "userId": { "anyOf": [{ "type": "integer", "minimum": 1, "maximum": 9007199254740991 }, { "type": "string" }, { "type": "null" }] },
+        "username": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "nickname": { "anyOf": [{ "type": "string", "maxLength": 50 }, { "type": "null" }] },
+        "email": { "anyOf": [{ "type": "string", "maxLength": 120 }, { "type": "null" }] },
+        "role": { "enum": ["user", "admin"] },
+        "emailVerified": { "type": "boolean" },
+        "hasAvatar": { "type": "boolean" }
+      }
+    },
+    "AuthSession": {
+      "type": "object",
+      "required": ["session_id", "remembered"],
+      "properties": {
+        "session_id": { "type": "string", "minLength": 1 },
+        "remembered": { "type": "boolean" },
+        "created_at": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "last_seen_at": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "expires_at": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
+      }
+    },
+    "AuthSessionList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/AuthSession" }
+    },
+    "EmailVerificationReceipt": {
+      "type": "object",
+      "required": ["expiresInSeconds"],
+      "properties": {
+        "expiresInSeconds": { "type": "integer", "minimum": 1 },
+        "resendAfterSeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "AccountDeletionReceipt": {
+      "type": "object",
+      "required": ["operation_id", "status"],
+      "properties": {
+        "operation_id": { "type": "string", "minLength": 1 },
+        "status": { "const": "queued" }
+      }
+    },
+    "ProfileUpdateRequest": {
+      "type": "object",
+      "properties": {
+        "nickname": { "anyOf": [{ "type": "string", "maxLength": 50 }, { "type": "null" }] },
+        "email": { "anyOf": [{ "type": "string", "maxLength": 120 }, { "type": "null" }] }
+      }
+    },
+    "EmailVerificationRequest": {
+      "type": "object",
+      "required": ["email"],
+      "properties": { "email": { "type": "string", "minLength": 1, "maxLength": 120 } }
+    },
+    "EmailVerificationConfirmRequest": {
+      "type": "object",
+      "required": ["token"],
+      "properties": { "token": { "type": "string", "minLength": 1, "maxLength": 64 } }
+    },
+    "PasswordChangeRequest": {
+      "type": "object",
+      "required": ["currentPassword", "newPassword"],
+      "properties": {
+        "currentPassword": { "type": "string", "minLength": 1 },
+        "newPassword": { "type": "string", "minLength": 8, "maxLength": 100 }
+      }
+    },
+    "VoidReceipt": { "const": null }
+  }
+}

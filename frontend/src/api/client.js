@@ -172,6 +172,7 @@ export const endpoints = {
   modelSettings: (options) => api('/settings/models', options),
   saveModelSettings: (body, options) => api('/settings/models', { ...options, method: 'PUT', body: JSON.stringify(body) }),
   testModelSettings: (body, options) => api('/settings/models/test', { ...options, method: 'POST', body: JSON.stringify(body) }),
+  /** @returns {Promise<import('./generated/profile').AuthSessionList>} */
   authSessions: () => api('/profile/sessions'),
   revokeAuthSession: (id) => api(`/profile/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   quizDraft: (id, options) => api(`/workspace/quizzes/${id}/draft`, options),
@@ -184,6 +185,7 @@ export const endpoints = {
   resetPassword: (body) => api('/auth/reset-password', { method: 'POST', body: JSON.stringify(body) }),
   requestPasswordReset: (body) => api('/auth/password-reset/request', { method: 'POST', body: JSON.stringify(body) }),
   confirmPasswordReset: (body) => api('/auth/password-reset/confirm', { method: 'POST', body: JSON.stringify(body) }),
+  /** @returns {Promise<import('./generated/profile').Profile>} */
   profile: (options) => api('/profile', options),
   updateProfile: (body, options) => api('/profile', { ...options, method: 'PATCH', body: JSON.stringify(body) }),
   requestEmailVerification: (email, options) => api('/profile/email-verification/request', { ...options, method: 'POST', body: JSON.stringify({ email }) }),

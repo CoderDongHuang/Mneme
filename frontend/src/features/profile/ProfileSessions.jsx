@@ -4,6 +4,7 @@ import LoadingState from '../../components/LoadingState'
 import { FeedbackBlock } from '../../components/ui'
 import { t, useI18n } from '../../i18n'
 import { formatDateTime } from '../../utils/dates'
+import { validAuthSessions } from './profileValidation'
 
 export default function ProfileSessions({ language, timezone, disabled = false }) {
   useI18n()
@@ -20,7 +21,8 @@ export default function ProfileSessions({ language, timezone, disabled = false }
   useEffect(() => {
     let active = true
     endpoints.authSessions().then(items => {
-      if (active) { setSessions(items || []); setLoadError(''); setLoading(false) }
+      if (!validAuthSessions(items)) throw new Error(t('登录会话响应格式不正确'))
+      if (active) { setSessions(items); setLoadError(''); setLoading(false) }
     }).catch(error => {
       if (active) { setLoadError(error.message); setLoading(false) }
     })
