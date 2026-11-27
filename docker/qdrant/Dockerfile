@@ -5,10 +5,13 @@ FROM ${QDRANT_BASE_IMAGE}
 
 # Patch the pinned upstream OS without replacing the Qdrant binary or its SBOM.
 # apt/libapt-pkg7.0 >= 3.0.4 fixes CVE-2026-109518 in Debian 13.
+# libzstd1 and zlib1g use Debian fixes for CVE-2026-124851/CVE-2026-85091.
 RUN apt-get update \
-    && apt-get install -y --only-upgrade --no-install-recommends apt libapt-pkg7.0 \
+    && apt-get install -y --only-upgrade --no-install-recommends apt libapt-pkg7.0 libzstd1 zlib1g \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge 3.0.4 \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libapt-pkg7.0)" ge 3.0.4 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libzstd1)" ge '1.5.7+dfsg-1+deb13u1' \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' zlib1g)" ge '1:1.3.dfsg+really1.3.1-1+deb13u1' \
     && rm -rf /var/lib/apt/lists/* /qdrant/static \
     && mkdir -p /qdrant/storage/snapshots \
     && chown -R 10001:10001 /qdrant/storage
