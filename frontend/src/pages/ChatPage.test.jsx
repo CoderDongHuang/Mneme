@@ -63,6 +63,49 @@ test('filtered history has a distinct no-match state', async () => {
   expect(screen.getByText('没有符合筛选条件的对话')).toBeInTheDocument()
   expect(screen.queryByText('还没有历史对话')).not.toBeInTheDocument()
 })
+
+test('history filters retain search and use the preferred timezone for calendar dates', async () => {
+  endpoints.sessions.mockResolvedValue([
+    { id: 1, title: 'Alpha lesson', updatedAt: '2026-11-26T17:00:00Z' },
+    { id: 2, title: 'Alpha earlier', createdAt: '2026-11-25T17:00:00Z' },
+    { id: 3, title: 'Beta lesson', updatedAt: '2026-11-26T17:00:00Z' },
+  ])
+  render(<MemoryRouter><ChatPage /></MemoryRouter>)
+  await screen.findByRole('button', { name: '打开对话：Alpha lesson' })
+  fireEvent.change(screen.getByRole('textbox', { name: '搜索会话' }), { target: { value: 'ALPHA' } })
+  fireEvent.click(screen.getByText('按日期筛选会话', { selector: 'summary' }))
+  const date = screen.getByLabelText('按日期筛选会话', { selector: 'input' })
+  fireEvent.change(date, { target: { value: '2026-11-27' } })
+  expect(screen.getByRole('button', { name: '打开对话：Alpha lesson' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '打开对话：Alpha earlier' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '打开对话：Beta lesson' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /^全部/ }))
+  expect(date).toHaveValue('')
+  expect(screen.getByRole('button', { name: '打开对话：Alpha earlier' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '打开对话：Beta lesson' })).not.toBeInTheDocument()
+})
+
+test('history range counts use valid timestamps and preserve the search filter', async () => {
+  const now = Date.now()
+  endpoints.sessions.mockResolvedValue([
+    { id: 1, title: 'Alpha recent', updatedAt: new Date(now - 86400000).toISOString() },
+    { id: 2, title: 'Alpha older', createdAt: new Date(now - 10 * 86400000).toISOString() },
+    { id: 3, title: 'Beta recent', updatedAt: new Date(now - 86400000).toISOString() },
+    { id: 4, title: 'Alpha unknown', updatedAt: 'invalid' },
+  ])
+  render(<MemoryRouter><ChatPage /></MemoryRouter>)
+  await screen.findByRole('button', { name: '打开对话：Alpha recent' })
+  fireEvent.change(screen.getByRole('textbox', { name: '搜索会话' }), { target: { value: 'Alpha' } })
+  const week = screen.getByRole('button', { name: /^最近 7 天/ })
+  expect(week).toHaveTextContent('2')
+  fireEvent.click(week)
+  expect(screen.getByRole('button', { name: '打开对话：Alpha recent' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '打开对话：Alpha older' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '打开对话：Alpha unknown' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /^最近 30 天/ }))
+  expect(screen.getByRole('button', { name: '打开对话：Alpha older' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '打开对话：Beta recent' })).not.toBeInTheDocument()
+})
 beforeEach(() => {
   vi.resetAllMocks()
   auth.session = null
