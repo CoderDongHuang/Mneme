@@ -6,7 +6,7 @@
 
 P2-14 知识库列表 PR #139 最终 HEAD `2263da7` 全部九项 CI 成功，已于 2026-11-27 合并（`0ea129f`）。该批同时修复 CI 发现的 OpenTelemetry 与 Qdrant Debian 运行库安全公告，隔离镜像验证与镜像扫描通过。GitHub 认证正常，CLI 需在可读取 Windows 凭据库的授权环境运行。
 
-接续 P2-14 对话历史侧栏子项已完成本地验收：搜索、日期/时间范围筛选、列表反馈、操作按钮和窄窗口焦点迁入 `features/chat/ChatHistoryPanel.jsx`；ChatPage 继续持有读取状态、请求、操作锁和会话协调。ChatPage 42 项、ESLint、生产构建及体积门禁通过；对话/工作台明暗主题、键盘删除、持久历史与 800px 窄窗口焦点/筛选保留共 6 项浏览器回归通过。等待本项最终 HEAD 全部九项 CI 后独立合并。完整主项完成 21、未完成 6，另发布收口 1，共剩余 7。
+接续 P2-14 对话历史侧栏子项已完成本地验收：搜索、日期/时间范围筛选、列表反馈、操作按钮和窄窗口焦点迁入 `features/chat/ChatHistoryPanel.jsx`；ChatPage 继续持有读取状态、请求、操作锁和会话协调。ChatPage 42 项、ESLint、生产构建及体积门禁通过；对话/工作台明暗主题、键盘删除、持久历史与 800px 窄窗口焦点/筛选保留共 6 项浏览器回归通过。最终九项 CI 与合并证据集中见 [PR #140](https://github.com/CoderDongHuang/Mneme/pull/140)。完整主项完成 21、未完成 6，另发布收口 1，共剩余 7。
 
 检查点留存子项已完成并合并。#129—138 均已合并；[检查点留存 PR #138](https://github.com/CoderDongHuang/Mneme/pull/138) 最终 HEAD 27a80ad 全部九项 CI 成功，2026-11-07 合并至 main（83916c2）。完整主项完成 21、未完成 6，另发布收口 1，共剩余 7。
 
