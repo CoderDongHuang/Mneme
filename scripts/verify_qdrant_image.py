@@ -54,10 +54,16 @@ def verify(image: str, upstream: str) -> None:
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Isolated vector image did not become ready") from None
                 time.sleep(0.25)
-        for package in ("apt", "libapt-pkg7.0"):
+        patched_packages = (
+            ("apt", "3.0.4", "CVE-2026-109518"),
+            ("libapt-pkg7.0", "3.0.4", "CVE-2026-109518"),
+            ("libzstd1", "1.5.7+dfsg-1+deb13u1", "CVE-2026-124851"),
+            ("zlib1g", "1:1.3.dfsg+really1.3.1-1+deb13u1", "CVE-2026-85091"),
+        )
+        for package, minimum_version, advisory in patched_packages:
             version = docker("exec", name, "dpkg-query", "-W", "-f=${Version}", package)
-            docker("exec", name, "dpkg", "--compare-versions", version, "ge", "3.0.4")
-            print(f"{package}: {version} (CVE-2026-109518 fixed)")
+            docker("exec", name, "dpkg", "--compare-versions", version, "ge", minimum_version)
+            print(f"{package}: {version} ({advisory} fixed)")
         api("PUT", "/collections/image_check", {"vectors": {"size": 3, "distance": "Cosine"}})
         api("PUT", "/collections/image_check/points?wait=true", {"points": [
             {"id": 1, "vector": [1, 0, 0], "payload": {"check": "isolated"}},
