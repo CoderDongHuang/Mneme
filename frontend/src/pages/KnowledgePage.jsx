@@ -1,4 +1,3 @@
-import { useDateFormatter } from '../hooks/useDateFormatter'
 import { useFormatters } from '../hooks/useFormatters'
 import { t, useI18n } from '../i18n'
 import {
@@ -14,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { endpoints } from "../api/client";
 import useKnowledgeReads from '../features/knowledge/useKnowledgeReads'
 import KnowledgeDocumentList from '../features/knowledge/KnowledgeDocumentList'
+import DocumentVersions from '../features/knowledge/DocumentVersions'
 import DocumentDetail from "../components/DocumentDetail";
 import { Modal, FeedbackBlock } from "../components/ui";
 import { usePreferences } from "../state/PreferencesContext";
@@ -32,7 +32,6 @@ export default function KnowledgePage() {
 
 function KnowledgeView({ session }) {
   const fmt = useFormatters()
-  const dates = useDateFormatter()
   useI18n();
   const { bases: baseRead, documents: documentRead, notifications: notificationRead, activeKbId, activeKbRef, selectKb } = useKnowledgeReads();
   const knowledgeBases = baseRead.data || empty, documents = documentRead.data || empty;
@@ -63,7 +62,6 @@ function KnowledgeView({ session }) {
   const [versionDialog, setVersionDialog] = useState(null);
   const documentLocks = useRef(new Set());
   const [documentBusy, setDocumentBusy] = useState({});
-  const versionRequest = useRef(0);
 
   async function withDocument(document, action) {
     if (documentsUnavailable || !documents.some(item => item.id === document.id) || documentLocks.current.has(document.id)) return;
@@ -77,7 +75,7 @@ function KnowledgeView({ session }) {
     }
   }
 
-  useEffect(() => { setSelectedIds([]); setDetail(null); versionRequest.current++; setVersionDialog(null); }, [activeKbId]);
+  useEffect(() => { setSelectedIds([]); setDetail(null); setVersionDialog(null); }, [activeKbId]);
 
   const activeKb = knowledgeBases.find((item) => item.id === activeKbId);
 
@@ -157,16 +155,9 @@ function KnowledgeView({ session }) {
       if (replaceRef.current) replaceRef.current.value = "";
   }
 
-  async function showVersions(document) {
+  function showVersions(document) {
     if (documentsUnavailable) return;
-    const request = ++versionRequest.current;
-    try {
-      setVersionDialog({ document, versions: null });
-      const versions = await endpoints.documentVersions(document.id);
-      if (request === versionRequest.current) setVersionDialog(current => current?.document.id === document.id ? { document, versions: versions || [] } : current);
-    } catch (requestError) {
-      if (request === versionRequest.current) { setVersionDialog(null); setError(requestError.message); }
-    }
+    setVersionDialog({ document });
   }
 
   async function restoreVersion(version) {
@@ -299,23 +290,12 @@ function KnowledgeView({ session }) {
           </form>
       </Modal>
       {versionDialog && (
-        <Modal title={t("版本历史")} onClose={() => { versionRequest.current++; setVersionDialog(null); }}>
-          <section className="version-dialog">
-            <h3>{versionDialog.document.fileName}</h3>
-            <div className="version-list">
-              {versionDialog.versions === null && <LoadingState label={t("正在读取版本")} />}
-              {versionDialog.versions?.map((version) => (
-                <button key={version.version_number} disabled={documentsUnavailable || Boolean(version.active) || documentBusy[versionDialog.document.id]} onClick={() => restoreVersion(version)}>
-                  <span>
-                    <strong>v{version.version_number} · {version.file_name}</strong>
-                    <small>{String(version.sha256).slice(0, 12)} · {dates.dateTime(version.created_at)}</small>
-                  </span>
-                  <StatusBadge status={version.active ? "active" : "ready"} />
-                </button>
-              ))}
-            </div>
-          </section>
-        </Modal>
+        <DocumentVersions key={versionDialog.document.id}
+          document={documents.find(item => item.id === versionDialog.document.id) || versionDialog.document}
+          busy={Boolean(documentBusy[versionDialog.document.id])}
+          unavailable={documentsUnavailable || !documents.some(item => item.id === versionDialog.document.id
+            && !['deleting', 'parsing', 'index_repairing'].includes(item.status))}
+          onClose={() => setVersionDialog(null)} onRestore={restoreVersion} />
       )}
     </div>
   );

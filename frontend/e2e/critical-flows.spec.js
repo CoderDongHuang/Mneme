@@ -84,6 +84,39 @@ test('文档版本历史可查看且当前版本不可重复恢复', async ({ pa
   expect(dimensions.scroll).toBe(dimensions.client)
 })
 
+test('文档版本损坏回执留在弹窗内并仅以 GET 重试', async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 900 })
+  const errors = []
+  const requests = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.route('**/api/v1/knowledge/base/1/documents', route => route.fulfill(ok([
+    { id: 9, fileName: 'guide.pdf', status: 'ready' },
+  ])))
+  await page.route('**/api/v1/knowledge/document/9/versions', route => {
+    requests.push(route.request().method())
+    return route.fulfill(ok(requests.length === 1 ? null : [
+      { version_number: 2, file_name: 'guide.pdf', active: 1, sha256: 'abc123' },
+      { version_number: 1, active: 0 },
+    ]))
+  })
+  await page.goto('/knowledge')
+  await page.locator('summary[aria-label="文档操作：guide.pdf"]').click()
+  const trigger = page.getByRole('button', { name: '版本历史', exact: true })
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: '版本历史' })
+  await expect(dialog.getByRole('alert')).toContainText('文档版本加载失败，请重试。')
+  await expect(dialog.getByText('暂无历史版本。')).toHaveCount(0)
+  await dialog.getByRole('button', { name: '重试 / Retry' }).click()
+  await expect(dialog.getByRole('button', { name: /v2/ })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: /v1 · guide.pdf/ })).toBeEnabled()
+  expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  expect(requests).toEqual(['GET', 'GET'])
+  expect(errors).toEqual([])
+})
+
 test('学习分析反馈可保存和删除且空数据不伪造', async ({ page }) => {
   let feedback = []
   await page.route('**/api/v1/analytics?days=*', route => route.fulfill(ok({

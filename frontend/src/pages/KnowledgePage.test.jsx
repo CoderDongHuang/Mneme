@@ -6,7 +6,7 @@ import { endpoints, openNotificationStream } from '../api/client'
 vi.mock('../state/AuthContext', () => ({ useAuth: () => ({ session: { userId: 1 } }) }))
 vi.mock('../api/client', () => ({ endpoints: {
   knowledgeBases: vi.fn(), documents: vi.fn(), notifications: vi.fn(), createKnowledgeBase: vi.fn(),
-  deleteKnowledgeBase: vi.fn(), deleteDocument: vi.fn(), documentVersions: vi.fn(),
+  deleteKnowledgeBase: vi.fn(), deleteDocument: vi.fn(), documentVersions: vi.fn(), restoreDocumentVersion: vi.fn(),
 }, openNotificationStream: vi.fn(() => ({ close() {} })) }))
 beforeEach(() => {
   vi.resetAllMocks(); localStorage.clear()
@@ -27,6 +27,52 @@ test('creation failure preserves the form and allows retry', async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: '创建资料库' })).toBeEnabled())
   fireEvent.click(screen.getByRole('button', { name: '创建资料库' }))
   await waitFor(() => expect(screen.queryByRole('button', { name: '创建资料库' })).not.toBeInTheDocument())
+})
+
+test.each([null, { versions: [] }])('invalid document versions stay in the dialog with a read retry (%j)', async data => {
+  endpoints.documents.mockResolvedValue([{ id: 7, fileName: 'qa.txt', status: 'ready' }])
+  endpoints.documentVersions.mockResolvedValueOnce(data).mockResolvedValueOnce([])
+  render(<KnowledgePage />)
+  await screen.findByRole('button', { name: 'qa.txt' })
+  fireEvent.click(screen.getByRole('button', { name: '版本历史' }))
+  const dialog = await screen.findByRole('dialog', { name: '版本历史' })
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('文档版本加载失败，请重试。')
+  expect(within(dialog).queryByText('暂无历史版本。')).not.toBeInTheDocument()
+  fireEvent.click(within(dialog).getByRole('button', { name: '重试 / Retry' }))
+  await within(dialog).findByText('暂无历史版本。')
+  expect(endpoints.documentVersions).toHaveBeenCalledTimes(2)
+  expect(endpoints.deleteDocument).not.toHaveBeenCalled()
+  expect(endpoints.restoreDocumentVersion).not.toHaveBeenCalled()
+})
+
+test.each(['close', 'library switch', 'unmount'])('pending version reads are cancelled on %s', async action => {
+  endpoints.documents.mockResolvedValue([{ id: 7, fileName: 'qa.txt', status: 'ready' }])
+  let resolve
+  endpoints.documentVersions.mockImplementation(() => new Promise(done => { resolve = done }))
+  const view = render(<KnowledgePage />)
+  await screen.findByRole('button', { name: 'qa.txt' })
+  fireEvent.click(screen.getByRole('button', { name: '版本历史' }))
+  await waitFor(() => expect(endpoints.documentVersions).toHaveBeenCalledTimes(1))
+  const signal = endpoints.documentVersions.mock.calls[0][1].signal
+  if (action === 'close') fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '关闭 / Close' }))
+  if (action === 'library switch') fireEvent.change(screen.getByRole('combobox', { name: '资料库' }), { target: { value: '2' } })
+  if (action === 'unmount') view.unmount()
+  await waitFor(() => expect(signal.aborted).toBe(true))
+  await act(async () => resolve([{ version_number: 99, active: false }]))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('an old version still restores once through the page entry point', async () => {
+  const doc = { id: 7, fileName: 'qa.txt', status: 'ready' }
+  endpoints.documents.mockResolvedValue([doc])
+  endpoints.documentVersions.mockResolvedValue([{ version_number: 1, active: 0 }])
+  endpoints.restoreDocumentVersion.mockResolvedValue({ ...doc, status: 'parsing' })
+  render(<KnowledgePage />)
+  await screen.findByRole('button', { name: 'qa.txt' })
+  fireEvent.click(screen.getByRole('button', { name: '版本历史' }))
+  fireEvent.click(await screen.findByRole('button', { name: /v1/ }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(endpoints.restoreDocumentVersion).toHaveBeenCalledExactlyOnceWith(7, 1)
 })
 test('old library response is ignored after switching', async () => {
   let resolve
