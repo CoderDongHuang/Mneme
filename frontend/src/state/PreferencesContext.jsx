@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { endpoints } from '../api/client'
 import { useAuth } from './AuthContext'
-import { setLanguage } from '../i18n'
+import { validPreferences } from '../features/settings/preferencesValidation'
+import { setLanguage, t } from '../i18n'
 
 const defaults = { language: 'zh-CN', timezone: 'Asia/Shanghai', notifications: true, theme: 'system' }
 function normalize(value = {}) {
@@ -24,7 +25,10 @@ export function PreferencesProvider({ children }) {
   const [error, setError] = useState('')
   useEffect(() => {
     let active = true
-    if (userId) endpoints.preferences().then(value => { if (active) { setStored({ owner: userId, value: normalize(value) }); setError('') } }).catch(failure => { if (active) setError(failure.message) })
+    if (userId) endpoints.preferences().then(value => {
+      if (!validPreferences(value)) throw new Error(t('偏好响应格式不正确'))
+      if (active) { setStored({ owner: userId, value: normalize(value) }); setError('') }
+    }).catch(failure => { if (active) setError(failure.message) })
     else { setStored({ owner: userId, value: guestPreferences() }); setError('') }
     return () => { active = false }
   }, [userId])
@@ -38,7 +42,9 @@ export function PreferencesProvider({ children }) {
   }, [preferences])
   async function save(value) {
     const requestingUser = userId
-    const saved = normalize(userId ? await endpoints.savePreferences(value) : value)
+    const result = userId ? await endpoints.savePreferences(value) : value
+    if (!validPreferences(result)) throw new Error(t('偏好保存回执格式不正确'))
+    const saved = normalize(result)
     if (owner.current === requestingUser) {
       await setLanguage(saved.language)
       if (owner.current !== requestingUser) return saved

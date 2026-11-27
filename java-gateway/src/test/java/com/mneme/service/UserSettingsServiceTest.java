@@ -54,6 +54,22 @@ class UserSettingsServiceTest {
         verifyNoInteractions(jdbc);
     }
 
+    @Test
+    void partialPreferenceUpdatesUseTheExistingDefaultsAndReturnAllFields() {
+        var jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(anyString(), anyLong())).thenReturn(List.of(Map.of(
+            "language", "zh-CN", "timezone", "Asia/Shanghai", "notifications", true, "theme", "dark")));
+        var service = service(jdbc, "test-key-at-least-32-characters-long", "unused");
+
+        var result = service.savePreferences(1L, Map.of("theme", "dark"));
+
+        assertThat(result).containsExactlyInAnyOrderEntriesOf(Map.of(
+            "language", "zh-CN", "timezone", "Asia/Shanghai", "notifications", true, "theme", "dark"));
+        verify(jdbc).update(anyString(), eq(1L), eq("zh-CN"), eq("Asia/Shanghai"), eq(true), eq("dark"));
+        verify(jdbc).queryForList(anyString(), eq(1L));
+        verifyNoMoreInteractions(jdbc);
+    }
+
     private UserSettingsService service(JdbcTemplate jdbc, String key, String jwt) {
         var mapper = new ObjectMapper();
         return new UserSettingsService(jdbc, mapper, new ModelConfigKeys(mapper, key, jwt, "v2", "{}", false));

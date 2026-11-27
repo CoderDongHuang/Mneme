@@ -1,0 +1,19 @@
+[
+  { "id": "preferences-defaults", "schema": "Preferences", "valid": true, "data": { "language": "zh-CN", "timezone": "Asia/Shanghai", "notifications": true, "theme": "system" } },
+  { "id": "preferences-english-dark", "schema": "Preferences", "valid": true, "data": { "language": "en", "timezone": "Europe/Amsterdam", "notifications": false, "theme": "dark" } },
+  { "id": "preferences-extra-metadata", "schema": "Preferences", "valid": true, "data": { "language": "en", "timezone": "UTC", "notifications": true, "theme": "light", "source": "legacy" } },
+  { "id": "preferences-null", "schema": "Preferences", "valid": false, "data": null },
+  { "id": "preferences-missing-timezone", "schema": "Preferences", "valid": false, "data": { "language": "en", "notifications": true, "theme": "light" } },
+  { "id": "preferences-bad-language", "schema": "Preferences", "valid": false, "data": { "language": "fr", "timezone": "UTC", "notifications": true, "theme": "light" } },
+  { "id": "preferences-empty-timezone", "schema": "Preferences", "valid": false, "data": { "language": "en", "timezone": "", "notifications": true, "theme": "light" } },
+  { "id": "preferences-bad-notifications", "schema": "Preferences", "valid": false, "data": { "language": "en", "timezone": "UTC", "notifications": "true", "theme": "light" } },
+  { "id": "preferences-bad-theme", "schema": "Preferences", "valid": false, "data": { "language": "en", "timezone": "UTC", "notifications": true, "theme": "auto" } },
+  { "id": "preferences-update-full", "schema": "PreferencesUpdateRequest", "valid": true, "data": { "language": "en", "timezone": "Europe/London", "notifications": false, "theme": "dark" } },
+  { "id": "preferences-update-partial", "schema": "PreferencesUpdateRequest", "valid": true, "data": { "theme": "light" } },
+  { "id": "preferences-update-empty", "schema": "PreferencesUpdateRequest", "valid": true, "data": {} },
+  { "id": "preferences-update-extra-metadata", "schema": "PreferencesUpdateRequest", "valid": true, "data": { "notifications": false, "futurePreference": "ignored" } },
+  { "id": "preferences-update-null", "schema": "PreferencesUpdateRequest", "valid": false, "data": null },
+  { "id": "preferences-update-bad-notifications", "schema": "PreferencesUpdateRequest", "valid": false, "data": { "notifications": 1 } },
+  { "id": "preferences-update-bad-timezone", "schema": "PreferencesUpdateRequest", "valid": false, "data": { "timezone": "" } },
+  { "id": "preferences-update-timezone-storage-limit", "schema": "PreferencesUpdateRequest", "valid": false, "data": { "timezone": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" } }
+]

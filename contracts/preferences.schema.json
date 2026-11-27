@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "$defs": {
+    "Preferences": {
+      "type": "object",
+      "required": ["language", "timezone", "notifications", "theme"],
+      "properties": {
+        "language": { "enum": ["zh-CN", "en"] },
+        "timezone": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "notifications": { "type": "boolean" },
+        "theme": { "enum": ["system", "light", "dark"] }
+      }
+    },
+    "PreferencesUpdateRequest": {
+      "type": "object",
+      "properties": {
+        "language": { "enum": ["zh-CN", "en"] },
+        "timezone": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "notifications": { "type": "boolean" },
+        "theme": { "enum": ["system", "light", "dark"] }
+      }
+    }
+  }
+}
