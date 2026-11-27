@@ -117,6 +117,42 @@ test('文档版本损坏回执留在弹窗内并仅以 GET 重试', async ({ pag
   expect(errors).toEqual([])
 })
 
+test('资料库创建和删除损坏回执只通过列表核对', async ({ page }) => {
+  let bases = [{ id: 1, name: '验收资料库' }]
+  let listReads = 0
+  await page.route('**/api/v1/knowledge/base/1/documents', route => route.fulfill(ok([])))
+  await page.route('**/api/v1/knowledge/base/list', route => {
+    listReads += 1
+    return route.fulfill(ok(bases))
+  })
+  await page.route('**/api/v1/knowledge/base', async route => {
+    if (route.request().method() === 'POST') {
+      bases = [...bases, { id: 2, name: '核对资料库' }]
+      return route.fulfill(ok(null))
+    }
+    return route.continue()
+  })
+  await page.route('**/api/v1/knowledge/base/2', async route => {
+    expect(route.request().method()).toBe('DELETE')
+    bases = bases.filter(item => item.id !== 2)
+    await route.fulfill(ok(null))
+  })
+  await page.goto('/knowledge')
+  await page.getByRole('button', { name: '新建资料库', exact: true }).click()
+  const createDialog = page.getByRole('dialog', { name: '新建资料库' })
+  await createDialog.getByPlaceholder('例如：机器学习基础').fill('核对资料库')
+  await createDialog.getByRole('button', { name: '创建资料库', exact: true }).click()
+  await expect(createDialog.getByText('创建结果尚未确认', { exact: false })).toBeVisible()
+  await createDialog.getByRole('button', { name: '核对资料库', exact: true }).click()
+  await expect(page.getByRole('combobox', { name: '资料库' })).toHaveValue('2')
+  await page.once('dialog', dialog => dialog.accept())
+  await page.getByRole('button', { name: '删除资料库', exact: true }).click()
+  await expect(page.getByText('删除结果尚未确认', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: '核对删除结果', exact: true }).click()
+  await expect(page.getByRole('combobox', { name: '资料库' })).not.toContainText('核对资料库')
+  expect(listReads).toBeGreaterThanOrEqual(3)
+})
+
 test('学习分析反馈可保存和删除且空数据不伪造', async ({ page }) => {
   let feedback = []
   await page.route('**/api/v1/analytics?days=*', route => route.fulfill(ok({

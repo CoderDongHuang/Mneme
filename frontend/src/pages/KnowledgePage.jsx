@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { endpoints } from "../api/client";
+import { validBases, validKnowledgeBase } from '../api/collectionValidation'
 import useKnowledgeReads from '../features/knowledge/useKnowledgeReads'
 import KnowledgeDocumentList from '../features/knowledge/KnowledgeDocumentList'
 import DocumentVersions from '../features/knowledge/DocumentVersions'
@@ -37,8 +38,9 @@ function KnowledgeView({ session }) {
   const knowledgeBases = baseRead.data || empty, documents = documentRead.data || empty;
   const notifications = (notificationRead.data || []).filter((item, index, items) => items.findIndex(other => other.task_id === item.task_id) === index);
   const setKnowledgeBases = baseRead.commit, setDocuments = documentRead.commit;
+  const [baseMutation, setBaseMutation] = useState(null);
   const basesUnavailable = baseRead.loading || !!baseRead.error || !baseRead.data;
-  const documentsUnavailable = basesUnavailable || documentRead.loading || !!documentRead.error || !documentRead.data;
+  const documentsUnavailable = basesUnavailable || documentRead.loading || !!documentRead.error || !documentRead.data || Boolean(baseMutation);
   const actionLock = useRef(false);
   const [baseBusy, setBaseBusy] = useState(false);
   const { queue: uploadQueue, uploading, upload: submitFiles, retry, cancel } = useUploadQueue(`mneme.uploadQueue.${session?.userId || session?.username}`, (kbId, document) => {
@@ -62,6 +64,7 @@ function KnowledgeView({ session }) {
   const [versionDialog, setVersionDialog] = useState(null);
   const documentLocks = useRef(new Set());
   const [documentBusy, setDocumentBusy] = useState({});
+  const baseVerification = useRef(0);
 
   async function withDocument(document, action) {
     if (documentsUnavailable || !documents.some(item => item.id === document.id) || documentLocks.current.has(document.id)) return;
@@ -76,6 +79,7 @@ function KnowledgeView({ session }) {
   }
 
   useEffect(() => { setSelectedIds([]); setDetail(null); setVersionDialog(null); }, [activeKbId]);
+  useEffect(() => () => { baseVerification.current++; }, []);
 
   const activeKb = knowledgeBases.find((item) => item.id === activeKbId);
 
@@ -87,11 +91,21 @@ function KnowledgeView({ session }) {
     setError("");
     try {
       const created = await endpoints.createKnowledgeBase(form);
+      if (!validKnowledgeBase(created)) {
+        const uncertain = new Error('Creation receipt is invalid');
+        uncertain.uncertain = true;
+        throw uncertain;
+      }
       setKnowledgeBases(current => [created, ...current]);
       selectKb(created.id);
       setForm({ name: "", description: "" });
       setDialogOpen(false);
-    } catch (requestError) { setError(requestError.message); }
+    } catch (requestError) {
+      if (requestError?.uncertain || requestError?.status === 0 || requestError?.status >= 500 || requestError?.status === 408 || requestError?.status === 429) {
+        setBaseMutation({ kind: 'create', state: 'needs-verification', draft: { ...form } });
+        setError(t('创建结果尚未确认，请先核对资料库。'));
+      } else setError(requestError.message);
+    }
     finally { actionLock.current = false; setBaseBusy(false); }
   }
 
@@ -108,12 +122,49 @@ function KnowledgeView({ session }) {
     setBaseBusy(true);
     setError("");
     try {
-      await endpoints.deleteKnowledgeBase(id);
+      const receipt = await endpoints.deleteKnowledgeBase(id);
+      if (!receipt || receipt.deleted !== true) {
+        const uncertain = new Error('Deletion receipt is invalid');
+        uncertain.uncertain = true;
+        throw uncertain;
+      }
       const remaining = knowledgeBases.filter(item => item.id !== id);
       setKnowledgeBases(remaining);
       if (activeKbRef.current === id) selectKb(remaining[0]?.id || null);
-    } catch (requestError) { setError(requestError.message); }
+    } catch (requestError) {
+      if (requestError?.uncertain || requestError?.status === 0 || requestError?.status >= 500 || requestError?.status === 408 || requestError?.status === 429) {
+        setBaseMutation({ kind: 'delete', state: 'needs-verification', id, name: activeKb?.name });
+        setError(t('删除结果尚未确认，请先核对删除结果。'));
+      } else setError(requestError.message);
+    }
     finally { actionLock.current = false; setBaseBusy(false); }
+  }
+
+  async function verifyBaseMutation() {
+    if (!baseMutation || baseBusy) return;
+    const request = ++baseVerification.current;
+    setBaseBusy(true); setError('');
+    try {
+      const listed = await endpoints.knowledgeBases();
+      if (!validBases(listed)) throw new Error('Invalid knowledge base list');
+      if (request !== baseVerification.current) return;
+      setKnowledgeBases(listed, { refresh: false });
+      if (baseMutation.kind === 'create') {
+        const match = listed.find(item => item.name === baseMutation.draft.name
+          && (item.description == null || item.description === baseMutation.draft.description));
+        if (match) {
+          selectKb(match.id); setForm({ name: '', description: '' }); setDialogOpen(false); setBaseMutation(null);
+          setNotice(t('已核实资料库已创建。'));
+        } else setBaseMutation(current => ({ ...current, state: 'verified-absent' }));
+      } else if (!listed.some(item => item.id === baseMutation.id)) {
+        selectKb(listed[0]?.id || null); setBaseMutation(null); setNotice(t('已核实资料库已删除。'));
+      } else setBaseMutation(current => ({ ...current, state: 'verified-present' }));
+    } catch {
+      if (request === baseVerification.current) {
+        setBaseMutation(current => ({ ...current, state: 'verification-failed' }));
+        setError(t('资料库核对失败，请重试。'));
+      }
+    } finally { if (request === baseVerification.current) setBaseBusy(false); }
   }
 
   async function deleteDocument(document) {
@@ -207,17 +258,19 @@ function KnowledgeView({ session }) {
       <input ref={replaceRef} type="file" hidden accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.csv,.md,.markdown,.txt,.html,.htm" onChange={event => replaceDocument(event.target.files?.[0])} />
       <input ref={fileRef} type="file" multiple hidden accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.csv,.md,.markdown,.txt,.html,.htm" onChange={event => upload(event.target.files)} />
       <div className="reference-split knowledge-split">
-        <section className="knowledge-files" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (activeKbId) upload(event.dataTransfer.files) }}>
+        <section className="knowledge-files" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (activeKbId && !documentsUnavailable) upload(event.dataTransfer.files) }}>
           <div className="knowledge-controls">
             <label className="search-field"><Search size={18} /><input aria-label={t('筛选文档')} value={query} onChange={e => setQuery(e.target.value)} placeholder={t('搜索文件名、关键词…')} /></label>
             <select aria-label={t('文件类型')} value={fileType} onChange={e => setFileType(e.target.value)}><option value="all">{t('文件类型')}</option>{[...new Set(documents.map(item => item.fileName.split('.').at(-1).toLowerCase()))].map(type => <option key={type}>{type}</option>)}</select>
             <select aria-label={t('处理状态')} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">{t('全部状态')}</option>{[...new Set(documents.map(item => item.status))].map(status => <option key={status}>{status}</option>)}</select>
             <button className="primary-button" disabled={uploading || !activeKbId || documentsUnavailable} onClick={() => fileRef.current?.click()}><UploadCloud size={17} />{uploading ? t('处理中') : t('导入资料')}</button>
           </div>
-          <div className="knowledge-library-bar"><select aria-label={t('资料库')} value={activeKbId || ''} onChange={e => selectKb(knowledgeBases.find(kb => String(kb.id) === e.target.value)?.id || null)}>{!knowledgeBases.length && <option value="">{t(baseRead.data ? '还没有资料库' : baseRead.error ? '资料库不可用' : '正在读取资料库…')}</option>}{knowledgeBases.map(kb => <option value={kb.id} key={kb.id}>{kb.name}</option>)}</select><button disabled={basesUnavailable} onClick={() => setDialogOpen(true)}><Plus size={15} />{t('新建资料库')}</button>{activeKb && <button className="icon-button" aria-label={t('删除资料库')} disabled={baseBusy || uploading || documentsUnavailable} onClick={deleteBase}><Trash2 size={15} /></button>}<span>{documentRead.data && <>{fmt.integer(documents.length)} {t('文档')} · {fmt.integer(readyCount)} {t('可检索')} · {fmt.integer(chunkCount)} {t('语义片段')}</>}</span></div>
+          <div className="knowledge-library-bar"><select aria-label={t('资料库')} value={activeKbId || ''} disabled={Boolean(baseMutation)} onChange={e => selectKb(knowledgeBases.find(kb => String(kb.id) === e.target.value)?.id || null)}>{!knowledgeBases.length && <option value="">{t(baseRead.data ? '还没有资料库' : baseRead.error ? '资料库不可用' : '正在读取资料库…')}</option>}{knowledgeBases.map(kb => <option value={kb.id} key={kb.id}>{kb.name}</option>)}</select><button disabled={basesUnavailable || Boolean(baseMutation)} onClick={() => setDialogOpen(true)}><Plus size={15} />{t('新建资料库')}</button>{activeKb && <button className="icon-button" aria-label={t('删除资料库')} disabled={baseBusy || uploading || documentsUnavailable || Boolean(baseMutation)} onClick={deleteBase}><Trash2 size={15} /></button>}<span>{documentRead.data && <>{fmt.integer(documents.length)} {t('文档')} · {fmt.integer(readyCount)} {t('可检索')} · {fmt.integer(chunkCount)} {t('语义片段')}</>}</span></div>
           <section aria-label={t('资料库读取')} aria-busy={baseRead.loading}><FeedbackBlock error={baseRead.error} onRetry={baseRead.error && !baseRead.loading ? baseRead.refresh : undefined} />{baseRead.data && baseRead.error && <p className="muted">{t('资料库记录可能已过期，刷新成功后可继续操作。')}</p>}</section>
           {activeKb && <section aria-label={t('文档读取')} aria-busy={documentRead.loading}>{documentRead.loading && <p role="status">{t('正在读取文档列表…')}</p>}<FeedbackBlock error={documentRead.error} onRetry={documentRead.error && !documentRead.loading ? documentRead.refresh : undefined} />{documentRead.data && documentRead.error && <p className="muted">{t('文档记录可能已过期，刷新成功后可继续操作。')}</p>}</section>}
-          <FeedbackBlock error={error} /><FeedbackBlock message={notice} />
+          <FeedbackBlock error={error} />
+          {baseMutation && <div className="feedback-block is-error"><button type="button" disabled={baseBusy} onClick={verifyBaseMutation}>{t(baseMutation.kind === 'create' ? '核对资料库' : '核对删除结果')}</button>{baseMutation.state === 'verified-absent' && baseMutation.kind === 'create' && <button type="button" onClick={() => setBaseMutation(null)}>{t('明确重新创建')}</button>}{baseMutation.state === 'verified-present' && baseMutation.kind === 'delete' && <button type="button" onClick={() => setBaseMutation(null)}>{t('明确重新删除')}</button>}</div>}
+          <FeedbackBlock message={notice} />
           {baseRead.data === null && baseRead.loading ? <LoadingState /> : baseRead.data === null ? null : !activeKb && !baseRead.error ? <div className="documents-empty"><BookCopy size={32} /><h2>{t('建立第一个资料库')}</h2><p>{t('不同课程或主题建议分别管理。')}</p><button disabled={basesUnavailable} onClick={() => setDialogOpen(true)}>{t('新建资料库')}</button></div> : activeKb ? <>
             <KnowledgeDocumentList
               documents={documents}
@@ -264,6 +317,7 @@ function KnowledgeView({ session }) {
                 autoFocus
                 required
                 maxLength={100}
+                disabled={Boolean(baseMutation)}
                 value={form.name}
                 onChange={(event) =>
                   setForm({ ...form, name: event.target.value })
@@ -275,6 +329,7 @@ function KnowledgeView({ session }) {
               <span>{t("说明")}</span>
               <textarea
                 rows={4}
+                disabled={Boolean(baseMutation)}
                 value={form.description}
                 onChange={(event) =>
                   setForm({ ...form, description: event.target.value })
@@ -282,8 +337,9 @@ function KnowledgeView({ session }) {
                 placeholder={t("记录资料范围与学习目标")}
               />
             </label>
-            {error && <p role="alert" className="page-error">{error}</p>}
-            <button className="dialog-submit" disabled={baseBusy || basesUnavailable}>
+            {baseMutation && <><FeedbackBlock error={baseMutation.kind === 'create' ? t('创建结果尚未确认，请先核对资料库。') : t('删除结果尚未确认，请先核对删除结果。')} /><button type="button" disabled={baseBusy} onClick={verifyBaseMutation}>{t('核对资料库')}</button></>}
+            {error && !baseMutation && <p role="alert" className="page-error">{error}</p>}
+            <button className="dialog-submit" disabled={baseBusy || basesUnavailable || Boolean(baseMutation)}>
               {baseBusy ? t("正在创建…") : t("创建资料库")}
               <ArrowUpRight size={17} />
             </button>
