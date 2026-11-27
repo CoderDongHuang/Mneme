@@ -111,6 +111,7 @@ beforeEach(() => {
   auth.session = null
   endpoints.sessions.mockResolvedValue([{ id: 1, title: '会话 A' }, { id: 2, title: '会话 B' }])
   endpoints.knowledgeBases.mockResolvedValue([])
+  endpoints.sessionMessages.mockResolvedValue([])
   endpoints.createSession.mockResolvedValue({ id: 3, title: '新对话' })
 })
 async function open() {
@@ -164,7 +165,7 @@ const citation = {
 test.each([false, true])('historical citations open the original version with bounded highlights (workspace=%s)', async workspace => {
   const source = { ...citation, chunk_content: '证'.repeat(600) }
   endpoints.sessionMessages.mockResolvedValue([
-    { id: 10, role: 'assistant', content: '历史回答', status: 'completed', sourcesJson: JSON.stringify([source]) },
+    { id: 10, sessionId: 1, role: 'assistant', content: '历史回答', status: 'completed', sourcesJson: JSON.stringify([source]) },
   ])
   render(<MemoryRouter><ChatPage workspace={workspace} /><CurrentLocation /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button', { name: '打开对话：会话 A' }))
@@ -185,7 +186,7 @@ test('citation copy failure preserves evidence and displays the existing error f
   vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: copy } })
   try {
     endpoints.sessionMessages.mockResolvedValue([
-      { id: 10, role: 'assistant', content: '历史回答', sources: [citation] },
+      { id: 10, sessionId: 1, role: 'assistant', content: '历史回答', sources: [citation] },
     ])
     await open()
     fireEvent.click(screen.getByRole('button', { name: '打开对话：会话 A' }))
@@ -204,11 +205,79 @@ test('latest session wins and sending is blocked until its messages arrive', asy
   fireEvent.click(screen.getByRole('button', { name: '打开对话：会话 B' }))
   fireEvent.change(screen.getByRole('textbox', { name: '向忆知提问...' }), { target: { value: '不能串话' } })
   expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
-  await act(async () => b.resolve([{ id: 20, role: 'assistant', content: 'B 的内容', status: 'completed' }]))
+  await act(async () => b.resolve([{ id: 20, sessionId: 2, role: 'assistant', content: 'B 的内容', status: 'completed' }]))
   await screen.findByText('B 的内容')
-  await act(async () => a.resolve([{ id: 10, role: 'assistant', content: 'A 的旧响应' }]))
+  await act(async () => a.resolve([{ id: 10, sessionId: 1, role: 'assistant', content: 'A 的旧响应' }]))
   expect(screen.queryByText('A 的旧响应')).not.toBeInTheDocument()
   expect(document.querySelector('.chat-heading')).toHaveTextContent('会话 B')
+})
+
+test.each([
+  null,
+  [{ id: 10, sessionId: 2, role: 'assistant', content: '其他会话的正文' }],
+  [{ id: 10, sessionId: 1, role: 'user', content: '重复消息' }, { id: 10, sessionId: 1, role: 'assistant', content: '重复消息' }],
+])('invalid message history preserves the current draft and requires a read retry (%j)', async history => {
+  endpoints.sessionMessages.mockResolvedValueOnce(history)
+  await open()
+  const input = screen.getByRole('textbox', { name: '向忆知提问...' })
+  fireEvent.change(input, { target: { value: '草稿需要保留' } })
+  fireEvent.click(screen.getByRole('button', { name: '打开对话：会话 A' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('历史消息加载失败')
+  expect(input).toHaveValue('草稿需要保留')
+  expect(document.querySelector('.chat-heading')).toHaveTextContent('新的学习对话')
+  expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+  expect(endpoints.sessionMessages).toHaveBeenCalledTimes(1)
+  expect(streamChat).not.toHaveBeenCalled()
+})
+
+test.each([false, true])('message history retry preserves the current snapshot and reads only the chosen session (workspace=%s)', async workspace => {
+  endpoints.sessionMessages.mockResolvedValueOnce([
+    { id: 11, sessionId: 1, role: 'assistant', content: '当前完整回答', sources: [citation] },
+  ]).mockResolvedValueOnce([
+    { id: 21, sessionId: 2, role: 'assistant', content: '损坏的回答', sourcesJson: '{"length":1}' },
+  ]).mockResolvedValueOnce([
+    { id: 21, sessionId: 2, role: 'assistant', content: '恢复后的回答', sourcesJson: JSON.stringify([citation]) },
+  ])
+  render(<MemoryRouter><ChatPage workspace={workspace} /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '打开对话：会话 A' }))
+  await screen.findByText('当前完整回答')
+  const input = screen.getByRole('textbox', { name: '向忆知提问...' })
+  fireEvent.change(input, { target: { value: '下一轮草稿' } })
+  fireEvent.click(screen.getByRole('button', { name: '打开对话：会话 B' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('历史消息加载失败')
+  expect(screen.getByText('当前完整回答')).toBeInTheDocument()
+  expect(document.querySelector('.chat-heading')).toHaveTextContent('会话 A')
+  fireEvent.keyDown(input, { key: 'Enter' })
+  expect(streamChat).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '重试 / Retry' }))
+  await screen.findByText('恢复后的回答')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(input).toHaveValue('下一轮草稿')
+  expect(document.querySelector('.chat-heading')).toHaveTextContent('会话 B')
+  expect(screen.getByRole('button', { name: '发送' })).toBeEnabled()
+  expect(endpoints.sessionMessages.mock.calls).toEqual([[1], [2], [2]])
+  expect(endpoints.createSession).not.toHaveBeenCalled()
+  expect(endpoints.deleteSession).not.toHaveBeenCalled()
+  expect(endpoints.sessions).toHaveBeenCalledTimes(1)
+  expect(endpoints.knowledgeBases).toHaveBeenCalledTimes(1)
+})
+
+test('an initial URL history failure blocks sending until an explicit new conversation', async () => {
+  window.history.replaceState(null, '', '/chat?session=1')
+  endpoints.sessionMessages.mockRejectedValueOnce(new Error('private upstream payload'))
+  try {
+    await open()
+    expect(await screen.findByRole('alert')).toHaveTextContent('历史消息加载失败')
+    expect(screen.getByRole('alert')).not.toHaveTextContent('private upstream payload')
+    const input = screen.getByRole('textbox', { name: '向忆知提问...' })
+    fireEvent.change(input, { target: { value: '确认新对话' } })
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '新对话', exact: true }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fireEvent.change(input, { target: { value: '确认新对话' } })
+    expect(screen.getByRole('button', { name: '发送' })).toBeEnabled()
+    expect(endpoints.sessionMessages).toHaveBeenCalledTimes(1)
+  } finally { window.history.replaceState(null, '', '/') }
 })
 test.each([false, true])('failed answer has a terminal state and retry (partial=%s)', async partial => {
   streamChat.mockImplementation(async (_, { onEvent }) => {
@@ -338,8 +407,8 @@ test.each([
   ['INVALID_CHAT_EVENT', '回答流格式异常'],
 ])('reloaded %s history retains its failure reason and partial answer', async (errorCode, label) => {
   endpoints.sessionMessages.mockResolvedValue([
-    { id: 1, role: 'user', content: '问题' },
-    { id: 2, role: 'assistant', content: '部分正文', status: 'failed', errorCode },
+    { id: 1, sessionId: 1, role: 'user', content: '问题' },
+    { id: 2, sessionId: 1, role: 'assistant', content: '部分正文', status: 'failed', errorCode },
   ])
   await open()
   fireEvent.click(screen.getByRole('button', { name: '打开对话：会话 A' }))

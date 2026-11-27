@@ -12,6 +12,7 @@ import { endpoints, streamChat } from '../api/client'
 import { FeedbackBlock, Modal } from '../components/ui'
 import ChatHistoryPanel from '../features/chat/ChatHistoryPanel'
 import ChatSourceDrawer from '../features/chat/ChatSourceDrawer'
+import normalizeChatHistory from '../features/chat/normalizeChatHistory'
 import RetrievalFilters, { emptyFilters } from '../components/RetrievalFilters'
 import useChatScroll from '../hooks/useChatScroll'
 import logo from '../assets/mneme-logo.svg'
@@ -60,6 +61,7 @@ function ChatView({ renderTools, workspace = false }) {
   const { session: activeSession, messages } = conversation
   const setMessages = (update) => setConversation(current => ({ ...current, messages: typeof update === 'function' ? update(current.messages) : update }))
   const [switching, setSwitching] = useState(false)
+  const [historyFailure, setHistoryFailure] = useState(null)
   const selectionRef = useRef(0)
   const [selectedKbIds, setSelectedKbIds] = useState([])
   const [retrievalFilters, setRetrievalFilters] = useState({ ...emptyFilters })
@@ -95,20 +97,17 @@ function ChatView({ renderTools, workspace = false }) {
     if (abortRef.current || sessionLocks.current.has(session.id)) return
     const selection = ++selectionRef.current
     setSwitching(true)
+    setHistoryFailure(null)
     setError('')
     try {
       const history = await endpoints.sessionMessages(session.id)
       if (selection !== selectionRef.current) return
-      setConversation({ session, messages: (history || []).map((message, index) => {
-        let sources = message.sources || []
-        try { if (message.sourcesJson) sources = JSON.parse(message.sourcesJson) } catch { /* old histories may not contain citations */ }
-        return { ...message, status: message.status === 'completed' ? 'complete' : (message.status || 'complete'), sources, requestText: message.role === 'assistant' ? history.slice(0, index).findLast(item => item.role === 'user')?.content : undefined }
-      }) })
+      setConversation({ session, messages: normalizeChatHistory(history, session.id) })
       setSourceDrawer(null)
       if (window.innerWidth < 900) setSidebarOpen(false)
       scrollToBottom()
-    } catch (requestError) {
-      if (selection === selectionRef.current) setError(requestError.message)
+    } catch {
+      if (selection === selectionRef.current) setHistoryFailure(session)
     } finally { if (selection === selectionRef.current) setSwitching(false) }
   }, [scrollToBottom])
 
@@ -137,6 +136,7 @@ function ChatView({ renderTools, workspace = false }) {
     initialSelection.current = null
     setRequestedPending(false)
     setSwitching(false)
+    setHistoryFailure(null)
     setConversation({ session: null, messages: [] })
     setInput('')
     setSourceDrawer(null)
@@ -155,7 +155,7 @@ function ChatView({ renderTools, workspace = false }) {
   async function sendMessage(event, retryText) {
     event?.preventDefault()
     const text = (retryText ?? input).trim()
-    if (!text || abortRef.current || kbUnavailable || requestedPending || switching) return
+    if (!text || abortRef.current || kbUnavailable || requestedPending || switching || historyFailure) return
     const controller = new AbortController()
     const active = { controller, requestId: crypto.randomUUID(), sent: false, stopRequested: false, stopped: false, stopInFlight: false, terminal: false }
     activeRequestRef.current = active
@@ -352,6 +352,8 @@ function ChatView({ renderTools, workspace = false }) {
         </div>
         <div ref={conversationRef} className="conversation" aria-busy={switching}>
           {switching && <p role="status">{t("正在切换对话…")}</p>}
+          {historyFailure && <FeedbackBlock error={t('历史消息加载失败，已保留当前回答和草稿。请重试读取或选择新对话。')}
+            onRetry={switching || sessionUnavailable ? undefined : () => chooseSession(historyFailure)} />}
           {!messages.length ? (
             <div className="chat-welcome">
               <p className="eyebrow">{t("开始新的学习对话")}</p>
@@ -396,7 +398,7 @@ function ChatView({ renderTools, workspace = false }) {
           <div className="composer-tools"><RetrievalFilters disabled={kbUnavailable || streaming} kbIds={selectedKbIds} value={retrievalFilters} onChange={setRetrievalFilters} /><button type="button" onClick={() => navigate('/knowledge')}><FileText size={14} />{t('导入资料')}</button><button type="button" onClick={() => setKbMenuOpen(!kbMenuOpen)}><Quote size={14} />{t('引用检索')}</button><button type="button" onClick={() => setSourceDrawer(displaySources)}><BookOpen size={14} />{t('引用与原文')}{displaySources.length ? ` · ${displaySources.length}` : ''}</button></div>
           <textarea aria-label={t("向忆知提问...")} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); sendMessage() } }} placeholder={t("向忆知提问...")} rows={1} />
           <span className="composer-context"><FileText size={14} />{selectedLabel}</span>
-          {streaming ? <button type="button" className="stop-send" disabled={stopBusy} onClick={stopGeneration} title={t("停止生成")} aria-label={t("停止生成")}><CircleStop size={19} /></button> : <button className="send-message" disabled={kbUnavailable || requestedPending || switching || !input.trim()} title={t("发送")} aria-label={t("发送")}><ArrowUp size={20} /></button>}
+          {streaming ? <button type="button" className="stop-send" disabled={stopBusy} onClick={stopGeneration} title={t("停止生成")} aria-label={t("停止生成")}><CircleStop size={19} /></button> : <button className="send-message" disabled={kbUnavailable || requestedPending || switching || !!historyFailure || !input.trim()} title={t("发送")} aria-label={t("发送")}><ArrowUp size={20} /></button>}
         </form>
       </section>
 

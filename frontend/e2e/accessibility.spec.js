@@ -231,7 +231,7 @@ for (const path of ['/chat', '/workspace']) test(`${path} 引用抽屉窄窗口�
   await page.setViewportSize({ width: 1000, height: 900 })
   await page.route('**/api/v1/sessions', route => route.fulfill(ok([{ id: 5, title: '引用会话' }])))
   await page.route('**/api/v1/sessions/5/messages', route => route.fulfill(ok([
-    { id: 52, role: 'assistant', content: '引用回答', sourcesJson: JSON.stringify([{
+    { id: 52, sessionId: 5, role: 'assistant', content: '引用回答', sourcesJson: JSON.stringify([{
       document_id: 'doc_42', document_name: '历史资料.pdf', chunk_content: '原文证据',
       page: 3, section: '证据章节', retrieval_ranks: { lexical: 1 }, score: 0.875,
       content_sha256: 'a'.repeat(64), indexed_at: '2026-11-27T00:00:00Z', parser_version: 'v3',
@@ -284,8 +284,8 @@ test('历史删除按钮可键盘操作且收起后不可聚焦', async ({ page 
 test('刷新后可用键盘打开持久化历史会话', async ({ page }) => {
   await page.route('**/api/v1/sessions', route => route.fulfill(ok([{ id: 5, title: '历史回答' }])))
   await page.route('**/api/v1/sessions/5/messages', route => route.fulfill(ok([
-    { id: 51, role: 'user', content: '确认识别码' },
-    { id: 52, role: 'assistant', content: '识别码 QZ-7294' },
+    { id: 51, sessionId: 5, role: 'user', content: '确认识别码' },
+    { id: 52, sessionId: 5, role: 'assistant', content: '识别码 QZ-7294' },
   ])))
   await page.goto('/chat')
   await expect(page.getByRole('textbox', { name: '向忆知提问...' })).toBeVisible()
@@ -295,6 +295,51 @@ test('刷新后可用键盘打开持久化历史会话', async ({ page }) => {
   await session.focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.message-assistant')).toContainText('QZ-7294')
+})
+
+for (const path of ['/chat', '/workspace']) test(`${path} 损坏历史保留回答与草稿，重试只读取目标会话`, async ({ page }) => {
+  const pageErrors = [], reads = []
+  let writes = 0
+  page.on('pageerror', error => pageErrors.push(error.message))
+  page.on('request', request => {
+    if (/\/api\/v1\/(sessions|chat)(\/|$)/.test(new URL(request.url()).pathname) && request.method() !== 'GET') writes++
+  })
+  const source = { document_name: '原文.txt', chunk_content: '保留的资料依据' }
+  await page.route('**/api/v1/sessions', route => route.fulfill(ok([
+    { id: 5, title: '当前会话' }, { id: 6, title: '目标会话' },
+  ])))
+  await page.route('**/api/v1/sessions/*/messages', route => {
+    const id = Number(new URL(route.request().url()).pathname.split('/').at(-2))
+    reads.push(id)
+    return route.fulfill(ok([{
+      id: id * 10, sessionId: id, role: 'assistant', status: 'completed',
+      content: id === 5 ? '已经完成的回答' : '恢复的目标回答',
+      sourcesJson: id === 6 && reads.filter(value => value === 6).length === 1 ? 'null' : JSON.stringify([source]),
+    }]))
+  })
+  await page.goto(`${path}?session=5`)
+  await expect(page.locator('.message-assistant')).toContainText('已经完成的回答')
+  const input = page.getByRole('textbox', { name: '向忆知提问...' })
+  await input.fill('后续问题草稿')
+  await page.getByRole('button', { name: '打开对话：目标会话', exact: true }).click()
+  const feedback = page.getByRole('alert')
+  await expect(feedback).toContainText('历史消息加载失败')
+  await expect(page.locator('.chat-heading')).toHaveText('当前会话')
+  await expect(page.locator('.message-assistant')).toContainText('已经完成的回答')
+  await expect(input).toHaveValue('后续问题草稿')
+  await expect(page.getByRole('button', { name: '发送', exact: true })).toBeDisabled()
+  await input.press('Enter')
+  await page.getByRole('button', { name: '重试 / Retry' }).click()
+  await expect(page.locator('.message-assistant')).toContainText('恢复的目标回答')
+  await expect(feedback).toHaveCount(0)
+  await expect(page.locator('.chat-heading')).toHaveText('目标会话')
+  await expect(input).toHaveValue('后续问题草稿')
+  await expect(page.getByRole('button', { name: '发送', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: '查看 1 条资料依据' }).click()
+  await expect(page.getByRole('complementary', { name: '引用与原文' })).toContainText('保留的资料依据')
+  expect(reads).toEqual([5, 6, 6])
+  expect(writes).toBe(0)
+  expect(pageErrors).toEqual([])
 })
 
 for (const path of ['/chat', '/workspace']) test(`${path} 窄窗口历史侧栏保持筛选与键盘焦点`, async ({ page }) => {
