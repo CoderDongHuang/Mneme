@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { validDocumentPreview } from './previewValidation'
+import { validDocumentPreview, validDocumentVersions } from './previewValidation'
 
 const preview = () => ({
   document: { id: 7, file_name: 'scan.pdf', sha256: 'a'.repeat(64), chunk_count: 1, version_number: 2 },
@@ -49,4 +49,25 @@ test.each([
 test('requested document and historical hash must match the response', () => {
   expect(validDocumentPreview(preview(), 8)).toBe(false)
   expect(validDocumentPreview(preview(), 7, 'b'.repeat(64))).toBe(false)
+})
+
+test('document versions accept SQL flags, optional legacy fields and unknown metadata', () => {
+  expect(validDocumentVersions([])).toBe(true)
+  expect(validDocumentVersions([
+    { version_number: 3, active: 1, file_name: 'v3.txt', sha256: 'a'.repeat(64), size_bytes: 0, created_at: '2026-11-27 01:02:03', future: {} },
+    { version_number: 2, active: 0, file_name: null, sha256: 'abc123', created_at: null },
+    { version_number: 1, active: false, created_at: 1795737600000 },
+  ])).toBe(true)
+})
+
+test.each([
+  null, {}, [null], [{ version_number: 0, active: false }],
+  [{ version_number: '1', active: true }], [{ version_number: 1.1, active: false }],
+  [{ version_number: 1, active: false }, { version_number: 1, active: true }],
+  ...[undefined, 'false', 2, null, {}].map(active => [{ version_number: 1, active }]),
+  ...[{ file_name: {} }, { sha256: [] }, { size_bytes: -1 }, { size_bytes: '1' },
+    { created_at: {} }, { created_at: true }, { created_at: Infinity }, { created_at: 'invalid' }, { created_at: '' }]
+    .map(fields => [{ version_number: 1, active: false, ...fields }]),
+])('rejects malformed document versions before rendering (%j)', value => {
+  expect(validDocumentVersions(value)).toBe(false)
 })

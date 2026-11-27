@@ -1,3 +1,5 @@
+import { parseInstant } from '../../utils/dates'
+
 // Validate only the fields used by preview consumers. Unknown parser metadata
 // stays intact so older reports and future parser versions remain readable.
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -9,6 +11,20 @@ const list = (value, check) => value === undefined || (Array.isArray(value) && v
 const confidence = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
 const hash = value => text(value) && /^[a-fA-F0-9]{64}$/.test(value)
 const identifier = value => (typeof value === 'number' && positive(value)) || (text(value) && /^[1-9]\d*$/.test(value))
+
+export function validDocumentVersions(value) {
+  if (!Array.isArray(value)) return false
+  const numbers = new Set()
+  return value.every(version => {
+    if (!record(version) || !positive(version.version_number) || numbers.has(version.version_number)
+      || ![true, false, 0, 1].includes(version.active)
+      || !optional(version.file_name, text) || !optional(version.sha256, text)
+      || !optional(version.size_bytes, integer)
+      || !optional(version.created_at, date => (text(date) || typeof date === 'number') && !!parseInstant(date))) return false
+    numbers.add(version.version_number)
+    return true
+  })
+}
 
 function region(value) {
   if (!text(value)) return false

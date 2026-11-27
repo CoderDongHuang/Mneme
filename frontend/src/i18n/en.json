@@ -1218,6 +1218,8 @@
   "记忆版本加载失败，请重试。": "Could not load memory versions. Please retry.",
   "已有版本记录可能不是最新状态。": "The displayed versions may be out of date.",
   "暂无历史版本。": "No version history yet.",
+  "文档版本读取": "Document version loading",
+  "文档版本加载失败，请重试。": "Could not load document versions. Please retry.",
   "记忆已确认": "Memory confirmed",
   "记忆已忽略": "Memory dismissed",
   "记忆已添加": "Memory added",
