@@ -37,11 +37,11 @@ function useKnowledgeRead(read, valid, failure, { scope = '', enabled = true, in
       if (current() && version === revision.current) setState(old => ({ ...old, loading: false, error: t(failure) }))
     }
   }, { interval, enabled, scope })
-  const commit = useCallback(update => {
+  const commit = useCallback((update, { refresh: shouldRefresh = true } = {}) => {
     if (scopeRef.current !== scope) return
     revision.current++
     setState(old => old.scope === scope ? { ...old, data: typeof update === 'function' ? update(old.data || []) : update } : old)
-    void refresh()
+    if (shouldRefresh) void refresh()
   }, [refresh, scope])
   return { ...(state.scope === scope ? state : initial(scope)), refresh, commit }
 }

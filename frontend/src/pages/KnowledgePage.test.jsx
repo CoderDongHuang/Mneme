@@ -29,6 +29,38 @@ test('creation failure preserves the form and allows retry', async () => {
   await waitFor(() => expect(screen.queryByRole('button', { name: '创建资料库' })).not.toBeInTheDocument())
 })
 
+test('damaged creation receipt locks the form until a list GET confirms the result', async () => {
+  endpoints.createKnowledgeBase.mockResolvedValueOnce(null)
+  endpoints.knowledgeBases.mockResolvedValueOnce([{ id: 1, name: '资料 A' }, { id: 2, name: '资料 B' }])
+    .mockResolvedValueOnce([{ id: 1, name: '资料 A' }, { id: 2, name: '资料 B' }, { id: 3, name: '我的笔记' }])
+  render(<KnowledgePage />)
+  fireEvent.click(await screen.findByRole('button', { name: '新建资料库' }))
+  fireEvent.change(screen.getByPlaceholderText('例如：机器学习基础'), { target: { value: '我的笔记' } })
+  fireEvent.click(screen.getByRole('button', { name: '创建资料库' }))
+  const dialog = await screen.findByRole('dialog', { name: '新建资料库' })
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('创建结果尚未确认')
+  expect(within(dialog).getByPlaceholderText('例如：机器学习基础')).toBeDisabled()
+  fireEvent.click(within(dialog).getByRole('button', { name: '核对资料库' }))
+  await waitFor(() => expect(screen.getByRole('option', { name: '我的笔记' })).toBeInTheDocument())
+  expect(endpoints.createKnowledgeBase).toHaveBeenCalledTimes(1)
+  expect(endpoints.knowledgeBases).toHaveBeenCalledTimes(2)
+})
+
+test('damaged deletion receipt verifies disappearance with one list GET and no repeated DELETE', async () => {
+  endpoints.deleteKnowledgeBase.mockResolvedValueOnce(null)
+  endpoints.knowledgeBases.mockResolvedValueOnce([{ id: 1, name: '资料 A' }, { id: 2, name: '资料 B' }])
+    .mockResolvedValueOnce([{ id: 2, name: '资料 B' }])
+  render(<KnowledgePage />)
+  await waitFor(() => expect(screen.getByRole('button', { name: '删除资料库' })).toBeEnabled())
+  fireEvent.click(screen.getByRole('button', { name: '删除资料库' }))
+  await waitFor(() => expect(endpoints.deleteKnowledgeBase).toHaveBeenCalledTimes(1))
+  expect(await screen.findByText(/删除结果尚未确认/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '核对删除结果' }))
+  await waitFor(() => expect(screen.queryByRole('option', { name: '资料 A' })).not.toBeInTheDocument())
+  expect(endpoints.deleteKnowledgeBase).toHaveBeenCalledTimes(1)
+  expect(endpoints.knowledgeBases).toHaveBeenCalledTimes(2)
+})
+
 test.each([null, { versions: [] }])('invalid document versions stay in the dialog with a read retry (%j)', async data => {
   endpoints.documents.mockResolvedValue([{ id: 7, fileName: 'qa.txt', status: 'ready' }])
   endpoints.documentVersions.mockResolvedValueOnce(data).mockResolvedValueOnce([])
