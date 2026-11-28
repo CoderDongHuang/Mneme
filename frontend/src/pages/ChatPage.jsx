@@ -3,7 +3,7 @@ import { validBases, validSessions } from '../api/collectionValidation'
 import { useAuth } from '../state/AuthContext'
 import { t, useI18n } from '../i18n'
 import {
-  ArrowUp, BookOpen, Check, ChevronDown, CircleStop, FileText,
+  BookOpen, Check, ChevronDown,
   PanelLeftClose, PanelLeftOpen, Quote, SlidersHorizontal, Sparkles, X,
 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
@@ -11,9 +11,10 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { endpoints, streamChat } from '../api/client'
 import { FeedbackBlock, Modal } from '../components/ui'
 import ChatHistoryPanel from '../features/chat/ChatHistoryPanel'
+import ChatComposer from '../features/chat/ChatComposer'
 import ChatSourceDrawer from '../features/chat/ChatSourceDrawer'
 import normalizeChatHistory from '../features/chat/normalizeChatHistory'
-import RetrievalFilters, { emptyFilters } from '../components/RetrievalFilters'
+import { emptyFilters } from '../components/RetrievalFilters'
 import useChatScroll from '../hooks/useChatScroll'
 import logo from '../assets/mneme-logo.svg'
 import '../styles/chat.css'
@@ -394,12 +395,25 @@ function ChatView({ renderTools, workspace = false }) {
         </div>
 
         {unseen && <button className="new-content" onClick={scrollToBottom}>{t("有新内容 · 返回底部")}</button>}
-        <form className="composer" onSubmit={sendMessage} aria-busy={switching}>
-          <div className="composer-tools"><RetrievalFilters disabled={kbUnavailable || streaming} kbIds={selectedKbIds} value={retrievalFilters} onChange={setRetrievalFilters} /><button type="button" onClick={() => navigate('/knowledge')}><FileText size={14} />{t('导入资料')}</button><button type="button" onClick={() => setKbMenuOpen(!kbMenuOpen)}><Quote size={14} />{t('引用检索')}</button><button type="button" onClick={() => setSourceDrawer(displaySources)}><BookOpen size={14} />{t('引用与原文')}{displaySources.length ? ` · ${displaySources.length}` : ''}</button></div>
-          <textarea aria-label={t("向忆知提问...")} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); sendMessage() } }} placeholder={t("向忆知提问...")} rows={1} />
-          <span className="composer-context"><FileText size={14} />{selectedLabel}</span>
-          {streaming ? <button type="button" className="stop-send" disabled={stopBusy} onClick={stopGeneration} title={t("停止生成")} aria-label={t("停止生成")}><CircleStop size={19} /></button> : <button className="send-message" disabled={kbUnavailable || requestedPending || switching || !!historyFailure || !input.trim()} title={t("发送")} aria-label={t("发送")}><ArrowUp size={20} /></button>}
-        </form>
+        <ChatComposer
+          draft={input}
+          onDraftChange={setInput}
+          onSend={sendMessage}
+          switching={switching}
+          canSend={!kbUnavailable && !requestedPending && !switching && !historyFailure && !!input.trim()}
+          streaming={streaming}
+          stopBusy={stopBusy}
+          onStop={stopGeneration}
+          knowledgeBasesUnavailable={kbUnavailable}
+          selectedKbIds={selectedKbIds}
+          retrievalFilters={retrievalFilters}
+          onRetrievalFiltersChange={setRetrievalFilters}
+          selectedLabel={selectedLabel}
+          sourceCount={displaySources.length}
+          onOpenKnowledge={() => navigate('/knowledge')}
+          onToggleKnowledgeMenu={() => setKbMenuOpen(value => !value)}
+          onOpenSources={() => setSourceDrawer(displaySources)}
+        />
       </section>
 
       <ChatSourceDrawer sources={displaySources} open={sourceDrawer} narrow={narrow}

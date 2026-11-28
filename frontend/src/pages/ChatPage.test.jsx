@@ -150,6 +150,17 @@ function send(text = '测试问题') {
   fireEvent.click(screen.getByRole('button', { name: '发送' }))
 }
 
+test('composer sends with Enter and preserves Shift+Enter editing', async () => {
+  await open()
+  const input = screen.getByRole('textbox', { name: '向忆知提问...' })
+  fireEvent.change(input, { target: { value: '键盘提问' } })
+  fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
+  expect(streamChat).not.toHaveBeenCalled()
+
+  await act(async () => fireEvent.keyDown(input, { key: 'Enter' }))
+  expect(streamChat).toHaveBeenCalledTimes(1)
+})
+
 function CurrentLocation() {
   const location = useLocation()
   return <output aria-label="当前地址">{location.pathname}{location.search}</output>
