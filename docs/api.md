@@ -96,6 +96,11 @@ SSE 事件：
 
 `POST /health/providers/check` 必须登录，转发到 Python 内部保护接口。返回部署级 Chat/Embedding/Rerank/OCR 的脱敏 profile、状态、延迟与缓存信息（60 秒缓存），可能执行少量合成请求并产生费用。状态区分 missing_credentials、authentication_failed、quota_or_rate_limit、model_unsupported、timeout、runtime_missing、disabled、ok；不回传密钥，也不能代替业务验收。个人交互模型使用下列独立配置；共享索引和后台服务仍由部署方管理。
 
+## 测验
+
+- `GET /workspace/quizzes` 与 `POST /workspace/quizzes/generate`：读取测验及从资料库按主题生成。题目只公开类型、题干、选项和提示，不返回标准答案、评分要点或内部依据。
+- `GET/PUT /workspace/quizzes/{id}/draft`、`GET /workspace/quizzes/{id}/attempts`、`POST /workspace/quizzes/{id}/submit` 和 `POST /workspace/quizzes/{id}/reports`：保存个人草稿、读取作答历史、提交答案并记录题目反馈。重复提交使用同一 `request_id` 幂等核对，成功回执含分数和逐题反馈。
+
 ## 复习卡与学习计划
 
 - `GET /workspace/reviews` 与 `POST /workspace/reviews/{id}`：读取复习卡列表并提交整数评分；成功回执返回更新后的卡片。卡片核心字段为 `id`、`prompt`、`answer`、`due_at` 和 `review_count`，兼容省略的历史可选字段。
