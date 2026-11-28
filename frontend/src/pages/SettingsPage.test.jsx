@@ -4,12 +4,16 @@ import SettingsPage from './SettingsPage'
 import { endpoints } from '../api/client'
 
 const owner = vi.hoisted(() => ({ session: { userId: 1 } }))
+const modelSettings = (overrides = {}) => ({
+  provider: 'deepseek', model: 'deepseek-chat', enabled: false,
+  hasKey: false, keyMask: '', baseUrl: 'https://api.deepseek.com/v1', ...overrides,
+})
 vi.mock('../state/AuthContext', () => ({ useAuth: () => owner }))
 vi.mock('../api/client', () => ({ endpoints: { modelSettings: vi.fn(), healthConfig: vi.fn(), checkProviders: vi.fn(), saveModelSettings: vi.fn(), testModelSettings: vi.fn() } }))
 beforeEach(() => {
   vi.resetAllMocks()
   owner.session = { userId: 1 }
-  endpoints.modelSettings.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-chat', enabled: false })
+  endpoints.modelSettings.mockResolvedValue(modelSettings())
   endpoints.healthConfig.mockResolvedValue({ service: 'mneme-python-agent' })
 })
 
@@ -61,10 +65,13 @@ test('save locks all fields and duplicate submissions, clears key only after suc
   fireEvent.change(screen.getByLabelText('API 密钥'), { target: { value: 'unit-secret' } })
   fireEvent.submit(form); fireEvent.submit(form)
   expect(endpoints.saveModelSettings).toHaveBeenCalledTimes(1)
+  expect(endpoints.saveModelSettings.mock.calls[0][0]).toEqual({
+    provider: 'deepseek', model: 'deepseek-chat', apiKey: 'unit-secret', enabled: false, clearKey: false,
+  })
   for (const control of form.querySelectorAll('input,select,button')) expect(control).toBeDisabled()
   endpoints.healthConfig.mockRejectedValueOnce(new Error('状态断开'))
   fireEvent.click(screen.getByRole('button', { name: '刷新状态' }))
-  await act(async () => complete({ provider: 'deepseek', model: 'deepseek-chat', enabled: false, hasKey: true, keyMask: 'masked' }))
+  await act(async () => complete(modelSettings({ hasKey: true, keyMask: 'masked' })))
   expect(await screen.findByText('模型配置已保存')).toBeVisible()
   expect(await screen.findByText('服务状态加载失败，请重试。')).toBeVisible()
   expect(screen.getByLabelText('API 密钥')).toHaveValue('')
@@ -72,7 +79,7 @@ test('save locks all fields and duplicate submissions, clears key only after suc
 })
 
 test('failed save retains draft and permits an explicit retry without rereading', async () => {
-  endpoints.saveModelSettings.mockRejectedValueOnce(Object.assign(new Error('写入失败'), { status: 400 })).mockResolvedValueOnce({ provider: 'deepseek', model: 'draft-model', enabled: false })
+  endpoints.saveModelSettings.mockRejectedValueOnce(Object.assign(new Error('写入失败'), { status: 400 })).mockResolvedValueOnce(modelSettings({ model: 'draft-model' }))
   render(<SettingsPage />)
   fireEvent.change(await screen.findByLabelText('模型名称'), { target: { value: 'draft-model' } })
   fireEvent.change(screen.getByLabelText('API 密钥'), { target: { value: 'unit-secret' } })
@@ -93,7 +100,7 @@ test('test result belongs to the current draft and fields lock until the probe e
   await screen.findByLabelText('模型名称')
   fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
   expect(screen.getByLabelText('模型名称')).toBeDisabled()
-  await act(async () => complete({ model: 'deepseek-chat', latency_ms: 3 }))
+  await act(async () => complete({ status: 'ok', provider: 'deepseek', model: 'deepseek-chat', latency_ms: 3 }))
   expect(screen.getByText('实际模型调用通过')).toBeVisible()
   fireEvent.change(screen.getByLabelText('模型名称'), { target: { value: 'another-model' } })
   expect(screen.queryByText('实际模型调用通过')).not.toBeInTheDocument()
@@ -168,7 +175,7 @@ test('a malformed save receipt retains drafts, locks writes and reconciles with 
   fireEvent.click(screen.getByRole('button', { name: '核对已保存模型配置' }))
   expect(await screen.findByText('模型配置加载失败：read failed')).toBeVisible()
   expect(screen.queryByRole('button', { name: '采用服务端配置' })).not.toBeInTheDocument()
-  endpoints.modelSettings.mockResolvedValueOnce({ provider: 'deepseek', model: 'saved-model', enabled: false })
+  endpoints.modelSettings.mockResolvedValueOnce(modelSettings({ model: 'saved-model' }))
   fireEvent.click(screen.getByRole('button', { name: '核对已保存模型配置' }))
   expect(await screen.findByText('saved-model', { exact: true })).toBeVisible()
   expect(endpoints.saveModelSettings).toHaveBeenCalledTimes(1)
@@ -209,7 +216,7 @@ test.each([{}, { results: { chat: { state: 'ok', latency_ms: {} } } }])('invalid
 })
 
 test('a valid but unrelated save receipt cannot replace the current draft', async () => {
-  endpoints.saveModelSettings.mockResolvedValueOnce({ provider: 'deepseek', model: 'other-model', enabled: false })
+  endpoints.saveModelSettings.mockResolvedValueOnce(modelSettings({ model: 'other-model' }))
   render(<SettingsPage />)
   await screen.findByLabelText('模型名称')
   fireEvent.click(screen.getByRole('button', { name: '保存配置' }))

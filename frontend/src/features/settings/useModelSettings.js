@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { endpoints } from '../../api/client'
 import { t } from '../../i18n'
-import { validModelSettings, validPersonalProbe } from './settingsValidation'
+import { javaTrim, validModelSettings, validModelSettingsUpdate, validPersonalProbe } from './settingsValidation'
 
 const editable = value => ({ ...value, apiKey: '', clearKey: false })
 // A transport/server failure can follow a commit. Reconcile with a GET before
@@ -61,18 +61,29 @@ export function useModelSettings() {
 
   async function run(name) {
     if (!active.current || request.current || uncertain.current || !form) return
+    const body = {
+      provider: form.provider,
+      model: form.model,
+      apiKey: form.apiKey,
+      enabled: form.enabled,
+      clearKey: form.clearKey,
+    }
+    if (!validModelSettingsUpdate(body)) {
+      setError(t('模型配置请求格式不正确'))
+      return
+    }
     const controller = new AbortController()
     request.current = controller
     setBusy(name); setError(''); setNotice(''); setProbe(null)
     try {
-      const result = await (name === 'save' ? endpoints.saveModelSettings : endpoints.testModelSettings)(form, { signal: controller.signal })
+      const result = await (name === 'save' ? endpoints.saveModelSettings : endpoints.testModelSettings)(body, { signal: controller.signal })
       if (controller.signal.aborted) return
       if (name === 'save') {
-        if (!validModelSettings(result) || result.provider !== form.provider || result.model !== form.model.trim() || result.enabled !== form.enabled) throw new Error(t('模型配置响应格式不正确'))
+        if (!validModelSettings(result) || result.provider !== form.provider || result.model !== javaTrim(form.model) || result.enabled !== form.enabled) throw new Error(t('模型配置响应格式不正确'))
         setForm(editable(result))
         setNotice(t('模型配置已保存'))
       } else {
-        if (!validPersonalProbe(result)) throw new Error(t('模型测试响应格式不正确，请核实后再试。'))
+        if (!validPersonalProbe(result) || result.provider !== body.provider || result.model !== javaTrim(body.model)) throw new Error(t('模型测试响应格式不正确，请核实后再试。'))
         setProbe(result); setNotice(t('模型连接测试通过，配置尚未保存'))
       }
     } catch (failure) {

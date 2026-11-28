@@ -1,21 +1,31 @@
+import modelContract from '../../../../contracts/settings-model.schema.json'
+import { matchesSchema } from '../../api/schemaContract'
+
 const record = value => !!value && typeof value === 'object' && !Array.isArray(value)
 const optional = (value, key, valid) => value[key] === undefined || valid(value[key])
 const boolean = value => typeof value === 'boolean'
 const latency = value => Number.isSafeInteger(value) && value >= 0
 const modelName = value => typeof value === 'string' && /^[A-Za-z0-9._:/-]{1,120}$/.test(value)
+// Java String.trim removes code units through U+0020.
+// eslint-disable-next-line no-control-regex
+export const javaTrim = value => value.replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '')
+const definitions = modelContract.$defs
 const states = new Set(['ok', 'disabled', 'missing_credentials', 'model_not_loaded', 'timeout', 'authentication_failed', 'quota_or_rate_limit', 'model_unsupported', 'runtime_missing', 'provider_or_network_error'])
 
 export function validModelSettings(value) {
-  return record(value) && ['deepseek', 'dashscope', 'openai'].includes(value.provider)
-    && modelName(value.model) && boolean(value.enabled) && !Object.hasOwn(value, 'apiKey')
-    && optional(value, 'hasKey', boolean)
-    && optional(value, 'keyMask', mask => typeof mask === 'string' && mask.length <= 32)
-    && optional(value, 'baseUrl', url => typeof url === 'string')
+  return matchesSchema(definitions.ModelSettings, value, definitions) && modelName(value.model) && !Object.hasOwn(value, 'apiKey')
+}
+
+export function validModelSettingsUpdate(value) {
+  if (!matchesSchema(definitions.ModelSettingsUpdateRequest, value, definitions)) return false
+  if (value.model !== undefined && !modelName(javaTrim(value.model))) return false
+  const apiKey = value.clearKey ? '' : javaTrim(value.apiKey ?? '')
+  if (apiKey.length > 512 || [...apiKey].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) return false
+  return true
 }
 
 export function validPersonalProbe(value) {
-  return record(value) && modelName(value.model) && latency(value.latency_ms)
-    && optional(value, 'status', status => status === 'ok')
+  return matchesSchema(definitions.ModelTestReceipt, value, definitions) && modelName(value.model) && latency(value.latency_ms)
 }
 
 export function validProviders(value) {
