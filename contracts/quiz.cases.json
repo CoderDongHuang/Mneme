@@ -1,0 +1,273 @@
+[
+  {
+    "id": "quiz-full",
+    "schema": "Quiz",
+    "data": {
+      "id": 21,
+      "title": "函数复习",
+      "questions_json": "[{\"id\":1,\"type\":\"choice\",\"prompt\":\"请选择正确答案\",\"options\":[\"答案A\",\"答案B\"]}]",
+      "kb_id": 5,
+      "topic": "函数",
+      "created_at": "2026-11-28 10:00:00"
+    },
+    "valid": true
+  },
+  {
+    "id": "quiz-legacy-minimal",
+    "schema": "Quiz",
+    "data": {
+      "id": 21,
+      "title": "函数复习",
+      "questions_json": "[{\"id\":1,\"type\":\"choice\",\"prompt\":\"请选择正确答案\",\"options\":[\"答案A\",\"答案B\"]}]"
+    },
+    "valid": true
+  },
+  {
+    "id": "quiz-legacy-question-array",
+    "schema": "Quiz",
+    "valid": true,
+    "data": {
+      "id": 21,
+      "title": "函数复习",
+      "kb_id": 5,
+      "topic": "函数",
+      "created_at": "2026-11-28 10:00:00",
+      "questions_json": [
+        {
+          "id": 1,
+          "type": "choice",
+          "prompt": "请选择正确答案",
+          "options": [
+            "答案A",
+            "答案B"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "quiz-invalid-id",
+    "schema": "Quiz",
+    "data": {
+      "id": 0,
+      "title": "函数复习",
+      "questions_json": "[{\"id\":1,\"type\":\"choice\",\"prompt\":\"请选择正确答案\",\"options\":[\"答案A\",\"答案B\"]}]",
+      "kb_id": 5,
+      "topic": "函数",
+      "created_at": "2026-11-28 10:00:00"
+    },
+    "valid": false
+  },
+  {
+    "id": "quiz-missing-questions",
+    "schema": "Quiz",
+    "data": {
+      "id": 21,
+      "title": "函数复习",
+      "kb_id": 5,
+      "topic": "函数",
+      "created_at": "2026-11-28 10:00:00"
+    },
+    "valid": false
+  },
+  {
+    "id": "quiz-question-choice",
+    "schema": "QuizQuestion",
+    "data": {
+      "id": 1,
+      "type": "choice",
+      "prompt": "选择答案",
+      "options": [
+        "甲",
+        "乙"
+      ]
+    },
+    "valid": true
+  },
+  {
+    "id": "quiz-question-short",
+    "schema": "QuizQuestion",
+    "data": {
+      "type": "short",
+      "prompt": "简述原因",
+      "options": [],
+      "hint": null
+    },
+    "valid": true
+  },
+  {
+    "id": "quiz-question-invalid-type",
+    "schema": "QuizQuestion",
+    "data": {
+      "type": "essay",
+      "prompt": "回答"
+    },
+    "valid": false
+  },
+  {
+    "id": "quiz-draft-default",
+    "schema": "QuizDraft",
+    "data": {
+      "answers_json": "[]",
+      "current_question": 0
+    },
+    "valid": true
+  },
+  {
+    "id": "quiz-draft-legacy-array",
+    "schema": "QuizDraft",
+    "data": {
+      "answers_json": [],
+      "current_question": 0
+    },
+    "valid": true
+  },
+  {
+    "id": "quiz-draft-invalid-index",
+    "schema": "QuizDraft",
+    "data": {
+      "answers_json": "[]",
+      "current_question": -1
+    },
+    "valid": false
+  },
+  {
+    "id": "save-draft-request",
+    "schema": "SaveQuizDraftRequest",
+    "data": {
+      "answers": [
+        "答案A"
+      ],
+      "current_question": 0
+    },
+    "valid": true
+  },
+  {
+    "id": "quiz-attempt-full",
+    "schema": "QuizAttempt",
+    "data": {
+      "id": 9,
+      "answers_json": "[\"答案A\"]",
+      "score": 100,
+      "raw_score": 100,
+      "feedback_json": "[{\"question_id\": 1, \"correct\": true, \"expected\": \"答案A\", \"evidence\": \"资料原文\", \"covered_key_points\": 1, \"key_point_count\": 1, \"source\": {\"document_id\": 5, \"page\": 2}}]",
+      "created_at": "2026-11-28 10:02:00"
+    },
+    "valid": true
+  },
+  {
+    "id": "quiz-attempt-invalid-score",
+    "schema": "QuizAttempt",
+    "data": {
+      "id": 9,
+      "answers_json": "[\"答案A\"]",
+      "score": 101,
+      "raw_score": 100,
+      "feedback_json": "[{\"question_id\": 1, \"correct\": true, \"expected\": \"答案A\", \"evidence\": \"资料原文\", \"covered_key_points\": 1, \"key_point_count\": 1, \"source\": {\"document_id\": 5, \"page\": 2}}]",
+      "created_at": "2026-11-28 10:02:00"
+    },
+    "valid": false
+  },
+  {
+    "id": "submit-request",
+    "schema": "SubmitQuizRequest",
+    "data": {
+      "answers": [
+        "答案A"
+      ],
+      "request_id": "request_123"
+    },
+    "valid": true
+  },
+  {
+    "id": "submit-receipt",
+    "schema": "QuizSubmissionReceipt",
+    "data": {
+      "score": 100,
+      "raw_score": 100,
+      "feedback": [
+        {
+          "question_id": 1,
+          "correct": true,
+          "expected": "答案A",
+          "evidence": "资料原文",
+          "covered_key_points": 1,
+          "key_point_count": 1,
+          "source": {
+            "document_id": 5,
+            "page": 2
+          }
+        }
+      ]
+    },
+    "valid": true
+  },
+  {
+    "id": "report-request",
+    "schema": "ReportQuestionRequest",
+    "data": {
+      "question": 0,
+      "reason": "题目说明"
+    },
+    "valid": true
+  },
+  {
+    "id": "report-invalid-index",
+    "schema": "ReportQuestionRequest",
+    "data": {
+      "question": -1,
+      "reason": "题目说明"
+    },
+    "valid": false
+  },
+  {
+    "id": "report-receipt",
+    "schema": "ReportQuestionReceipt",
+    "data": {
+      "status": "recorded"
+    },
+    "valid": true
+  },
+  {
+    "id": "quiz-question-option-object",
+    "schema": "QuizQuestion",
+    "data": {
+      "type": "choice",
+      "prompt": "选择答案",
+      "options": [
+        {
+          "text": "答案甲",
+          "value": 1
+        }
+      ]
+    },
+    "valid": true
+  },
+  {
+    "id": "quiz-question-invalid-option",
+    "schema": "QuizQuestion",
+    "data": {
+      "type": "choice",
+      "prompt": "选择答案",
+      "options": [
+        {}
+      ]
+    },
+    "valid": false
+  },
+  {
+    "id": "quiz-question-legacy-option-null-text",
+    "schema": "QuizQuestion",
+    "data": {
+      "type": "choice",
+      "prompt": "选择答案",
+      "options": [
+        {
+          "text": null,
+          "label": "答案甲"
+        }
+      ]
+    },
+    "valid": true
+  }
+]
