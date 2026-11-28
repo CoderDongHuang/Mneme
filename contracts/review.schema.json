@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "$defs": {
+    "ReviewCard": {
+      "type": "object",
+      "required": [
+        "id",
+        "prompt",
+        "answer",
+        "due_at",
+        "review_count"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "answer": {
+          "type": "string"
+        },
+        "due_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "review_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_rating": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interval_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ease_factor": {
+          "type": "number"
+        },
+        "topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "LearningPlan": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "goal"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "goal": {
+          "type": "string"
+        },
+        "target_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      }
+    },
+    "CreatePlanRequest": {
+      "type": "object",
+      "required": [
+        "title",
+        "goal"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cards": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/ReviewCardInput"
+          }
+        }
+      }
+    },
+    "ReviewCardInput": {
+      "type": "object",
+      "required": [
+        "prompt",
+        "answer"
+      ],
+      "properties": {
+        "prompt": {
+          "type": "string"
+        },
+        "answer": {
+          "type": "string"
+        }
+      }
+    },
+    "ReviewRatingRequest": {
+      "type": "object",
+      "properties": {
+        "rating": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

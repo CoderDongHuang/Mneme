@@ -96,6 +96,11 @@ SSE 事件：
 
 `POST /health/providers/check` 必须登录，转发到 Python 内部保护接口。返回部署级 Chat/Embedding/Rerank/OCR 的脱敏 profile、状态、延迟与缓存信息（60 秒缓存），可能执行少量合成请求并产生费用。状态区分 missing_credentials、authentication_failed、quota_or_rate_limit、model_unsupported、timeout、runtime_missing、disabled、ok；不回传密钥，也不能代替业务验收。个人交互模型使用下列独立配置；共享索引和后台服务仍由部署方管理。
 
+## 复习卡与学习计划
+
+- `GET /workspace/reviews` 与 `POST /workspace/reviews/{id}`：读取复习卡列表并提交整数评分；成功回执返回更新后的卡片。卡片核心字段为 `id`、`prompt`、`answer`、`due_at` 和 `review_count`，兼容省略的历史可选字段。
+- `GET /workspace/plans` 与 `POST /workspace/plans`：读取计划列表并创建计划。创建请求包含 `title`、`goal`，可选 `target_date` 和最多 100 张带问题/答案的卡片；成功回执返回已保存计划。
+
 ## 个人偏好与模型
 
 - `GET/PUT /settings/preferences`：当前登录用户的 `language`（zh-CN/en）、IANA `timezone`（1–80 个字符）、布尔 `notifications`、`theme`（system/light/dark）。PUT 允许部分字段，未提供字段采用既有默认值；成功响应始终返回完整偏好对象。
