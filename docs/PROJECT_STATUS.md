@@ -2,7 +2,11 @@
 
 更新：2026-11-29。定位为个人与小团队自部署 Beta。
 
-## 当前执行状态：P3-06 测验 REST 业务契约本地验收完成
+## 当前执行状态：P2-14 ChatPage 输入区职责拆分
+
+P3-06 测验 REST 业务契约 PR #151 最终 HEAD `b3bcbeb` 的九项 CI 全部成功，Full-stack P0 acceptance 用时 29 分 41 秒，无失败、Maven 429 或重跑；已于 2026-11-29 合并（`7bf9f7e`）。完整 P3-06 仍开放，原审查主项完成 21、未完成 6，另发布收口 1，共剩余 7。
+
+P2-14 Chat 输入区本地验收完成：表单、草稿编辑、检索过滤器与操作按钮迁入 `features/chat/ChatComposer.jsx`，ChatPage 保留消息发送、停止和页面状态协调。ChatPage 定向测试 54 项、ESLint、生产构建及体积门禁通过，待本项独立 PR 最终 HEAD 九项 CI。
 
 P2-14 知识库列表 PR #139 最终 HEAD `2263da7` 全部九项 CI 成功，已于 2026-11-27 合并（`0ea129f`）。该批同时修复 CI 发现的 OpenTelemetry 与 Qdrant Debian 运行库安全公告，隔离镜像验证与镜像扫描通过。GitHub 认证正常，CLI 需在可读取 Windows 凭据库的授权环境运行。
 
@@ -28,7 +32,7 @@ P3-06 个人模型设置 REST 业务契约 PR #149 已合并（b685476），最�
 
 P3-06 复习卡与学习计划 REST 契约 PR #150 已合并（d2c6210），最终 HEAD 22e02d8 九项 CI 全部通过。前端定向 44 项、Java 离线定向 2 项、Python 定向 2 项、生成器检查、Ruff、ESLint 和构建通过。离线演示安装首轮因 Maven Central 429 失败，仅该作业定向重跑后通过；Full-stack P0 acceptance 用时 25 分 34 秒。处理约定已加入 AGENTS.md。完整主项完成 21、未完成 6，另发布收口 1，共剩余 7。
 
-P3-06 测验 REST 契约完成本地验收，覆盖测验列表、草稿读写、作答历史、提交和题目反馈请求/回执，前端原校验接入 schema 并兼容数组与 JSON 字符串两种旧数据表示。前端定向 56 项、Java 离线定向 2 项、Python 定向 2 项、生成器检查、Ruff、ESLint 和构建通过。独立 PR 最终 HEAD 九项 CI 待验收，完整主项完成 21、未完成 6，另发布收口 1，共剩余 7。
+P3-06 测验 REST 契约：共享 schema、正反例与生成类型覆盖测验列表、草稿、作答历史、提交和题目反馈请求/回执，前端校验兼容数组和 JSON 字符串旧格式。前端定向 56 项、Java 离线 2 项、Python 2 项、生成器、Ruff、ESLint 和构建通过；PR #151 最终 HEAD `b3bcbeb` 九项 CI 全通过并合并（`7bf9f7e`），整栈验收 29 分 41 秒，无 Maven 429 或重跑。
 
 检查点留存子项已完成并合并。#129—138 均已合并；[检查点留存 PR #138](https://github.com/CoderDongHuang/Mneme/pull/138) 最终 HEAD 27a80ad 全部九项 CI 成功，2026-11-07 合并至 main（83916c2）。完整主项完成 21、未完成 6，另发布收口 1，共剩余 7。
 
