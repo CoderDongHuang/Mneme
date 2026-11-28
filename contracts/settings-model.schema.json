@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "$defs": {
+    "ModelSettings": {
+      "type": "object",
+      "required": [
+        "provider",
+        "model",
+        "enabled"
+      ],
+      "properties": {
+        "provider": {
+          "enum": [
+            "deepseek",
+            "dashscope",
+            "openai"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "hasKey": {
+          "type": "boolean"
+        },
+        "keyMask": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "baseUrl": {
+          "type": "string"
+        }
+      }
+    },
+    "ModelSettingsUpdateRequest": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "enum": [
+            "deepseek",
+            "dashscope",
+            "openai"
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "apiKey": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "clearKey": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ModelTestReceipt": {
+      "type": "object",
+      "required": [
+        "status",
+        "model",
+        "provider",
+        "latency_ms"
+      ],
+      "properties": {
+        "status": {
+          "const": "ok"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "provider": {
+          "enum": [
+            "deepseek",
+            "dashscope",
+            "openai"
+          ]
+        },
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

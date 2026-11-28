@@ -1,0 +1,222 @@
+[
+  {
+    "id": "model-settings-default",
+    "schema": "ModelSettings",
+    "valid": true,
+    "data": {
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "enabled": false,
+      "hasKey": false,
+      "keyMask": "",
+      "baseUrl": "https://api.deepseek.com/v1"
+    }
+  },
+  {
+    "id": "model-settings-configured",
+    "schema": "ModelSettings",
+    "valid": true,
+    "data": {
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "enabled": true,
+      "hasKey": true,
+      "keyMask": "••••cret",
+      "baseUrl": "https://api.openai.com/v1"
+    }
+  },
+  {
+    "id": "model-settings-null",
+    "schema": "ModelSettings",
+    "valid": false,
+    "data": null
+  },
+  {
+    "id": "model-settings-unknown-provider",
+    "schema": "ModelSettings",
+    "valid": false,
+    "data": {
+      "provider": "other",
+      "model": "model",
+      "enabled": false,
+      "hasKey": false,
+      "keyMask": "",
+      "baseUrl": "https://api.deepseek.com/v1"
+    }
+  },
+  {
+    "id": "model-settings-invalid-model",
+    "schema": "ModelSettings",
+    "valid": false,
+    "data": {
+      "provider": "deepseek",
+      "model": 1,
+      "enabled": false,
+      "hasKey": false,
+      "keyMask": "",
+      "baseUrl": "https://api.deepseek.com/v1"
+    }
+  },
+  {
+    "id": "model-settings-invalid-enabled",
+    "schema": "ModelSettings",
+    "valid": false,
+    "data": {
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "enabled": "false",
+      "hasKey": false,
+      "keyMask": "",
+      "baseUrl": "https://api.deepseek.com/v1"
+    }
+  },
+  {
+    "id": "model-settings-invalid-key-mask",
+    "schema": "ModelSettings",
+    "valid": false,
+    "data": {
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "enabled": false,
+      "hasKey": "false",
+      "keyMask": "",
+      "baseUrl": "https://api.deepseek.com/v1"
+    }
+  },
+  {
+    "id": "model-settings-update-full",
+    "schema": "ModelSettingsUpdateRequest",
+    "valid": true,
+    "data": {
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "apiKey": "synthetic-test-secret",
+      "enabled": true
+    }
+  },
+  {
+    "id": "model-settings-update-preserve-key",
+    "schema": "ModelSettingsUpdateRequest",
+    "valid": true,
+    "data": {
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "apiKey": "",
+      "enabled": true
+    }
+  },
+  {
+    "id": "model-settings-update-clear-key",
+    "schema": "ModelSettingsUpdateRequest",
+    "valid": true,
+    "data": {
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "clearKey": true,
+      "enabled": false
+    }
+  },
+  {
+    "id": "model-settings-update-ignored-field",
+    "schema": "ModelSettingsUpdateRequest",
+    "valid": true,
+    "data": {
+      "provider": "openai",
+      "futureFlag": true
+    }
+  },
+  {
+    "id": "model-settings-update-bad-provider",
+    "schema": "ModelSettingsUpdateRequest",
+    "valid": false,
+    "data": {
+      "provider": "local"
+    }
+  },
+  {
+    "id": "model-settings-update-bad-model-type",
+    "schema": "ModelSettingsUpdateRequest",
+    "valid": false,
+    "data": {
+      "model": 2
+    }
+  },
+  {
+    "id": "model-settings-update-bad-key-type",
+    "schema": "ModelSettingsUpdateRequest",
+    "valid": false,
+    "data": {
+      "apiKey": false
+    }
+  },
+  {
+    "id": "model-settings-update-bad-enabled",
+    "schema": "ModelSettingsUpdateRequest",
+    "valid": false,
+    "data": {
+      "enabled": "true"
+    }
+  },
+  {
+    "id": "model-settings-update-bad-clear-key",
+    "schema": "ModelSettingsUpdateRequest",
+    "valid": false,
+    "data": {
+      "clearKey": 1
+    }
+  },
+  {
+    "id": "model-test-receipt",
+    "schema": "ModelTestReceipt",
+    "valid": true,
+    "data": {
+      "status": "ok",
+      "model": "gpt-4.1-mini",
+      "provider": "openai",
+      "latency_ms": 23
+    }
+  },
+  {
+    "id": "model-test-bad-status",
+    "schema": "ModelTestReceipt",
+    "valid": false,
+    "data": {
+      "status": "error",
+      "model": "gpt-4.1-mini",
+      "provider": "openai",
+      "latency_ms": 23
+    }
+  },
+  {
+    "id": "model-test-missing-provider",
+    "schema": "ModelTestReceipt",
+    "valid": false,
+    "data": {
+      "status": "ok",
+      "model": "gpt-4.1-mini",
+      "latency_ms": 23
+    }
+  },
+  {
+    "id": "model-test-negative-latency",
+    "schema": "ModelTestReceipt",
+    "valid": false,
+    "data": {
+      "status": "ok",
+      "model": "gpt-4.1-mini",
+      "provider": "openai",
+      "latency_ms": -1
+    }
+  },
+  {
+    "id": "model-settings-legacy-extra",
+    "schema": "ModelSettings",
+    "valid": true,
+    "data": {
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "enabled": false,
+      "futureField": true
+    }
+  }
+]

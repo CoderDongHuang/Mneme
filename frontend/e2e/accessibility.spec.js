@@ -24,7 +24,7 @@ test.beforeEach(async ({ page }) => {
       '/api/v1/privacy': { providers: ['DeepSeek'], sending_scope: ['检索片段'], cloud_allowed: true, trace_days: 30, trace_max_days: 30 },
       '/api/v1/analytics': analytics,
       '/api/v1/settings/preferences': { language: 'zh-CN', timezone: 'Asia/Shanghai', theme: 'light', notifications: true },
-      '/api/v1/settings/models': { provider: 'deepseek', model: 'deepseek-chat', enabled: false, hasKey: false },
+      '/api/v1/settings/models': { provider: 'deepseek', model: 'deepseek-chat', enabled: false, hasKey: false, keyMask: '', baseUrl: 'https://api.deepseek.com/v1' },
       '/api/v1/health/config': { status: 'available', storage: { backend: 'local' } },
       '/api/v1/admin/recovery/site': { configured: false, archives: [], jobs: [] },
       '/api/v1/admin/recovery': { runs: [{ id: 1, run_number: 1, created_at: '2026-10-03', conclusion: 'success' }] },
